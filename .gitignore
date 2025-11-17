@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+build/
+**/build/
+dist/
+**/dist/
+*.log
+build-output.log
+firebase-debug.log
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Firebase
+.firebase/
+firebase-debug.log
+.firebaserc
+
+# Google Cloud credentials (IMPORTANT: Keep these secure!)
+# Exclude credential files specifically
+peccactivitylog-*.json
+*-credentials.json
+service-account-*.json
+
+# Keep important config files
+!package.json
+!package-lock.json
+!tsconfig.json
+!firebase.json
+!vercel.json
+!railway.json
+!render.yaml
+!cloudbuild.yaml
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+**/temp/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Backup files
+*.backup
+**/*.backup
+
