@@ -1,46 +1,194 @@
-# Getting Started with Create React App
+# ImPACTS Web App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Pediatric Emergency Care Coordination (PECC) and Pediatric Readiness Assessment tracking application.
 
-## Available Scripts
+**Live Application**: https://impacts-tracker.web.app
 
-In the project directory, you can run:
+## 🚀 Quick Start
 
-### `npm start`
+### Prerequisites
+- Node.js (v14 or higher)
+- npm or yarn
+- Firebase CLI (for deployment)
+- Git
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### Installation
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/BLMichaels/ImPACTS-Web-App.git
+   cd ImPACTS-Web-App
+   ```
 
-### `npm test`
+2. **Install dependencies**
+   ```bash
+   # Root dependencies
+   npm install
+   
+   # Client dependencies
+   cd client
+   npm install
+   cd ..
+   
+   # Functions dependencies (if needed)
+   cd functions
+   npm install
+   cd ..
+   ```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+3. **Set up environment variables**
+   - Create `.env` files as needed (see Environment Variables section)
+   - **Important**: Never commit credential files (`.json` service account files) to Git
 
-### `npm run build`
+4. **Run the development server**
+   ```bash
+   cd client
+   npm start
+   ```
+   The app will open at [http://localhost:3000](http://localhost:3000)
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 📁 Project Structure
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```
+ImPACTS-Web-App/
+├── client/                 # React frontend application
+│   ├── src/
+│   │   ├── components/    # Reusable React components
+│   │   ├── pages/         # Page components
+│   │   ├── context/       # React Context providers
+│   │   ├── services/      # API and service integrations
+│   │   └── utils/         # Utility functions
+│   ├── public/            # Static assets
+│   └── build/             # Production build (gitignored)
+├── functions/             # Firebase Cloud Functions
+├── server/                # Backend server (if applicable)
+└── firebase.json          # Firebase configuration
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## 🛠️ Available Scripts
 
-### `npm run eject`
+### Client (React App)
+```bash
+cd client
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+npm start          # Start development server
+npm run build      # Build for production
+npm test           # Run tests
+```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### Deployment
+```bash
+# Build the client
+cd client
+npm run build
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+# Deploy to Firebase
+cd ..
+firebase deploy --only hosting
+```
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+## 👥 Team Workflow
 
-## Learn More
+### Getting the Latest Code
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+**Always pull before starting work:**
+```bash
+git pull origin main
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Making Changes
+
+1. **Create a feature branch** (recommended for larger changes)
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Or work directly on main** (for small fixes)
+   ```bash
+   git checkout main
+   git pull origin main
+   ```
+
+3. **Make your changes and test locally**
+
+4. **Commit your changes**
+   ```bash
+   git add .
+   git commit -m "Description of your changes"
+   ```
+
+5. **Push to GitHub**
+   ```bash
+   git push origin main
+   # Or for feature branches:
+   git push origin feature/your-feature-name
+   ```
+
+### Best Practices
+
+- ✅ **Always pull before starting work** to ensure you have the latest code
+- ✅ **Test locally** before pushing
+- ✅ **Write clear commit messages** describing what changed
+- ✅ **Push frequently** so the team always has the latest code
+- ❌ **Never commit**:
+  - `node_modules/` folders
+  - `build/` folders
+  - `.env` files with secrets
+  - Credential JSON files (service account keys)
+  - Log files
+
+## 🔐 Environment Variables
+
+Create `.env` files in the appropriate directories as needed. These are gitignored and should not be committed.
+
+**Important**: Credential files (like `peccactivitylog-*.json`) should be kept secure and never committed to Git.
+
+## 🗄️ Data Storage
+
+- **Primary Database**: Google BigQuery
+- **Authentication**: Firebase Auth
+- **Hosting**: Firebase Hosting
+
+## 📚 Key Features
+
+- **Dashboard**: PECC journey overview and resource management
+- **PRS (Pediatric Readiness Score)**: Assessment and submission to pedsready.org
+- **Gap Plans**: Track and manage improvement plans
+- **Milestones**: Monitor progress through PECC stages
+- **Activities**: Log and track activities
+- **Education**: Educational content for PRS questions
+- **Account Settings**: User profile and preferences
+
+## 🚨 Troubleshooting
+
+### Build Issues
+```bash
+# Clear cache and reinstall
+cd client
+rm -rf node_modules
+npm install
+CI=false GENERATE_SOURCEMAP=false npm run build
+```
+
+### Firebase Issues
+```bash
+# Reinstall Firebase CLI
+npm install -g firebase-tools
+firebase login
+```
+
+## 📝 Additional Documentation
+
+- `BIGQUERY_SETUP.md` - BigQuery configuration
+- `PRODUCTION_DEPLOYMENT_GUIDE.md` - Deployment instructions
+- `SETUP_INSTRUCTIONS.md` - Detailed setup guide
+
+## 🔗 Links
+
+- **Live App**: https://impacts-tracker.web.app
+- **GitHub Repository**: https://github.com/BLMichaels/ImPACTS-Web-App
+- **PedsReady.org**: https://pedsready.org/
+
+## 📧 Support
+
+For issues or questions, please create an issue in the GitHub repository or contact the development team.
