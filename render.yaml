@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: impacts-sync-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node sync-server.js
+    envVars:
+      - key: REACT_APP_BIGQUERY_PROJECT_ID
+        value: impacts-tracker
+      - key: REACT_APP_BIGQUERY_CREDENTIALS
+        value: ${BIGQUERY_CREDENTIALS}
