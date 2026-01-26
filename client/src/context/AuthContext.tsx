@@ -1,9 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import firebase from 'firebase/compat/app';
-import { auth } from '../firebase';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '../supabase';
+
+// Extended User type with uid for backward compatibility
+interface ExtendedUser extends User {
+  uid: string;
+}
 
 interface AuthContextType {
-  currentUser: firebase.User | null;
+  currentUser: ExtendedUser | null;
+  session: Session | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -19,28 +25,57 @@ export const useAuth = () => {
   return context;
 };
 
+// Helper function to extend user with uid property
+const extendUser = (user: User | null): ExtendedUser | null => {
+  if (!user) return null;
+  return { ...user, uid: user.id };
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<firebase.User | null>(null);
+  const [currentUser, setCurrentUser] = useState<ExtendedUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+
   const login = async (email: string, password: string) => {
-    await auth.signInWithEmailAndPassword(email, password);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    if (data.user) setCurrentUser(extendUser(data.user));
+    if (data.session) setSession(data.session);
   };
 
   const logout = async () => {
-    await auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    setCurrentUser(null);
+    setSession(null);
   };
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      setCurrentUser(user);
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setCurrentUser(extendUser(session?.user ?? null));
       setLoading(false);
     });
 
-    return unsubscribe;
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setCurrentUser(extendUser(session?.user ?? null));
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const value = {
     currentUser,
+    session,
     loading,
     login,
     logout,

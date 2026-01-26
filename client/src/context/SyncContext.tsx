@@ -1,4 +1,4 @@
-// Sync context for managing data synchronization
+// Sync context for managing data synchronization (local storage only)
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import syncService from '../services/syncService';
 
@@ -41,7 +41,7 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({ children }) => {
       setIsOnline(status.isOnline);
       setPendingCount(status.pendingCount);
       setSyncInProgress(status.syncInProgress);
-      setBigQueryEnabled(status.bigQueryEnabled);
+      setBigQueryEnabled(false); // BigQuery removed
       
       if (status.pendingCount === 0 && !status.syncInProgress) {
         setLastSyncTime(new Date().toISOString());

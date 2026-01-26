@@ -1,4 +1,4 @@
-// Custom hook for data synchronization with BigQuery
+// Custom hook for data synchronization (local storage only)
 import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
@@ -18,9 +18,9 @@ export const useDataSync = () => {
     bigQueryEnabled
   } = useSync();
 
-  // Sync user profile when it changes (only if BigQuery is enabled)
+  // Sync user profile when it changes (local storage only)
   useEffect(() => {
-    if (currentUser && userProfile && bigQueryEnabled) {
+    if (currentUser && userProfile) {
       syncUserProfile({
         id: currentUser.uid,
         userId: currentUser.uid,
@@ -43,7 +43,7 @@ export const useDataSync = () => {
         updatedAt: new Date().toISOString()
       });
     }
-  }, [currentUser, userProfile, syncUserProfile, bigQueryEnabled]);
+  }, [currentUser, userProfile, syncUserProfile]);
 
   return {
     syncActivities,

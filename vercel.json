@@ -1,21 +1,12 @@
 {
-  "version": 2,
-  "builds": [
+  "buildCommand": "cd client && npm install && npm run build",
+  "outputDirectory": "client/build",
+  "rewrites": [
     {
-      "src": "sync-server.js",
-      "use": "@vercel/node"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/sync-server.js"
-    }
-  ],
-  "env": {
-    "REACT_APP_BIGQUERY_PROJECT_ID": "impacts-tracker",
-    "REACT_APP_BIGQUERY_CREDENTIALS": "@bigquery_credentials"
-  }
+  ]
 }
 
 

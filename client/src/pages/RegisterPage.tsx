@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Typography, TextField, Button, Alert, Container, FormControlLabel, Checkbox, Link } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { auth } from '../firebase';
+import { supabase } from '../supabase';
 import TermsOfService from '../components/TermsOfService';
 
 const RegisterPage = () => {
@@ -28,15 +28,24 @@ const RegisterPage = () => {
     try {
       setError('');
       setLoading(true);
-      await auth.createUserWithEmailAndPassword(email, password);
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
       
-      // Store terms acceptance in localStorage
-      localStorage.setItem('termsAccepted', 'true');
-      localStorage.setItem('termsAcceptedDate', new Date().toISOString());
+      if (error) {
+        throw error;
+      }
       
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Failed to create an account.');
+      if (data.user) {
+        // Store terms acceptance in localStorage
+        localStorage.setItem('termsAccepted', 'true');
+        localStorage.setItem('termsAcceptedDate', new Date().toISOString());
+        
+        navigate('/dashboard');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to create an account.');
     } finally {
       setLoading(false);
     }
