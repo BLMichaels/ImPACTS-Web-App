@@ -29,6 +29,7 @@ import {
   InputLabel,
   Select,
   Checkbox,
+  Tooltip,
   alpha,
   useTheme,
   Skeleton,
@@ -57,7 +58,8 @@ import {
   ViewColumn as ViewColumnIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Contacts as ContactsIcon
+  Contacts as ContactsIcon,
+  KeyboardArrowUp as ArrowUpIcon
 } from '@mui/icons-material';
 
 type ManagerContactType = 'hospital' | 'mentor' | 'pecc';
@@ -103,6 +105,8 @@ const COLUMNS: { id: string; label: string; sortable?: boolean; defaultVisible?:
 ];
 
 const CRM_PREFS_KEY = 'managerCrm_prefs';
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 250, 1000, 'all'] as const;
+type PageSize = number | 'all';
 
 const ManagerCRMPage: React.FC = () => {
   const theme = useTheme();
@@ -110,6 +114,13 @@ const ManagerCRMPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pageSize, setPageSize] = useState<PageSize>(() => {
+    try {
+      const s = localStorage.getItem(CRM_PREFS_KEY);
+      if (s) { const p = JSON.parse(s); const v = p.pageSize; if (v === 'all' || (typeof v === 'number' && PAGE_SIZE_OPTIONS.slice(0, -1).includes(v))) return v; }
+    } catch {}
+    return 25;
+  });
   const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
     try {
       const s = localStorage.getItem(CRM_PREFS_KEY);
@@ -164,9 +175,9 @@ const ManagerCRMPage: React.FC = () => {
 
   useEffect(() => {
     try {
-      localStorage.setItem(CRM_PREFS_KEY, JSON.stringify({ viewMode, visibleColumns: Array.from(visibleColumns) }));
+      localStorage.setItem(CRM_PREFS_KEY, JSON.stringify({ viewMode, visibleColumns: Array.from(visibleColumns), pageSize }));
     } catch {}
-  }, [viewMode, visibleColumns]);
+  }, [viewMode, visibleColumns, pageSize]);
 
   const filteredAndSortedContacts = useMemo(() => {
     let list = contacts.filter(contact => {
@@ -200,13 +211,18 @@ const ManagerCRMPage: React.FC = () => {
     return list;
   }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter]);
 
+  const displayedContacts = useMemo(() => {
+    if (pageSize === 'all') return filteredAndSortedContacts;
+    return filteredAndSortedContacts.slice(0, pageSize);
+  }, [filteredAndSortedContacts, pageSize]);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
     else setSortField(field);
   };
 
   const handleSelectAll = (checked: boolean) => {
-    if (checked) setSelectedIds(new Set(filteredAndSortedContacts.map(c => c.id)));
+    if (checked) setSelectedIds(new Set(displayedContacts.map(c => c.id)));
     else setSelectedIds(new Set());
   };
 
@@ -399,10 +415,17 @@ const ManagerCRMPage: React.FC = () => {
           </Menu>
           <Button size="small" startIcon={<TableIcon />} onClick={() => setViewMode('table')} variant={viewMode === 'table' ? 'contained' : 'outlined'}>Table</Button>
           <Button size="small" startIcon={<GridIcon />} onClick={() => setViewMode('grid')} variant={viewMode === 'grid' ? 'contained' : 'outlined'}>Cards</Button>
+          <FormControl size="small" sx={{ minWidth: 100 }}>
+            <Select value={pageSize} onChange={(e) => setPageSize(e.target.value as PageSize)} displayEmpty variant="outlined">
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <MenuItem key={String(n)} value={n}>{n === 'all' ? 'All' : n}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Box sx={{ flexGrow: 1 }} />
           {selectedIds.size > 0 && <Chip label={`${selectedIds.size} selected`} onDelete={() => setSelectedIds(new Set())} sx={{ mr: 1 }} />}
           <Typography variant="body2" color="text.secondary">
-            {filteredAndSortedContacts.length} contact{filteredAndSortedContacts.length !== 1 ? 's' : ''}
+            {filteredAndSortedContacts.length === 0 ? '0 contacts' : pageSize === 'all' ? `${filteredAndSortedContacts.length} contact${filteredAndSortedContacts.length !== 1 ? 's' : ''}` : `Showing 1–${displayedContacts.length} of ${filteredAndSortedContacts.length}`}
           </Typography>
         </Box>
       </Paper>
@@ -444,7 +467,7 @@ const ManagerCRMPage: React.FC = () => {
               </Paper>
             </Grid>
           ) : (
-            filteredAndSortedContacts.map((contact) => (
+            displayedContacts.map((contact) => (
               <Grid item xs={12} sm={6} md={4} lg={3} key={contact.id}>
                 <Paper
                   sx={{ p: 2, cursor: 'pointer', '&:hover': { boxShadow: 2 }, borderLeft: 4, borderColor: TYPE_COLORS[contact.type] }}
@@ -472,8 +495,8 @@ const ManagerCRMPage: React.FC = () => {
               <TableRow>
                 <TableCell padding="checkbox">
                   <Checkbox
-                    checked={filteredAndSortedContacts.length > 0 && selectedIds.size === filteredAndSortedContacts.length}
-                    indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedContacts.length}
+                    checked={displayedContacts.length > 0 && selectedIds.size === displayedContacts.length}
+                    indeterminate={selectedIds.size > 0 && selectedIds.size < displayedContacts.length}
                     onChange={(e) => handleSelectAll(e.target.checked)}
                   />
                 </TableCell>
@@ -505,7 +528,7 @@ const ManagerCRMPage: React.FC = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredAndSortedContacts.map((contact) => (
+                displayedContacts.map((contact) => (
                   <TableRow key={contact.id} hover sx={{ cursor: 'pointer' }} onClick={() => openDetail(contact)}>
                     <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selectedIds.has(contact.id)} onChange={(e) => handleSelectOne(contact.id, e.target.checked)} />
@@ -653,6 +676,24 @@ const ManagerCRMPage: React.FC = () => {
           <Button color="error" variant="contained" onClick={() => deleteTarget?.single ? handleDeleteContact(deleteTarget.single) : handleBulkDelete()}>Delete</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Back to top - fixed top-right */}
+      <Tooltip title="Back to top">
+        <IconButton
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          sx={{
+            position: 'fixed',
+            top: 16,
+            right: 16,
+            zIndex: 1300,
+            bgcolor: 'background.paper',
+            boxShadow: 2,
+            '&:hover': { bgcolor: 'action.hover' }
+          }}
+        >
+          <ArrowUpIcon />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 };
