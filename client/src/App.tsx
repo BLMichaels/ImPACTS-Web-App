@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, Container, CircularProgress } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
@@ -7,25 +7,44 @@ import { createTheme } from '@mui/material/styles';
 import Navbar from './components/Navbar';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import NotFoundPage from './pages/NotFoundPage';
+import AccountPage from './pages/AccountPage';
+
+// PECC Pages
 import DashboardPage from './pages/DashboardPage';
 import MilestonesPage from './pages/MilestonesPage';
-import AccountPage from './pages/AccountPage';
-import NotFoundPage from './pages/NotFoundPage';
 import ActivitiesPage from './pages/ActivitiesPage';
 import PRSPage from './pages/PRSPage';
 import GapPlanPage from './pages/GapPlanPage';
 import SnapshotPage from './pages/SnapshotPage';
 import SimulationPage from './pages/SimulationPage';
-
-// PRISM Pages
-import PRISMDashboardPage from './pages/PRISMDashboardPage';
-import PRISMActivitiesPage from './pages/PRISMActivitiesPage';
 import EducationPage from './pages/EducationPage';
 
+// Mentor Pages (lazy loaded)
+const MentorDashboardPage = lazy(() => import('./pages/mentor/MentorDashboardPage'));
+const MentorActivitiesPage = lazy(() => import('./pages/mentor/MentorActivitiesPage'));
+const MentorHospitalContactsPage = lazy(() => import('./pages/mentor/MentorHospitalContactsPage'));
+const MentorSiteMilestonesPage = lazy(() => import('./pages/mentor/MentorSiteMilestonesPage'));
+const MentorWagesExpensesPage = lazy(() => import('./pages/mentor/MentorWagesExpensesPage'));
+
+// Manager Pages (lazy loaded)
+const ManagerDashboardPage = lazy(() => import('./pages/manager/ManagerDashboardPage'));
+const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
+const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
+
+// Admin Pages (lazy loaded)
+const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
+const AdminCRMPage = lazy(() => import('./pages/admin/AdminCRMPage'));
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
+const AdminPermissionsPage = lazy(() => import('./pages/admin/AdminPermissionsPage'));
+
+// Invitation Page
+const InvitationPage = lazy(() => import('./pages/InvitationPage'));
 
 // Context
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { UserProfileProvider, useUserProfile, UserTier } from './context/UserProfileContext';
+import { UserProfileProvider, useUserProfile } from './context/UserProfileContext';
+import { UserRole } from './types/database';
 
 // Create theme
 const theme = createTheme({
@@ -60,10 +79,31 @@ const LoadingSpinner = () => (
   </Container>
 );
 
-// Protected Route component with tier-based access
-const ProtectedRoute = ({ children, requiredTier }: { children: React.ReactNode; requiredTier?: UserTier }) => {
+// Get default dashboard route based on user role
+const getDefaultDashboard = (role: UserRole): string => {
+  switch (role) {
+    case UserRole.ADMIN:
+      return '/admin/dashboard';
+    case UserRole.MANAGER:
+      return '/manager/dashboard';
+    case UserRole.MENTOR:
+      return '/mentor/dashboard';
+    case UserRole.PECC:
+    default:
+      return '/dashboard';
+  }
+};
+
+// Protected Route component with role-based access
+const ProtectedRoute = ({ 
+  children, 
+  allowedRoles 
+}: { 
+  children: React.ReactNode; 
+  allowedRoles?: UserRole[];
+}) => {
   const { currentUser, loading } = useAuth();
-  const { userProfile, isLoading: profileLoading } = useUserProfile();
+  const { userProfile, isLoading: profileLoading, userRole } = useUserProfile();
   
   // Show loading while contexts are initializing
   if (loading || profileLoading) {
@@ -87,23 +127,34 @@ const ProtectedRoute = ({ children, requiredTier }: { children: React.ReactNode;
     );
   }
   
-  // If no specific tier required, allow access
-  if (!requiredTier) return <>{children}</>;
+  // If no specific roles required, allow access
+  if (!allowedRoles || allowedRoles.length === 0) return <>{children}</>;
   
-  // Check if user has required tier
-  if (userProfile.tier !== requiredTier) {
-    // Redirect to appropriate dashboard based on user's tier
-    if (userProfile.tier === UserTier.PRISM) {
-      return <Navigate to="/prism/dashboard" />;
-    } else {
-      return <Navigate to="/dashboard" />;
-    }
+  // Admin always has access
+  if (userRole === UserRole.ADMIN) return <>{children}</>;
+  
+  // Check if user has one of the allowed roles
+  if (!allowedRoles.includes(userRole)) {
+    // Redirect to appropriate dashboard based on user's role
+    return <Navigate to={getDefaultDashboard(userRole)} />;
   }
   
   return <>{children}</>;
 };
 
 
+
+// Smart redirect based on user role
+const RoleBasedRedirect = () => {
+  const { userProfile, isLoading } = useUserProfile();
+  
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+  
+  const dashboard = getDefaultDashboard(userProfile?.role || UserRole.PECC);
+  return <Navigate to={dashboard} replace />;
+};
 
 function App() {
   return (
@@ -116,20 +167,43 @@ function App() {
               <Navbar />
               <Container>
                 <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  {/* Public Routes */}
+                  <Route path="/" element={<RoleBasedRedirect />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
-                  <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-                  <Route path="/prism/dashboard" element={<ProtectedRoute requiredTier={UserTier.PRISM}><PRISMDashboardPage /></ProtectedRoute>} />
-                  <Route path="/prism/activities" element={<ProtectedRoute requiredTier={UserTier.PRISM}><PRISMActivitiesPage /></ProtectedRoute>} />
+                  <Route path="/invite/:code" element={<InvitationPage />} />
+                  
+                  {/* PECC Routes */}
+                  <Route path="/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><DashboardPage /></ProtectedRoute>} />
                   <Route path="/snapshot" element={<ProtectedRoute><SnapshotPage /></ProtectedRoute>} />
                   <Route path="/simulation" element={<ProtectedRoute><SimulationPage /></ProtectedRoute>} />
                   <Route path="/milestones" element={<ProtectedRoute><MilestonesPage /></ProtectedRoute>} />
                   <Route path="/activities" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
                   <Route path="/prs" element={<ProtectedRoute><PRSPage /></ProtectedRoute>} />
                   <Route path="/gap-plan" element={<ProtectedRoute><GapPlanPage /></ProtectedRoute>} />
-                  <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
                   <Route path="/education" element={<ProtectedRoute><EducationPage /></ProtectedRoute>} />
+                  
+                  {/* Mentor Routes */}
+                  <Route path="/mentor/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorDashboardPage /></ProtectedRoute>} />
+                  <Route path="/mentor/activities" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorActivitiesPage /></ProtectedRoute>} />
+                  <Route path="/mentor/hospitals" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorHospitalContactsPage /></ProtectedRoute>} />
+                  <Route path="/mentor/milestones" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSiteMilestonesPage /></ProtectedRoute>} />
+                  <Route path="/mentor/wages" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorWagesExpensesPage /></ProtectedRoute>} />
+                  <Route path="/mentor/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><SnapshotPage /></ProtectedRoute>} />
+                  
+                  {/* Manager Routes */}
+                  <Route path="/manager/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerDashboardPage /></ProtectedRoute>} />
+                  <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />
+                  <Route path="/manager/crm" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCRMPage /></ProtectedRoute>} />
+                  
+                  {/* Admin Routes */}
+                  <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboardPage /></ProtectedRoute>} />
+                  <Route path="/admin/crm" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCRMPage /></ProtectedRoute>} />
+                  <Route path="/admin/users" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminUsersPage /></ProtectedRoute>} />
+                  <Route path="/admin/permissions" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminPermissionsPage /></ProtectedRoute>} />
+                  
+                  {/* Common Routes */}
+                  <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </Container>

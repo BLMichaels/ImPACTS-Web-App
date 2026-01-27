@@ -9,7 +9,6 @@ import {
   Menu,
   MenuItem,
   Avatar,
-  Tooltip,
   Divider,
   useMediaQuery,
   useTheme,
@@ -17,38 +16,45 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemIcon
+  ListItemIcon,
+  Chip
 } from '@mui/material';
-  import {
-    Work as WorkIcon,
-    Assessment as AssessmentIcon,
-    AccountCircle as AccountCircleIcon,
-    Logout as LogoutIcon,
-    Settings as SettingsIcon,
-    Business as BusinessIcon,
-    People as PeopleIcon,
-    Timeline as TimelineIcon,
-    AttachMoney as AttachMoneyIcon,
-    AdminPanelSettings as AdminPanelSettingsIcon,
-    SupervisorAccount as SupervisorAccountIcon,
-    Assignment as AssignmentIcon,
-    Work as ActivityIcon,
-    Menu as MenuIcon,
-    PlayArrow as PlayIcon,
-    School as SchoolIcon
-  } from '@mui/icons-material';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import {
+  Work as WorkIcon,
+  Assessment as AssessmentIcon,
+  AccountCircle as AccountCircleIcon,
+  Logout as LogoutIcon,
+  Assignment as AssignmentIcon,
+  Menu as MenuIcon,
+  PlayArrow as PlayIcon,
+  School as SchoolIcon,
+  Dashboard as DashboardIcon,
+  LocalHospital as HospitalIcon,
+  People as PeopleIcon,
+  Business as BusinessIcon,
+  Timeline as TimelineIcon,
+  AttachMoney as MoneyIcon,
+  Security as SecurityIcon,
+  Settings as SettingsIcon
+} from '@mui/icons-material';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useUserProfile, UserTier } from '../context/UserProfileContext';
+import { useUserProfile } from '../context/UserProfileContext';
+import { UserRole } from '../types/database';
+
+interface NavItem {
+  path: string;
+  label: string;
+  icon: React.ReactNode;
+}
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, userRole } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   
-  // Responsive breakpoints
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isTablet = useMediaQuery(theme.breakpoints.down('lg'));
@@ -87,62 +93,103 @@ const Navbar: React.FC = () => {
     setMobileMenuOpen(false);
   };
 
-  // Navigation items based on user tier
-  const getNavigationItems = () => {
-    const baseItems = [
-      { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
-      { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
-      { path: '/education', label: 'Education', icon: <SchoolIcon /> },
-      { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> }
-    ];
+  // Navigation items based on user role
+  const getNavigationItems = (): NavItem[] => {
+    if (!userProfile) return [];
 
-    // Add PRS tab only if it's enabled in user settings (PECC users only)
-    if (userProfile?.tier === UserTier.PECC && (userProfile as any).prsTabVisible !== false) {
-      baseItems.splice(2, 0, { path: '/prs', label: 'PRS', icon: <AssessmentIcon /> });
-    }
-
-    // Default to PECC navigation if userProfile is not loaded yet
-    if (!userProfile) {
-      return baseItems;
-    }
-
-    switch (userProfile.tier) {
-      case UserTier.PECC:
+    switch (userRole) {
+      case UserRole.ADMIN:
         return [
+          { path: '/admin/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+          { path: '/admin/users', label: 'Users', icon: <PeopleIcon /> },
+          { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
+          { path: '/admin/permissions', label: 'Permissions', icon: <SecurityIcon /> }
+        ];
+
+      case UserRole.MANAGER:
+        return [
+          { path: '/manager/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+          { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
+          { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> }
+        ];
+
+      case UserRole.MENTOR:
+        return [
+          { path: '/mentor/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+          { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
+          { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
+          { path: '/mentor/milestones', label: 'Milestones', icon: <AssignmentIcon /> },
+          { path: '/mentor/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
+          { path: '/mentor/wages', label: 'Wages', icon: <MoneyIcon /> }
+        ];
+
+      case UserRole.PECC:
+      default:
+        const peccItems: NavItem[] = [
           { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> },
-          ...baseItems
+          { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
+          { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
+          { path: '/education', label: 'Education', icon: <SchoolIcon /> },
+          { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> }
         ];
-
-      case UserTier.PRISM:
-        return [
-          { path: '/prism/activities', label: 'PRISM Activities', icon: <WorkIcon /> }
-        ];
-
-      default:
-        return baseItems;
+        
+        // Add PRS if enabled
+        if ((userProfile as any).prsTabVisible !== false) {
+          peccItems.splice(3, 0, { path: '/prs', label: 'PRS', icon: <AssessmentIcon /> });
+        }
+        
+        return peccItems;
     }
   };
 
+  const getDashboardPath = (): string => {
+    switch (userRole) {
+      case UserRole.ADMIN: return '/admin/dashboard';
+      case UserRole.MANAGER: return '/manager/dashboard';
+      case UserRole.MENTOR: return '/mentor/dashboard';
+      default: return '/dashboard';
+    }
+  };
 
+  const getRoleColor = (): string => {
+    switch (userRole) {
+      case UserRole.ADMIN: return '#d32f2f';
+      case UserRole.MANAGER: return '#9c27b0';
+      case UserRole.MENTOR: return '#ff9800';
+      default: return '#1976d2';
+    }
+  };
+
+  const getRoleLabel = (): string => {
+    switch (userRole) {
+      case UserRole.ADMIN: return 'Admin';
+      case UserRole.MANAGER: return 'Manager';
+      case UserRole.MENTOR: return 'Mentor';
+      default: return 'PECC';
+    }
+  };
 
   const navigationItems = getNavigationItems();
 
-  // Mobile Drawer Component
+  // Mobile Drawer
   const MobileDrawer = () => (
     <Drawer
       anchor="left"
       open={mobileMenuOpen}
       onClose={handleMobileMenuClose}
-      PaperProps={{
-        sx: { width: 280 }
-      }}
+      PaperProps={{ sx: { width: 280 } }}
     >
       <Box sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
-            ImPACTS {userProfile && userProfile.tier !== UserTier.PECC && `- ${userProfile.tier}`}
+            ImPACTS
           </Typography>
+          <Chip 
+            label={getRoleLabel()} 
+            size="small" 
+            sx={{ bgcolor: getRoleColor(), color: 'white' }}
+          />
         </Box>
         
         <List>
@@ -155,9 +202,7 @@ const Navbar: React.FC = () => {
                 borderRadius: 1,
                 mb: 0.5,
                 backgroundColor: location.pathname === item.path ? 'primary.light' : 'transparent',
-                '&:hover': {
-                  backgroundColor: 'primary.light',
-                }
+                '&:hover': { backgroundColor: 'primary.light' }
               }}
             >
               <ListItemIcon sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}>
@@ -175,20 +220,17 @@ const Navbar: React.FC = () => {
         
         <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
           <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-            {userProfile.tier}
+            {getRoleLabel()}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {userProfile.firstName} {userProfile.lastName}
+            {userProfile?.first_name} {userProfile?.last_name}
           </Typography>
         </Box>
         
         <Button
           fullWidth
           startIcon={<AccountCircleIcon />}
-          onClick={() => {
-            handleProfile();
-            handleMobileMenuClose();
-          }}
+          onClick={() => { handleProfile(); handleMobileMenuClose(); }}
           sx={{ mt: 2 }}
         >
           Profile
@@ -197,10 +239,7 @@ const Navbar: React.FC = () => {
         <Button
           fullWidth
           startIcon={<LogoutIcon />}
-          onClick={() => {
-            handleLogout();
-            handleMobileMenuClose();
-          }}
+          onClick={() => { handleLogout(); handleMobileMenuClose(); }}
           sx={{ mt: 1 }}
         >
           Logout
@@ -243,13 +282,7 @@ const Navbar: React.FC = () => {
             display: 'flex',
             alignItems: 'center'
           }}
-          onClick={() => {
-            if (userProfile && userProfile.tier === UserTier.PRISM) {
-              navigate('/prism/dashboard');
-            } else {
-              navigate('/dashboard');
-            }
-          }}
+          onClick={() => navigate(getDashboardPath())}
         >
           <img 
             src="/impacts-logo.png" 
@@ -258,19 +291,20 @@ const Navbar: React.FC = () => {
               height: isMobile ? '35px' : '45px',
               width: 'auto'
             }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
           />
-          {userProfile && userProfile.tier !== UserTier.PECC && (
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                ml: 1,
-                color: '#666',
-                fontSize: '0.8rem'
-              }}
-            >
-              - {userProfile.tier}
-            </Typography>
-          )}
+          <Typography 
+            variant="h6" 
+            sx={{ 
+              ml: 1,
+              fontWeight: 'bold',
+              display: { xs: 'none', sm: 'block' }
+            }}
+          >
+            ImPACTS
+          </Typography>
         </Box>
 
         {/* Desktop Navigation Items */}
@@ -293,9 +327,7 @@ const Navbar: React.FC = () => {
                 onClick={() => navigate(item.path)}
                 sx={{
                   backgroundColor: location.pathname === item.path ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                  '&:hover': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  },
+                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.2)' },
                   borderRadius: 1,
                   px: isSmallDesktop ? 1 : 2,
                   py: 1,
@@ -311,8 +343,7 @@ const Navbar: React.FC = () => {
           </Box>
         )}
 
-
-        {/* User Menu - Desktop Only */}
+        {/* User Menu - Desktop */}
         {!isMobile && (
           <Box sx={{ 
             display: 'flex', 
@@ -320,24 +351,17 @@ const Navbar: React.FC = () => {
             gap: isSmallDesktop ? 1 : 2,
             flexShrink: 0
           }}>
-            {/* User Tier Badge */}
-            <Box sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              px: isSmallDesktop ? 1 : 2,
-              py: 0.5,
-              borderRadius: 2,
-              backgroundColor: 'rgba(255, 255, 255, 0.1)',
-              border: '1px solid rgba(255, 255, 255, 0.2)'
-            }}>
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255, 255, 255, 0.8)',
-                fontSize: isSmallDesktop ? '0.7rem' : '0.75rem'
-              }}>
-                {userProfile.tier}
-              </Typography>
-            </Box>
+            {/* Role Badge */}
+            <Chip 
+              label={getRoleLabel()} 
+              size="small"
+              sx={{ 
+                bgcolor: getRoleColor(), 
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: '0.7rem'
+              }}
+            />
 
             {/* User Info */}
             <Typography 
@@ -348,14 +372,12 @@ const Navbar: React.FC = () => {
                 display: isTablet ? 'none' : 'block'
               }}
             >
-              {userProfile.firstName} {userProfile.lastName}
+              {userProfile?.first_name} {userProfile?.last_name}
             </Typography>
 
             <IconButton
               size="large"
-              aria-label="account of current user"
-              aria-controls="menu-appbar"
-              aria-haspopup="true"
+              aria-label="account menu"
               onClick={handleMenu}
               color="inherit"
             >
@@ -364,7 +386,7 @@ const Navbar: React.FC = () => {
                 height: isSmallDesktop ? 28 : 32, 
                 bgcolor: 'rgba(255, 255, 255, 0.2)' 
               }}>
-                {userProfile.firstName.charAt(0)}{userProfile.lastName.charAt(0)}
+                {userProfile?.first_name?.charAt(0)}{userProfile?.last_name?.charAt(0)}
               </Avatar>
             </IconButton>
           </Box>
@@ -374,14 +396,12 @@ const Navbar: React.FC = () => {
         {isMobile && (
           <IconButton
             size="large"
-            aria-label="account of current user"
-            aria-controls="menu-appbar"
-            aria-haspopup="true"
+            aria-label="account menu"
             onClick={handleMenu}
             color="inherit"
           >
             <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(255, 255, 255, 0.2)' }}>
-              {userProfile.firstName.charAt(0)}{userProfile.lastName.charAt(0)}
+              {userProfile?.first_name?.charAt(0)}{userProfile?.last_name?.charAt(0)}
             </Avatar>
           </IconButton>
         )}
@@ -390,15 +410,9 @@ const Navbar: React.FC = () => {
         <Menu
           id="menu-appbar"
           anchorEl={anchorEl}
-          anchorOrigin={{
-            vertical: 'bottom',
-            horizontal: 'right',
-          }}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
           keepMounted
-          transformOrigin={{
-            vertical: 'top',
-            horizontal: 'right',
-          }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
           open={Boolean(anchorEl)}
           onClose={handleClose}
         >
@@ -408,15 +422,15 @@ const Navbar: React.FC = () => {
           </MenuItem>
           <Divider />
           <MenuItem onClick={handleLogout}>
+            <LogoutIcon sx={{ mr: 1 }} />
             Logout
           </MenuItem>
         </Menu>
       </Toolbar>
       
-      {/* Mobile Drawer */}
       <MobileDrawer />
     </AppBar>
   );
 };
 
-export default Navbar; 
+export default Navbar;

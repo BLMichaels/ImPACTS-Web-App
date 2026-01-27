@@ -1,0 +1,366 @@
+// Database types for Supabase
+
+// ============================================
+// ENUMS
+// ============================================
+
+export enum UserRole {
+  ADMIN = 'admin',
+  MANAGER = 'manager',
+  MENTOR = 'mentor',  // Previously PRISM
+  PECC = 'pecc'
+}
+
+export enum TraumaLevel {
+  LEVEL_I = 'Level I',
+  LEVEL_II = 'Level II',
+  LEVEL_III = 'Level III',
+  LEVEL_IV = 'Level IV',
+  CRITICAL_ACCESS = 'Critical Access',
+  NON_DESIGNATED = 'Non-Designated',
+  FREESTANDING_ED = 'Free-Standing ED'
+}
+
+export enum ContactStatus {
+  ED_EMPLOYEE = 'ED Employee (general contact)',
+  PEDIATRIC_CHAMPION = 'Pediatric Champion (NOT A PECC)',
+  NEW_PECC = 'New PECC',
+  ALREADY_PECC = 'Already a PECC'
+}
+
+export enum ActivityCategory {
+  PE = 'PE - PRISM Education & Training',
+  TR = 'TR - Training with PECC',
+  AD = 'AD - General Administration Tasks',
+  RA = 'RA - Readiness Assessment',
+  SC = 'SC - Simulation Case Facilitation',
+  DM = 'DM - Domain Implementation'
+}
+
+export enum SimulationCase {
+  BRONCHIOLITIS = 'Bronchiolitis/Respiratory Distress',
+  SEVERE_HEAD_TRAUMA = 'Severe Head Trauma',
+  ASTHMA = 'Asthma/Child with a Wheeze',
+  NEWBORN_RESUSCITATION = 'Newborn Resuscitation',
+  POSTPARTUM_HEMORRHAGE = 'Postpartum Hemorrhage',
+  SCALD_BURN = 'Scald Burn',
+  AGITATION = 'Agitation',
+  VOMITING_INFANT = 'Vomiting Infant',
+  FUSSY_BABY = 'Fussy Baby',
+  PEDIATRIC_TRAUMA = 'Pediatric Trauma/Abdominal',
+  SICK_NEONATE = 'Sick Neonate',
+  SEIZING_INFANT = 'Seizing Infant',
+  SEIZING_CHILD = 'Seizing Child',
+  ANAPHYLAXIS = 'Anaphylaxis',
+  ALTERED_MENTAL_STATUS = 'Altered Mental Status',
+  OTHER = 'Other'
+}
+
+export enum InvitationStatus {
+  PENDING = 'pending',
+  ACCEPTED = 'accepted',
+  EXPIRED = 'expired',
+  CANCELLED = 'cancelled'
+}
+
+// ============================================
+// CORE TABLES
+// ============================================
+
+// Users table - extends Supabase auth.users
+export interface User {
+  id: string;  // UUID from auth.users
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  last_login: string | null;
+  
+  // Role-specific foreign keys
+  manager_id: string | null;  // For mentors - who manages them
+  mentor_id: string | null;   // For PECCs - who mentors them
+}
+
+// Hospitals/Organizations table
+export interface Hospital {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  phone: string | null;
+  trauma_level: TraumaLevel;
+  ed_size: string | null;
+  region: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  notes: string | null;
+}
+
+// Hospital Contacts - CRM for all contacts at hospitals
+export interface HospitalContact {
+  id: string;
+  hospital_id: string;
+  user_id: string | null;  // Link to users table if they have an account
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  contact_status: ContactStatus;
+  role_at_hospital: string | null;  // Their job title
+  is_primary_contact: boolean;
+  is_actively_engaged: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Mentor-Hospital assignments (which hospitals each mentor works with)
+export interface MentorHospitalAssignment {
+  id: string;
+  mentor_id: string;
+  hospital_id: string;
+  assigned_at: string;
+  assigned_by: string;  // Manager or Admin who assigned
+  is_active: boolean;
+}
+
+// Invitations - for sending registration links
+export interface Invitation {
+  id: string;
+  code: string;  // Unique invitation code
+  email: string;
+  role: UserRole;
+  status: InvitationStatus;
+  
+  // Context for the invitation
+  hospital_id: string | null;  // For PECC invitations
+  mentor_id: string | null;    // For PECC invitations - who will mentor them
+  manager_id: string | null;   // For Mentor invitations - who will manage them
+  
+  invited_by: string;  // User ID of who sent the invite
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  accepted_by: string | null;  // User ID of who accepted
+}
+
+// ============================================
+// ACTIVITY TRACKING
+// ============================================
+
+// Mentor Activities
+export interface MentorActivity {
+  id: string;
+  mentor_id: string;
+  date: string;
+  activity_name: string;
+  category: ActivityCategory;
+  hours: number;  // In quarter-hour increments (0.25, 0.5, 0.75, 1, etc.)
+  description: string | null;  // Required for activities with PECCs
+  hospital_ids: string[];  // Which hospitals this activity was with
+  
+  // Simulation-specific fields (only for SC category)
+  simulation_case: SimulationCase | null;
+  sim_participants: number | null;
+  facilitator_feedback_submitted: boolean;
+  participant_feedback_submitted: boolean;
+  
+  created_at: string;
+  updated_at: string;
+}
+
+// PECC Activities (existing structure, keeping for reference)
+export interface PeccActivity {
+  id: string;
+  pecc_id: string;
+  hospital_id: string;
+  date: string;
+  activity_type: string;
+  hours: number;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================
+// ROLE PERMISSIONS (Admin-controlled)
+// ============================================
+
+export interface RolePermission {
+  id: string;
+  role: UserRole;
+  permission_key: string;  // e.g., 'view_activities', 'manage_hospitals'
+  is_enabled: boolean;
+  updated_by: string;  // Admin who last changed this
+  updated_at: string;
+}
+
+// Available permissions
+export const PERMISSIONS = {
+  // Dashboard
+  VIEW_DASHBOARD: 'view_dashboard',
+  VIEW_AGGREGATED_DATA: 'view_aggregated_data',
+  
+  // Activities
+  VIEW_OWN_ACTIVITIES: 'view_own_activities',
+  VIEW_TEAM_ACTIVITIES: 'view_team_activities',
+  VIEW_ALL_ACTIVITIES: 'view_all_activities',
+  MANAGE_OWN_ACTIVITIES: 'manage_own_activities',
+  
+  // Hospitals
+  VIEW_OWN_HOSPITALS: 'view_own_hospitals',
+  VIEW_ALL_HOSPITALS: 'view_all_hospitals',
+  MANAGE_HOSPITALS: 'manage_hospitals',
+  
+  // Contacts (CRM)
+  VIEW_CONTACTS: 'view_contacts',
+  MANAGE_CONTACTS: 'manage_contacts',
+  
+  // User Management
+  VIEW_USERS: 'view_users',
+  MANAGE_USERS: 'manage_users',
+  SEND_INVITATIONS: 'send_invitations',
+  
+  // PRS & Gap Plans
+  VIEW_PRS: 'view_prs',
+  VIEW_GAP_PLANS: 'view_gap_plans',
+  
+  // Milestones & Simulations
+  VIEW_MILESTONES: 'view_milestones',
+  VIEW_SIMULATIONS: 'view_simulations',
+  
+  // Wages & Expenses
+  VIEW_OWN_WAGES: 'view_own_wages',
+  VIEW_TEAM_WAGES: 'view_team_wages',
+  MANAGE_WAGES: 'manage_wages',
+  
+  // Snapshots & Reports
+  VIEW_SNAPSHOT: 'view_snapshot',
+  EXPORT_DATA: 'export_data',
+  
+  // Admin
+  MANAGE_PERMISSIONS: 'manage_permissions',
+  SYSTEM_SETTINGS: 'system_settings'
+} as const;
+
+// Default permissions by role
+export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
+  [UserRole.ADMIN]: Object.values(PERMISSIONS),  // All permissions
+  
+  [UserRole.MANAGER]: [
+    PERMISSIONS.VIEW_DASHBOARD,
+    PERMISSIONS.VIEW_AGGREGATED_DATA,
+    PERMISSIONS.VIEW_OWN_ACTIVITIES,
+    PERMISSIONS.VIEW_TEAM_ACTIVITIES,
+    PERMISSIONS.MANAGE_OWN_ACTIVITIES,
+    PERMISSIONS.VIEW_OWN_HOSPITALS,
+    PERMISSIONS.VIEW_ALL_HOSPITALS,
+    PERMISSIONS.VIEW_CONTACTS,
+    PERMISSIONS.MANAGE_CONTACTS,
+    PERMISSIONS.VIEW_USERS,
+    PERMISSIONS.MANAGE_USERS,
+    PERMISSIONS.SEND_INVITATIONS,
+    PERMISSIONS.VIEW_PRS,
+    PERMISSIONS.VIEW_GAP_PLANS,
+    PERMISSIONS.VIEW_MILESTONES,
+    PERMISSIONS.VIEW_SIMULATIONS,
+    PERMISSIONS.VIEW_OWN_WAGES,
+    PERMISSIONS.VIEW_TEAM_WAGES,
+    PERMISSIONS.MANAGE_WAGES,
+    PERMISSIONS.VIEW_SNAPSHOT,
+    PERMISSIONS.EXPORT_DATA
+  ],
+  
+  [UserRole.MENTOR]: [
+    PERMISSIONS.VIEW_DASHBOARD,
+    PERMISSIONS.VIEW_AGGREGATED_DATA,
+    PERMISSIONS.VIEW_OWN_ACTIVITIES,
+    PERMISSIONS.VIEW_TEAM_ACTIVITIES,
+    PERMISSIONS.MANAGE_OWN_ACTIVITIES,
+    PERMISSIONS.VIEW_OWN_HOSPITALS,
+    PERMISSIONS.VIEW_CONTACTS,
+    PERMISSIONS.MANAGE_CONTACTS,
+    PERMISSIONS.SEND_INVITATIONS,
+    PERMISSIONS.VIEW_PRS,
+    PERMISSIONS.VIEW_GAP_PLANS,
+    PERMISSIONS.VIEW_MILESTONES,
+    PERMISSIONS.VIEW_SIMULATIONS,
+    PERMISSIONS.VIEW_OWN_WAGES,
+    PERMISSIONS.VIEW_SNAPSHOT,
+    PERMISSIONS.EXPORT_DATA
+  ],
+  
+  [UserRole.PECC]: [
+    PERMISSIONS.VIEW_DASHBOARD,
+    PERMISSIONS.VIEW_OWN_ACTIVITIES,
+    PERMISSIONS.MANAGE_OWN_ACTIVITIES,
+    PERMISSIONS.VIEW_OWN_HOSPITALS,
+    PERMISSIONS.VIEW_PRS,
+    PERMISSIONS.VIEW_GAP_PLANS,
+    PERMISSIONS.VIEW_MILESTONES,
+    PERMISSIONS.VIEW_SIMULATIONS,
+    PERMISSIONS.VIEW_SNAPSHOT
+  ]
+};
+
+// ============================================
+// WAGES & EXPENSES (placeholder for later)
+// ============================================
+
+export interface WageEntry {
+  id: string;
+  user_id: string;
+  pay_period_start: string;
+  pay_period_end: string;
+  hours_worked: number;
+  hourly_rate: number;
+  stipend_amount: number;
+  total_amount: number;
+  status: 'pending' | 'approved' | 'paid';
+  approved_by: string | null;
+  approved_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Expense {
+  id: string;
+  user_id: string;
+  date: string;
+  category: string;
+  description: string;
+  amount: number;
+  receipt_url: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'reimbursed';
+  approved_by: string | null;
+  approved_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================
+// SITE MILESTONES (placeholder for later)
+// ============================================
+
+export interface SiteMilestone {
+  id: string;
+  hospital_id: string;
+  milestone_name: string;
+  description: string | null;
+  target_date: string | null;
+  completed_date: string | null;
+  status: 'not_started' | 'in_progress' | 'completed' | 'blocked';
+  assigned_to: string | null;  // User ID
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
