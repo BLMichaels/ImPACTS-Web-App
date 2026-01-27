@@ -28,7 +28,6 @@ import {
   FormControl,
   InputLabel,
   Select,
-  Drawer,
   Checkbox,
   Tooltip,
   alpha,
@@ -181,6 +180,8 @@ const AdminCRMPage: React.FC = () => {
   });
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [regionFilter, setRegionFilter] = useState<string[]>([]);
+  const [stateFilter, setStateFilter] = useState<string[]>([]);
+  const [hospitalTypeFilter, setHospitalTypeFilter] = useState<string[]>([]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ single?: string; bulk?: Set<string> } | null>(null);
   const [bulkStatusAnchor, setBulkStatusAnchor] = useState<null | HTMLElement>(null);
@@ -263,7 +264,9 @@ const AdminCRMPage: React.FC = () => {
     } catch {}
   }, [viewMode, visibleColumns, pageSize]);
 
-  const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))] as string[], [contacts]);
+  const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))].sort() as string[], [contacts]);
+  const states = useMemo(() => [...new Set(contacts.map(c => c.state).filter(Boolean))].sort() as string[], [contacts]);
+  const hospitalTypes = useMemo(() => [...new Set(contacts.map(c => c.hospitalType).filter(Boolean))].sort() as string[], [contacts]);
 
   const filteredAndSortedContacts = useMemo(() => {
     let list = contacts.filter(contact => {
@@ -287,6 +290,8 @@ const AdminCRMPage: React.FC = () => {
 
       if (statusFilter.length && !statusFilter.includes(contact.status)) return false;
       if (regionFilter.length && !regionFilter.includes(contact.region)) return false;
+      if (stateFilter.length && !(contact.state && stateFilter.includes(contact.state))) return false;
+      if (hospitalTypeFilter.length && !(contact.hospitalType && hospitalTypeFilter.includes(contact.hospitalType))) return false;
       return true;
     });
 
@@ -304,7 +309,7 @@ const AdminCRMPage: React.FC = () => {
       return 0;
     });
     return list;
-  }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter, regionFilter]);
+  }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter, regionFilter, stateFilter, hospitalTypeFilter]);
 
   const displayedContacts = useMemo(() => {
     if (pageSize === 'all') return filteredAndSortedContacts;
@@ -370,10 +375,13 @@ const AdminCRMPage: React.FC = () => {
     setSearchQuery('');
     setStatusFilter([]);
     setRegionFilter([]);
+    setStateFilter([]);
+    setHospitalTypeFilter([]);
     setFilterMenuAnchor(null);
   };
 
-  const hasActiveFilters = searchQuery || statusFilter.length > 0 || regionFilter.length > 0;
+  const activeFilterCount = statusFilter.length + regionFilter.length + stateFilter.length + hospitalTypeFilter.length;
+  const hasActiveFilters = searchQuery || activeFilterCount > 0;
 
   const summaryCounts = useMemo(() => ({
     all: contacts.length,
@@ -387,7 +395,7 @@ const AdminCRMPage: React.FC = () => {
     pending: contacts.filter(c => c.status === 'Pending').length
   }), [contacts]);
 
-  const activePendingFilter = statusFilter.includes('Pending') && statusFilter.length === 1 && !searchQuery && regionFilter.length === 0;
+  const activePendingFilter = statusFilter.includes('Pending') && statusFilter.length === 1 && !searchQuery && regionFilter.length === 0 && stateFilter.length === 0 && hospitalTypeFilter.length === 0;
 
   const handleDeleteContact = (id: string) => {
     setContacts(prev => prev.filter(c => c.id !== id));
@@ -515,9 +523,9 @@ const AdminCRMPage: React.FC = () => {
             color={hasActiveFilters ? 'primary' : 'inherit'}
             variant={hasActiveFilters ? 'contained' : 'outlined'}
           >
-            Filters {hasActiveFilters ? `(${statusFilter.length + regionFilter.length})` : ''}
+            Filters {hasActiveFilters ? `(${activeFilterCount})` : ''}
           </Button>
-          <Menu anchorEl={filterMenuAnchor} open={Boolean(filterMenuAnchor)} onClose={() => setFilterMenuAnchor(null)}>
+          <Menu anchorEl={filterMenuAnchor} open={Boolean(filterMenuAnchor)} onClose={() => setFilterMenuAnchor(null)} PaperProps={{ sx: { maxHeight: 400 } }}>
             <ListItem dense>
               <ListItemText primary="Status" secondary={statusFilter.join(', ') || 'Any'} />
             </ListItem>
@@ -529,12 +537,32 @@ const AdminCRMPage: React.FC = () => {
             ))}
             <Divider />
             <ListItem dense>
+              <ListItemText primary="State" secondary={stateFilter.join(', ') || 'Any'} />
+            </ListItem>
+            {states.map(st => (
+              <MenuItem key={st} onClick={() => setStateFilter(prev => prev.includes(st) ? prev.filter(x => x !== st) : [...prev, st])}>
+                <Checkbox checked={stateFilter.includes(st)} size="small" />
+                <ListItemText primary={st || '(blank)'} />
+              </MenuItem>
+            ))}
+            <Divider />
+            <ListItem dense>
               <ListItemText primary="Region" secondary={regionFilter.join(', ') || 'Any'} />
             </ListItem>
-            {regions.slice(0, 12).map(r => (
+            {regions.map(r => (
               <MenuItem key={r} onClick={() => setRegionFilter(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r])}>
                 <Checkbox checked={regionFilter.includes(r)} size="small" />
                 <ListItemText primary={r || '(blank)'} />
+              </MenuItem>
+            ))}
+            <Divider />
+            <ListItem dense>
+              <ListItemText primary="Hospital type" secondary={hospitalTypeFilter.join(', ') || 'Any'} />
+            </ListItem>
+            {hospitalTypes.map(ht => (
+              <MenuItem key={ht} onClick={() => setHospitalTypeFilter(prev => prev.includes(ht) ? prev.filter(x => x !== ht) : [...prev, ht])}>
+                <Checkbox checked={hospitalTypeFilter.includes(ht)} size="small" />
+                <ListItemText primary={ht || '(blank)'} />
               </MenuItem>
             ))}
             <MenuItem onClick={clearFilters}><ClearIcon fontSize="small" sx={{ mr: 1 }} /> Clear filters</MenuItem>
@@ -777,58 +805,72 @@ const AdminCRMPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Detail drawer */}
-      <Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)} PaperProps={{ sx: { width: { xs: '100%', sm: 400 } } }}>
+      {/* Contact detail – full-screen popup */}
+      <Dialog fullScreen open={drawerOpen} onClose={() => setDrawerOpen(false)}>
         {detailContact && (
-          <Box sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Box sx={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
               <Typography variant="h6">Contact</Typography>
               <IconButton onClick={() => setDrawerOpen(false)}><CloseIcon /></IconButton>
             </Box>
-            <Avatar sx={{ width: 64, height: 64, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.5rem', mb: 2 }}>
-              {(detailContact.name || '?')[0].toUpperCase()}
-            </Avatar>
-            <Typography variant="h6">{detailContact.name}</Typography>
-            <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', my: 1 }} />
-            <List dense>
-              {detailContact.type === 'hospital' && (
-                <>
-                  {detailContact.facilityId != null && (
-                    <ListItem><ListItemIcon><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
-                  )}
-                  {detailContact.address != null && <ListItem><ListItemText primary="Address" secondary={detailContact.address} /></ListItem>}
-                  {detailContact.city != null && <ListItem><ListItemText primary="City" secondary={detailContact.city} /></ListItem>}
-                  {(detailContact.state != null || detailContact.zip != null) && (
-                    <ListItem><ListItemText primary="State / ZIP" secondary={[detailContact.state, detailContact.zip].filter(Boolean).join(' ') || '—'} /></ListItem>
-                  )}
-                  {detailContact.county != null && <ListItem><ListItemText primary="County" secondary={detailContact.county} /></ListItem>}
-                  {detailContact.hospitalType != null && <ListItem><ListItemText primary="Hospital type" secondary={detailContact.hospitalType} /></ListItem>}
-                  {detailContact.ownership != null && <ListItem><ListItemText primary="Ownership" secondary={detailContact.ownership} /></ListItem>}
-                </>
-              )}
-              <ListItem><ListItemIcon><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
-              <ListItem><ListItemIcon><EmailIcon fontSize="small" /></ListItemIcon><ListItemText primary="Email" secondary={detailContact.email} /></ListItem>
-              <ListItem><ListItemIcon><PhoneIcon fontSize="small" /></ListItemIcon><ListItemText primary="Phone" secondary={detailContact.phone || '—'} /></ListItem>
-              <ListItem><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
-              <ListItem><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
-              <ListItem><ListItemText primary="Added" secondary={detailContact.createdAt} /></ListItem>
-            </List>
-            {detailContact.notes && (
-              <>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="subtitle2" color="text.secondary">Notes</Typography>
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{detailContact.notes}</Typography>
-              </>
-            )}
-            <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
-              <Button fullWidth variant="outlined" startIcon={<EditIcon />} onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes }); setDrawerOpen(false); setDialogOpen(true); }}>
-                Edit
-              </Button>
-              <Button fullWidth variant="contained" startIcon={<EmailIcon />}>Email</Button>
+            <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                <Avatar sx={{ width: 64, height: 64, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.5rem' }}>
+                  {(detailContact.name || '?')[0].toUpperCase()}
+                </Avatar>
+                <Box>
+                  <Typography variant="h5">{detailContact.name}</Typography>
+                  <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', mt: 0.5 }} />
+                </Box>
+              </Box>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Details</Typography>
+                  <List dense disablePadding>
+                    {detailContact.type === 'hospital' && (
+                      <>
+                        {detailContact.facilityId != null && (
+                          <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
+                        )}
+                        {detailContact.address != null && <ListItem disablePadding><ListItemText primary="Address" secondary={detailContact.address} /></ListItem>}
+                        {detailContact.city != null && <ListItem disablePadding><ListItemText primary="City" secondary={detailContact.city} /></ListItem>}
+                        {(detailContact.state != null || detailContact.zip != null) && (
+                          <ListItem disablePadding><ListItemText primary="State / ZIP" secondary={[detailContact.state, detailContact.zip].filter(Boolean).join(' ') || '—'} /></ListItem>
+                        )}
+                        {detailContact.county != null && <ListItem disablePadding><ListItemText primary="County" secondary={detailContact.county} /></ListItem>}
+                        {detailContact.hospitalType != null && <ListItem disablePadding><ListItemText primary="Hospital type" secondary={detailContact.hospitalType} /></ListItem>}
+                        {detailContact.ownership != null && <ListItem disablePadding><ListItemText primary="Ownership" secondary={detailContact.ownership} /></ListItem>}
+                      </>
+                    )}
+                    <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
+                    <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><EmailIcon fontSize="small" /></ListItemIcon><ListItemText primary="Email" secondary={detailContact.email} /></ListItem>
+                    <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><PhoneIcon fontSize="small" /></ListItemIcon><ListItemText primary="Phone" secondary={detailContact.phone || '—'} /></ListItem>
+                    <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
+                    <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
+                    <ListItem disablePadding><ListItemText primary="Added" secondary={detailContact.createdAt} /></ListItem>
+                  </List>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Log of notes</Typography>
+                  <Paper variant="outlined" sx={{ p: 2, minHeight: 280, maxHeight: 400, overflow: 'auto' }}>
+                    {detailContact.notes ? (
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{detailContact.notes}</Typography>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">No notes yet.</Typography>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
+              <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
+                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes }); setDrawerOpen(false); setDialogOpen(true); }}>
+                  Edit
+                </Button>
+                <Button variant="contained" startIcon={<EmailIcon />}>Email</Button>
+              </Box>
             </Box>
           </Box>
         )}
-      </Drawer>
+      </Dialog>
 
       {/* Add/Edit dialog */}
       <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditingContact(null); }} maxWidth="sm" fullWidth>
@@ -879,13 +921,13 @@ const AdminCRMPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Back to top - fixed top-right */}
+      {/* Back to top – fixed bottom-right */}
       <Tooltip title="Back to top">
         <IconButton
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           sx={{
             position: 'fixed',
-            top: 16,
+            bottom: 16,
             right: 16,
             zIndex: 1300,
             bgcolor: 'background.paper',
