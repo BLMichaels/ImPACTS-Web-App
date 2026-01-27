@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { supabase } from '../../supabase';
 import {
   Box,
   Typography,
@@ -172,10 +173,43 @@ const AdminCRMPage: React.FC = () => {
   });
 
   useEffect(() => {
+    let mounted = true;
     setLoading(true);
-    // TODO: load from Supabase; for now start empty
-    setContacts([]);
-    setLoading(false);
+    (async () => {
+      const list: Contact[] = [];
+      try {
+        const { data: hospitalRows, error } = await supabase.from('hospitals').select('*');
+        if (!mounted) return;
+        if (!error && hospitalRows && hospitalRows.length > 0) {
+          for (const row of hospitalRows as Record<string, unknown>[]) {
+            const id = String(row.facility_id ?? row.id ?? '');
+            const name = String(row.name ?? 'Unknown');
+            const organization = String(row.company_name ?? '');
+            const region = [row.state, row.county ?? row.region].filter(Boolean).join(', ') || String(row.region ?? '');
+            const created = row.created_at ? String(row.created_at).split('T')[0] : new Date().toISOString().split('T')[0];
+            list.push({
+              id,
+              type: 'hospital',
+              name,
+              organization,
+              email: '',
+              phone: String(row.phone ?? ''),
+              status: 'Active',
+              region,
+              createdAt: created,
+              notes: ''
+            });
+          }
+        }
+      } catch (_) {
+        if (mounted) list.length = 0;
+      }
+      if (mounted) {
+        setContacts(list);
+        setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
