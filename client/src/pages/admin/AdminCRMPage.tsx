@@ -28,6 +28,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Drawer,
   Checkbox,
   Tooltip,
   alpha,
@@ -58,7 +59,8 @@ import {
   Sort as SortIcon,
   Delete as DeleteIcon,
   Contacts as ContactsIcon,
-  KeyboardArrowUp as ArrowUpIcon
+  KeyboardArrowUp as ArrowUpIcon,
+  OpenInFull as OpenInFullIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -87,7 +89,7 @@ interface Contact {
   ownership?: string;
 }
 
-type SortField = 'name' | 'email' | 'type' | 'status' | 'region' | 'organization' | 'createdAt' | 'facilityId';
+type SortField = 'name' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId';
 type SortOrder = 'asc' | 'desc';
 
 const TYPE_LABELS: Record<ContactType, string> = {
@@ -118,6 +120,7 @@ const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: 
   { id: 'email', label: 'Email', sortable: true, defaultVisible: true },
   { id: 'phone', label: 'Phone', sortable: false, defaultVisible: true },
   { id: 'region', label: 'Region', sortable: true, defaultVisible: true },
+  { id: 'state', label: 'State', sortable: true, defaultVisible: true },
   { id: 'status', label: 'Status', sortable: true, defaultVisible: true },
   { id: 'createdAt', label: 'Added', sortable: true, defaultVisible: true },
   { id: 'actions', label: '', sortable: false, defaultVisible: true }
@@ -159,7 +162,8 @@ const AdminCRMPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [fullScreenOpen, setFullScreenOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -355,7 +359,12 @@ const AdminCRMPage: React.FC = () => {
 
   const openDetail = (c: Contact) => {
     setDetailContact(c);
-    setDrawerOpen(true);
+    setPanelOpen(true);
+  };
+
+  const openFullScreen = () => {
+    setPanelOpen(false);
+    setFullScreenOpen(true);
   };
 
   const handleExport = () => {
@@ -401,7 +410,7 @@ const AdminCRMPage: React.FC = () => {
     setContacts(prev => prev.filter(c => c.id !== id));
     setDeleteConfirmOpen(false);
     setDeleteTarget(null);
-    if (detailContact?.id === id) { setDrawerOpen(false); setDetailContact(null); }
+    if (detailContact?.id === id) { setPanelOpen(false); setFullScreenOpen(false); setDetailContact(null); }
     setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
   };
 
@@ -411,7 +420,7 @@ const AdminCRMPage: React.FC = () => {
     setDeleteConfirmOpen(false);
     setDeleteTarget(null);
     setSelectedIds(new Set());
-    if (detailContact && deleteTarget.bulk.has(detailContact.id)) { setDrawerOpen(false); setDetailContact(null); }
+    if (detailContact && deleteTarget.bulk.has(detailContact.id)) { setPanelOpen(false); setFullScreenOpen(false); setDetailContact(null); }
   };
 
   const handleBulkStatusChange = (status: string) => {
@@ -752,6 +761,7 @@ const AdminCRMPage: React.FC = () => {
                     {visibleColumns.has('email') && <TableCell>{contact.email}</TableCell>}
                     {visibleColumns.has('phone') && <TableCell>{contact.phone || '—'}</TableCell>}
                     {visibleColumns.has('region') && <TableCell>{contact.region || '—'}</TableCell>}
+                    {visibleColumns.has('state') && <TableCell>{contact.state ?? '—'}</TableCell>}
                     {visibleColumns.has('status') && (
                       <TableCell>
                         <Chip label={contact.status} size="small" color={contact.status === 'Active' ? 'success' : 'default'} variant="outlined" />
@@ -805,13 +815,59 @@ const AdminCRMPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Contact detail – full-screen popup */}
-      <Dialog fullScreen open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+      {/* Right-side quick-view panel */}
+      <Drawer anchor="right" open={panelOpen} onClose={() => setPanelOpen(false)} PaperProps={{ sx: { width: { xs: '100%', sm: 380 } } }}>
+        {detailContact && (
+          <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight={600}>Quick view</Typography>
+              <IconButton size="small" onClick={() => setPanelOpen(false)}><CloseIcon /></IconButton>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+              <Avatar sx={{ width: 48, height: 48, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.125rem' }}>
+                {(detailContact.name || '?')[0].toUpperCase()}
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="subtitle1" fontWeight={600} noWrap>{detailContact.name}</Typography>
+                <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', mt: 0.5 }} />
+              </Box>
+            </Box>
+            <List dense disablePadding sx={{ flex: 1, minHeight: 0 }}>
+              {detailContact.type === 'hospital' && detailContact.facilityId != null && (
+                <ListItem disablePadding><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
+              )}
+              <ListItem disablePadding><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="State" secondary={detailContact.state ?? '—'} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
+              {detailContact.notes && (
+                <ListItem disablePadding>
+                  <ListItemText primary="Notes" secondary={detailContact.notes.length > 120 ? `${detailContact.notes.slice(0, 120)}…` : detailContact.notes} />
+                </ListItem>
+              )}
+            </List>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+              <Button fullWidth variant="contained" startIcon={<OpenInFullIcon />} onClick={openFullScreen}>
+                Expand to full view
+              </Button>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes }); setPanelOpen(false); setDialogOpen(true); }}>
+                  Edit
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<EmailIcon />} fullWidth>Email</Button>
+              </Box>
+            </Box>
+          </Box>
+        )}
+      </Drawer>
+
+      {/* Contact detail – full-screen popup (opened via Expand) */}
+      <Dialog fullScreen open={fullScreenOpen} onClose={() => setFullScreenOpen(false)}>
         {detailContact && (
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Box sx={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
               <Typography variant="h6">Contact</Typography>
-              <IconButton onClick={() => setDrawerOpen(false)}><CloseIcon /></IconButton>
+              <IconButton onClick={() => setFullScreenOpen(false)}><CloseIcon /></IconButton>
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
@@ -862,7 +918,7 @@ const AdminCRMPage: React.FC = () => {
                 </Grid>
               </Grid>
               <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
-                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes }); setDrawerOpen(false); setDialogOpen(true); }}>
+                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes }); setFullScreenOpen(false); setDialogOpen(true); }}>
                   Edit
                 </Button>
                 <Button variant="contained" startIcon={<EmailIcon />}>Email</Button>
