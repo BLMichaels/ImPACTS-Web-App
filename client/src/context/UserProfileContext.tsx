@@ -32,9 +32,14 @@ interface UserProfileContextType {
   updateUserProfile: (updates: Partial<UserProfile>) => Promise<void>;
   isLoading: boolean;
   userRole: UserRole;
+  actualRole: UserRole; // The user's real role (for admins using "View As")
   hasPermission: (permission: string) => boolean;
   permissions: string[];
   refreshProfile: () => Promise<void>;
+  // Admin "View As" feature
+  viewAsRole: UserRole | null;
+  setViewAsRole: (role: UserRole | null) => void;
+  isViewingAs: boolean;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -56,6 +61,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewAsRole, setViewAsRole] = useState<UserRole | null>(null);
 
   // Fetch user profile from Supabase
   const fetchUserProfile = useCallback(async () => {
@@ -199,7 +205,12 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   };
 
   const hasPermission = (permission: string): boolean => {
-    // Admins always have all permissions
+    // If viewing as a different role, check permissions for that role
+    if (viewAsRole && userProfile?.role === UserRole.ADMIN) {
+      // Admin viewing as another role - use that role's permissions
+      return DEFAULT_ROLE_PERMISSIONS[viewAsRole]?.includes(permission) || false;
+    }
+    // Admins always have all permissions when not viewing as another role
     if (userProfile?.role === UserRole.ADMIN) {
       return true;
     }
@@ -211,14 +222,23 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     await fetchUserProfile();
   };
 
+  // Get the effective role (either viewAsRole or actual role)
+  const effectiveRole = (viewAsRole && userProfile?.role === UserRole.ADMIN) 
+    ? viewAsRole 
+    : (userProfile?.role || UserRole.PECC);
+
   const value = {
     userProfile,
     updateUserProfile,
     isLoading,
-    userRole: userProfile?.role || UserRole.PECC,
+    userRole: effectiveRole,
+    actualRole: userProfile?.role || UserRole.PECC,
     hasPermission,
     permissions,
-    refreshProfile
+    refreshProfile,
+    viewAsRole,
+    setViewAsRole,
+    isViewingAs: viewAsRole !== null && userProfile?.role === UserRole.ADMIN
   };
 
   return (

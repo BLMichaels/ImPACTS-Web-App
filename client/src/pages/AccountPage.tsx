@@ -36,7 +36,8 @@ import {
   Logout as LogoutIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import { useUserProfile } from '../context/UserProfileContext';
+import { useUserProfile, UserProfile } from '../context/UserProfileContext';
+import { UserRole } from '../types/database';
 import { useNavigate } from 'react-router-dom';
 import TermsOfService from '../components/TermsOfService';
 
@@ -69,7 +70,14 @@ interface LegacyProfile {
 
 const AccountPage = () => {
   const { logout } = useAuth();
-  const { userProfile: rawUserProfile, updateUserProfile } = useUserProfile();
+  const { 
+    userProfile: rawUserProfile, 
+    updateUserProfile, 
+    actualRole,
+    viewAsRole, 
+    setViewAsRole,
+    isViewingAs 
+  } = useUserProfile();
   const navigate = useNavigate();
   
   // Handle both old and new field names
@@ -515,47 +523,129 @@ const AccountPage = () => {
             </Card>
           </Grid>
 
-          {/* Tier Switching Section */}
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <SecurityIcon sx={{ mr: 1, color: 'primary.main' }} />
-                  <Typography variant="h6">
-                    User Tier
-                  </Typography>
-                </Box>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  Switch between different user tiers for testing purposes. This allows you to experience the application from different perspectives.
-                </Typography>
-                
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Current Tier</InputLabel>
-                  <Select
-                    value={getTier()}
-                    onChange={(e) => {
-                      const newTier = e.target.value;
-                      updateUserProfile({ tier: newTier } as any);
-                      setAlert({ type: 'success', message: `Switched to ${newTier} tier. Please refresh the page to see changes.` });
-                    }}
-                    label="Current Tier"
-                  >
-                    <MenuItem value="pecc">PECC (Pediatric Emergency Care Coordinator)</MenuItem>
-                    <MenuItem value="mentor">Mentor (Pediatric Readiness Improvement Specialist)</MenuItem>
-                  </Select>
-                </FormControl>
+          {/* Admin View As Section - Only for Admins */}
+          {actualRole === UserRole.ADMIN && (
+            <Grid item xs={12}>
+              <Card sx={{ border: isViewingAs ? '2px solid' : 'none', borderColor: 'warning.main' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <SecurityIcon sx={{ mr: 1, color: isViewingAs ? 'warning.main' : 'primary.main' }} />
+                    <Typography variant="h6" color={isViewingAs ? 'warning.main' : 'inherit'}>
+                      {isViewingAs ? '👁️ Viewing As Different Role' : 'Admin View As'}
+                    </Typography>
+                  </Box>
+                  
+                  {isViewingAs && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      You are currently viewing the app as a <strong>{viewAsRole?.toUpperCase()}</strong>. 
+                      Navigation and features are restricted to what that role can see.
+                    </Alert>
+                  )}
 
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  <Typography variant="body2">
-                    <strong>PECC Tier:</strong> Access to Dashboard, Snapshot, Activities, Checklist, PRS Assessment, and Gap Plan.
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    As an Admin, you can preview how the application looks and functions for different user roles. 
+                    This helps you understand the experience of each tier without changing your actual role.
                   </Typography>
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    <strong>PRISM Tier:</strong> Access to PRISM Dashboard and PRISM Activities for managing multiple hospitals.
+                  
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>View Application As</InputLabel>
+                    <Select
+                      value={viewAsRole || ''}
+                      onChange={(e) => {
+                        const role = e.target.value as UserRole | '';
+                        setViewAsRole(role === '' ? null : role);
+                        if (role) {
+                          setAlert({ type: 'info', message: `Now viewing as ${role.toUpperCase()}. Navigate to see their experience.` });
+                        } else {
+                          setAlert({ type: 'success', message: 'Returned to Admin view.' });
+                        }
+                      }}
+                      label="View Application As"
+                    >
+                      <MenuItem value="">
+                        <em>Admin (Your actual role)</em>
+                      </MenuItem>
+                      <MenuItem value={UserRole.MANAGER}>Manager - Oversees Mentors and sees aggregated data</MenuItem>
+                      <MenuItem value={UserRole.MENTOR}>Mentor (PRISM) - Works with hospitals directly</MenuItem>
+                      <MenuItem value={UserRole.PECC}>PECC - Hospital-level user</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  {viewAsRole && (
+                    <Button 
+                      variant="outlined" 
+                      color="warning" 
+                      onClick={() => {
+                        setViewAsRole(null);
+                        setAlert({ type: 'success', message: 'Returned to Admin view.' });
+                      }}
+                      sx={{ mb: 2 }}
+                    >
+                      Exit View As Mode
+                    </Button>
+                  )}
+
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      Role Overview:
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Admin:</strong> Full access to all features, user management, CRM, permissions, and system settings.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <strong>Manager:</strong> Oversees Mentors, views aggregated data, manages team CRM and expenses.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <strong>Mentor (PRISM):</strong> Works directly with hospitals, logs activities, invites PECCs, tracks site milestones.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <strong>PECC:</strong> Hospital-level access to Dashboard, Snapshot, Activities, PRS Assessment, and Gap Plan.
+                    </Typography>
+                  </Alert>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
+          {/* Tier Display for Non-Admins */}
+          {actualRole !== UserRole.ADMIN && (
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <SecurityIcon sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="h6">
+                      Your Role
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    Your current role determines which features and data you can access.
                   </Typography>
-                </Alert>
-              </CardContent>
-            </Card>
-          </Grid>
+                  
+                  <Alert severity="info">
+                    <Typography variant="body2">
+                      You are a <strong>{getTier().toUpperCase()}</strong>.
+                    </Typography>
+                    {getTier() === 'pecc' && (
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Access to Dashboard, Snapshot, Activities, Checklist, PRS Assessment, and Gap Plan.
+                      </Typography>
+                    )}
+                    {getTier() === 'mentor' && (
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Access to Mentor Dashboard, Activities, Hospital Contacts, Site Milestones, and Wages/Expenses.
+                      </Typography>
+                    )}
+                    {getTier() === 'manager' && (
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Access to Manager Dashboard, Mentors management, and CRM.
+                      </Typography>
+                    )}
+                  </Alert>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
 
           {/* Notification Preferences - Only show for PECC users */}
           {userProfile?.role === 'pecc' && (

@@ -50,7 +50,7 @@ interface NavItem {
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { userProfile, userRole } = useUserProfile();
+  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, actualRole } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -253,7 +253,41 @@ const Navbar: React.FC = () => {
   }
 
   return (
-    <AppBar position="static">
+    <>
+      {/* View As Banner - shown when admin is viewing as another role */}
+      {isViewingAs && (
+        <Box 
+          sx={{ 
+            bgcolor: 'warning.main', 
+            color: 'warning.contrastText',
+            py: 0.5,
+            px: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2
+          }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+            👁️ Viewing as {viewAsRole?.toUpperCase()}
+          </Typography>
+          <Button 
+            size="small" 
+            variant="outlined" 
+            color="inherit"
+            onClick={() => setViewAsRole(null)}
+            sx={{ 
+              py: 0, 
+              minHeight: '24px',
+              borderColor: 'inherit',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
+            }}
+          >
+            Exit
+          </Button>
+        </Box>
+      )}
+      <AppBar position="static">
       <Toolbar sx={{ 
         minHeight: '64px',
         paddingX: { xs: 1, sm: 2 },
@@ -430,6 +464,7 @@ const Navbar: React.FC = () => {
       
       <MobileDrawer />
     </AppBar>
+    </>
   );
 };
 
