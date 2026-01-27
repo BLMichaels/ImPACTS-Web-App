@@ -3,6 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, CssBaseline, Container, CircularProgress } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
 
+// Context
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { UserProfileProvider, useUserProfile } from './context/UserProfileContext';
+import { UserRole } from './types/database';
+
 // Essential Components Only
 import Navbar from './components/Navbar';
 import LoginPage from './pages/LoginPage';
@@ -40,11 +45,6 @@ const AdminPermissionsPage = lazy(() => import('./pages/admin/AdminPermissionsPa
 
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
-
-// Context
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { UserProfileProvider, useUserProfile } from './context/UserProfileContext';
-import { UserRole } from './types/database';
 
 // Create theme
 const theme = createTheme({
