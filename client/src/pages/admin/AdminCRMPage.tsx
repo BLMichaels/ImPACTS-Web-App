@@ -78,9 +78,17 @@ interface Contact {
   lastContactAt?: string;
   notes: string;
   tags?: string[];
+  facilityId?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  county?: string;
+  hospitalType?: string;
+  ownership?: string;
 }
 
-type SortField = 'name' | 'email' | 'type' | 'status' | 'region' | 'organization' | 'createdAt';
+type SortField = 'name' | 'email' | 'type' | 'status' | 'region' | 'organization' | 'createdAt' | 'facilityId';
 type SortOrder = 'asc' | 'desc';
 
 const TYPE_LABELS: Record<ContactType, string> = {
@@ -106,6 +114,7 @@ const TYPE_COLORS: Record<ContactType, string> = {
 const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'name', label: 'Name', sortable: true, defaultVisible: true },
   { id: 'type', label: 'Type', sortable: true, defaultVisible: true },
+  { id: 'facilityId', label: 'Facility ID', sortable: true, defaultVisible: true },
   { id: 'organization', label: 'Organization', sortable: true, defaultVisible: true },
   { id: 'email', label: 'Email', sortable: true, defaultVisible: true },
   { id: 'phone', label: 'Phone', sortable: false, defaultVisible: true },
@@ -192,10 +201,17 @@ const AdminCRMPage: React.FC = () => {
     (async () => {
       const list: Contact[] = [];
       try {
-        const { data: hospitalRows, error } = await supabase.from('hospitals').select('*');
-        if (!mounted) return;
-        if (!error && hospitalRows && hospitalRows.length > 0) {
-          for (const row of hospitalRows as Record<string, unknown>[]) {
+        const chunk = 1000;
+        let offset = 0;
+        let hasMore = true;
+        while (mounted && hasMore) {
+          const { data: batch, error } = await supabase
+            .from('hospitals')
+            .select('*')
+            .range(offset, offset + chunk - 1);
+          if (!mounted) return;
+          if (error || !batch || batch.length === 0) break;
+          for (const row of batch as Record<string, unknown>[]) {
             const id = String(row.facility_id ?? row.id ?? '');
             const name = String(row.name ?? 'Unknown');
             const organization = String(row.company_name ?? '');
@@ -211,9 +227,19 @@ const AdminCRMPage: React.FC = () => {
               status: 'Active',
               region,
               createdAt: created,
-              notes: ''
+              notes: '',
+              facilityId: row.facility_id != null ? String(row.facility_id) : undefined,
+              address: row.address != null ? String(row.address) : undefined,
+              city: row.city != null ? String(row.city) : undefined,
+              state: row.state != null ? String(row.state) : undefined,
+              zip: row.zip != null ? String(row.zip) : undefined,
+              county: row.county != null ? String(row.county) : undefined,
+              hospitalType: row.hospital_type != null ? String(row.hospital_type) : undefined,
+              ownership: row.ownership != null ? String(row.ownership) : undefined
             });
           }
+          hasMore = batch.length >= chunk;
+          offset += chunk;
         }
       } catch (_) {
         if (mounted) list.length = 0;
@@ -327,9 +353,9 @@ const AdminCRMPage: React.FC = () => {
   };
 
   const handleExport = () => {
-    const headers = ['Name', 'Type', 'Organization', 'Email', 'Phone', 'Region', 'Status', 'Added'];
+    const headers = ['Name', 'Type', 'Facility ID', 'Organization', 'Email', 'Phone', 'Region', 'Status', 'Added', 'Address', 'City', 'State', 'ZIP', 'County', 'Hospital Type', 'Ownership'];
     const rows = (selectedIds.size ? filteredAndSortedContacts.filter(c => selectedIds.has(c.id)) : filteredAndSortedContacts)
-      .map(c => [c.name, TYPE_LABELS[c.type], c.organization || '', c.email, c.phone || '', c.region || '', c.status, c.createdAt]);
+      .map(c => [c.name, TYPE_LABELS[c.type], c.facilityId ?? '', c.organization || '', c.email, c.phone || '', c.region || '', c.status, c.createdAt, c.address ?? '', c.city ?? '', c.state ?? '', c.zip ?? '', c.county ?? '', c.hospitalType ?? '', c.ownership ?? '']);
     const csv = [headers.join(','), ...rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -692,6 +718,7 @@ const AdminCRMPage: React.FC = () => {
                         <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[contact.type], color: 'white' }} />
                       </TableCell>
                     )}
+                    {visibleColumns.has('facilityId') && <TableCell>{contact.facilityId ?? '—'}</TableCell>}
                     {visibleColumns.has('organization') && <TableCell>{contact.organization || '—'}</TableCell>}
                     {visibleColumns.has('email') && <TableCell>{contact.email}</TableCell>}
                     {visibleColumns.has('phone') && <TableCell>{contact.phone || '—'}</TableCell>}
@@ -763,6 +790,21 @@ const AdminCRMPage: React.FC = () => {
             <Typography variant="h6">{detailContact.name}</Typography>
             <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', my: 1 }} />
             <List dense>
+              {detailContact.type === 'hospital' && (
+                <>
+                  {detailContact.facilityId != null && (
+                    <ListItem><ListItemIcon><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
+                  )}
+                  {detailContact.address != null && <ListItem><ListItemText primary="Address" secondary={detailContact.address} /></ListItem>}
+                  {detailContact.city != null && <ListItem><ListItemText primary="City" secondary={detailContact.city} /></ListItem>}
+                  {(detailContact.state != null || detailContact.zip != null) && (
+                    <ListItem><ListItemText primary="State / ZIP" secondary={[detailContact.state, detailContact.zip].filter(Boolean).join(' ') || '—'} /></ListItem>
+                  )}
+                  {detailContact.county != null && <ListItem><ListItemText primary="County" secondary={detailContact.county} /></ListItem>}
+                  {detailContact.hospitalType != null && <ListItem><ListItemText primary="Hospital type" secondary={detailContact.hospitalType} /></ListItem>}
+                  {detailContact.ownership != null && <ListItem><ListItemText primary="Ownership" secondary={detailContact.ownership} /></ListItem>}
+                </>
+              )}
               <ListItem><ListItemIcon><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
               <ListItem><ListItemIcon><EmailIcon fontSize="small" /></ListItemIcon><ListItemText primary="Email" secondary={detailContact.email} /></ListItem>
               <ListItem><ListItemIcon><PhoneIcon fontSize="small" /></ListItemIcon><ListItemText primary="Phone" secondary={detailContact.phone || '—'} /></ListItem>
