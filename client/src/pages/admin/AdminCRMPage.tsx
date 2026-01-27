@@ -139,8 +139,9 @@ const AdminCRMPage: React.FC = () => {
       const s = localStorage.getItem(CRM_PREFS_KEY);
       if (s) {
         const p = JSON.parse(s);
-        const v = p.pageSize;
-        if (v === 'all' || (typeof v === 'number' && PAGE_SIZE_OPTIONS.slice(0, -1).includes(v))) return v;
+        const v = p.pageSize as unknown;
+        if (v === 'all') return 'all';
+        if (typeof v === 'number' && [25, 50, 100, 250, 1000].includes(v)) return v as PageSize;
       }
     } catch {}
     return 25;
