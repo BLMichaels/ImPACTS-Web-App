@@ -19,7 +19,6 @@ import AccountPage from './pages/AccountPage';
 import DashboardPage from './pages/DashboardPage';
 import MilestonesPage from './pages/MilestonesPage';
 import ActivitiesPage from './pages/ActivitiesPage';
-import PRSPage from './pages/PRSPage';
 import GapPlanPage from './pages/GapPlanPage';
 import SnapshotPage from './pages/SnapshotPage';
 import SimulationPage from './pages/SimulationPage';
@@ -179,7 +178,7 @@ function App() {
                   <Route path="/simulation" element={<ProtectedRoute><SimulationPage /></ProtectedRoute>} />
                   <Route path="/milestones" element={<ProtectedRoute><MilestonesPage /></ProtectedRoute>} />
                   <Route path="/activities" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
-                  <Route path="/prs" element={<ProtectedRoute><PRSPage /></ProtectedRoute>} />
+                  <Route path="/prs" element={<Navigate to="/snapshot" replace />} />
                   <Route path="/gap-plan" element={<ProtectedRoute><GapPlanPage /></ProtectedRoute>} />
                   <Route path="/education" element={<ProtectedRoute><EducationPage /></ProtectedRoute>} />
                   

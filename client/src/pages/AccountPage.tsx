@@ -65,7 +65,6 @@ interface LegacyProfile {
   phone?: string;
   email?: string;
   gapPlanReminders?: any;
-  prsTabVisible?: boolean;
 }
 
 const AccountPage = () => {
@@ -121,8 +120,7 @@ const AccountPage = () => {
       emailNotifications: userProfile?.gapPlanReminders?.emailNotifications ?? false,
       reminderDays: userProfile?.gapPlanReminders?.reminderDays ?? 7,
       emailFrequency: userProfile?.gapPlanReminders?.emailFrequency ?? 'weekly' as 'daily' | 'weekly' | 'monthly'
-    },
-    prsTabVisible: userProfile?.prsTabVisible ?? true
+    }
   });
 
   const handleUserSave = () => {
@@ -151,8 +149,7 @@ const AccountPage = () => {
     if (userProfile?.role === 'pecc') {
       updateUserProfile({
         ...userProfile,
-        gapPlanReminders: notificationSettings.gapPlanReminders,
-        prsTabVisible: notificationSettings.prsTabVisible
+        gapPlanReminders: notificationSettings.gapPlanReminders
       } as any);
     }
     setEditingNotifications(false);
@@ -599,7 +596,7 @@ const AccountPage = () => {
                       <strong>Mentor (PRISM):</strong> Works directly with hospitals, logs activities, invites PECCs, tracks site milestones.
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5 }}>
-                      <strong>PECC:</strong> Hospital-level access to Dashboard, Snapshot, Activities, PRS Assessment, and Gap Plan.
+                      <strong>PECC:</strong> Hospital-level access to Snapshot, Activities, Checklist, Education, Gap Plan, and Simulation.
                     </Typography>
                   </Alert>
                 </CardContent>
@@ -628,7 +625,7 @@ const AccountPage = () => {
                     </Typography>
                     {getTier() === 'pecc' && (
                       <Typography variant="body2" sx={{ mt: 1 }}>
-                        Access to Dashboard, Snapshot, Activities, Checklist, PRS Assessment, and Gap Plan.
+                        Access to Snapshot, Activities, Checklist, Education, Gap Plan, and Simulation.
                       </Typography>
                     )}
                     {getTier() === 'mentor' && (
@@ -796,34 +793,6 @@ const AccountPage = () => {
                       </Box>
                     </Grid>
                     
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="h6" gutterBottom>
-                        Navigation Settings
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        Customize which tabs are visible in your navigation menu.
-                      </Typography>
-                      
-                      <Box sx={{ mb: 2 }}>
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={notificationSettings.prsTabVisible}
-                              onChange={(e) => setNotificationSettings({
-                                ...notificationSettings,
-                                prsTabVisible: e.target.checked
-                              })}
-                              disabled={!editingNotifications}
-                            />
-                          }
-                          label="Show PRS tab in navigation"
-                        />
-                      </Box>
-                      
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        When disabled, the PRS (Pediatric Readiness Score) tab will be hidden from the main navigation menu.
-                      </Typography>
-                    </Grid>
                   </Grid>
                 </CardContent>
               </Card>

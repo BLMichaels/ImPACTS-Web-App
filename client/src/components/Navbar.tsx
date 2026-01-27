@@ -21,7 +21,6 @@ import {
 } from '@mui/material';
 import {
   Work as WorkIcon,
-  Assessment as AssessmentIcon,
   AccountCircle as AccountCircleIcon,
   Logout as LogoutIcon,
   Assignment as AssignmentIcon,
@@ -125,21 +124,14 @@ const Navbar: React.FC = () => {
 
       case UserRole.PECC:
       default:
-        const peccItems: NavItem[] = [
+        return [
           { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
-          { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> },
           { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
           { path: '/education', label: 'Education', icon: <SchoolIcon /> },
-          { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> }
+          { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> },
+          { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
-        
-        // Add PRS if enabled
-        if ((userProfile as any).prsTabVisible !== false) {
-          peccItems.splice(3, 0, { path: '/prs', label: 'PRS', icon: <AssessmentIcon /> });
-        }
-        
-        return peccItems;
     }
   };
 
