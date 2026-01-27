@@ -2,8 +2,7 @@
   "buildCommand": "cd client && npm install && CI=false npm run build",
   "outputDirectory": "client/build",
   "framework": "create-react-app",
-  "trailingSlash": false,
   "rewrites": [
-    { "source": "/((?!static|assets|favicon|manifest|robots|logo).*)", "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
