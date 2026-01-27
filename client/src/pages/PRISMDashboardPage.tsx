@@ -75,7 +75,7 @@ const PRISMDashboardPage: React.FC = () => {
       {/* Welcome Header */}
       <Box sx={{ textAlign: 'center', mb: 4 }}>
         <Typography variant="h4" gutterBottom>
-          Welcome, {userProfile.firstName} {userProfile.lastName}
+          Welcome, {(userProfile as any)?.firstName || (userProfile as any)?.first_name || 'PRISM'} {(userProfile as any)?.lastName || (userProfile as any)?.last_name || ''}
         </Typography>
         <Typography variant="h6" color="text.secondary" gutterBottom>
           PRISM Dashboard

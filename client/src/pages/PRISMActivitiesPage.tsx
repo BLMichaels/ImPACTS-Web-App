@@ -139,13 +139,14 @@ const PRISMActivitiesPage: React.FC = () => {
 
   useEffect(() => {
     // Load activities from localStorage or use mock data
-    const savedActivities = localStorage.getItem(`prismActivities_${userProfile.email}`);
+    const email = (userProfile as any)?.email || '';
+    const savedActivities = localStorage.getItem(`prismActivities_${email}`);
     if (savedActivities) {
       setActivities(JSON.parse(savedActivities));
     } else {
       setActivities(mockActivities);
     }
-  }, [userProfile.email]);
+  }, [(userProfile as any)?.email]);
 
   useEffect(() => {
     // Filter activities based on search and filter criteria
@@ -229,7 +230,7 @@ const PRISMActivitiesPage: React.FC = () => {
   const handleDeleteActivity = (activityId: string) => {
     const updatedActivities = activities.filter(activity => activity.id !== activityId);
     setActivities(updatedActivities);
-    localStorage.setItem(`prismActivities_${userProfile.email}`, JSON.stringify(updatedActivities));
+    localStorage.setItem(`prismActivities_${(userProfile as any)?.email || ''}`, JSON.stringify(updatedActivities));
   };
 
   const stats = {

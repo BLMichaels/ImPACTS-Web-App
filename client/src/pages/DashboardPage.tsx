@@ -534,7 +534,7 @@ interface DepartmentContact {
         {/* Welcome Section */}
         <Box sx={{ mb: isMobile ? 3 : 4 }}>
           <Typography variant={isMobile ? "h4" : "h3"} gutterBottom color="primary">
-            Welcome back, {userProfile?.firstName || 'PECC'}!
+            Welcome back, {(userProfile as any)?.firstName || (userProfile as any)?.first_name || 'PECC'}!
           </Typography>
           <Typography variant={isMobile ? "body1" : "h6"} color="text.secondary" sx={{ mb: 2 }}>
             Your Pediatric Readiness Dashboard
