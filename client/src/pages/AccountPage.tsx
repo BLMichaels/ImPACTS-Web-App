@@ -36,7 +36,7 @@ import {
   Logout as LogoutIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import { useUserProfile, UserTier } from '../context/UserProfileContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
 import TermsOfService from '../components/TermsOfService';
 
@@ -540,8 +540,8 @@ const AccountPage = () => {
                     }}
                     label="Current Tier"
                   >
-                    <MenuItem value={UserTier.PECC}>PECC (Pediatric Emergency Care Coordinator)</MenuItem>
-                    <MenuItem value={UserTier.PRISM}>PRISM (Pediatric Readiness Improvement Specialist Mentor)</MenuItem>
+                    <MenuItem value="pecc">PECC (Pediatric Emergency Care Coordinator)</MenuItem>
+                    <MenuItem value="mentor">Mentor (Pediatric Readiness Improvement Specialist)</MenuItem>
                   </Select>
                 </FormControl>
 
