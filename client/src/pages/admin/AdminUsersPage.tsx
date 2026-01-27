@@ -27,7 +27,8 @@ import {
   Grid,
   Switch,
   FormControlLabel,
-  Alert
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -36,6 +37,7 @@ import {
   Person as PersonIcon,
   Send as SendIcon
 } from '@mui/icons-material';
+import { supabase } from '../../supabase';
 
 interface User {
   id: string;
@@ -47,6 +49,10 @@ interface User {
   status: 'active' | 'pending' | 'inactive';
   lastLogin: string | null;
   createdAt: string;
+  manager_id?: string | null;
+  mentor_id?: string | null;
+  managerName?: string;
+  mentorName?: string;
 }
 
 const AdminUsersPage: React.FC = () => {
@@ -63,12 +69,61 @@ const AdminUsersPage: React.FC = () => {
     email: '',
     phone: '',
     role: 'pecc' as User['role'],
-    sendInvite: true
+    sendInvite: true,
+    assignedManagerId: '' as string,
+    assignedMentorId: '' as string
   });
+  const [loadingUsers, setLoadingUsers] = useState(true);
 
   useEffect(() => {
-    // Users loaded from Supabase when backend is connected; start empty
-    setUsers([]);
+    const loadUsers = async () => {
+      setLoadingUsers(true);
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, email, first_name, last_name, phone, role, is_active, last_login, created_at, manager_id, mentor_id');
+      if (error) {
+        setUsers([]);
+      } else {
+        const mapped: User[] = (data || []).map((r: {
+          id: string;
+          first_name: string;
+          last_name: string;
+          email: string;
+          phone: string | null;
+          role: string;
+          is_active: boolean;
+          last_login: string | null;
+          created_at: string;
+          manager_id: string | null;
+          mentor_id: string | null;
+        }) => ({
+          id: r.id,
+          firstName: r.first_name || '',
+          lastName: r.last_name || '',
+          email: r.email || '',
+          phone: r.phone || '',
+          role: r.role as User['role'],
+          status: r.is_active ? 'active' : 'inactive',
+          lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,
+          createdAt: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : '',
+          manager_id: r.manager_id,
+          mentor_id: r.mentor_id
+        }));
+        mapped.forEach((u) => {
+          if (u.manager_id) {
+            const m = mapped.find((x) => x.id === u.manager_id);
+            if (m) u.managerName = `${m.firstName} ${m.lastName}`.trim() || m.email;
+          }
+          if (u.mentor_id) {
+            const ment = mapped.find((x) => x.id === u.mentor_id);
+            if (ment) u.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
+          }
+        });
+        setUsers(mapped);
+      }
+      setLoadingUsers(false);
+    };
+    loadUsers();
   }, []);
 
   const filteredUsers = users.filter(user => {
@@ -108,12 +163,34 @@ const AdminUsersPage: React.FC = () => {
       role: formData.role,
       status: 'pending',
       lastLogin: null,
-      createdAt: new Date().toISOString().split('T')[0]
+      createdAt: new Date().toISOString().split('T')[0],
+      manager_id: formData.role === 'mentor' && formData.assignedManagerId ? formData.assignedManagerId : null,
+      mentor_id: formData.role === 'pecc' && formData.assignedMentorId ? formData.assignedMentorId : null
     };
+    if (formData.role === 'mentor' && formData.assignedManagerId) {
+      const m = users.find((u) => u.id === formData.assignedManagerId);
+      if (m) newUser.managerName = `${m.firstName} ${m.lastName}`.trim() || m.email;
+    }
+    if (formData.role === 'pecc' && formData.assignedMentorId) {
+      const ment = users.find((u) => u.id === formData.assignedMentorId);
+      if (ment) newUser.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
+    }
     setUsers([...users, newUser]);
     setDialogOpen(false);
-    setFormData({ firstName: '', lastName: '', email: '', phone: '', role: 'pecc', sendInvite: true });
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      role: 'pecc',
+      sendInvite: true,
+      assignedManagerId: '',
+      assignedMentorId: ''
+    });
   };
+
+  const managers = users.filter((u) => u.role === 'manager');
+  const mentors = users.filter((u) => u.role === 'mentor');
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, user: User) => {
     setAnchorEl(event.currentTarget);
@@ -175,6 +252,11 @@ const AdminUsersPage: React.FC = () => {
       </Paper>
 
       {/* Users Table */}
+      {loadingUsers ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -183,6 +265,7 @@ const AdminUsersPage: React.FC = () => {
               <TableCell>Email</TableCell>
               <TableCell>Phone</TableCell>
               <TableCell>Role</TableCell>
+              <TableCell>Reports to</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Last Login</TableCell>
               <TableCell>Actions</TableCell>
@@ -210,6 +293,13 @@ const AdminUsersPage: React.FC = () => {
                   <Chip label={user.role.toUpperCase()} size="small" color={getRoleColor(user.role)} />
                 </TableCell>
                 <TableCell>
+                  {user.role === 'mentor' && user.managerName
+                    ? user.managerName
+                    : user.role === 'pecc' && user.mentorName
+                    ? user.mentorName
+                    : '—'}
+                </TableCell>
+                <TableCell>
                   <Chip label={user.status} size="small" color={getStatusColor(user.status)} variant="outlined" />
                 </TableCell>
                 <TableCell>
@@ -225,6 +315,7 @@ const AdminUsersPage: React.FC = () => {
           </TableBody>
         </Table>
       </TableContainer>
+      )}
 
       {/* Actions Menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
@@ -292,7 +383,15 @@ const AdminUsersPage: React.FC = () => {
                 <InputLabel>Role</InputLabel>
                 <Select
                   value={formData.role}
-                  onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as User['role'] }))}
+                  onChange={(e) => {
+                    const role = e.target.value as User['role'];
+                    setFormData((prev) => ({
+                      ...prev,
+                      role,
+                      assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId,
+                      assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId
+                    }));
+                  }}
                   label="Role"
                 >
                   <MenuItem value="admin">Admin</MenuItem>
@@ -302,6 +401,48 @@ const AdminUsersPage: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            {formData.role === 'mentor' && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Assign to Manager</InputLabel>
+                  <Select
+                    value={formData.assignedManagerId}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, assignedManagerId: e.target.value }))}
+                    label="Assign to Manager"
+                  >
+                    <MenuItem value="">
+                      <em>None</em>
+                    </MenuItem>
+                    {managers.map((m) => (
+                      <MenuItem key={m.id} value={m.id}>
+                        {m.firstName} {m.lastName} ({m.email})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            {formData.role === 'pecc' && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Assign to Mentor</InputLabel>
+                  <Select
+                    value={formData.assignedMentorId}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, assignedMentorId: e.target.value }))}
+                    label="Assign to Mentor"
+                  >
+                    <MenuItem value="">
+                      <em>None</em>
+                    </MenuItem>
+                    {mentors.map((m) => (
+                      <MenuItem key={m.id} value={m.id}>
+                        {m.firstName} {m.lastName} ({m.email})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <FormControlLabel
                 control={
