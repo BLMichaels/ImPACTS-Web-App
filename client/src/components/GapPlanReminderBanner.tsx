@@ -53,10 +53,10 @@ const GapPlanReminderBanner: React.FC = () => {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    if (currentUser?.uid && userProfile.tier === 'PECC') {
+    if (currentUser?.uid && userProfile?.role === 'pecc') {
       loadGapPlans();
     }
-  }, [currentUser?.uid, userProfile.tier]);
+  }, [currentUser?.uid, userProfile?.role]);
 
   useEffect(() => {
     if (gapPlans.length > 0) {
@@ -77,7 +77,7 @@ const GapPlanReminderBanner: React.FC = () => {
   };
 
   const generateReminders = () => {
-    if (!userProfile || userProfile.tier !== 'PECC') return;
+    if (!userProfile || userProfile.role !== 'pecc') return;
 
     const reminderSettings = (userProfile as any).gapPlanReminders;
     if (!reminderSettings?.enabled) return;

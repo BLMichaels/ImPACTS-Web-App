@@ -52,10 +52,32 @@ interface HospitalInfo {
   pediatricVolume: string;
 }
 
+// Extended profile type for backward compatibility
+interface LegacyProfile {
+  firstName?: string;
+  lastName?: string;
+  first_name?: string;
+  last_name?: string;
+  tier?: string;
+  role?: string;
+  department?: string;
+  phone?: string;
+  email?: string;
+  gapPlanReminders?: any;
+  prsTabVisible?: boolean;
+}
+
 const AccountPage = () => {
   const { logout } = useAuth();
-  const { userProfile, updateUserProfile } = useUserProfile();
+  const { userProfile: rawUserProfile, updateUserProfile } = useUserProfile();
   const navigate = useNavigate();
+  
+  // Handle both old and new field names
+  const userProfile = rawUserProfile as LegacyProfile | null;
+  const getFirstName = () => userProfile?.firstName || userProfile?.first_name || 'User';
+  const getLastName = () => userProfile?.lastName || userProfile?.last_name || '';
+  const getTier = () => userProfile?.tier || userProfile?.role || 'PECC';
+  const getDepartment = () => userProfile?.department || '';
 
   const [hospitalInfo, setHospitalInfo] = useState<HospitalInfo>({
     name: 'General Hospital',
@@ -87,23 +109,23 @@ const AccountPage = () => {
   const [editingNotifications, setEditingNotifications] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState({
     gapPlanReminders: {
-      enabled: (userProfile as any).gapPlanReminders?.enabled ?? true,
-      emailNotifications: (userProfile as any).gapPlanReminders?.emailNotifications ?? false,
-      reminderDays: (userProfile as any).gapPlanReminders?.reminderDays ?? 7,
-      emailFrequency: (userProfile as any).gapPlanReminders?.emailFrequency ?? 'weekly' as 'daily' | 'weekly' | 'monthly'
+      enabled: userProfile?.gapPlanReminders?.enabled ?? true,
+      emailNotifications: userProfile?.gapPlanReminders?.emailNotifications ?? false,
+      reminderDays: userProfile?.gapPlanReminders?.reminderDays ?? 7,
+      emailFrequency: userProfile?.gapPlanReminders?.emailFrequency ?? 'weekly' as 'daily' | 'weekly' | 'monthly'
     },
-    prsTabVisible: (userProfile as any).prsTabVisible ?? true
+    prsTabVisible: userProfile?.prsTabVisible ?? true
   });
 
   const handleUserSave = () => {
     // Update the user profile context
     updateUserProfile({
-      firstName: userProfile.firstName,
-      lastName: userProfile.lastName,
-      phone: userProfile.phone,
-      tier: userProfile.tier,
-      department: userProfile.department
-    });
+      firstName: getFirstName(),
+      lastName: getLastName(),
+      phone: userProfile?.phone || '',
+      tier: getTier(),
+      department: getDepartment()
+    } as any);
     setEditingUser(false);
     setAlert({ type: 'success', message: 'User information updated successfully!' });
     setTimeout(() => setAlert(null), 3000);
@@ -118,12 +140,12 @@ const AccountPage = () => {
 
   const handleNotificationSave = () => {
     // Update the user profile with notification settings
-    if (userProfile.tier === 'PECC') {
+    if (userProfile?.role === 'pecc') {
       updateUserProfile({
         ...userProfile,
         gapPlanReminders: notificationSettings.gapPlanReminders,
         prsTabVisible: notificationSettings.prsTabVisible
-      });
+      } as any);
     }
     setEditingNotifications(false);
     setAlert({ type: 'success', message: 'Settings updated successfully!' });
@@ -206,8 +228,8 @@ const AccountPage = () => {
                     <TextField
                       fullWidth
                       label="First Name"
-                      value={userProfile.firstName}
-                      onChange={(e) => updateUserProfile({ ...userProfile, firstName: e.target.value })}
+                      value={getFirstName()}
+                      onChange={(e) => updateUserProfile({ ...userProfile, firstName: e.target.value } as any)}
                       disabled={!editingUser}
                       size="small"
                     />
@@ -216,8 +238,8 @@ const AccountPage = () => {
                     <TextField
                       fullWidth
                       label="Last Name"
-                      value={userProfile.lastName}
-                      onChange={(e) => updateUserProfile({ ...userProfile, lastName: e.target.value })}
+                      value={getLastName()}
+                      onChange={(e) => updateUserProfile({ ...userProfile, lastName: e.target.value } as any)}
                       disabled={!editingUser}
                       size="small"
                     />
@@ -226,7 +248,7 @@ const AccountPage = () => {
                     <TextField
                       fullWidth
                       label="Email"
-                      value={userProfile.email}
+                      value={userProfile?.email || ''}
                       disabled
                       size="small"
                     />
@@ -235,8 +257,8 @@ const AccountPage = () => {
                     <TextField
                       fullWidth
                       label="Phone"
-                      value={userProfile.phone}
-                      onChange={(e) => updateUserProfile({ ...userProfile, phone: e.target.value })}
+                      value={userProfile?.phone || ''}
+                      onChange={(e) => updateUserProfile({ ...userProfile, phone: e.target.value } as any)}
                       disabled={!editingUser}
                       size="small"
                     />
@@ -245,8 +267,8 @@ const AccountPage = () => {
                     <TextField
                       fullWidth
                       label="Tier"
-                      value={userProfile.tier}
-                      onChange={(e) => updateUserProfile({ ...userProfile, tier: e.target.value as any })}
+                      value={getTier()}
+                      onChange={(e) => updateUserProfile({ ...userProfile, tier: e.target.value } as any)}
                       disabled={!editingUser}
                       size="small"
                     />
@@ -255,8 +277,8 @@ const AccountPage = () => {
                     <TextField
                       fullWidth
                       label="Department"
-                      value={userProfile.department}
-                      onChange={(e) => updateUserProfile({ ...userProfile, department: e.target.value })}
+                      value={getDepartment()}
+                      onChange={(e) => updateUserProfile({ ...userProfile, department: e.target.value } as any)}
                       disabled={!editingUser}
                       size="small"
                     />
@@ -475,17 +497,17 @@ const AccountPage = () => {
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Avatar sx={{ bgcolor: 'primary.main' }}>
-                    {userProfile.firstName.charAt(0)}{userProfile.lastName.charAt(0)}
+                    {getFirstName().charAt(0)}{getLastName().charAt(0)}
                   </Avatar>
                   <Box>
                     <Typography variant="h6">
-                      {userProfile.firstName} {userProfile.lastName}
+                      {getFirstName()} {getLastName()}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {userProfile.tier} • {userProfile.department}
+                      {getTier()} • {getDepartment()}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {userProfile.email}
+                      {userProfile?.email || ''}
                     </Typography>
                   </Box>
                 </Box>
@@ -510,10 +532,10 @@ const AccountPage = () => {
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Current Tier</InputLabel>
                   <Select
-                    value={userProfile.tier}
+                    value={getTier()}
                     onChange={(e) => {
-                      const newTier = e.target.value as UserTier;
-                      updateUserProfile({ tier: newTier });
+                      const newTier = e.target.value;
+                      updateUserProfile({ tier: newTier } as any);
                       setAlert({ type: 'success', message: `Switched to ${newTier} tier. Please refresh the page to see changes.` });
                     }}
                     label="Current Tier"
@@ -536,7 +558,7 @@ const AccountPage = () => {
           </Grid>
 
           {/* Notification Preferences - Only show for PECC users */}
-          {userProfile.tier === 'PECC' && (
+          {userProfile?.role === 'pecc' && (
             <Grid item xs={12}>
               <Card>
                 <CardContent>
