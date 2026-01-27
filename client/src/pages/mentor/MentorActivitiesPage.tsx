@@ -46,7 +46,6 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
-import { ActivityCategory, SimulationCase } from '../../types/database';
 
 // Activity categories with labels
 const CATEGORIES = [

@@ -45,7 +45,6 @@ import {
   ContentCopy as CopyIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
-import { TraumaLevel, ContactStatus } from '../../types/database';
 
 // Types
 interface Hospital {
