@@ -50,7 +50,6 @@ import {
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
-import { useSync } from '../context/SyncContext';
 import ScrollToTop from '../components/ScrollToTop';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -133,7 +132,6 @@ const PARTICIPANT_OPTIONS = Array.from({ length: 26 }, (_, i) => i);
 
 const ActivitiesPage = () => {
   const { currentUser, loading } = useAuth();
-  const { syncActivities } = useSync();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [simulationGaps, setSimulationGaps] = useState<any[]>([]);
@@ -165,231 +163,31 @@ const ActivitiesPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
+  // Load activities from localStorage
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        if (currentUser?.uid) {
-          // First, try to load from BigQuery (synced data)
-          try {
-            console.log(`🔄 Initial load: Fetching activities for user ${currentUser.uid}`);
-            const response = await fetch(`http://localhost:3001/api/activities/${currentUser.uid}`);
-            const result = await response.json();
-            
-            console.log(`📊 Initial load response:`, result);
-            
-                if (result.success) {
-                  console.log(`📊 BigQuery returned ${result.activities.length} activities:`, result.activities.map((a: any) => a.title));
-                  
-                  // Convert BigQuery activities to local format with timestamps
-                  const bigQueryActivities = result.activities.map((bqActivity: any) => ({
-                    id: bqActivity.activity_id,
-                    date: bqActivity.due_date,
-                    activity: bqActivity.title,
-                    category: bqActivity.activity_type,
-                    hours: 1, // Default since not stored in BigQuery
-                    simulation: '',
-                    simulationOther: '',
-                    participants: 0,
-                    feedbackForms: [],
-                    associatedGaps: [],
-                    associatedSimulationGaps: [],
-                    notes: bqActivity.description || '',
-                    created_at: bqActivity.created_at,
-                    updated_at: bqActivity.updated_at,
-                    last_sync_at: bqActivity.last_sync_at
-                  }));
-                  
-                  console.log(`🔄 Converted to ${bigQueryActivities.length} local activities:`, bigQueryActivities.map((a: any) => a.activity));
-              
-              // Get localStorage activities
-              const savedActivities = localStorage.getItem(`activities_${currentUser.uid}`);
-              let localActivities = [];
-              if (savedActivities) {
-                localActivities = JSON.parse(savedActivities);
-              }
-              
-              // Merge BigQuery and localStorage activities with conflict resolution
-              const activityMap = new Map();
-              
-              // First, add all BigQuery activities (they are the source of truth)
-              bigQueryActivities.forEach((activity: any) => {
-                activityMap.set(activity.id, activity);
-              });
-              
-              // Then, add localStorage activities with conflict resolution
-              localActivities.forEach((localActivity: any) => {
-                const existingActivity = activityMap.get(localActivity.id);
-                
-                if (existingActivity) {
-                  // Conflict resolution: compare timestamps
-                  const localUpdatedAt = localActivity.updated_at ? new Date(localActivity.updated_at) : new Date(0);
-                  const bigQueryUpdatedAt = existingActivity.updated_at ? new Date(existingActivity.updated_at) : new Date(0);
-                  
-                  if (localUpdatedAt > bigQueryUpdatedAt) {
-                    // Local version is newer, use it
-                    console.log(`🔄 Using local version of activity ${localActivity.id} (newer timestamp)`);
-                    activityMap.set(localActivity.id, localActivity);
-                  } else {
-                    // BigQuery version is newer or same, keep BigQuery version
-                    console.log(`🔄 Using BigQuery version of activity ${localActivity.id} (newer or same timestamp)`);
-                  }
-                } else {
-                  // New activity from localStorage
-                  activityMap.set(localActivity.id, localActivity);
-                }
-              });
-              
-              const finalActivities = Array.from(activityMap.values());
-              
-              setActivities(finalActivities);
-              localStorage.setItem(`activities_${currentUser.uid}`, JSON.stringify(finalActivities));
-              console.log(`✅ Loaded ${finalActivities.length} activities`);
-              
-              // Sync any local activities that aren't in BigQuery yet
-              const bigQueryIds = new Set(bigQueryActivities.map((a: any) => a.id));
-              const unsyncedActivities = localActivities.filter((localActivity: any) => !bigQueryIds.has(localActivity.id));
-              if (unsyncedActivities.length > 0) {
-                console.log(`🔄 Syncing ${unsyncedActivities.length} unsynced activities to BigQuery...`);
-                const bigQueryActivitiesToSync = unsyncedActivities.map((activity: any) => ({
-                  activity_id: activity.id,
-                  user_id: currentUser.uid,
-                  title: activity.activity,
-                  description: activity.notes || '',
-                  activity_type: 'other' as const,
-                  status: 'completed' as const,
-                  priority: 'medium' as const,
-                  due_date: activity.date,
-                  completed_date: activity.date,
-                  hospital_id: '',
-                  hospital_name: '',
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                  last_sync_at: new Date().toISOString()
-                }));
-                
-                try {
-                  await syncActivities(bigQueryActivitiesToSync);
-                  console.log(`✅ Successfully synced ${unsyncedActivities.length} activities to BigQuery`);
-                } catch (syncError) {
-                  console.error('❌ Failed to sync unsynced activities:', syncError);
-                }
-              }
-            } else {
-              // BigQuery failed, use localStorage only
-              const savedActivities = localStorage.getItem(`activities_${currentUser.uid}`);
-              if (savedActivities) {
-                const activities = JSON.parse(savedActivities);
-                setActivities(activities);
-                console.log(`📱 Loaded ${activities.length} activities from localStorage (BigQuery failed)`);
-              }
-            }
-          } catch (bigQueryError) {
-            console.warn('BigQuery not available, using localStorage:', bigQueryError);
-            // Fall back to localStorage if BigQuery fails
-            const savedActivities = localStorage.getItem(`activities_${currentUser.uid}`);
-            if (savedActivities) {
-              const activities = JSON.parse(savedActivities);
-              setActivities(activities);
-            }
-          }
-          
-          // Load gap plans for the associated gaps dropdown
-          const savedGapPlans = localStorage.getItem(`gapPlans_${currentUser.uid}`);
-          if (savedGapPlans) {
-            const gapPlans = JSON.parse(savedGapPlans);
-            setGapPlans(gapPlans);
-          }
-
-          // Load simulation gaps for the associated simulation gaps dropdown
-          const savedSimulationGaps = localStorage.getItem(`simulation_gaps_${currentUser.uid}`);
-          if (savedSimulationGaps) {
-            const simulationGaps = JSON.parse(savedSimulationGaps);
-            setSimulationGaps(simulationGaps);
-          }
-        }
-      } catch (err) {
-        console.error('Error loading data:', err);
-        setError('Error loading data');
+    if (currentUser?.uid) {
+      // Load activities
+      const savedActivities = localStorage.getItem(`activities_${currentUser.uid}`);
+      if (savedActivities) {
+        setActivities(JSON.parse(savedActivities));
       }
-    };
-    
-    loadData();
-  }, [currentUser]);
-
-  // Real-time sync: refresh data every 30 seconds
-  useEffect(() => {
-    if (!currentUser?.uid) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`http://localhost:3001/api/activities/${currentUser.uid}`);
-        const result = await response.json();
-        
-        if (result.success && result.activities.length > 0) {
-          // Convert BigQuery activities to local format with timestamps
-          const bigQueryActivities = result.activities.map((bqActivity: any) => ({
-            id: bqActivity.activity_id,
-            date: bqActivity.due_date,
-            activity: bqActivity.title,
-            category: bqActivity.activity_type,
-            hours: 1,
-            simulation: '',
-            simulationOther: '',
-            participants: 0,
-            feedbackForms: [],
-            associatedGaps: [],
-            associatedSimulationGaps: [],
-            notes: bqActivity.description || '',
-            created_at: bqActivity.created_at,
-            updated_at: bqActivity.updated_at,
-            last_sync_at: bqActivity.last_sync_at
-          }));
-          
-          // Get current localStorage activities for conflict resolution
-          const savedActivities = localStorage.getItem(`activities_${currentUser.uid}`);
-          let localActivities = [];
-          if (savedActivities) {
-            localActivities = JSON.parse(savedActivities);
-          }
-          
-          // Merge with conflict resolution
-          const activityMap = new Map();
-          
-          // Add BigQuery activities first
-          bigQueryActivities.forEach((activity: any) => {
-            activityMap.set(activity.id, activity);
-          });
-          
-          // Add localStorage activities with conflict resolution
-          localActivities.forEach((localActivity: any) => {
-            const existingActivity = activityMap.get(localActivity.id);
-            
-            if (existingActivity) {
-              const localUpdatedAt = localActivity.updated_at ? new Date(localActivity.updated_at) : new Date(0);
-              const bigQueryUpdatedAt = existingActivity.updated_at ? new Date(existingActivity.updated_at) : new Date(0);
-              
-              if (localUpdatedAt > bigQueryUpdatedAt) {
-                activityMap.set(localActivity.id, localActivity);
-              }
-            } else {
-              activityMap.set(localActivity.id, localActivity);
-            }
-          });
-          
-          const finalActivities = Array.from(activityMap.values());
-          setActivities(finalActivities);
-          localStorage.setItem(`activities_${currentUser.uid}`, JSON.stringify(finalActivities));
-        }
-      } catch (error) {
-        console.warn('Real-time sync failed:', error);
+      
+      // Load gap plans for the associated gaps dropdown
+      const savedGapPlans = localStorage.getItem(`gapPlans_${currentUser.uid}`);
+      if (savedGapPlans) {
+        setGapPlans(JSON.parse(savedGapPlans));
       }
-    }, 30000); // Check every 30 seconds
 
-    return () => clearInterval(interval);
+      // Load simulation gaps for the associated simulation gaps dropdown
+      const savedSimulationGaps = localStorage.getItem(`simulation_gaps_${currentUser.uid}`);
+      if (savedSimulationGaps) {
+        setSimulationGaps(JSON.parse(savedSimulationGaps));
+      }
+    }
   }, [currentUser]);
 
 
-  const saveActivities = async (newActivities: Activity[]) => {
+  const saveActivities = (newActivities: Activity[]) => {
     try {
       setActivities(newActivities);
       if (currentUser?.uid) {
@@ -397,85 +195,49 @@ const ActivitiesPage = () => {
         const timestampedActivities = newActivities.map(activity => ({
           ...activity,
           created_at: activity.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          last_sync_at: new Date().toISOString()
+          updated_at: new Date().toISOString()
         }));
         
         localStorage.setItem(`activities_${currentUser.uid}`, JSON.stringify(timestampedActivities));
-        
-        // Convert Activity objects to BigQueryActivity format for sync
-        const bigQueryActivities = timestampedActivities.map(activity => ({
-          id: activity.id,
-          activity_id: activity.id,
-          user_id: currentUser.uid,
-          title: activity.activity,
-          description: activity.notes || '',
-          activity_type: 'other' as const,
-          status: 'completed' as const,
-          priority: 'medium' as const,
-          due_date: activity.date,
-          completed_date: activity.date,
-          hospital_id: '',
-          hospital_name: '',
-          created_at: activity.created_at,
-          updated_at: activity.updated_at,
-          last_sync_at: activity.last_sync_at
-        }));
-        
-        // Trigger immediate sync to BigQuery
-        try {
-          console.log(`🔄 Attempting to sync ${bigQueryActivities.length} activities to BigQuery:`, bigQueryActivities.map(a => a.title));
-          await syncActivities(bigQueryActivities);
-          console.log(`✅ Successfully synced ${bigQueryActivities.length} activities to BigQuery`);
-        } catch (syncError) {
-          console.error('❌ Failed to sync activities:', syncError);
-          // Don't throw error - let user continue working offline
-        }
 
         // Update bidirectional linking with simulation gaps
-        try {
-          const simulationGaps = JSON.parse(localStorage.getItem(`simulation_gaps_${currentUser.uid}`) || '[]');
-          let gapsUpdated = false;
+        const simulationGaps = JSON.parse(localStorage.getItem(`simulation_gaps_${currentUser.uid}`) || '[]');
+        let gapsUpdated = false;
 
-          timestampedActivities.forEach(activity => {
-            if (activity.associatedSimulationGaps && activity.associatedSimulationGaps.length > 0) {
-              activity.associatedSimulationGaps.forEach(gapId => {
-                const gapIndex = simulationGaps.findIndex((gap: any) => gap.id === gapId);
-                if (gapIndex !== -1) {
-                  const gap = simulationGaps[gapIndex];
-                  if (!gap.linkedActivities) {
-                    gap.linkedActivities = [];
-                  }
-                  if (!gap.linkedActivities.includes(activity.id)) {
-                    gap.linkedActivities.push(activity.id);
-                    gapsUpdated = true;
-                  }
+        timestampedActivities.forEach(activity => {
+          if (activity.associatedSimulationGaps && activity.associatedSimulationGaps.length > 0) {
+            activity.associatedSimulationGaps.forEach(gapId => {
+              const gapIndex = simulationGaps.findIndex((gap: any) => gap.id === gapId);
+              if (gapIndex !== -1) {
+                const gap = simulationGaps[gapIndex];
+                if (!gap.linkedActivities) {
+                  gap.linkedActivities = [];
                 }
-              });
-            }
-          });
-
-          // Remove activities from gaps that are no longer linked
-          simulationGaps.forEach((gap: any) => {
-            if (gap.linkedActivities) {
-              const originalLength = gap.linkedActivities.length;
-              gap.linkedActivities = gap.linkedActivities.filter((activityId: string) => {
-                const activity = timestampedActivities.find(a => a.id === activityId);
-                return activity && activity.associatedSimulationGaps && activity.associatedSimulationGaps.includes(gap.id);
-              });
-              if (gap.linkedActivities.length !== originalLength) {
-                gapsUpdated = true;
+                if (!gap.linkedActivities.includes(activity.id)) {
+                  gap.linkedActivities.push(activity.id);
+                  gapsUpdated = true;
+                }
               }
-            }
-          });
-
-          if (gapsUpdated) {
-            localStorage.setItem(`simulation_gaps_${currentUser.uid}`, JSON.stringify(simulationGaps));
-            console.log('✅ Updated simulation gaps with bidirectional activity links');
+            });
           }
-        } catch (linkError) {
-          console.error('❌ Failed to update simulation gap links:', linkError);
-          // Don't throw error - this is not critical
+        });
+
+        // Remove activities from gaps that are no longer linked
+        simulationGaps.forEach((gap: any) => {
+          if (gap.linkedActivities) {
+            const originalLength = gap.linkedActivities.length;
+            gap.linkedActivities = gap.linkedActivities.filter((activityId: string) => {
+              const activity = timestampedActivities.find(a => a.id === activityId);
+              return activity && activity.associatedSimulationGaps && activity.associatedSimulationGaps.includes(gap.id);
+            });
+            if (gap.linkedActivities.length !== originalLength) {
+              gapsUpdated = true;
+            }
+          }
+        });
+
+        if (gapsUpdated) {
+          localStorage.setItem(`simulation_gaps_${currentUser.uid}`, JSON.stringify(simulationGaps));
         }
       }
     } catch (err) {
@@ -484,31 +246,21 @@ const ActivitiesPage = () => {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     try {
-      console.log('Form data being submitted:', formData);
-
       if (!formData.date || !formData.activity || !formData.category || formData.hours === undefined || formData.hours === null) {
         setError('Please fill in all required fields');
-        console.log('Validation failed:', {
-          date: formData.date,
-          activity: formData.activity,
-          category: formData.category,
-          hours: formData.hours
-        });
         return;
       }
 
       if (editingActivity) {
-        // Edit existing activity
         const updatedActivities = activities.map(activity =>
           activity.id === editingActivity.id
             ? { ...editingActivity, ...formData }
             : activity
         );
-        await saveActivities(updatedActivities);
+        saveActivities(updatedActivities);
       } else {
-        // Add new activity
         const newActivity: Activity = {
           id: Date.now().toString(),
           date: formData.date,
@@ -523,8 +275,7 @@ const ActivitiesPage = () => {
           associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
           notes: formData.notes || undefined
         };
-        console.log('Creating new activity:', newActivity);
-        await saveActivities([...activities, newActivity]);
+        saveActivities([...activities, newActivity]);
       }
 
       handleClose();
@@ -558,10 +309,10 @@ const ActivitiesPage = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     try {
       const updatedActivities = activities.filter(activity => activity.id !== id);
-      await saveActivities(updatedActivities);
+      saveActivities(updatedActivities);
     } catch (err) {
       console.error('Error deleting activity:', err);
       setError('Error deleting activity');

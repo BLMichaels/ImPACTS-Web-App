@@ -31,7 +31,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useAuth } from '../context/AuthContext';
-import { useSync } from '../context/SyncContext';
+// Sync context removed - using localStorage only
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import LinkIcon from '@mui/icons-material/Link';
@@ -68,7 +68,6 @@ interface DepartmentContact {
   const DashboardPage = () => {
     const { userProfile } = useUserProfile();
     const { currentUser } = useAuth();
-    const { syncResources } = useSync();
     const navigate = useNavigate();
     
     // Mobile responsiveness
@@ -95,143 +94,56 @@ interface DepartmentContact {
 
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoadingResources, setIsLoadingResources] = useState(true);
-  const [lastResourceHash, setLastResourceHash] = useState<string>('');
 
-  // Load resources from BigQuery and localStorage
+  // Load resources from localStorage
   useEffect(() => {
-    const loadResources = async () => {
+    const loadResources = () => {
       if (!currentUser) return;
       
-      try {
-        // Only show loading if we don't have resources yet
-        if (resources.length === 0) {
-          setIsLoadingResources(true);
-        }
-        
-        // First, try to get resources from BigQuery
-        const bigQueryUrl = `https://68824ab5d5fb.ngrok-free.app/api/resources/${currentUser.uid}`;
-        const response = await fetch(bigQueryUrl, {
-          headers: {
-            'ngrok-skip-browser-warning': 'true'
-          }
-        });
-        const result = await response.json();
-        
-        let bigQueryResources: Resource[] = [];
-        if (result.success && result.resources) {
-          bigQueryResources = result.resources.map((resource: any) => ({
-            id: resource.resource_id,
-            title: resource.title,
-            url: resource.url,
+      setIsLoadingResources(true);
+      
+      const localResourcesKey = `dashboard_resources_${currentUser.uid}`;
+      const localResourcesData = localStorage.getItem(localResourcesKey);
+      let localResources: Resource[] = localResourcesData ? JSON.parse(localResourcesData) : [];
+      
+      // If no resources exist, create default resources
+      if (localResources.length === 0) {
+        const now = new Date().toISOString();
+        localResources = [
+          {
+            id: 'default-1-new',
+            title: 'Pediatric Readiness Toolkit',
+            url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/',
             type: 'link' as const,
-            description: resource.description,
-            addedAt: new Date(resource.created_at?.value || resource.created_at),
-            tags: resource.tags || [],
-            category: resource.category,
-            createdAt: resource.created_at?.value || resource.created_at,
-            updatedAt: resource.updated_at?.value || resource.updated_at,
-            lastSyncAt: resource.last_sync_at?.value || resource.last_sync_at
-          }));
-        }
-        
-        // Get resources from localStorage
-        const localResourcesKey = `dashboard_resources_${currentUser.uid}`;
-        const localResourcesData = localStorage.getItem(localResourcesKey);
-        let localResources: Resource[] = localResourcesData ? JSON.parse(localResourcesData) : [];
-        
-        // If no local resources exist, create default resources
-        if (localResources.length === 0) {
-          const now = new Date().toISOString();
-          localResources = [
-            {
-              id: 'default-1-new',
-              title: 'Pediatric Readiness Toolkit',
-              url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/',
-              type: 'link' as const,
-              description: 'Comprehensive toolkit for improving pediatric readiness',
-              addedAt: new Date(),
-              tags: ['toolkit', 'pediatric', 'readiness'],
-              category: 'Guidelines',
-              createdAt: now,
-              updatedAt: now,
-              lastSyncAt: now
-            },
-            {
-              id: 'default-2-new',
-              title: 'PECC Role Guidelines',
-              url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/readiness-toolkit-checklist/pecc/',
-              type: 'link' as const,
-              description: 'Guidelines for Pediatric Emergency Care Coordinators',
-              addedAt: new Date(),
-              tags: ['guidelines', 'pecc', 'coordination'],
-              category: 'Guidelines',
-              createdAt: now,
-              updatedAt: now,
-              lastSyncAt: now
-            }
-          ];
-          
-          // Save default resources to localStorage
-          localStorage.setItem(localResourcesKey, JSON.stringify(localResources));
-        }
-        
-        // Merge BigQuery and local resources, prioritizing BigQuery for conflicts
-        const mergedResources = [...bigQueryResources];
-        const bigQueryIds = new Set(bigQueryResources.map(r => r.id));
-        
-        // Add local resources that aren't in BigQuery
-        localResources.forEach(localResource => {
-          if (!bigQueryIds.has(localResource.id)) {
-            mergedResources.push(localResource);
+            description: 'Comprehensive toolkit for improving pediatric readiness',
+            addedAt: new Date(),
+            tags: ['toolkit', 'pediatric', 'readiness'],
+            category: 'Guidelines',
+            createdAt: now,
+            updatedAt: now
+          },
+          {
+            id: 'default-2-new',
+            title: 'PECC Role Guidelines',
+            url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/readiness-toolkit-checklist/pecc/',
+            type: 'link' as const,
+            description: 'Guidelines for Pediatric Emergency Care Coordinators',
+            addedAt: new Date(),
+            tags: ['guidelines', 'pecc', 'coordination'],
+            category: 'Guidelines',
+            createdAt: now,
+            updatedAt: now
           }
-        });
-        
-        // Create a hash of the merged resources to detect changes
-        const resourceHash = JSON.stringify(mergedResources.map(r => ({ id: r.id, title: r.title, url: r.url, updatedAt: r.updatedAt })));
-        
-        // Only update state if resources have actually changed
-        if (resourceHash !== lastResourceHash) {
-          console.log('📝 Resources changed, updating state');
-          setResources(mergedResources);
-          setLastResourceHash(resourceHash);
-        } else {
-          console.log('✅ No changes detected, skipping state update');
-        }
-        
-        // If there are local resources not in BigQuery, sync them
-        const unsyncedResources = localResources.filter(localResource => !bigQueryIds.has(localResource.id));
-        if (unsyncedResources.length > 0 && syncResources) {
-          console.log(`🔄 Syncing ${unsyncedResources.length} unsynced resources to BigQuery`);
-          await syncResources(unsyncedResources.map(resource => ({
-            resource_id: resource.id,
-            user_id: currentUser.uid,
-            title: resource.title,
-            description: resource.description || '',
-            url: resource.url,
-            category: resource.category,
-            tags: resource.tags || [],
-            is_public: false,
-            created_at: resource.createdAt || new Date().toISOString(),
-            updated_at: resource.updatedAt || new Date().toISOString(),
-            last_sync_at: new Date().toISOString()
-          })));
-        }
-        
-      } catch (error) {
-        console.error('Error loading resources:', error);
-        
-        // Fallback to localStorage only
-        const localResourcesKey = `dashboard_resources_${currentUser.uid}`;
-        const localResourcesData = localStorage.getItem(localResourcesKey);
-        const localResources: Resource[] = localResourcesData ? JSON.parse(localResourcesData) : [];
-        setResources(localResources);
-      } finally {
-        setIsLoadingResources(false);
+        ];
+        localStorage.setItem(localResourcesKey, JSON.stringify(localResources));
       }
+      
+      setResources(localResources);
+      setIsLoadingResources(false);
     };
     
     loadResources();
-  }, [currentUser, syncResources]);
+  }, [currentUser]);
 
   const [departmentContacts, setDepartmentContacts] = useState<DepartmentContact[]>([
     { id: '1', department: 'Chief Nursing Officer', contactName: '', phone: '', email: '', notes: '' },
@@ -382,7 +294,7 @@ interface DepartmentContact {
     });
   };
 
-  const handleAddResource = async () => {
+  const handleAddResource = () => {
     if (resourceForm.title && (resourceForm.url || resourceForm.file)) {
       const now = new Date().toISOString();
       const newResource: Resource = {
@@ -395,39 +307,15 @@ interface DepartmentContact {
         tags: resourceForm.tags,
         category: resourceForm.category,
         createdAt: now,
-        updatedAt: now,
-        lastSyncAt: now
+        updatedAt: now
       };
       
-      // Update local state
       const updatedResources = [...resources, newResource];
       setResources(updatedResources);
       
-      // Save to localStorage
       if (currentUser) {
         const localResourcesKey = `dashboard_resources_${currentUser.uid}`;
         localStorage.setItem(localResourcesKey, JSON.stringify(updatedResources));
-      }
-      
-      // Sync to BigQuery
-      if (currentUser && syncResources) {
-        try {
-          await syncResources([{
-            resource_id: newResource.id,
-            user_id: currentUser.uid,
-            title: newResource.title,
-            description: newResource.description || '',
-            url: newResource.url,
-            category: newResource.category,
-            tags: newResource.tags || [],
-            is_public: false,
-            created_at: newResource.createdAt,
-            updated_at: newResource.updatedAt,
-            last_sync_at: newResource.lastSyncAt
-          }]);
-        } catch (error) {
-          console.error('Error syncing resource to BigQuery:', error);
-        }
       }
       
       setResourceForm({
@@ -457,7 +345,7 @@ interface DepartmentContact {
     setEditResourceDialog(true);
   };
 
-  const handleUpdateResource = async () => {
+  const handleUpdateResource = () => {
     if (currentResource && resourceForm.title && (resourceForm.url || resourceForm.file)) {
       const now = new Date().toISOString();
       const updatedResource = {
@@ -468,41 +356,17 @@ interface DepartmentContact {
         description: resourceForm.description,
         tags: resourceForm.tags,
         category: resourceForm.category,
-        updatedAt: now,
-        lastSyncAt: now
+        updatedAt: now
       };
       
-      // Update local state
       const updatedResources = resources.map(resource => 
         resource.id === currentResource.id ? updatedResource : resource
       );
       setResources(updatedResources);
       
-      // Save to localStorage
       if (currentUser) {
         const localResourcesKey = `dashboard_resources_${currentUser.uid}`;
         localStorage.setItem(localResourcesKey, JSON.stringify(updatedResources));
-      }
-      
-      // Sync to BigQuery
-      if (currentUser && syncResources) {
-        try {
-          await syncResources([{
-            resource_id: updatedResource.id,
-            user_id: currentUser.uid,
-            title: updatedResource.title,
-            description: updatedResource.description || '',
-            url: updatedResource.url,
-            category: updatedResource.category,
-            tags: updatedResource.tags || [],
-            is_public: false,
-            created_at: updatedResource.createdAt || now,
-            updated_at: updatedResource.updatedAt,
-            last_sync_at: updatedResource.lastSyncAt
-          }]);
-        } catch (error) {
-          console.error('Error syncing updated resource to BigQuery:', error);
-        }
       }
       
       setResourceForm({
@@ -519,20 +383,14 @@ interface DepartmentContact {
     }
   };
 
-  const handleDeleteResource = async (id: string) => {
-    // Update local state
+  const handleDeleteResource = (id: string) => {
     const updatedResources = resources.filter(resource => resource.id !== id);
     setResources(updatedResources);
     
-    // Save to localStorage
     if (currentUser) {
       const localResourcesKey = `dashboard_resources_${currentUser.uid}`;
       localStorage.setItem(localResourcesKey, JSON.stringify(updatedResources));
     }
-    
-    // Note: We don't sync deletions to BigQuery immediately as BigQuery doesn't support DELETE operations
-    // The resource will remain in BigQuery but won't appear in the UI
-    console.log(`Resource ${id} deleted locally`);
   };
 
   const getResourceIcon = (type: string) => {

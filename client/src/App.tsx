@@ -26,7 +26,6 @@ import EducationPage from './pages/EducationPage';
 // Context
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UserProfileProvider, useUserProfile, UserTier } from './context/UserProfileContext';
-import { SyncProvider } from './context/SyncContext';
 
 // Create theme
 const theme = createTheme({
@@ -112,8 +111,7 @@ function App() {
       <CssBaseline />
       <AuthProvider>
         <UserProfileProvider>
-          <SyncProvider>
-            <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Suspense fallback={<LoadingSpinner />}>
               <Navbar />
               <Container>
@@ -121,111 +119,22 @@ function App() {
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
-                  <Route 
-                    path="/dashboard" 
-                    element={
-                      <ProtectedRoute>
-                        <DashboardPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  
-                  {/* PRISM Dashboard Route */}
-                  <Route 
-                    path="/prism/dashboard" 
-                    element={
-                      <ProtectedRoute requiredTier={UserTier.PRISM}>
-                        <PRISMDashboardPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  
-                  {/* PRISM Activities Route */}
-                  <Route 
-                    path="/prism/activities" 
-                    element={
-                      <ProtectedRoute requiredTier={UserTier.PRISM}>
-                        <PRISMActivitiesPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  
-                  
-                  {/* PECC Routes - Available to all tiers */}
-                  <Route 
-                    path="/snapshot" 
-                    element={
-                      <ProtectedRoute>
-                        <SnapshotPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  <Route 
-                    path="/simulation" 
-                    element={
-                      <ProtectedRoute>
-                        <SimulationPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  <Route 
-                    path="/milestones" 
-                    element={
-                      <ProtectedRoute>
-                        <MilestonesPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  <Route 
-                    path="/activities" 
-                    element={
-                      <ProtectedRoute>
-                        <ActivitiesPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  <Route 
-                    path="/prs" 
-                    element={
-                      <ProtectedRoute>
-                        <PRSPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  <Route 
-                    path="/gap-plan" 
-                    element={
-                      <ProtectedRoute>
-                        <GapPlanPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  
-                  
-                  <Route 
-                    path="/account" 
-                    element={
-                      <ProtectedRoute>
-                        <AccountPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  
-                  <Route 
-                    path="/education" 
-                    element={
-                      <ProtectedRoute>
-                        <EducationPage />
-                      </ProtectedRoute>
-                    } 
-                  />
-                  
+                  <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+                  <Route path="/prism/dashboard" element={<ProtectedRoute requiredTier={UserTier.PRISM}><PRISMDashboardPage /></ProtectedRoute>} />
+                  <Route path="/prism/activities" element={<ProtectedRoute requiredTier={UserTier.PRISM}><PRISMActivitiesPage /></ProtectedRoute>} />
+                  <Route path="/snapshot" element={<ProtectedRoute><SnapshotPage /></ProtectedRoute>} />
+                  <Route path="/simulation" element={<ProtectedRoute><SimulationPage /></ProtectedRoute>} />
+                  <Route path="/milestones" element={<ProtectedRoute><MilestonesPage /></ProtectedRoute>} />
+                  <Route path="/activities" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
+                  <Route path="/prs" element={<ProtectedRoute><PRSPage /></ProtectedRoute>} />
+                  <Route path="/gap-plan" element={<ProtectedRoute><GapPlanPage /></ProtectedRoute>} />
+                  <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+                  <Route path="/education" element={<ProtectedRoute><EducationPage /></ProtectedRoute>} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </Container>
             </Suspense>
-            </Router>
-          </SyncProvider>
+          </Router>
         </UserProfileProvider>
       </AuthProvider>
     </ThemeProvider>

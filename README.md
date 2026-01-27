@@ -2,193 +2,137 @@
 
 Pediatric Emergency Care Coordination (PECC) and Pediatric Readiness Assessment tracking application.
 
-**Live Application**: https://impacts-tracker.web.app
+## Tech Stack
 
-## 🚀 Quick Start
+- **Frontend**: React 18 + TypeScript + Material-UI
+- **Authentication**: Supabase Auth
+- **Database**: Supabase (PostgreSQL) + localStorage
+- **Hosting**: Vercel
+
+## Quick Start
 
 ### Prerequisites
-- Node.js (v14 or higher)
-- npm or yarn
-- Firebase CLI (for deployment)
-- Git
+- Node.js (v18 or higher)
+- npm
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/BLMichaels/ImPACTS-Web-App.git
-   cd ImPACTS-Web-App
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/BLMichaels/ImPACTS-Web-App.git
+cd ImPACTS-Web-App
 
-2. **Install dependencies**
-   ```bash
-   # Root dependencies
-   npm install
-   
-   # Client dependencies
-   cd client
-   npm install
-   cd ..
-   
-   # Functions dependencies (if needed)
-   cd functions
-   npm install
-   cd ..
-   ```
+# Install dependencies
+cd client
+npm install
+```
 
-3. **Set up environment variables**
-   - Create `.env` files as needed (see Environment Variables section)
-   - **Important**: Never commit credential files (`.json` service account files) to Git
+### Environment Variables
 
-4. **Run the development server**
-   ```bash
-   cd client
-   npm start
-   ```
-   The app will open at [http://localhost:3000](http://localhost:3000)
+Create a `.env` file in the `client/` directory:
 
-## 📁 Project Structure
+```env
+REACT_APP_SUPABASE_URL=https://your-project.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### Development
+
+```bash
+cd client
+npm start
+```
+
+The app will open at [http://localhost:3000](http://localhost:3000)
+
+### Production Build
+
+```bash
+cd client
+npm run build
+```
+
+## Project Structure
 
 ```
 ImPACTS-Web-App/
-├── client/                 # React frontend application
+├── client/                    # React application
+│   ├── public/               # Static assets (logo, icons)
 │   ├── src/
-│   │   ├── components/    # Reusable React components
-│   │   ├── pages/         # Page components
-│   │   ├── context/       # React Context providers
-│   │   ├── services/      # API and service integrations
-│   │   └── utils/         # Utility functions
-│   ├── public/            # Static assets
-│   └── build/             # Production build (gitignored)
-├── functions/             # Firebase Cloud Functions
-├── server/                # Backend server (if applicable)
-└── firebase.json          # Firebase configuration
+│   │   ├── components/       # Reusable components
+│   │   │   ├── Navbar.tsx
+│   │   │   ├── SyncStatus.tsx
+│   │   │   └── ...
+│   │   ├── context/          # React Context providers
+│   │   │   ├── AuthContext.tsx      # Supabase authentication
+│   │   │   ├── UserProfileContext.tsx
+│   │   │   └── SyncContext.tsx
+│   │   ├── pages/            # Page components
+│   │   │   ├── DashboardPage.tsx
+│   │   │   ├── PRSPage.tsx
+│   │   │   ├── GapPlanPage.tsx
+│   │   │   ├── ActivitiesPage.tsx
+│   │   │   └── ...
+│   │   ├── services/         # Service layer
+│   │   ├── supabase.ts       # Supabase client config
+│   │   └── App.tsx           # Main app component
+│   ├── package.json
+│   └── vercel.json           # Vercel deployment config
+└── README.md
 ```
 
-## 🛠️ Available Scripts
-
-### Client (React App)
-```bash
-cd client
-
-npm start          # Start development server
-npm run build      # Build for production
-npm test           # Run tests
-```
-
-### Deployment
-```bash
-# Build the client
-cd client
-npm run build
-
-# Deploy to Firebase
-cd ..
-firebase deploy --only hosting
-```
-
-## 👥 Team Workflow
-
-### Getting the Latest Code
-
-**Always pull before starting work:**
-```bash
-git pull origin main
-```
-
-### Making Changes
-
-1. **Create a feature branch** (recommended for larger changes)
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Or work directly on main** (for small fixes)
-   ```bash
-   git checkout main
-   git pull origin main
-   ```
-
-3. **Make your changes and test locally**
-
-4. **Commit your changes**
-   ```bash
-   git add .
-   git commit -m "Description of your changes"
-   ```
-
-5. **Push to GitHub**
-   ```bash
-   git push origin main
-   # Or for feature branches:
-   git push origin feature/your-feature-name
-   ```
-
-### Best Practices
-
-- ✅ **Always pull before starting work** to ensure you have the latest code
-- ✅ **Test locally** before pushing
-- ✅ **Write clear commit messages** describing what changed
-- ✅ **Push frequently** so the team always has the latest code
-- ❌ **Never commit**:
-  - `node_modules/` folders
-  - `build/` folders
-  - `.env` files with secrets
-  - Credential JSON files (service account keys)
-  - Log files
-
-## 🔐 Environment Variables
-
-Create `.env` files in the appropriate directories as needed. These are gitignored and should not be committed.
-
-**Important**: Credential files (like `peccactivitylog-*.json`) should be kept secure and never committed to Git.
-
-## 🗄️ Data Storage
-
-- **Primary Database**: Google BigQuery
-- **Authentication**: Firebase Auth
-- **Hosting**: Firebase Hosting
-
-## 📚 Key Features
+## Features
 
 - **Dashboard**: PECC journey overview and resource management
-- **PRS (Pediatric Readiness Score)**: Assessment and submission to pedsready.org
-- **Gap Plans**: Track and manage improvement plans
-- **Milestones**: Monitor progress through PECC stages
-- **Activities**: Log and track activities
+- **PRS Assessment**: Pediatric Readiness Score tracking (82 questions)
+- **Gap Plans**: Create and manage improvement action plans
+- **Activities**: Log PECC activities and time tracking
+- **Milestones**: Progress through PECC stages (Establish, Implement, Lead, Sustain)
 - **Education**: Educational content for PRS questions
-- **Account Settings**: User profile and preferences
+- **Simulation**: Track simulation exercises and identify gaps
+- **Snapshot**: Analytics and progress visualization
 
-## 🚨 Troubleshooting
+## User Tiers
 
-### Build Issues
+- **PECC**: Hospital staff managing pediatric readiness
+- **PRISM**: Regional coordinators working with multiple hospitals
+
+## Deployment
+
+### Vercel (Recommended)
+
+1. Connect your GitHub repository to Vercel
+2. Set environment variables in Vercel dashboard:
+   - `REACT_APP_SUPABASE_URL`
+   - `REACT_APP_SUPABASE_ANON_KEY`
+3. Deploy automatically on push to main
+
+### Manual Deploy
+
 ```bash
-# Clear cache and reinstall
+npm i -g vercel
 cd client
-rm -rf node_modules
-npm install
-CI=false GENERATE_SOURCEMAP=false npm run build
+vercel
 ```
 
-### Firebase Issues
+## Git Workflow
+
 ```bash
-# Reinstall Firebase CLI
-npm install -g firebase-tools
-firebase login
+# Always pull before starting
+git pull origin main
+
+# Make changes and commit
+git add .
+git commit -m "Description of changes"
+git push origin main
 ```
 
-## 📝 Additional Documentation
+**Never commit:**
+- `node_modules/`
+- `.env` files
+- Credential files
 
-- `BIGQUERY_SETUP.md` - BigQuery configuration
-- `PRODUCTION_DEPLOYMENT_GUIDE.md` - Deployment instructions
-- `SETUP_INSTRUCTIONS.md` - Detailed setup guide
+## Links
 
-## 🔗 Links
-
-- **Live App**: https://impacts-tracker.web.app
-- **GitHub Repository**: https://github.com/BLMichaels/ImPACTS-Web-App
+- **GitHub**: https://github.com/BLMichaels/ImPACTS-Web-App
 - **PedsReady.org**: https://pedsready.org/
-
-## 📧 Support
-
-For issues or questions, please create an issue in the GitHub repository or contact the development team.
