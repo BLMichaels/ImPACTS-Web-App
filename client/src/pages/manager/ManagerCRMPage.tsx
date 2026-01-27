@@ -50,17 +50,8 @@ const ManagerCRMPage: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   useEffect(() => {
-    // Mock data
-    setContacts([
-      { id: '1', type: 'hospital', name: 'Memorial General Hospital', organization: '', email: 'admin@memorial.org', phone: '(555) 123-4567', status: 'Active', lastContact: '2026-01-25', assignedTo: 'Sarah Johnson' },
-      { id: '2', type: 'hospital', name: 'Children\'s Regional Medical Center', organization: '', email: 'info@childrens.org', phone: '(555) 234-5678', status: 'Active', lastContact: '2026-01-20', assignedTo: 'Michael Chen' },
-      { id: '3', type: 'mentor', name: 'Sarah Johnson', organization: 'PRISM Team', email: 'sarah.johnson@example.com', phone: '(555) 111-2222', status: 'Active', lastContact: '2026-01-27', assignedTo: '-' },
-      { id: '4', type: 'mentor', name: 'Michael Chen', organization: 'PRISM Team', email: 'michael.chen@example.com', phone: '(555) 333-4444', status: 'Active', lastContact: '2026-01-26', assignedTo: '-' },
-      { id: '5', type: 'pecc', name: 'Jane Smith', organization: 'Memorial General Hospital', email: 'jane.smith@memorial.org', phone: '(555) 444-5555', status: 'Active', lastContact: '2026-01-24', assignedTo: 'Sarah Johnson' },
-      { id: '6', type: 'pecc', name: 'John Doe', organization: 'Children\'s Regional', email: 'john.doe@childrens.org', phone: '(555) 555-6666', status: 'Active', lastContact: '2026-01-22', assignedTo: 'Michael Chen' },
-      { id: '7', type: 'hospital', name: 'St. Mary\'s Community Hospital', organization: '', email: 'contact@stmarys.org', phone: '(555) 345-6789', status: 'Pending', lastContact: '2026-01-15', assignedTo: 'Unassigned' },
-      { id: '8', type: 'pecc', name: 'Emily Brown', organization: 'St. Mary\'s Community', email: 'emily.brown@stmarys.org', phone: '(555) 666-7777', status: 'Pending', lastContact: '2026-01-10', assignedTo: 'Unassigned' }
-    ]);
+    // Contacts loaded from Supabase when backend is connected; start empty
+    setContacts([]);
   }, []);
 
   const filteredContacts = contacts.filter(contact => {

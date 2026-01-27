@@ -71,53 +71,9 @@ const ManagerMentorsPage: React.FC = () => {
   });
 
   useEffect(() => {
-    // Mock data
-    setMentors([
-      { 
-        id: '1', 
-        firstName: 'Sarah', 
-        lastName: 'Johnson', 
-        email: 'sarah.johnson@example.com',
-        phone: '(555) 111-2222',
-        status: 'active',
-        hospitals: ['Memorial General', 'Children\'s Regional', 'St. Mary\'s'],
-        peccs: 3,
-        hoursThisMonth: 25.5,
-        joinedDate: '2025-06-15'
-      },
-      { 
-        id: '2', 
-        firstName: 'Michael', 
-        lastName: 'Chen', 
-        email: 'michael.chen@example.com',
-        phone: '(555) 333-4444',
-        status: 'active',
-        hospitals: ['County Medical', 'University Hospital', 'Riverside', 'Valley Medical'],
-        peccs: 4,
-        hoursThisMonth: 32.0,
-        joinedDate: '2025-08-01'
-      },
-      { 
-        id: '3', 
-        firstName: 'Emily', 
-        lastName: 'Davis', 
-        email: 'emily.davis@example.com',
-        phone: '(555) 555-6666',
-        status: 'pending',
-        hospitals: [],
-        peccs: 0,
-        hoursThisMonth: 0,
-        joinedDate: '2026-01-20'
-      }
-    ]);
-
-    setHospitals([
-      { id: '1', name: 'Memorial General Hospital' },
-      { id: '2', name: 'Children\'s Regional Medical Center' },
-      { id: '3', name: 'St. Mary\'s Community Hospital' },
-      { id: '4', name: 'County Medical Center' },
-      { id: '5', name: 'University Hospital' }
-    ]);
+    // Mentors and hospitals loaded from Supabase when backend is connected; start empty
+    setMentors([]);
+    setHospitals([]);
   }, []);
 
   const handleInviteMentor = () => {

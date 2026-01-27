@@ -61,24 +61,16 @@ const ManagerDashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock data for now
+    // Stats and mentor summaries loaded from Supabase when backend is connected; start empty
     setStats({
-      totalMentors: 5,
-      totalHospitals: 15,
-      totalPeccs: 12,
-      activitiesThisMonth: 45,
-      hoursThisMonth: 120.5,
-      pendingExpenses: 3
+      totalMentors: 0,
+      totalHospitals: 0,
+      totalPeccs: 0,
+      activitiesThisMonth: 0,
+      hoursThisMonth: 0,
+      pendingExpenses: 0
     });
-
-    setMentorSummaries([
-      { id: '1', name: 'Sarah Johnson', hospitals: 3, peccs: 3, hoursThisMonth: 25.5, lastActivity: '2026-01-26' },
-      { id: '2', name: 'Michael Chen', hospitals: 4, peccs: 2, hoursThisMonth: 32.0, lastActivity: '2026-01-25' },
-      { id: '3', name: 'Emily Davis', hospitals: 2, peccs: 2, hoursThisMonth: 18.25, lastActivity: '2026-01-20' },
-      { id: '4', name: 'James Wilson', hospitals: 3, peccs: 3, hoursThisMonth: 28.0, lastActivity: '2026-01-27' },
-      { id: '5', name: 'Lisa Martinez', hospitals: 3, peccs: 2, hoursThisMonth: 16.75, lastActivity: '2026-01-15' }
-    ]);
-
+    setMentorSummaries([]);
     setLoading(false);
   }, []);
 

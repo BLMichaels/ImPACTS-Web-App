@@ -143,81 +143,49 @@ const MentorHospitalContactsPage: React.FC = () => {
   }, [currentUser]);
 
   const loadData = () => {
-    const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser?.id}`);
-    const savedContacts = localStorage.getItem(`mentorContacts_${currentUser?.id}`);
-    
+    const uid = currentUser?.id;
+    if (!uid) return;
+
+    const savedHospitals = localStorage.getItem(`mentorHospitals_${uid}`);
+    const savedContacts = localStorage.getItem(`mentorContacts_${uid}`);
+
+    // One-time migration: clear old sample/mock data from localStorage
+    const isOldMockHospital = (name: string) =>
+      name === 'Memorial General Hospital' || name === "Children's Regional Medical Center" || name === "St. Mary's Community Hospital";
+    const isOldMockContact = (f: string, l: string) =>
+      (f === 'Jane' && l === 'Smith') || (f === 'John' && l === 'Doe');
+
+    let hospitals: Hospital[] = [];
     if (savedHospitals) {
-      const parsedHospitals = JSON.parse(savedHospitals);
-      setHospitals(parsedHospitals);
-      if (parsedHospitals.length > 0 && !selectedHospital) {
-        setSelectedHospital(parsedHospitals[0]);
+      try {
+        const parsed = JSON.parse(savedHospitals);
+        if (Array.isArray(parsed) && parsed.some((h: { name?: string }) => isOldMockHospital(h?.name || ''))) {
+          localStorage.removeItem(`mentorHospitals_${uid}`);
+          localStorage.removeItem(`mentorContacts_${uid}`);
+        } else {
+          hospitals = Array.isArray(parsed) ? parsed : [];
+        }
+      } catch {
+        hospitals = [];
       }
-    } else {
-      // Default mock data
-      const defaultHospitals: Hospital[] = [
-        {
-          id: '1',
-          name: 'Memorial General Hospital',
-          address: '123 Main St',
-          city: 'Springfield',
-          state: 'IL',
-          phone: '(555) 123-4567',
-          traumaLevel: 'Level II',
-          edSize: 'Medium',
-          notes: ''
-        },
-        {
-          id: '2',
-          name: 'Children\'s Regional Medical Center',
-          address: '456 Oak Ave',
-          city: 'Chicago',
-          state: 'IL',
-          phone: '(555) 987-6543',
-          traumaLevel: 'Level I',
-          edSize: 'Large',
-          notes: ''
-        }
-      ];
-      setHospitals(defaultHospitals);
-      setSelectedHospital(defaultHospitals[0]);
-      localStorage.setItem(`mentorHospitals_${currentUser?.id}`, JSON.stringify(defaultHospitals));
     }
-    
+    setHospitals(hospitals);
+    setSelectedHospital(hospitals.length > 0 ? hospitals[0] : null);
+
+    let contacts: Contact[] = [];
     if (savedContacts) {
-      setContacts(JSON.parse(savedContacts));
-    } else {
-      // Default mock contacts
-      const defaultContacts: Contact[] = [
-        {
-          id: 'c1',
-          hospitalId: '1',
-          firstName: 'Jane',
-          lastName: 'Smith',
-          email: 'jane.smith@memorial.org',
-          phone: '(555) 111-2222',
-          contactStatus: 'Already a PECC',
-          roleAtHospital: 'ED Nurse Manager',
-          isPrimaryContact: true,
-          isActivelyEngaged: true,
-          notes: ''
-        },
-        {
-          id: 'c2',
-          hospitalId: '2',
-          firstName: 'John',
-          lastName: 'Doe',
-          email: 'john.doe@childrens.org',
-          phone: '(555) 333-4444',
-          contactStatus: 'New PECC',
-          roleAtHospital: 'Pediatric Emergency Physician',
-          isPrimaryContact: true,
-          isActivelyEngaged: true,
-          notes: ''
+      try {
+        const parsed = JSON.parse(savedContacts);
+        if (Array.isArray(parsed) && parsed.some((c: { firstName?: string; lastName?: string }) => isOldMockContact(c?.firstName || '', c?.lastName || ''))) {
+          localStorage.removeItem(`mentorContacts_${uid}`);
+        } else {
+          contacts = Array.isArray(parsed) ? parsed : [];
         }
-      ];
-      setContacts(defaultContacts);
-      localStorage.setItem(`mentorContacts_${currentUser?.id}`, JSON.stringify(defaultContacts));
+      } catch {
+        contacts = [];
+      }
     }
+    setContacts(contacts);
   };
 
   const saveHospitals = (newHospitals: Hospital[]) => {

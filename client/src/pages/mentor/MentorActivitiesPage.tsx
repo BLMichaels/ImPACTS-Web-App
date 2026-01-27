@@ -143,19 +143,12 @@ const MentorActivitiesPage: React.FC = () => {
         setActivities(JSON.parse(savedActivities));
       }
       
-      // Load hospitals (mock data for now - will come from Supabase)
+      // Load hospitals from localStorage or Supabase assignments; start empty if none
       const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser.id}`);
       if (savedHospitals) {
         setHospitals(JSON.parse(savedHospitals));
       } else {
-        // Default mock hospitals
-        const mockHospitals = [
-          { id: '1', name: 'Memorial General Hospital' },
-          { id: '2', name: 'Children\'s Regional Medical Center' },
-          { id: '3', name: 'St. Mary\'s Community Hospital' }
-        ];
-        setHospitals(mockHospitals);
-        localStorage.setItem(`mentorHospitals_${currentUser.id}`, JSON.stringify(mockHospitals));
+        setHospitals([]);
       }
     }
   }, [currentUser]);

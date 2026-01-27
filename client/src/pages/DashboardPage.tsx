@@ -105,39 +105,12 @@ interface DepartmentContact {
       const localResourcesKey = `dashboard_resources_${currentUser.uid}`;
       const localResourcesData = localStorage.getItem(localResourcesKey);
       let localResources: Resource[] = localResourcesData ? JSON.parse(localResourcesData) : [];
-      
-      // If no resources exist, create default resources
-      if (localResources.length === 0) {
-        const now = new Date().toISOString();
-        localResources = [
-          {
-            id: 'default-1-new',
-            title: 'Pediatric Readiness Toolkit',
-            url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/',
-            type: 'link' as const,
-            description: 'Comprehensive toolkit for improving pediatric readiness',
-            addedAt: new Date(),
-            tags: ['toolkit', 'pediatric', 'readiness'],
-            category: 'Guidelines',
-            createdAt: now,
-            updatedAt: now
-          },
-          {
-            id: 'default-2-new',
-            title: 'PECC Role Guidelines',
-            url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/readiness-toolkit-checklist/pecc/',
-            type: 'link' as const,
-            description: 'Guidelines for Pediatric Emergency Care Coordinators',
-            addedAt: new Date(),
-            tags: ['guidelines', 'pecc', 'coordination'],
-            category: 'Guidelines',
-            createdAt: now,
-            updatedAt: now
-          }
-        ];
-        localStorage.setItem(localResourcesKey, JSON.stringify(localResources));
+      // One-time migration: clear old default sample resources
+      const oldDefaultTitles = ['Pediatric Readiness Toolkit', 'PECC Role Guidelines'];
+      if (localResources.some((r) => oldDefaultTitles.includes(r.title))) {
+        localStorage.removeItem(localResourcesKey);
+        localResources = [];
       }
-      
       setResources(localResources);
       setIsLoadingResources(false);
     };
@@ -1008,7 +981,7 @@ interface DepartmentContact {
             value={resourceForm.url}
             onChange={(e) => setResourceForm({ ...resourceForm, url: e.target.value })}
             margin="normal"
-            placeholder="https://example.com or upload a file"
+            placeholder="Enter URL or upload a file"
           />
           <input
             type="file"

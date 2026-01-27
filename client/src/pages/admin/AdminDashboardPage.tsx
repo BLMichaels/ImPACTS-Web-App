@@ -56,16 +56,16 @@ const AdminDashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock data
+    // Stats loaded from Supabase when backend is connected; start at zero
     setStats({
-      totalUsers: 52,
-      totalAdmins: 2,
-      totalManagers: 5,
-      totalMentors: 15,
-      totalPeccs: 30,
-      totalHospitals: 45,
-      totalActivities: 1250,
-      totalContacts: 180
+      totalUsers: 0,
+      totalAdmins: 0,
+      totalManagers: 0,
+      totalMentors: 0,
+      totalPeccs: 0,
+      totalHospitals: 0,
+      totalActivities: 0,
+      totalContacts: 0
     });
     setLoading(false);
   }, []);
@@ -181,26 +181,8 @@ const AdminDashboardPage: React.FC = () => {
             <List>
               <ListItem>
                 <ListItemText 
-                  primary="New user registered" 
-                  secondary="john.doe@hospital.org - 5 minutes ago" 
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText 
-                  primary="Hospital added" 
-                  secondary="County Medical Center - 1 hour ago" 
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText 
-                  primary="Mentor assigned" 
-                  secondary="Sarah Johnson → Memorial General - 2 hours ago" 
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText 
-                  primary="Activity logged" 
-                  secondary="Simulation completed - 3 hours ago" 
+                  primary="Recent activity" 
+                  secondary="Activity will appear here as users register and log data." 
                 />
               </ListItem>
             </List>

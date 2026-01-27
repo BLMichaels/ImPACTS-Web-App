@@ -67,18 +67,8 @@ const AdminUsersPage: React.FC = () => {
   });
 
   useEffect(() => {
-    // Mock user data
-    setUsers([
-      { id: '1', firstName: 'Admin', lastName: 'User', email: 'admin@impacts.org', phone: '(555) 000-0001', role: 'admin', status: 'active', lastLogin: '2026-01-27', createdAt: '2025-01-01' },
-      { id: '2', firstName: 'Patricia', lastName: 'Williams', email: 'patricia.williams@example.com', phone: '(555) 999-8888', role: 'manager', status: 'active', lastLogin: '2026-01-27', createdAt: '2025-01-01' },
-      { id: '3', firstName: 'David', lastName: 'Brown', email: 'david.brown@example.com', phone: '(555) 888-7777', role: 'manager', status: 'active', lastLogin: '2026-01-26', createdAt: '2025-03-15' },
-      { id: '4', firstName: 'Sarah', lastName: 'Johnson', email: 'sarah.johnson@example.com', phone: '(555) 111-2222', role: 'mentor', status: 'active', lastLogin: '2026-01-27', createdAt: '2025-06-15' },
-      { id: '5', firstName: 'Michael', lastName: 'Chen', email: 'michael.chen@example.com', phone: '(555) 333-4444', role: 'mentor', status: 'active', lastLogin: '2026-01-26', createdAt: '2025-08-01' },
-      { id: '6', firstName: 'Emily', lastName: 'Davis', email: 'emily.davis@example.com', phone: '(555) 555-6666', role: 'mentor', status: 'pending', lastLogin: null, createdAt: '2026-01-20' },
-      { id: '7', firstName: 'Jane', lastName: 'Smith', email: 'jane.smith@memorial.org', phone: '(555) 444-5555', role: 'pecc', status: 'active', lastLogin: '2026-01-25', createdAt: '2025-07-01' },
-      { id: '8', firstName: 'John', lastName: 'Doe', email: 'john.doe@childrens.org', phone: '(555) 555-6666', role: 'pecc', status: 'active', lastLogin: '2026-01-24', createdAt: '2025-09-01' },
-      { id: '9', firstName: 'Lisa', lastName: 'Anderson', email: 'lisa.anderson@stmarys.org', phone: '(555) 777-8888', role: 'pecc', status: 'inactive', lastLogin: '2025-12-15', createdAt: '2025-10-01' }
-    ]);
+    // Users loaded from Supabase when backend is connected; start empty
+    setUsers([]);
   }, []);
 
   const filteredUsers = users.filter(user => {

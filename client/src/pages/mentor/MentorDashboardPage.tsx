@@ -83,13 +83,9 @@ const MentorDashboardPage: React.FC = () => {
     const savedActivities = localStorage.getItem(`mentorActivities_${currentUser?.id}`);
     const activities = savedActivities ? JSON.parse(savedActivities) : [];
     
-    // Load hospitals from localStorage
+    // Load hospitals from localStorage; start empty when no saved data
     const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser?.id}`);
-    const hospitals = savedHospitals ? JSON.parse(savedHospitals) : [
-      { id: '1', name: 'Memorial General Hospital' },
-      { id: '2', name: 'Children\'s Regional Medical Center' },
-      { id: '3', name: 'St. Mary\'s Community Hospital' }
-    ];
+    const hospitals = savedHospitals ? JSON.parse(savedHospitals) : [];
 
     // Calculate stats for current month
     const now = new Date();
@@ -117,17 +113,20 @@ const MentorDashboardPage: React.FC = () => {
     );
     setRecentActivities(sorted.slice(0, 5));
 
-    // Create hospital summaries
-    const summaries: HospitalSummary[] = hospitals.map((h: { id: string; name: string }) => ({
-      id: h.id,
-      name: h.name,
-      peccName: 'PECC Contact', // Will come from database
-      lastActivity: activities.find((a: RecentActivity & { hospitalIds: string[] }) => 
+    // Create hospital summaries from loaded data
+    const summaries: HospitalSummary[] = hospitals.map((h: { id: string; name: string }) => {
+      const lastAct = activities.find((a: RecentActivity & { hospitalIds?: string[] }) => 
         a.hospitalIds?.includes(h.id)
-      )?.date || null,
-      milestonesCompleted: Math.floor(Math.random() * 5), // Mock data
-      totalMilestones: 5
-    }));
+      );
+      return {
+        id: h.id,
+        name: h.name,
+        peccName: '',
+        lastActivity: lastAct?.date || null,
+        milestonesCompleted: 0,
+        totalMilestones: 0
+      };
+    });
     setHospitalSummaries(summaries);
     
     setLoading(false);

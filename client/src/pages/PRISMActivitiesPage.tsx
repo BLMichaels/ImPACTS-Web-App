@@ -72,79 +72,16 @@ const PRISMActivitiesPage: React.FC = () => {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<PRISMActivity | null>(null);
 
-  // Mock data for PRISM activities
-  const mockActivities: PRISMActivity[] = [
-    {
-      id: '1',
-      hospitalId: '1',
-      hospitalName: 'Children\'s Hospital of Philadelphia',
-      title: 'PRS Assessment Review',
-      description: 'Review and provide feedback on Q4 PRS assessment results',
-      type: 'assessment',
-      status: 'completed',
-      priority: 'high',
-      dueDate: '2024-12-01',
-      completedDate: '2024-11-28',
-      notes: 'Excellent progress on pediatric readiness metrics',
-      createdBy: 'Dr. Smith',
-      createdAt: '2024-11-15'
-    },
-    {
-      id: '2',
-      hospitalId: '2',
-      hospitalName: 'Seattle Children\'s Hospital',
-      title: 'Gap Plan Consultation',
-      description: 'Weekly consultation on gap reduction plan implementation',
-      type: 'consultation',
-      status: 'in-progress',
-      priority: 'medium',
-      dueDate: '2024-12-15',
-      notes: 'Focus on equipment procurement and staff training',
-      createdBy: 'Dr. Johnson',
-      createdAt: '2024-11-20'
-    },
-    {
-      id: '3',
-      hospitalId: '3',
-      hospitalName: 'Texas Children\'s Hospital',
-      title: 'Staff Training Session',
-      description: 'Conduct pediatric emergency care training for ED staff',
-      type: 'training',
-      status: 'pending',
-      priority: 'high',
-      dueDate: '2024-12-20',
-      createdBy: 'Dr. Williams',
-      createdAt: '2024-11-25'
-    },
-    {
-      id: '4',
-      hospitalId: '1',
-      hospitalName: 'Children\'s Hospital of Philadelphia',
-      title: 'Quarterly Review Meeting',
-      description: 'Quarterly progress review and goal setting for next quarter',
-      type: 'review',
-      status: 'pending',
-      priority: 'medium',
-      dueDate: '2024-12-30',
-      createdBy: 'Dr. Smith',
-      createdAt: '2024-11-30'
-    }
-  ];
-
-  const hospitals = [
-    { id: '1', name: 'Children\'s Hospital of Philadelphia' },
-    { id: '2', name: 'Seattle Children\'s Hospital' },
-    { id: '3', name: 'Texas Children\'s Hospital' }
-  ];
+  const hospitals: { id: string; name: string }[] = [];
 
   useEffect(() => {
-    // Load activities from localStorage or use mock data
+    // Load activities from localStorage; start empty when no saved data
     const email = (userProfile as any)?.email || '';
     const savedActivities = localStorage.getItem(`prismActivities_${email}`);
     if (savedActivities) {
       setActivities(JSON.parse(savedActivities));
     } else {
-      setActivities(mockActivities);
+      setActivities([]);
     }
   }, [(userProfile as any)?.email]);
 

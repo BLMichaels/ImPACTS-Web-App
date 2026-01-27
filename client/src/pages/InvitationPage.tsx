@@ -56,23 +56,23 @@ const InvitationPage: React.FC = () => {
       // In production, this would fetch from Supabase
       // For now, simulate validation
       
-      // Mock invitation data based on code
+      // In production, fetch invitation from Supabase by code
+      // Placeholder: require valid-looking code; email filled by user
       const mockInvitation: InvitationData = {
         code: code,
-        email: 'invited@example.com',
-        role: code.startsWith('M') ? 'mentor' : 'pecc',
-        hospitalName: code.startsWith('P') ? 'Memorial General Hospital' : undefined,
-        mentorName: code.startsWith('P') ? 'Sarah Johnson' : undefined,
+        email: '',
+        role: code.toUpperCase().startsWith('M') ? 'mentor' : 'pecc',
+        hospitalName: undefined,
+        mentorName: undefined,
         status: 'pending'
       };
 
-      // Simulate checking if valid
       if (code.length < 6) {
         setError('This invitation link is invalid or has expired.');
         setInvitation(null);
       } else {
         setInvitation(mockInvitation);
-        setFormData(prev => ({ ...prev, email: mockInvitation.email }));
+        setFormData(prev => ({ ...prev, email: '' }));
       }
     } catch (err) {
       setError('Failed to validate invitation. Please try again.');

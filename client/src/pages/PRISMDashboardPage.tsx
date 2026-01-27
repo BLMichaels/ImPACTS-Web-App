@@ -44,30 +44,16 @@ const PRISMDashboardPage: React.FC = () => {
     );
   }
 
-  // Mock data for PRISM dashboard
-  const managedHospitals = [
-    { id: 1, name: 'Children\'s Hospital of Philadelphia', region: 'Northeast', lastActive: '2 days ago', status: 'Active' },
-    { id: 2, name: 'Seattle Children\'s Hospital', region: 'Northwest', lastActive: '1 week ago', status: 'Active' },
-    { id: 3, name: 'Texas Children\'s Hospital', region: 'South', lastActive: '3 days ago', status: 'Active' }
-  ];
-
-  const recentActivities = [
-    { id: 1, hospital: 'Children\'s Hospital of Philadelphia', action: 'Reviewed PRS Assessment', time: '2 hours ago' },
-    { id: 2, hospital: 'Seattle Children\'s Hospital', action: 'Updated Gap Plan', time: '1 day ago' },
-    { id: 3, hospital: 'Texas Children\'s Hospital', action: 'Scheduled Check-in Call', time: '2 days ago' }
-  ];
-
-  const upcomingTasks = [
-    { id: 1, task: 'Monthly Review - Children\'s Hospital of Philadelphia', dueDate: 'Dec 15, 2024' },
-    { id: 2, task: 'Quarterly Assessment - Seattle Children\'s Hospital', dueDate: 'Dec 20, 2024' },
-    { id: 3, task: 'Training Session - New PECC Onboarding', dueDate: 'Dec 25, 2024' }
-  ];
+  // Data loaded from Supabase/localStorage when connected; start empty
+  const managedHospitals: { id: number; name: string; region: string; lastActive: string; status: string }[] = [];
+  const recentActivities: { id: number; hospital: string; action: string; time: string }[] = [];
+  const upcomingTasks: { id: number; task: string; dueDate: string }[] = [];
 
   const stats = {
     totalHospitals: managedHospitals.length,
     activeHospitals: managedHospitals.filter(h => h.status === 'Active').length,
-    totalActivities: 47,
-    completedAssessments: 12
+    totalActivities: 0,
+    completedAssessments: 0
   };
 
   return (

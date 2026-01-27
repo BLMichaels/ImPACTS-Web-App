@@ -69,19 +69,8 @@ const AdminCRMPage: React.FC = () => {
   });
 
   useEffect(() => {
-    // Mock comprehensive CRM data
-    setContacts([
-      { id: '1', type: 'organization', name: 'State Health Department', organization: '', email: 'contact@health.gov', phone: '(555) 000-0001', status: 'Active', region: 'Statewide', createdAt: '2025-01-01', notes: '' },
-      { id: '2', type: 'hospital', name: 'Memorial General Hospital', organization: '', email: 'admin@memorial.org', phone: '(555) 123-4567', status: 'Active', region: 'Central', createdAt: '2025-06-15', notes: '' },
-      { id: '3', type: 'hospital', name: 'Children\'s Regional Medical Center', organization: '', email: 'info@childrens.org', phone: '(555) 234-5678', status: 'Active', region: 'North', createdAt: '2025-06-20', notes: '' },
-      { id: '4', type: 'manager', name: 'Patricia Williams', organization: 'PRISM Program', email: 'patricia.williams@example.com', phone: '(555) 999-8888', status: 'Active', region: 'All', createdAt: '2025-01-01', notes: '' },
-      { id: '5', type: 'mentor', name: 'Sarah Johnson', organization: 'PRISM Team', email: 'sarah.johnson@example.com', phone: '(555) 111-2222', status: 'Active', region: 'Central', createdAt: '2025-06-15', notes: '' },
-      { id: '6', type: 'mentor', name: 'Michael Chen', organization: 'PRISM Team', email: 'michael.chen@example.com', phone: '(555) 333-4444', status: 'Active', region: 'North', createdAt: '2025-08-01', notes: '' },
-      { id: '7', type: 'pecc', name: 'Jane Smith', organization: 'Memorial General Hospital', email: 'jane.smith@memorial.org', phone: '(555) 444-5555', status: 'Active', region: 'Central', createdAt: '2025-07-01', notes: '' },
-      { id: '8', type: 'pecc', name: 'John Doe', organization: 'Children\'s Regional', email: 'john.doe@childrens.org', phone: '(555) 555-6666', status: 'Active', region: 'North', createdAt: '2025-09-01', notes: '' },
-      { id: '9', type: 'other', name: 'Dr. Robert Lee', organization: 'State Medical Association', email: 'robert.lee@sma.org', phone: '(555) 777-8888', status: 'Active', region: 'Statewide', createdAt: '2025-03-15', notes: 'Consultant' },
-      { id: '10', type: 'organization', name: 'Regional EMS Council', organization: '', email: 'info@regionalems.org', phone: '(555) 888-9999', status: 'Active', region: 'Regional', createdAt: '2025-02-01', notes: '' }
-    ]);
+    // Contacts loaded from Supabase when backend is connected; start empty
+    setContacts([]);
   }, []);
 
   const filteredContacts = contacts.filter(contact => {
