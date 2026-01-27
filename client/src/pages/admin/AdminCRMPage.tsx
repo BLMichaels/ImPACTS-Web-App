@@ -60,7 +60,7 @@ import {
   Contacts as ContactsIcon
 } from '@mui/icons-material';
 
-export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'other';
+export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
 
 interface Contact {
   id: string;
@@ -87,6 +87,7 @@ const TYPE_LABELS: Record<ContactType, string> = {
   manager: 'Manager',
   mentor: 'Mentor',
   pecc: 'PECC',
+  staff: 'Staff',
   other: 'Other'
 };
 
@@ -96,6 +97,7 @@ const TYPE_COLORS: Record<ContactType, string> = {
   manager: '#9c27b0',
   mentor: '#ff9800',
   pecc: '#e91e63',
+  staff: '#00bcd4',
   other: '#607d8b'
 };
 
@@ -204,7 +206,8 @@ const AdminCRMPage: React.FC = () => {
       else if (tabValue === 3 && contact.type !== 'manager') return false;
       else if (tabValue === 4 && contact.type !== 'mentor') return false;
       else if (tabValue === 5 && contact.type !== 'pecc') return false;
-      else if (tabValue === 6 && contact.type !== 'other') return false;
+      else if (tabValue === 6 && contact.type !== 'staff') return false;
+      else if (tabValue === 7 && contact.type !== 'other') return false;
 
       if (statusFilter.length && !statusFilter.includes(contact.status)) return false;
       if (regionFilter.length && !regionFilter.includes(contact.region)) return false;
@@ -298,6 +301,7 @@ const AdminCRMPage: React.FC = () => {
     manager: contacts.filter(c => c.type === 'manager').length,
     mentor: contacts.filter(c => c.type === 'mentor').length,
     pecc: contacts.filter(c => c.type === 'pecc').length,
+    staff: contacts.filter(c => c.type === 'staff').length,
     other: contacts.filter(c => c.type === 'other').length,
     pending: contacts.filter(c => c.status === 'Pending').length
   }), [contacts]);
@@ -357,12 +361,14 @@ const AdminCRMPage: React.FC = () => {
           { key: 'manager', label: 'Managers', count: summaryCounts.manager },
           { key: 'mentor', label: 'Mentors', count: summaryCounts.mentor },
           { key: 'pecc', label: 'PECCs', count: summaryCounts.pecc },
+          { key: 'staff', label: 'Staff', count: summaryCounts.staff },
           { key: 'other', label: 'Other', count: summaryCounts.other },
           { key: 'pending', label: 'Pending', count: summaryCounts.pending }
         ].map(({ key, label, count }) => {
           const isPending = key === 'pending';
           const isAll = key === 'all';
-          const isActive = isPending ? activePendingFilter : isAll ? tabValue === 0 && !activePendingFilter : tabValue > 0 && ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'other'][tabValue - 1] === key;
+          const typeKeys = ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'];
+          const isActive = isPending ? activePendingFilter : isAll ? tabValue === 0 && !activePendingFilter : tabValue > 0 && typeKeys[tabValue - 1] === key;
           const borderColor = isPending ? theme.palette.warning.main : isAll ? theme.palette.primary.main : TYPE_COLORS[key as ContactType] || theme.palette.grey[400];
           return (
             <Grid item xs={6} sm={4} md={2} key={key}>
@@ -370,7 +376,7 @@ const AdminCRMPage: React.FC = () => {
                 onClick={() => {
                   if (isPending) { setTabValue(0); setStatusFilter(['Pending']); }
                   else if (isAll) { setTabValue(0); setStatusFilter([]); }
-                  else { setTabValue(['organization', 'hospital', 'manager', 'mentor', 'pecc', 'other'].indexOf(key) + 1); setStatusFilter([]); }
+                  else { setTabValue(typeKeys.indexOf(key) + 1); setStatusFilter([]); }
                 }}
                 sx={{
                   p: 2,
@@ -406,6 +412,7 @@ const AdminCRMPage: React.FC = () => {
             <Tab label="Managers" />
             <Tab label="Mentors" />
             <Tab label="PECCs" />
+            <Tab label="Staff" />
             <Tab label="Other" />
           </Tabs>
         </Box>
