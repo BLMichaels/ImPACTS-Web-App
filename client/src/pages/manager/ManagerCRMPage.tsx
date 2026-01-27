@@ -164,7 +164,7 @@ const ManagerCRMPage: React.FC = () => {
 
   useEffect(() => {
     try {
-      localStorage.setItem(CRM_PREFS_KEY, JSON.stringify({ viewMode, visibleColumns: [...visibleColumns] }));
+      localStorage.setItem(CRM_PREFS_KEY, JSON.stringify({ viewMode, visibleColumns: Array.from(visibleColumns) }));
     } catch {}
   }, [viewMode, visibleColumns]);
 

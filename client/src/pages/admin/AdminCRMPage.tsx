@@ -180,7 +180,7 @@ const AdminCRMPage: React.FC = () => {
     try {
       localStorage.setItem(CRM_PREFS_KEY, JSON.stringify({
         viewMode,
-        visibleColumns: [...visibleColumns]
+        visibleColumns: Array.from(visibleColumns)
       }));
     } catch {}
   }, [viewMode, visibleColumns]);
