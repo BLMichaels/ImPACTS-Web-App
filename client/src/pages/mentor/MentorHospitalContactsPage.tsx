@@ -32,7 +32,8 @@ import {
   Tabs,
   Alert,
   Snackbar,
-  CircularProgress
+  CircularProgress,
+  Autocomplete
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
@@ -164,16 +165,43 @@ const MentorHospitalContactsPage: React.FC = () => {
     setCrmLoading(true);
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from('hospitals')
-          .select('id, facility_id, name, address, city, state, phone, trauma_level, ed_size, notes')
-          .limit(3000);
-        if (!mounted) return;
-        if (error || !data) {
-          setCrmHospitals([]);
-          return;
+        // Fetch all hospitals without limit to ensure all states are available
+        let allHospitals: CrmHospitalRow[] = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+
+        while (hasMore && mounted) {
+          const { data, error } = await supabase
+            .from('hospitals')
+            .select('id, facility_id, name, address, city, state, phone, trauma_level, ed_size, notes')
+            .range(from, from + pageSize - 1)
+            .order('state', { ascending: true })
+            .order('city', { ascending: true })
+            .order('name', { ascending: true });
+
+          if (!mounted) return;
+          if (error) {
+            console.error('Error fetching hospitals:', error);
+            break;
+          }
+          if (!data || data.length === 0) {
+            hasMore = false;
+          } else {
+            allHospitals = [...allHospitals, ...(data as unknown as CrmHospitalRow[])];
+            if (data.length < pageSize) {
+              hasMore = false;
+            } else {
+              from += pageSize;
+            }
+          }
         }
-        setCrmHospitals((data as unknown) as CrmHospitalRow[]);
+
+        if (!mounted) return;
+        setCrmHospitals(allHospitals);
+      } catch (err) {
+        console.error('Error loading hospitals:', err);
+        if (mounted) setCrmHospitals([]);
       } finally {
         if (mounted) setCrmLoading(false);
       }
@@ -770,52 +798,49 @@ const MentorHospitalContactsPage: React.FC = () => {
               ) : (
                 <>
                   <Grid item xs={12}>
-                    <FormControl fullWidth>
-                      <InputLabel>State</InputLabel>
-                      <Select
-                        value={addState}
-                        onChange={(e) => { setAddState(e.target.value); setAddCity(''); setAddHospitalId(''); }}
-                        label="State"
-                      >
-                        <MenuItem value="">—</MenuItem>
-                        {addStates.map((s) => (
-                          <MenuItem key={s} value={s}>{s}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      options={addStates}
+                      value={addState || null}
+                      onChange={(_, newValue) => {
+                        setAddState(newValue || '');
+                        setAddCity('');
+                        setAddHospitalId('');
+                      }}
+                      renderInput={(params) => (
+                        <TextField {...params} label="State" placeholder="Select or type to search" />
+                      )}
+                      fullWidth
+                    />
                   </Grid>
                   <Grid item xs={12}>
-                    <FormControl fullWidth disabled={!addState}>
-                      <InputLabel>City</InputLabel>
-                      <Select
-                        value={addCity}
-                        onChange={(e) => { setAddCity(e.target.value); setAddHospitalId(''); }}
-                        label="City"
-                      >
-                        <MenuItem value="">—</MenuItem>
-                        {addCities.map((c) => (
-                          <MenuItem key={c} value={c}>{c}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      options={addCities}
+                      value={addCity || null}
+                      onChange={(_, newValue) => {
+                        setAddCity(newValue || '');
+                        setAddHospitalId('');
+                      }}
+                      renderInput={(params) => (
+                        <TextField {...params} label="City" placeholder="Select or type to search" disabled={!addState} />
+                      )}
+                      fullWidth
+                      disabled={!addState}
+                    />
                   </Grid>
                   <Grid item xs={12}>
-                    <FormControl fullWidth disabled={!addCity}>
-                      <InputLabel>Hospital</InputLabel>
-                      <Select
-                        value={addHospitalId}
-                        onChange={(e) => setAddHospitalId(e.target.value)}
-                        label="Hospital"
-                      >
-                        <MenuItem value="">—</MenuItem>
-                        {addHospitalOptions.map((h) => {
-                          const hid = String(h.facility_id ?? h.id ?? '');
-                          return (
-                            <MenuItem key={hid} value={hid}>{h.name}</MenuItem>
-                          );
-                        })}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      options={addHospitalOptions}
+                      value={addHospitalOptions.find(h => String(h.facility_id ?? h.id ?? '') === addHospitalId) || null}
+                      onChange={(_, newValue) => {
+                        setAddHospitalId(newValue ? String(newValue.facility_id ?? newValue.id ?? '') : '');
+                      }}
+                      getOptionLabel={(option) => option.name || 'Unknown'}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Hospital" placeholder="Select or type to search" disabled={!addCity} />
+                      )}
+                      fullWidth
+                      disabled={!addCity}
+                    />
                   </Grid>
                 </>
               )}
