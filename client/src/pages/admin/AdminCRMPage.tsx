@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../supabase';
+import { useAuth } from '../../context/AuthContext';
+import { useUserProfile } from '../../context/UserProfileContext';
+import { UserRole } from '../../types/database';
 import {
   Box,
   Typography,
@@ -66,15 +69,34 @@ import {
   Contacts as ContactsIcon,
   KeyboardArrowUp as ArrowUpIcon,
   OpenInFull as OpenInFullIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Notifications as NotificationsIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
+
+export type ActivityLogType = 'communication' | 'visit' | 'follow_up';
+
+export interface NotesLogEntry {
+  date: string;
+  text: string;
+}
+
+export interface ActivityLogEntry {
+  type: ActivityLogType;
+  date: string;
+  text: string;
+}
+
+const PEOPLE_TYPES: ContactType[] = ['manager', 'mentor', 'pecc', 'staff', 'other'];
+const isPersonType = (t: ContactType) => PEOPLE_TYPES.includes(t);
 
 interface Contact {
   id: string;
   type: ContactType;
   name: string;
+  firstName?: string;
+  lastName?: string;
   organization: string;
   email: string;
   phone: string;
@@ -84,6 +106,8 @@ interface Contact {
   updatedAt?: string;
   lastContactAt?: string;
   notes: string;
+  notesLog?: NotesLogEntry[];
+  activityLog?: ActivityLogEntry[];
   tags?: string[];
   facilityId?: string;
   address?: string;
@@ -93,10 +117,21 @@ interface Contact {
   county?: string;
   hospitalType?: string;
   ownership?: string;
+  hospitalSystem?: string;
+  linkedOrganizationIds?: string[];
+  linkedHospitalIds?: string[];
   customFields?: Record<string, string>;
 }
 
-type SortField = 'name' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId';
+function contactDisplayName(c: Contact): string {
+  if (isPersonType(c.type) && (c.firstName != null || c.lastName != null)) {
+    const parts = [c.lastName, c.firstName].filter(Boolean);
+    return parts.length ? parts.join(', ') : (c.name || '—');
+  }
+  return c.name || '—';
+}
+
+type SortField = 'name' | 'firstName' | 'lastName' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId' | 'hospitalSystem';
 type SortOrder = 'asc' | 'desc';
 
 const TYPE_LABELS: Record<ContactType, string> = {
@@ -122,10 +157,13 @@ const TYPE_COLORS: Record<ContactType, string> = {
 const CONTACT_TYPES: ContactType[] = ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'];
 
 const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
-  { id: 'name', label: 'Name', sortable: true, defaultVisible: true },
+  { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
+  { id: 'lastName', label: 'Last Name', sortable: true, defaultVisible: true },
+  { id: 'name', label: 'Name', sortable: true, defaultVisible: false },
   { id: 'type', label: 'Type', sortable: true, defaultVisible: true },
   { id: 'facilityId', label: 'Facility ID', sortable: true, defaultVisible: true },
   { id: 'organization', label: 'Organization', sortable: true, defaultVisible: true },
+  { id: 'hospitalSystem', label: 'Hospital System', sortable: true, defaultVisible: false },
   { id: 'email', label: 'Email', sortable: true, defaultVisible: true },
   { id: 'phone', label: 'Phone', sortable: false, defaultVisible: true },
   { id: 'region', label: 'Region', sortable: true, defaultVisible: true },
@@ -136,10 +174,13 @@ const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: 
 ];
 
 const EXPORT_COLUMNS: { id: string; label: string }[] = [
+  { id: 'firstName', label: 'First Name' },
+  { id: 'lastName', label: 'Last Name' },
   { id: 'name', label: 'Name' },
   { id: 'type', label: 'Type' },
   { id: 'facilityId', label: 'Facility ID' },
   { id: 'organization', label: 'Organization' },
+  { id: 'hospitalSystem', label: 'Hospital System' },
   { id: 'email', label: 'Email' },
   { id: 'phone', label: 'Phone' },
   { id: 'region', label: 'Region' },
@@ -180,8 +221,20 @@ const OPTIONS_FIELD_TYPES: CustomFieldType[] = ['radio', 'dropdown', 'dropdown_c
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250, 1000, 'all'] as const;
 type PageSize = number | 'all';
 
+type CrmReminder = { id: string; contact_id: string; contact_name: string | null; remind_at: string; title: string; created_at: string };
+
+const ACTIVITY_TYPE_LABELS: Record<ActivityLogType, string> = {
+  communication: 'Communication',
+  visit: 'Visit',
+  follow_up: 'Follow-up'
+};
+
 const AdminCRMPage: React.FC = () => {
   const theme = useTheme();
+  const { currentUser } = useAuth();
+  const { actualRole } = useUserProfile();
+  const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
+
   const [tabValue, setTabValue] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -208,7 +261,7 @@ const AdminCRMPage: React.FC = () => {
     } catch {}
     return 'table';
   });
-  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortField, setSortField] = useState<SortField>('lastName');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
@@ -244,12 +297,17 @@ const AdminCRMPage: React.FC = () => {
   const [formData, setFormData] = useState({
     type: 'other' as ContactType,
     name: '',
+    firstName: '',
+    lastName: '',
     organization: '',
     email: '',
     phone: '',
-    status: 'Active',
+    status: 'Active' as string,
     region: '',
     notes: '',
+    hospitalSystem: '',
+    linkedOrganizationIds: [] as string[],
+    linkedHospitalIds: [] as string[],
     customFields: {} as Record<string, string>
   });
 
@@ -292,6 +350,16 @@ const AdminCRMPage: React.FC = () => {
   const [exportScope, setExportScope] = useState<'all' | 'selected'>('all');
   const [exportColumnIds, setExportColumnIds] = useState<string[]>(() => EXPORT_COLUMNS.map(c => c.id));
 
+  const [reminders, setReminders] = useState<CrmReminder[]>([]);
+  const [remindersLoading, setRemindersLoading] = useState(false);
+  const [myRemindersOpen, setMyRemindersOpen] = useState(false);
+  const [addNoteText, setAddNoteText] = useState('');
+  const [addActivityType, setAddActivityType] = useState<ActivityLogType>('communication');
+  const [addActivityText, setAddActivityText] = useState('');
+  const [addActivityDate, setAddActivityDate] = useState('');
+  const [addReminderDate, setAddReminderDate] = useState('');
+  const [addReminderTitle, setAddReminderTitle] = useState('');
+
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -314,6 +382,18 @@ const AdminCRMPage: React.FC = () => {
             const organization = String(row.company_name ?? '');
             const region = String(row.region ?? '');
             const created = row.created_at ? String(row.created_at).split('T')[0] : new Date().toISOString().split('T')[0];
+            const legacyNotes = row.notes != null ? String(row.notes) : '';
+            const rawNotesLog = row.notes_log;
+            const rawActivityLog = row.activity_log;
+            let notesLog: NotesLogEntry[] = Array.isArray(rawNotesLog)
+              ? (rawNotesLog as unknown[]).filter((e): e is NotesLogEntry => typeof e === 'object' && e != null && 'date' in e && 'text' in e).map(e => ({ date: String((e as NotesLogEntry).date), text: String((e as NotesLogEntry).text) }))
+              : [];
+            let activityLog: ActivityLogEntry[] = Array.isArray(rawActivityLog)
+              ? (rawActivityLog as unknown[]).filter((e): e is ActivityLogEntry => typeof e === 'object' && e != null && 'type' in e && 'date' in e && 'text' in e).map(e => ({ type: (e as ActivityLogEntry).type as ActivityLogType, date: String((e as ActivityLogEntry).date), text: String((e as ActivityLogEntry).text) }))
+              : [];
+            if (legacyNotes.trim() && notesLog.length === 0) {
+              notesLog = [{ date: created, text: legacyNotes.trim() }];
+            }
             list.push({
               id,
               type: 'hospital',
@@ -324,7 +404,9 @@ const AdminCRMPage: React.FC = () => {
               status: 'Active',
               region,
               createdAt: created,
-              notes: '',
+              notes: legacyNotes,
+              notesLog,
+              activityLog,
               facilityId: row.facility_id != null ? String(row.facility_id) : undefined,
               address: row.address != null ? String(row.address) : undefined,
               city: row.city != null ? String(row.city) : undefined,
@@ -333,6 +415,7 @@ const AdminCRMPage: React.FC = () => {
               county: row.county != null ? String(row.county) : undefined,
               hospitalType: row.hospital_type != null ? String(row.hospital_type) : undefined,
               ownership: row.ownership != null ? String(row.ownership) : undefined,
+              hospitalSystem: row.hospital_system != null ? String(row.hospital_system) : undefined,
               customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined
             });
           }
@@ -366,6 +449,72 @@ const AdminCRMPage: React.FC = () => {
     } catch {}
   }, [customFieldDefs]);
 
+  useEffect(() => {
+    if (!canSeeReminders || !currentUser?.id) {
+      setReminders([]);
+      return;
+    }
+    let cancelled = false;
+    setRemindersLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from('crm_reminders')
+        .select('id, contact_id, contact_name, remind_at, title, created_at')
+        .eq('user_id', currentUser.id)
+        .gte('remind_at', new Date().toISOString());
+      if (cancelled) return;
+      setRemindersLoading(false);
+      if (error) {
+        setReminders([]);
+        return;
+      }
+      setReminders((data as CrmReminder[]) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [canSeeReminders, currentUser?.id]);
+
+  const persistNotesAndActivity = useCallback(async (c: Contact) => {
+    if (c.type !== 'hospital' || !(c.facilityId ?? c.id)) return;
+    const key = String(c.facilityId ?? c.id);
+    const notesLog = c.notesLog ?? [];
+    const activityLog = c.activityLog ?? [];
+    await supabase.from('hospitals').update({ notes_log: notesLog, activity_log: activityLog }).eq('facility_id', key);
+  }, []);
+
+  const addNote = useCallback((c: Contact, entry: NotesLogEntry) => {
+    const nextLog = [...(c.notesLog ?? []), entry].sort((a, b) => (b.date.localeCompare(a.date)));
+    const updated = { ...c, notesLog: nextLog };
+    setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
+    setDetailContact(prev => (prev?.id === c.id ? updated : prev));
+    persistNotesAndActivity(updated);
+  }, [persistNotesAndActivity]);
+
+  const addActivityEntry = useCallback((c: Contact, entry: ActivityLogEntry) => {
+    const nextLog = [...(c.activityLog ?? []), entry].sort((a, b) => (b.date.localeCompare(a.date)));
+    const updated = { ...c, activityLog: nextLog };
+    setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
+    setDetailContact(prev => (prev?.id === c.id ? updated : prev));
+    persistNotesAndActivity(updated);
+  }, [persistNotesAndActivity]);
+
+  const addReminder = useCallback(async (contactId: string, contactName: string, remind_at: string, title: string) => {
+    if (!currentUser?.id) return;
+    const { data, error } = await supabase.from('crm_reminders').insert({
+      user_id: currentUser.id,
+      contact_id: contactId,
+      contact_name: contactName || null,
+      remind_at: new Date(remind_at).toISOString(),
+      title: title || 'Follow up'
+    }).select('id, contact_id, contact_name, remind_at, title, created_at').single();
+    if (error) return;
+    setReminders(prev => [...prev, data as CrmReminder]);
+  }, [currentUser?.id]);
+
+  const deleteReminder = useCallback(async (id: string) => {
+    await supabase.from('crm_reminders').delete().eq('id', id);
+    setReminders(prev => prev.filter(r => r.id !== id));
+  }, []);
+
   const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))].sort() as string[], [contacts]);
   const states = useMemo(() => [...new Set(contacts.map(c => c.state).filter(Boolean))].sort() as string[], [contacts]);
   const hospitalTypes = useMemo(() => [...new Set(contacts.map(c => c.hospitalType).filter(Boolean))].sort() as string[], [contacts]);
@@ -375,10 +524,13 @@ const AdminCRMPage: React.FC = () => {
       const matchesSearch =
         !searchQuery ||
         contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (contact.firstName ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (contact.lastName ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         contact.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (contact.organization || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (contact.region || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (contact.notes || '').toLowerCase().includes(searchQuery.toLowerCase());
+        (contact.notes || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (contact.hospitalSystem ?? '').toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
       if (tabValue === 0) {}
@@ -398,8 +550,12 @@ const AdminCRMPage: React.FC = () => {
     });
 
     list = [...list].sort((a, b) => {
-      let av: string | number = a[sortField] ?? '';
-      let bv: string | number = b[sortField] ?? '';
+      let av: string | number = (a as Record<string, unknown>)[sortField] ?? '';
+      let bv: string | number = (b as Record<string, unknown>)[sortField] ?? '';
+      if (sortField === 'name') {
+        av = contactDisplayName(a);
+        bv = contactDisplayName(b);
+      }
       if (sortField === 'createdAt') {
         av = new Date(av as string).getTime();
         bv = new Date(bv as string).getTime();
@@ -408,6 +564,11 @@ const AdminCRMPage: React.FC = () => {
       if (typeof bv === 'string') bv = bv.toLowerCase();
       if (av < bv) return sortOrder === 'asc' ? -1 : 1;
       if (av > bv) return sortOrder === 'asc' ? 1 : -1;
+      if (sortField === 'lastName' || sortField === 'firstName') {
+        const aOther = sortField === 'lastName' ? (a.firstName ?? '') : (a.lastName ?? '');
+        const bOther = sortField === 'lastName' ? (b.firstName ?? '') : (b.lastName ?? '');
+        return sortOrder === 'asc' ? aOther.localeCompare(bOther) : bOther.localeCompare(aOther);
+      }
       return 0;
     });
     return list;
@@ -438,16 +599,22 @@ const AdminCRMPage: React.FC = () => {
   };
 
   const handleSaveContact = async () => {
+    const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
     const payload: Contact = {
       id: editingContact?.id ?? `contact_${Date.now()}`,
       type: formData.type,
-      name: formData.name,
+      name: displayName || formData.name,
+      firstName: isPersonType(formData.type) ? formData.firstName : undefined,
+      lastName: isPersonType(formData.type) ? formData.lastName : undefined,
       organization: formData.organization,
       email: formData.email,
       phone: formData.phone,
       status: formData.status,
       region: formData.region,
       notes: formData.notes,
+      hospitalSystem: formData.type === 'hospital' ? formData.hospitalSystem : undefined,
+      linkedOrganizationIds: isPersonType(formData.type) ? formData.linkedOrganizationIds : undefined,
+      linkedHospitalIds: isPersonType(formData.type) ? formData.linkedHospitalIds : undefined,
       createdAt: editingContact?.createdAt ?? new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
       ...(Object.keys(formData.customFields || {}).length ? { customFields: formData.customFields } : {})
@@ -455,10 +622,14 @@ const AdminCRMPage: React.FC = () => {
     if (editingContact?.type === 'hospital' && (editingContact.facilityId || editingContact.id)) {
       setSaveInProgress(true);
       const key = String(editingContact.facilityId ?? editingContact.id);
-      const updatePayload: { region: string | null; custom_fields?: Record<string, string> } = { region: formData.region || null };
+      const currentInState = contacts.find(c => c.id === editingContact.id);
+      const updatePayload: { region: string | null; custom_fields?: Record<string, string>; notes_log?: NotesLogEntry[]; activity_log?: ActivityLogEntry[]; hospital_system?: string | null } = { region: formData.region || null };
       if (formData.customFields && Object.keys(formData.customFields).length > 0) {
         updatePayload.custom_fields = formData.customFields;
       }
+      updatePayload.notes_log = currentInState?.notesLog ?? editingContact.notesLog ?? [];
+      updatePayload.activity_log = currentInState?.activityLog ?? editingContact.activityLog ?? [];
+      updatePayload.hospital_system = formData.hospitalSystem?.trim() || null;
       const { error } = await supabase
         .from('hospitals')
         .update(updatePayload)
@@ -477,7 +648,7 @@ const AdminCRMPage: React.FC = () => {
     }
     setDialogOpen(false);
     setEditingContact(null);
-    setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', customFields: {} });
+    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} });
   };
 
   const openDetail = (c: Contact) => {
@@ -501,6 +672,7 @@ const AdminCRMPage: React.FC = () => {
     const valueFor = (c: Contact, id: string): string => {
       if (customFieldDefs.some(d => d.id === id)) return c.customFields?.[id] ?? '';
       if (id === 'type') return TYPE_LABELS[c.type];
+      if (id === 'name') return contactDisplayName(c);
       const v = (c as unknown as Record<string, unknown>)[id];
       return v != null ? String(v) : '';
     };
@@ -575,6 +747,13 @@ const AdminCRMPage: React.FC = () => {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {canSeeReminders && (
+            <Tooltip title="View your follow-up reminders across all contacts">
+              <Button startIcon={<NotificationsIcon />} onClick={() => setMyRemindersOpen(true)} size="medium" color={reminders.length > 0 ? 'primary' : 'inherit'}>
+                My reminders {reminders.length > 0 ? `(${reminders.length})` : ''}
+              </Button>
+            </Tooltip>
+          )}
           <Tooltip title="Choose columns and export all filtered or selected contacts">
             <Button startIcon={<DownloadIcon />} onClick={() => setExportDialogOpen(true)} size="medium">
               Export
@@ -585,7 +764,7 @@ const AdminCRMPage: React.FC = () => {
               Manage custom fields
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', customFields: {} }); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -794,7 +973,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', customFields: {} }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -814,11 +993,11 @@ const AdminCRMPage: React.FC = () => {
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Avatar sx={{ bgcolor: TYPE_COLORS[contact.type], width: 40, height: 40 }}>
-                      {(contact.name || '?')[0].toUpperCase()}
+                      {(contactDisplayName(contact) || '?')[0].toUpperCase()}
                     </Avatar>
                     <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: alpha(TYPE_COLORS[contact.type], 0.2), color: TYPE_COLORS[contact.type] }} />
                   </Box>
-                  <Typography variant="subtitle1" fontWeight={600} noWrap>{contact.name}</Typography>
+                  <Typography variant="subtitle1" fontWeight={600} noWrap>{contactDisplayName(contact)}</Typography>
                   <Typography variant="body2" color="text.secondary" noWrap>{contact.organization || '—'}</Typography>
                   <Typography variant="body2" noWrap sx={{ mt: 0.5 }}>{contact.email}</Typography>
                   <Chip label={contact.status} size="small" color={contact.status === 'Active' ? 'success' : 'default'} sx={{ mt: 1 }} />
@@ -863,7 +1042,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', customFields: {} }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>
@@ -882,14 +1061,19 @@ const AdminCRMPage: React.FC = () => {
                         onChange={(e) => handleSelectOne(contact.id, e.target.checked)}
                       />
                     </TableCell>
+                    {visibleColumns.has('firstName') && (
+                      <TableCell>
+                        <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.firstName ?? '—') : (contact.type === 'organization' || contact.type === 'hospital' ? contact.name : '—')}</Typography>
+                      </TableCell>
+                    )}
+                    {visibleColumns.has('lastName') && (
+                      <TableCell>
+                        <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.lastName ?? '—') : '—'}</Typography>
+                      </TableCell>
+                    )}
                     {visibleColumns.has('name') && (
                       <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ width: 32, height: 32, bgcolor: TYPE_COLORS[contact.type], fontSize: '0.875rem' }}>
-                            {(contact.name || '?')[0].toUpperCase()}
-                          </Avatar>
-                          <Typography fontWeight={500}>{contact.name}</Typography>
-                        </Box>
+                        <Typography fontWeight={500}>{contactDisplayName(contact)}</Typography>
                       </TableCell>
                     )}
                     {visibleColumns.has('type') && (
@@ -899,6 +1083,7 @@ const AdminCRMPage: React.FC = () => {
                     )}
                     {visibleColumns.has('facilityId') && <TableCell>{contact.facilityId ?? '—'}</TableCell>}
                     {visibleColumns.has('organization') && <TableCell>{contact.organization || '—'}</TableCell>}
+                    {visibleColumns.has('hospitalSystem') && <TableCell>{contact.hospitalSystem ?? '—'}</TableCell>}
                     {visibleColumns.has('email') && <TableCell>{contact.email}</TableCell>}
                     {visibleColumns.has('phone') && <TableCell>{contact.phone || '—'}</TableCell>}
                     {visibleColumns.has('region') && <TableCell>{contact.region || '—'}</TableCell>}
@@ -927,7 +1112,7 @@ const AdminCRMPage: React.FC = () => {
       {/* Row actions menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
         <MenuItem onClick={() => { if (detailContact) openDetail(detailContact); setAnchorEl(null); }}>View details</MenuItem>
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, customFields: detailContact.customFields ?? {} }); setDialogOpen(true); } setAnchorEl(null); }}>
+        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], customFields: detailContact.customFields ?? {} }); setDialogOpen(true); } setAnchorEl(null); }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
@@ -975,6 +1160,37 @@ const AdminCRMPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* My reminders – per-user, Mentor/Manager/Admin only */}
+      <Dialog open={myRemindersOpen} onClose={() => setMyRemindersOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>My follow-up reminders</DialogTitle>
+        <DialogContent>
+          {remindersLoading ? (
+            <Typography color="text.secondary">Loading…</Typography>
+          ) : reminders.length === 0 ? (
+            <Typography color="text.secondary">No upcoming reminders. Add reminders from a contact&#39;s full view.</Typography>
+          ) : (
+            <List dense>
+              {reminders.map((r) => (
+                <ListItem
+                  key={r.id}
+                  secondaryAction={<IconButton size="small" onClick={() => deleteReminder(r.id)}><DeleteIcon fontSize="small" /></IconButton>}
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    const c = contacts.find(x => x.id === r.contact_id);
+                    if (c) { setDetailContact(c); setPanelOpen(false); setMyRemindersOpen(false); setFullScreenOpen(true); }
+                  }}
+                >
+                  <ListItemText primary={r.title || 'Follow up'} secondary={`${r.contact_name || r.contact_id} · ${new Date(r.remind_at).toLocaleString()}`} />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMyRemindersOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Right-side quick-view panel */}
       <Drawer anchor="right" open={panelOpen} onClose={() => setPanelOpen(false)} PaperProps={{ sx: { width: { xs: '100%', sm: 380 } } }}>
         {detailContact && (
@@ -985,16 +1201,19 @@ const AdminCRMPage: React.FC = () => {
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
               <Avatar sx={{ width: 48, height: 48, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.125rem' }}>
-                {(detailContact.name || '?')[0].toUpperCase()}
+                {(contactDisplayName(detailContact) || '?')[0].toUpperCase()}
               </Avatar>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle1" fontWeight={600} noWrap>{detailContact.name}</Typography>
+                <Typography variant="subtitle1" fontWeight={600} noWrap>{contactDisplayName(detailContact)}</Typography>
                 <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', mt: 0.5 }} />
               </Box>
             </Box>
             <List dense disablePadding sx={{ flex: 1, minHeight: 0 }}>
               {detailContact.type === 'hospital' && detailContact.facilityId != null && (
                 <ListItem disablePadding><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
+              )}
+              {detailContact.type === 'hospital' && (detailContact.hospitalSystem ?? '') && (
+                <ListItem disablePadding><ListItemText primary="Hospital system" secondary={detailContact.hospitalSystem} /></ListItem>
               )}
               <ListItem disablePadding><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
@@ -1007,11 +1226,32 @@ const AdminCRMPage: React.FC = () => {
                   ))}
                 </>
               )}
-              {detailContact.notes && (
+              {(detailContact.notesLog?.length ?? 0) > 0 && (
                 <ListItem disablePadding>
-                  <ListItemText primary="Notes" secondary={detailContact.notes.length > 120 ? `${detailContact.notes.slice(0, 120)}…` : detailContact.notes} />
+                  <ListItemText primary="Notes log" secondary={`${detailContact.notesLog!.length} dated note(s). Expand for full log.`} />
                 </ListItem>
               )}
+              {(detailContact.activityLog?.length ?? 0) > 0 && (
+                <ListItem disablePadding>
+                  <ListItemText primary="Activity log" secondary={`${detailContact.activityLog!.length} communication/visit/follow-up entries. Expand for full log.`} />
+                </ListItem>
+              )}
+              {canSeeReminders && (reminders.filter(r => r.contact_id === detailContact.id).length > 0) && (
+                <ListItem disablePadding>
+                  <ListItemText primary="My reminders" secondary={`${reminders.filter(r => r.contact_id === detailContact.id).length} upcoming for this contact.`} />
+                </ListItem>
+              )}
+              {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
+                const linked = contacts.filter(p => isPersonType(p.type) && (
+                  (p.linkedOrganizationIds ?? []).includes(detailContact.id) ||
+                  (p.linkedHospitalIds ?? []).includes(detailContact.id)
+                ));
+                return linked.length > 0 ? (
+                  <ListItem disablePadding>
+                    <ListItemText primary="Contacts" secondary={`${linked.length} person(s) linked. Expand for full view.`} />
+                  </ListItem>
+                ) : null;
+              })()}
             </List>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
               <Button fullWidth variant="contained" startIcon={<OpenInFullIcon />} onClick={openFullScreen}>
@@ -1020,7 +1260,7 @@ const AdminCRMPage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, customFields: c.customFields ?? {} });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {} });
                   setPanelOpen(false);
                   setTimeout(() => { setEditingContact(c); setDialogOpen(true); }, 150);
                 }}>
@@ -1044,10 +1284,10 @@ const AdminCRMPage: React.FC = () => {
             <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
                 <Avatar sx={{ width: 64, height: 64, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.5rem' }}>
-                  {(detailContact.name || '?')[0].toUpperCase()}
+                  {(contactDisplayName(detailContact) || '?')[0].toUpperCase()}
                 </Avatar>
                 <Box>
-                  <Typography variant="h5">{detailContact.name}</Typography>
+                  <Typography variant="h5">{contactDisplayName(detailContact)}</Typography>
                   <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', mt: 0.5 }} />
                 </Box>
               </Box>
@@ -1059,6 +1299,9 @@ const AdminCRMPage: React.FC = () => {
                       <>
                         {detailContact.facilityId != null && (
                           <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
+                        )}
+                        {(detailContact.hospitalSystem ?? '') && (
+                          <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Hospital system" secondary={detailContact.hospitalSystem} /></ListItem>
                         )}
                         {detailContact.address != null && <ListItem disablePadding><ListItemText primary="Address" secondary={detailContact.address} /></ListItem>}
                         {detailContact.city != null && <ListItem disablePadding><ListItemText primary="City" secondary={detailContact.city} /></ListItem>}
@@ -1080,22 +1323,112 @@ const AdminCRMPage: React.FC = () => {
                       <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} /></ListItem>
                     ))}
                   </List>
+                  {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
+                    const linked = contacts.filter(p => isPersonType(p.type) && (
+                      (p.linkedOrganizationIds ?? []).includes(detailContact.id) || (p.linkedHospitalIds ?? []).includes(detailContact.id)
+                    ));
+                    return linked.length > 0 ? (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Contacts at this {detailContact.type === 'hospital' ? 'hospital' : 'organization'}</Typography>
+                        <List dense disablePadding>
+                          {linked.map((p) => (
+                            <ListItem key={p.id} disablePadding sx={{ py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => { setDetailContact(p); setFullScreenOpen(false); setPanelOpen(true); }}>
+                              <ListItemText primary={contactDisplayName(p)} secondary={TYPE_LABELS[p.type]} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </Box>
+                    ) : null;
+                  })()}
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Log of notes</Typography>
-                  <Paper variant="outlined" sx={{ p: 2, minHeight: 280, maxHeight: 400, overflow: 'auto' }}>
-                    {detailContact.notes ? (
-                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{detailContact.notes}</Typography>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Notes log</Typography>
+                  <Paper variant="outlined" sx={{ p: 2, minHeight: 120, maxHeight: 220, overflow: 'auto' }}>
+                    {(detailContact.notesLog?.length ?? 0) === 0 ? (
+                      <Typography variant="body2" color="text.secondary">No dated notes yet.</Typography>
                     ) : (
-                      <Typography variant="body2" color="text.secondary">No notes yet.</Typography>
+                      <List dense disablePadding>
+                        {(detailContact.notesLog ?? []).map((e, i) => (
+                          <ListItem key={i} disablePadding sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">{e.date}</Typography>
+                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{e.text}</Typography>
+                          </ListItem>
+                        ))}
+                      </List>
                     )}
+                    <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <TextField size="small" placeholder="Add note…" value={addNoteText} onChange={(e) => setAddNoteText(e.target.value)} multiline minRows={1} maxRows={3} sx={{ flex: 1 }} />
+                      <Button size="small" variant="contained" onClick={() => { if (addNoteText.trim()) { addNote(detailContact, { date: new Date().toISOString().slice(0, 10), text: addNoteText.trim() }); setAddNoteText(''); } }}>Add</Button>
+                    </Box>
                   </Paper>
                 </Grid>
+              </Grid>
+              <Grid container spacing={3} sx={{ mt: 1 }}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Activity log (communications, visits, follow-ups)</Typography>
+                  <Paper variant="outlined" sx={{ p: 2, minHeight: 120, maxHeight: 260, overflow: 'auto' }}>
+                    {(detailContact.activityLog?.length ?? 0) === 0 ? (
+                      <Typography variant="body2" color="text.secondary">No activity entries yet.</Typography>
+                    ) : (
+                      <List dense disablePadding>
+                        {(detailContact.activityLog ?? []).map((e, i) => (
+                          <ListItem key={i} disablePadding sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 0.5 }}>
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                              <Chip size="small" label={ACTIVITY_TYPE_LABELS[e.type]} sx={{ fontSize: '0.7rem' }} />
+                              <Typography variant="caption" color="text.secondary">{e.date}</Typography>
+                            </Box>
+                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{e.text}</Typography>
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                    <Box sx={{ mt: 1 }}>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                        <FormControl size="small" sx={{ minWidth: 140 }}>
+                          <InputLabel>Type</InputLabel>
+                          <Select value={addActivityType} onChange={(e) => setAddActivityType(e.target.value as ActivityLogType)} label="Type">
+                            {(Object.keys(ACTIVITY_TYPE_LABELS) as ActivityLogType[]).map(t => (
+                              <MenuItem key={t} value={t}>{ACTIVITY_TYPE_LABELS[t]}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <TextField size="small" type="date" value={addActivityDate || new Date().toISOString().slice(0, 10)} onChange={(e) => setAddActivityDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 140 }} />
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                        <TextField size="small" placeholder="Details…" value={addActivityText} onChange={(e) => setAddActivityText(e.target.value)} multiline minRows={1} maxRows={2} sx={{ flex: 1 }} />
+                        <Button size="small" variant="contained" onClick={() => { if (addActivityText.trim()) { addActivityEntry(detailContact, { type: addActivityType, date: (addActivityDate || new Date().toISOString().slice(0, 10)), text: addActivityText.trim() }); setAddActivityText(''); } }}>Add</Button>
+                      </Box>
+                    </Box>
+                  </Paper>
+                </Grid>
+                {canSeeReminders && (
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>My follow-up reminders (this contact)</Typography>
+                    <Paper variant="outlined" sx={{ p: 2, minHeight: 120, maxHeight: 260, overflow: 'auto' }}>
+                      {reminders.filter(r => r.contact_id === detailContact.id).length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">No reminders for this contact.</Typography>
+                      ) : (
+                        <List dense disablePadding>
+                          {reminders.filter(r => r.contact_id === detailContact.id).map((r) => (
+                            <ListItem key={r.id} disablePadding secondaryAction={<IconButton size="small" onClick={() => deleteReminder(r.id)}><DeleteIcon fontSize="small" /></IconButton>}>
+                              <ListItemText primary={r.title || 'Follow up'} secondary={`${new Date(r.remind_at).toLocaleDateString()} ${new Date(r.remind_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      )}
+                      <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <TextField size="small" type="datetime-local" value={addReminderDate} onChange={(e) => setAddReminderDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ minWidth: 200 }} />
+                        <TextField size="small" placeholder="Reminder title" value={addReminderTitle} onChange={(e) => setAddReminderTitle(e.target.value)} sx={{ minWidth: 140 }} />
+                        <Button size="small" variant="contained" onClick={() => { const d = addReminderDate || new Date(Date.now() + 86400000).toISOString().slice(0, 16); addReminder(detailContact.id, contactDisplayName(detailContact), d, addReminderTitle || 'Follow up'); setAddReminderTitle(''); }}>Add reminder</Button>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                )}
               </Grid>
               <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
                 <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, customFields: c.customFields ?? {} });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {} });
                   setFullScreenOpen(false);
                   setTimeout(() => { setEditingContact(c); setDialogOpen(true); }, 150);
                 }}>
@@ -1125,27 +1458,49 @@ const AdminCRMPage: React.FC = () => {
               <Grid item xs={12}>
                 <TextField label="Organization name" value={formData.name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, name: v, organization: v })); }} fullWidth size="small" required />
               </Grid>
-            ) : (
+            ) : isPersonType(formData.type) ? (
               <>
+                <Grid item xs={6}>
+                  <TextField label="First name" value={formData.firstName} onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))} fullWidth size="small" required />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField label="Last name" value={formData.lastName} onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))} fullWidth size="small" required />
+                </Grid>
                 <Grid item xs={12}>
-                  <TextField
-                    label={formData.type === 'hospital' ? 'Hospital name' : 'Full name'}
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    fullWidth
+                  <Autocomplete
+                    multiple
                     size="small"
-                    required
+                    options={contacts.filter(c => c.type === 'organization').map(c => ({ id: c.id, label: c.name }))}
+                    value={formData.linkedOrganizationIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))}
+                    getOptionLabel={(opt) => opt.label}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                    onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedOrganizationIds: arr.map(x => x.id) }))}
+                    renderInput={(params) => <TextField {...params} label="Linked organizations" placeholder="Select organizations" />}
                   />
                 </Grid>
                 <Grid item xs={12}>
-                  <TextField
-                    label={formData.type === 'hospital' ? 'Company / Parent organization' : 'Organization'}
-                    value={formData.organization}
-                    onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))}
-                    fullWidth
+                  <Autocomplete
+                    multiple
                     size="small"
-                    placeholder={formData.type === 'hospital' ? 'e.g. health system or owner' : undefined}
+                    options={contacts.filter(c => c.type === 'hospital').map(c => ({ id: c.id, label: c.name }))}
+                    value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))}
+                    getOptionLabel={(opt) => opt.label}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                    onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))}
+                    renderInput={(params) => <TextField {...params} label="Linked hospitals" placeholder="Select hospitals" />}
                   />
+                </Grid>
+              </>
+            ) : (
+              <>
+                <Grid item xs={12}>
+                  <TextField label="Hospital name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField label="Company / Parent organization" value={formData.organization} onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))} fullWidth size="small" placeholder="e.g. health system or owner" />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField label="Hospital system" value={formData.hospitalSystem} onChange={(e) => setFormData(prev => ({ ...prev, hospitalSystem: e.target.value }))} fullWidth size="small" placeholder="Health system or network this hospital is part of" />
                 </Grid>
               </>
             )}
