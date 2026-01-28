@@ -832,15 +832,17 @@ const MentorSiteMilestonesPage: React.FC = () => {
               <TableBody>
                 {tableRows.map((row, rowIndex) => {
                   if (row.type === 'stage') {
+                    const stageColor = getStageColor(row.stageId!);
                     return (
                       <TableRow 
                         key={`${row.stageId}-header`} 
                         sx={{ 
-                          bgcolor: 'primary.light',
+                          bgcolor: stageColor,
                           '& .MuiTableCell-root': {
                             borderBottom: '2px solid',
-                            borderColor: 'primary.main',
-                            fontWeight: 600
+                            borderColor: stageColor,
+                            fontWeight: 600,
+                            color: 'white'
                           }
                         }}
                       >
@@ -849,19 +851,20 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             position: 'sticky', 
                             left: 0, 
                             zIndex: 9, 
-                            bgcolor: 'primary.light',
+                            bgcolor: stageColor,
                             fontWeight: 600,
                             borderRight: '1px solid',
                             borderColor: 'divider',
                             fontSize: '0.8rem',
                             minWidth: 250,
-                            maxWidth: 250
+                            maxWidth: 250,
+                            color: 'white'
                           }}
                         >
                           {row.stageTitle}
                         </TableCell>
-                        {hospitals.map(() => (
-                          <TableCell key={`empty-${rowIndex}`} sx={{ bgcolor: 'primary.light' }} />
+                        {visibleHospitals.map(() => (
+                          <TableCell key={`empty-${rowIndex}`} sx={{ bgcolor: stageColor }} />
                         ))}
                       </TableRow>
                     );
