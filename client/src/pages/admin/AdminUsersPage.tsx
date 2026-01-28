@@ -28,14 +28,19 @@ import {
   Switch,
   FormControlLabel,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Drawer,
+  List,
+  ListItem,
+  ListItemText
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Add as AddIcon,
   MoreVert as MoreIcon,
   Person as PersonIcon,
-  Send as SendIcon
+  Send as SendIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 
@@ -62,6 +67,7 @@ const AdminUsersPage: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -319,7 +325,12 @@ const AdminUsersPage: React.FC = () => {
 
       {/* Actions Menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
-        <MenuItem onClick={() => setAnchorEl(null)}>View Profile</MenuItem>
+        <MenuItem onClick={() => {
+          setAnchorEl(null);
+          setTimeout(() => setProfileDrawerOpen(true), 150);
+        }}>
+          View Profile
+        </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}>Edit User</MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}>Change Role</MenuItem>
         <MenuItem onClick={handleToggleStatus}>
@@ -333,6 +344,32 @@ const AdminUsersPage: React.FC = () => {
         <MenuItem onClick={() => setAnchorEl(null)}>Reset Password</MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)} sx={{ color: 'error.main' }}>Delete User</MenuItem>
       </Menu>
+
+      {/* Profile Drawer */}
+      <Drawer anchor="right" open={profileDrawerOpen} onClose={() => setProfileDrawerOpen(false)} PaperProps={{ sx: { width: { xs: '100%', sm: 400 } } }}>
+        {selectedUser && (
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">User Profile</Typography>
+              <IconButton onClick={() => setProfileDrawerOpen(false)}><CloseIcon /></IconButton>
+            </Box>
+            <Avatar sx={{ width: 64, height: 64, bgcolor: 'primary.main', fontSize: '1.5rem', mb: 2 }}>
+              {(selectedUser.firstName || selectedUser.lastName || '?')[0].toUpperCase()}
+            </Avatar>
+            <Typography variant="h6">{selectedUser.firstName} {selectedUser.lastName}</Typography>
+            <Chip label={selectedUser.role} size="small" color={getRoleColor(selectedUser.role)} sx={{ my: 1 }} />
+            <List dense disablePadding>
+              <ListItem disablePadding><ListItemText primary="Email" secondary={selectedUser.email} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="Phone" secondary={selectedUser.phone || '—'} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="Status" secondary={<Chip label={selectedUser.status} size="small" color={getStatusColor(selectedUser.status)} variant="outlined" />} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="Last login" secondary={selectedUser.lastLogin || 'Never'} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="Joined" secondary={selectedUser.createdAt} /></ListItem>
+              {selectedUser.managerName && <ListItem disablePadding><ListItemText primary="Manager" secondary={selectedUser.managerName} /></ListItem>}
+              {selectedUser.mentorName && <ListItem disablePadding><ListItemText primary="Mentor" secondary={selectedUser.mentorName} /></ListItem>}
+            </List>
+          </Box>
+        )}
+      </Drawer>
 
       {/* Add User Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
