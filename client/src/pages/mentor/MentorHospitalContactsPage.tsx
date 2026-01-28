@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -31,7 +31,8 @@ import {
   Tab,
   Tabs,
   Alert,
-  Snackbar
+  Snackbar,
+  CircularProgress
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
@@ -45,6 +46,7 @@ import {
   ContentCopy as CopyIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../supabase';
 
 // Types
 interface Hospital {
@@ -71,6 +73,20 @@ interface Contact {
   isPrimaryContact: boolean;
   isActivelyEngaged: boolean;
   notes: string;
+}
+
+/** CRM hospital row from Supabase hospitals table */
+interface CrmHospitalRow {
+  id: string;
+  facility_id?: string | null;
+  name: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+  trauma_level?: string | null;
+  ed_size?: string | null;
+  notes?: string | null;
 }
 
 const TRAUMA_LEVELS = [
@@ -135,6 +151,36 @@ const MentorHospitalContactsPage: React.FC = () => {
   
   const [inviteEmail, setInviteEmail] = useState('');
 
+  // CRM hospitals for Add Hospital (state → city → hospital)
+  const [crmHospitals, setCrmHospitals] = useState<CrmHospitalRow[]>([]);
+  const [crmLoading, setCrmLoading] = useState(false);
+  const [addState, setAddState] = useState('');
+  const [addCity, setAddCity] = useState('');
+  const [addHospitalId, setAddHospitalId] = useState('');
+
+  // Load CRM hospitals for Add Hospital cascading dropdowns
+  useEffect(() => {
+    let mounted = true;
+    setCrmLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('hospitals')
+          .select('id, facility_id, name, address, city, state, phone, trauma_level, ed_size, notes')
+          .limit(3000);
+        if (!mounted) return;
+        if (error || !data) {
+          setCrmHospitals([]);
+          return;
+        }
+        setCrmHospitals((data as unknown) as CrmHospitalRow[]);
+      } finally {
+        if (mounted) setCrmLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   // Load data
   useEffect(() => {
     if (currentUser) {
@@ -198,9 +244,46 @@ const MentorHospitalContactsPage: React.FC = () => {
     setContacts(newContacts);
   };
 
+  // CRM state → city → hospital options for Add Hospital
+  const addStates = useMemo(() => {
+    const s = new Set<string>();
+    crmHospitals.forEach((h) => {
+      const v = (h.state ?? '').trim();
+      if (v) s.add(v);
+    });
+    return Array.from(s).sort();
+  }, [crmHospitals]);
+
+  const addCities = useMemo(() => {
+    if (!addState) return [];
+    const s = new Set<string>();
+    crmHospitals.forEach((h) => {
+      if ((h.state ?? '').trim() !== addState) return;
+      const v = (h.city ?? '').trim();
+      if (v) s.add(v);
+    });
+    return Array.from(s).sort();
+  }, [crmHospitals, addState]);
+
+  const addHospitalOptions = useMemo(() => {
+    if (!addState || !addCity) return [];
+    return crmHospitals.filter(
+      (h) => (h.state ?? '').trim() === addState && (h.city ?? '').trim() === addCity
+    );
+  }, [crmHospitals, addState, addCity]);
+
+  const selectedCrmHospital = useMemo(() => {
+    if (!addHospitalId) return null;
+    const id = addHospitalId;
+    return crmHospitals.find((h) => String(h.facility_id ?? h.id) === id) ?? null;
+  }, [crmHospitals, addHospitalId]);
+
   // Hospital handlers
   const handleAddHospital = () => {
     setEditingHospital(null);
+    setAddState('');
+    setAddCity('');
+    setAddHospitalId('');
     setHospitalForm({
       name: '',
       address: '',
@@ -230,31 +313,51 @@ const MentorHospitalContactsPage: React.FC = () => {
   };
 
   const handleSaveHospital = () => {
-    if (!hospitalForm.name.trim()) {
-      setSnackbar({ open: true, message: 'Hospital name is required', severity: 'error' });
+    if (editingHospital) {
+      // Edit flow: require name
+      if (!hospitalForm.name.trim()) {
+        setSnackbar({ open: true, message: 'Hospital name is required', severity: 'error' });
+        return;
+      }
+      const hospitalData: Hospital = {
+        id: editingHospital.id,
+        ...hospitalForm
+      };
+      const newHospitals = hospitals.map(h => h.id === editingHospital.id ? hospitalData : h);
+      saveHospitals(newHospitals);
+      setHospitalDialogOpen(false);
+      if (selectedHospital?.id === editingHospital.id) setSelectedHospital(hospitalData);
+      setSnackbar({ open: true, message: 'Hospital updated successfully', severity: 'success' });
       return;
     }
 
-    const hospitalData: Hospital = {
-      id: editingHospital?.id || `hospital_${Date.now()}`,
-      ...hospitalForm
-    };
-
-    let newHospitals: Hospital[];
-    if (editingHospital) {
-      newHospitals = hospitals.map(h => h.id === editingHospital.id ? hospitalData : h);
-    } else {
-      newHospitals = [...hospitals, hospitalData];
+    // Add flow: must select hospital from CRM (state → city → hospital)
+    const crmRow = selectedCrmHospital;
+    if (!addHospitalId || !crmRow) {
+      setSnackbar({ open: true, message: 'Please select a state, city, and hospital from the list', severity: 'error' });
+      return;
     }
-
+    const id = String(crmRow.facility_id ?? crmRow.id ?? '');
+    if (hospitals.some(h => h.id === id)) {
+      setSnackbar({ open: true, message: 'That hospital is already in your list', severity: 'error' });
+      return;
+    }
+    const hospitalData: Hospital = {
+      id,
+      name: String(crmRow.name ?? 'Unknown'),
+      address: String(crmRow.address ?? ''),
+      city: String(crmRow.city ?? ''),
+      state: String(crmRow.state ?? ''),
+      phone: String(crmRow.phone ?? ''),
+      traumaLevel: TRAUMA_LEVELS.includes(String(crmRow.trauma_level ?? '')) ? String(crmRow.trauma_level) : 'Non-Designated',
+      edSize: String(crmRow.ed_size ?? ''),
+      notes: String(crmRow.notes ?? '')
+    };
+    const newHospitals = [...hospitals, hospitalData];
     saveHospitals(newHospitals);
     setHospitalDialogOpen(false);
-    
-    if (!selectedHospital || editingHospital?.id === selectedHospital.id) {
-      setSelectedHospital(hospitalData);
-    }
-    
-    setSnackbar({ open: true, message: `Hospital ${editingHospital ? 'updated' : 'added'} successfully`, severity: 'success' });
+    setSelectedHospital(hospitalData);
+    setSnackbar({ open: true, message: 'Hospital added successfully', severity: 'success' });
   };
 
   // Contact handlers
@@ -575,85 +678,155 @@ const MentorHospitalContactsPage: React.FC = () => {
       <Dialog open={hospitalDialogOpen} onClose={() => setHospitalDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingHospital ? 'Edit Hospital' : 'Add Hospital'}</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField
-                label="Hospital Name"
-                value={hospitalForm.name}
-                onChange={(e) => setHospitalForm(prev => ({ ...prev, name: e.target.value }))}
-                fullWidth
-                required
-              />
+          {editingHospital ? (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <TextField
+                  label="Hospital Name"
+                  value={hospitalForm.name}
+                  onChange={(e) => setHospitalForm(prev => ({ ...prev, name: e.target.value }))}
+                  fullWidth
+                  required
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Address"
+                  value={hospitalForm.address}
+                  onChange={(e) => setHospitalForm(prev => ({ ...prev, address: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="City"
+                  value={hospitalForm.city}
+                  onChange={(e) => setHospitalForm(prev => ({ ...prev, city: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="State"
+                  value={hospitalForm.state}
+                  onChange={(e) => setHospitalForm(prev => ({ ...prev, state: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="Phone"
+                  value={hospitalForm.phone}
+                  onChange={(e) => setHospitalForm(prev => ({ ...prev, phone: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Trauma Level</InputLabel>
+                  <Select
+                    value={hospitalForm.traumaLevel}
+                    onChange={(e) => setHospitalForm(prev => ({ ...prev, traumaLevel: e.target.value }))}
+                    label="Trauma Level"
+                  >
+                    {TRAUMA_LEVELS.map(level => (
+                      <MenuItem key={level} value={level}>{level}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="ED Size"
+                  value={hospitalForm.edSize}
+                  onChange={(e) => setHospitalForm(prev => ({ ...prev, edSize: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Notes"
+                  value={hospitalForm.notes}
+                  onChange={(e) => setHospitalForm(prev => ({ ...prev, notes: e.target.value }))}
+                  fullWidth
+                  multiline
+                  rows={3}
+                />
+              </Grid>
             </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Address"
-                value={hospitalForm.address}
-                onChange={(e) => setHospitalForm(prev => ({ ...prev, address: e.target.value }))}
-                fullWidth
-              />
+          ) : (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">
+                  Choose a hospital from the CRM list. Pick state, then city, then hospital.
+                </Typography>
+              </Grid>
+              {crmLoading ? (
+                <Grid item xs={12}>
+                  <Box sx={{ py: 2, display: 'flex', justifyContent: 'center' }}>
+                    <CircularProgress size={24} />
+                  </Box>
+                </Grid>
+              ) : (
+                <>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel>State</InputLabel>
+                      <Select
+                        value={addState}
+                        onChange={(e) => { setAddState(e.target.value); setAddCity(''); setAddHospitalId(''); }}
+                        label="State"
+                      >
+                        <MenuItem value="">—</MenuItem>
+                        {addStates.map((s) => (
+                          <MenuItem key={s} value={s}>{s}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth disabled={!addState}>
+                      <InputLabel>City</InputLabel>
+                      <Select
+                        value={addCity}
+                        onChange={(e) => { setAddCity(e.target.value); setAddHospitalId(''); }}
+                        label="City"
+                      >
+                        <MenuItem value="">—</MenuItem>
+                        {addCities.map((c) => (
+                          <MenuItem key={c} value={c}>{c}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth disabled={!addCity}>
+                      <InputLabel>Hospital</InputLabel>
+                      <Select
+                        value={addHospitalId}
+                        onChange={(e) => setAddHospitalId(e.target.value)}
+                        label="Hospital"
+                      >
+                        <MenuItem value="">—</MenuItem>
+                        {addHospitalOptions.map((h) => {
+                          const hid = String(h.facility_id ?? h.id ?? '');
+                          return (
+                            <MenuItem key={hid} value={hid}>{h.name}</MenuItem>
+                          );
+                        })}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </>
+              )}
             </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="City"
-                value={hospitalForm.city}
-                onChange={(e) => setHospitalForm(prev => ({ ...prev, city: e.target.value }))}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="State"
-                value={hospitalForm.state}
-                onChange={(e) => setHospitalForm(prev => ({ ...prev, state: e.target.value }))}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="Phone"
-                value={hospitalForm.phone}
-                onChange={(e) => setHospitalForm(prev => ({ ...prev, phone: e.target.value }))}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <FormControl fullWidth>
-                <InputLabel>Trauma Level</InputLabel>
-                <Select
-                  value={hospitalForm.traumaLevel}
-                  onChange={(e) => setHospitalForm(prev => ({ ...prev, traumaLevel: e.target.value }))}
-                  label="Trauma Level"
-                >
-                  {TRAUMA_LEVELS.map(level => (
-                    <MenuItem key={level} value={level}>{level}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="ED Size"
-                value={hospitalForm.edSize}
-                onChange={(e) => setHospitalForm(prev => ({ ...prev, edSize: e.target.value }))}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Notes"
-                value={hospitalForm.notes}
-                onChange={(e) => setHospitalForm(prev => ({ ...prev, notes: e.target.value }))}
-                fullWidth
-                multiline
-                rows={3}
-              />
-            </Grid>
-          </Grid>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setHospitalDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSaveHospital} variant="contained">Save</Button>
+          <Button onClick={handleSaveHospital} variant="contained" disabled={!editingHospital && (crmLoading || !addHospitalId)}>
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
 
