@@ -60,6 +60,7 @@ interface Hospital {
   traumaLevel: string;
   edSize: string;
   notes: string;
+  isWorkingWith: boolean; // true = actively working with, false = just a contact/reference
 }
 
 interface Contact {
@@ -135,7 +136,8 @@ const MentorHospitalContactsPage: React.FC = () => {
     phone: '',
     traumaLevel: 'Non-Designated',
     edSize: '',
-    notes: ''
+    notes: '',
+    isWorkingWith: true // Default to "working with"
   });
   
   const [contactForm, setContactForm] = useState({
@@ -158,6 +160,8 @@ const MentorHospitalContactsPage: React.FC = () => {
   const [addState, setAddState] = useState('');
   const [addCity, setAddCity] = useState('');
   const [addHospitalId, setAddHospitalId] = useState('');
+  const [addIsWorkingWith, setAddIsWorkingWith] = useState(true);
+  const [showAllHospitals, setShowAllHospitals] = useState(false); // Filter toggle
 
   // Load CRM hospitals for Add Hospital cascading dropdowns
   useEffect(() => {
@@ -237,7 +241,11 @@ const MentorHospitalContactsPage: React.FC = () => {
           localStorage.removeItem(`mentorHospitals_${uid}`);
           localStorage.removeItem(`mentorContacts_${uid}`);
         } else {
-          hospitals = Array.isArray(parsed) ? parsed : [];
+          // Migrate old hospitals to include isWorkingWith field (default to true)
+          hospitals = Array.isArray(parsed) ? parsed.map((h: Hospital) => ({
+            ...h,
+            isWorkingWith: h.isWorkingWith ?? true
+          })) : [];
         }
       } catch {
         hospitals = [];
@@ -312,6 +320,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     setAddState('');
     setAddCity('');
     setAddHospitalId('');
+    setAddIsWorkingWith(true);
     setHospitalForm({
       name: '',
       address: '',
@@ -320,7 +329,8 @@ const MentorHospitalContactsPage: React.FC = () => {
       phone: '',
       traumaLevel: 'Non-Designated',
       edSize: '',
-      notes: ''
+      notes: '',
+      isWorkingWith: true
     });
     setHospitalDialogOpen(true);
   };
@@ -335,7 +345,8 @@ const MentorHospitalContactsPage: React.FC = () => {
       phone: hospital.phone,
       traumaLevel: hospital.traumaLevel,
       edSize: hospital.edSize,
-      notes: hospital.notes
+      notes: hospital.notes,
+      isWorkingWith: hospital.isWorkingWith ?? true
     });
     setHospitalDialogOpen(true);
   };
@@ -379,13 +390,47 @@ const MentorHospitalContactsPage: React.FC = () => {
       phone: String(crmRow.phone ?? ''),
       traumaLevel: TRAUMA_LEVELS.includes(String(crmRow.trauma_level ?? '')) ? String(crmRow.trauma_level) : 'Non-Designated',
       edSize: String(crmRow.ed_size ?? ''),
-      notes: String(crmRow.notes ?? '')
+      notes: String(crmRow.notes ?? ''),
+      isWorkingWith: addIsWorkingWith
     };
     const newHospitals = [...hospitals, hospitalData];
     saveHospitals(newHospitals);
     setHospitalDialogOpen(false);
     setSelectedHospital(hospitalData);
     setSnackbar({ open: true, message: 'Hospital added successfully', severity: 'success' });
+  };
+
+  const handleRemoveHospital = (hospitalId: string) => {
+    if (window.confirm('Remove this hospital from your dashboard? This will not delete it from the CRM, but you will no longer see it in your list.')) {
+      const newHospitals = hospitals.filter(h => h.id !== hospitalId);
+      saveHospitals(newHospitals);
+      if (selectedHospital?.id === hospitalId) {
+        setSelectedHospital(null);
+        setTabValue(0);
+      }
+      setSnackbar({ open: true, message: 'Hospital removed from dashboard', severity: 'success' });
+    }
+  };
+
+  const handleToggleWorkingWith = (hospitalId: string) => {
+    const hospital = hospitals.find(h => h.id === hospitalId);
+    if (!hospital) return;
+    const updatedHospital: Hospital = {
+      ...hospital,
+      isWorkingWith: !hospital.isWorkingWith
+    };
+    const newHospitals = hospitals.map(h => h.id === hospitalId ? updatedHospital : h);
+    saveHospitals(newHospitals);
+    if (selectedHospital?.id === hospitalId) {
+      setSelectedHospital(updatedHospital);
+    }
+    setSnackbar({ 
+      open: true, 
+      message: updatedHospital.isWorkingWith 
+        ? 'Hospital marked as actively working with' 
+        : 'Hospital marked as contact only', 
+      severity: 'success' 
+    });
   };
 
   // Contact handlers
@@ -484,6 +529,11 @@ const MentorHospitalContactsPage: React.FC = () => {
     ? contacts.filter(c => c.hospitalId === selectedHospital.id)
     : [];
 
+  // Filter hospitals based on showAllHospitals toggle
+  const displayedHospitals = showAllHospitals 
+    ? hospitals 
+    : hospitals.filter(h => h.isWorkingWith);
+
   return (
     <Box sx={{ py: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -500,8 +550,23 @@ const MentorHospitalContactsPage: React.FC = () => {
 
       {tabValue === 0 && (
         // List View
-        <Grid container spacing={3}>
-          {hospitals.map(hospital => {
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={showAllHospitals}
+                  onChange={(e) => setShowAllHospitals(e.target.checked)}
+                />
+              }
+              label="Show all hospitals (including contacts only)"
+            />
+            <Typography variant="body2" color="textSecondary">
+              {displayedHospitals.length} of {hospitals.length} hospitals
+            </Typography>
+          </Box>
+          <Grid container spacing={3}>
+            {displayedHospitals.map(hospital => {
             const hContacts = contacts.filter(c => c.hospitalId === hospital.id);
             const primaryContact = hContacts.find(c => c.isPrimaryContact);
             
@@ -523,9 +588,16 @@ const MentorHospitalContactsPage: React.FC = () => {
                       <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
                         <HospitalIcon />
                       </Avatar>
-                      <Box>
-                        <Typography variant="h6">{hospital.name}</Typography>
-                        <Chip label={hospital.traumaLevel} size="small" />
+                      <Box sx={{ flex: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="h6">{hospital.name}</Typography>
+                          {hospital.isWorkingWith ? (
+                            <Chip label="Working With" size="small" color="success" />
+                          ) : (
+                            <Chip label="Contact Only" size="small" color="default" />
+                          )}
+                        </Box>
+                        <Chip label={hospital.traumaLevel} size="small" sx={{ mt: 0.5 }} />
                       </Box>
                     </Box>
                     
@@ -547,9 +619,18 @@ const MentorHospitalContactsPage: React.FC = () => {
                       {hContacts.length} contact(s)
                     </Typography>
                   </CardContent>
-                  <CardActions>
+                  <CardActions sx={{ flexWrap: 'wrap', gap: 1 }}>
                     <Button size="small" onClick={(e) => { e.stopPropagation(); handleEditHospital(hospital); }}>
                       Edit
+                    </Button>
+                    <Button 
+                      size="small" 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleToggleWorkingWith(hospital.id);
+                      }}
+                    >
+                      {hospital.isWorkingWith ? 'Mark as Contact Only' : 'Mark as Working With'}
                     </Button>
                     <Button 
                       size="small" 
@@ -561,6 +642,16 @@ const MentorHospitalContactsPage: React.FC = () => {
                       }}
                     >
                       Invite PECC
+                    </Button>
+                    <Button 
+                      size="small" 
+                      color="error"
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleRemoveHospital(hospital.id);
+                      }}
+                    >
+                      Remove
                     </Button>
                   </CardActions>
                 </Card>
@@ -577,6 +668,15 @@ const MentorHospitalContactsPage: React.FC = () => {
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" gutterBottom>Hospital Information</Typography>
               <Divider sx={{ mb: 2 }} />
+              
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <Typography variant="subtitle2" color="textSecondary">Status:</Typography>
+                {selectedHospital.isWorkingWith ? (
+                  <Chip label="Working With" color="success" size="small" />
+                ) : (
+                  <Chip label="Contact Only" color="default" size="small" />
+                )}
+              </Box>
               
               <Typography variant="subtitle2" color="textSecondary">Name</Typography>
               <Typography gutterBottom>{selectedHospital.name}</Typography>
@@ -606,10 +706,26 @@ const MentorHospitalContactsPage: React.FC = () => {
               <Button 
                 variant="outlined" 
                 fullWidth 
-                sx={{ mt: 2 }}
+                sx={{ mt: 2, mb: 1 }}
                 onClick={() => handleEditHospital(selectedHospital)}
               >
                 Edit Hospital
+              </Button>
+              <Button 
+                variant="outlined" 
+                fullWidth 
+                sx={{ mb: 1 }}
+                onClick={() => handleToggleWorkingWith(selectedHospital.id)}
+              >
+                {selectedHospital.isWorkingWith ? 'Mark as Contact Only' : 'Mark as Working With'}
+              </Button>
+              <Button 
+                variant="outlined" 
+                color="error"
+                fullWidth 
+                onClick={() => handleRemoveHospital(selectedHospital.id)}
+              >
+                Remove from Dashboard
               </Button>
             </Paper>
           </Grid>
@@ -842,8 +958,46 @@ const MentorHospitalContactsPage: React.FC = () => {
                       disabled={!addCity}
                     />
                   </Grid>
+                  {addHospitalId && (
+                    <Grid item xs={12}>
+                      <FormControl fullWidth>
+                        <InputLabel>Hospital Type</InputLabel>
+                        <Select
+                          value={addIsWorkingWith ? 'working' : 'contact'}
+                          onChange={(e) => setAddIsWorkingWith(e.target.value === 'working')}
+                          label="Hospital Type"
+                        >
+                          <MenuItem value="working">I am actively working with this hospital</MenuItem>
+                          <MenuItem value="contact">Just a contact/reference (not actively working with)</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
+                        Select whether you are actively working with this hospital or just keeping it as a contact reference.
+                      </Typography>
+                    </Grid>
+                  )}
                 </>
               )}
+            </Grid>
+          )}
+          {editingHospital && (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Hospital Type</InputLabel>
+                  <Select
+                    value={hospitalForm.isWorkingWith ? 'working' : 'contact'}
+                    onChange={(e) => setHospitalForm(prev => ({ ...prev, isWorkingWith: e.target.value === 'working' }))}
+                    label="Hospital Type"
+                  >
+                    <MenuItem value="working">I am actively working with this hospital</MenuItem>
+                    <MenuItem value="contact">Just a contact/reference (not actively working with)</MenuItem>
+                  </Select>
+                </FormControl>
+                <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Select whether you are actively working with this hospital or just keeping it as a contact reference.
+                </Typography>
+              </Grid>
             </Grid>
           )}
         </DialogContent>
