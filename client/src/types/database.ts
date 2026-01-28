@@ -397,6 +397,13 @@ export type RegistrationQuestionType =
   | 'email'
   | 'phone';
 
+/** "Show only when" logic: show this question when another answer matches. */
+export interface RegistrationQuestionDisplayCondition {
+  question_id: string;
+  operator: 'equals' | 'not_empty' | 'in';
+  value?: string | string[];  // for "in", use string[]; for "equals", use string
+}
+
 export interface RegistrationQuestion {
   id: string;
   label: string;
@@ -407,4 +414,8 @@ export interface RegistrationQuestion {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+  /** Which roles see this question: ['pecc','mentor','manager']. Empty/null = all. */
+  target_roles?: string[] | null;
+  /** Show only when the referenced question's answer satisfies the operator/value. */
+  display_condition?: RegistrationQuestionDisplayCondition | null;
 }

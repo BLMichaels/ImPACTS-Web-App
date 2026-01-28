@@ -39,7 +39,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { supabase } from '../../supabase';
-import type { RegistrationQuestion, RegistrationQuestionType } from '../../types/database';
+import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../../types/database';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '../../types/database';
 
 // ---- Registration section constants ----
@@ -87,6 +87,10 @@ export default function AdminSettingsPage() {
   const [formRequired, setFormRequired] = useState(false);
   const [formOptionsText, setFormOptionsText] = useState('');
   const [formSortOrder, setFormSortOrder] = useState(0);
+  const [formTargetRoles, setFormTargetRoles] = useState<string[]>(['pecc', 'mentor', 'manager']);
+  const [formShowWhenQuestionId, setFormShowWhenQuestionId] = useState<string>('');
+  const [formShowWhenOperator, setFormShowWhenOperator] = useState<'equals' | 'not_empty' | 'in'>('equals');
+  const [formShowWhenValue, setFormShowWhenValue] = useState('');
 
   // ---- Permissions state ----
   const [permissions, setPermissions] = useState<PermissionState>({});
@@ -99,17 +103,23 @@ export default function AdminSettingsPage() {
     try {
       const { data, error: err } = await supabase.from('registration_questions').select('*').order('sort_order', { ascending: true });
       if (err) throw err;
-      const rows = (data || []).map((r: Record<string, unknown>) => ({
-        id: String(r.id),
-        label: String(r.label),
-        question_type: (r.question_type as RegistrationQuestionType) || 'short_answer',
-        required: Boolean(r.required),
-        options: Array.isArray(r.options) ? (r.options as unknown[]).map(x => String(x)) : [],
-        sort_order: Number(r.sort_order) || 0,
-        is_active: Boolean(r.is_active),
-        created_at: r.created_at as string | undefined,
-        updated_at: r.updated_at as string | undefined
-      }));
+      const rows = (data || []).map((r: Record<string, unknown>) => {
+        const targetRoles = r.target_roles != null && Array.isArray(r.target_roles) ? (r.target_roles as unknown[]).map(x => String(x)) : null;
+        const dc = r.display_condition as RegistrationQuestionDisplayCondition | null | undefined;
+        return {
+          id: String(r.id),
+          label: String(r.label),
+          question_type: (r.question_type as RegistrationQuestionType) || 'short_answer',
+          required: Boolean(r.required),
+          options: Array.isArray(r.options) ? (r.options as unknown[]).map(x => String(x)) : [],
+          sort_order: Number(r.sort_order) || 0,
+          is_active: Boolean(r.is_active),
+          created_at: r.created_at as string | undefined,
+          updated_at: r.updated_at as string | undefined,
+          target_roles: targetRoles,
+          display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null
+        };
+      });
       setQuestions(rows);
     } catch (e) {
       setRegError(e instanceof Error ? e.message : 'Failed to load questions');
@@ -136,6 +146,10 @@ export default function AdminSettingsPage() {
     setFormRequired(false);
     setFormOptionsText('');
     setFormSortOrder(questions.length);
+    setFormTargetRoles(['pecc', 'mentor', 'manager']);
+    setFormShowWhenQuestionId('');
+    setFormShowWhenOperator('equals');
+    setFormShowWhenValue('');
     setDialogOpen(true);
   };
   const openEdit = (q: RegistrationQuestion) => {
@@ -145,6 +159,11 @@ export default function AdminSettingsPage() {
     setFormRequired(q.required);
     setFormOptionsText((q.options || []).join('\n'));
     setFormSortOrder(q.sort_order);
+    setFormTargetRoles((q.target_roles?.length ? q.target_roles : ['pecc', 'mentor', 'manager']).slice());
+    const dc = q.display_condition;
+    setFormShowWhenQuestionId(dc?.question_id ?? '');
+    setFormShowWhenOperator(dc?.operator ?? 'equals');
+    setFormShowWhenValue(Array.isArray(dc?.value) ? (dc.value as string[]).join(', ') : (dc?.value ?? ''));
     setDialogOpen(true);
   };
   const handleRegSave = async () => {
@@ -155,7 +174,26 @@ export default function AdminSettingsPage() {
       return;
     }
     setRegError('');
-    const payload = { label: formLabel.trim(), question_type: formType, required: formRequired, options, sort_order: formSortOrder, is_active: true, updated_at: new Date().toISOString() };
+    const targetRoles = formTargetRoles.length ? formTargetRoles : ['pecc', 'mentor', 'manager'];
+    const displayCondition: RegistrationQuestionDisplayCondition | null = formShowWhenQuestionId
+      ? {
+          question_id: formShowWhenQuestionId,
+          operator: formShowWhenOperator,
+          ...(formShowWhenOperator === 'equals' && formShowWhenValue.trim() ? { value: formShowWhenValue.trim() } : {}),
+          ...(formShowWhenOperator === 'in' && formShowWhenValue.trim() ? { value: formShowWhenValue.split(',').map(s => s.trim()).filter(Boolean) } : {})
+        }
+      : null;
+    const payload = {
+      label: formLabel.trim(),
+      question_type: formType,
+      required: formRequired,
+      options,
+      sort_order: formSortOrder,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+      target_roles: targetRoles,
+      display_condition: displayCondition
+    };
     try {
       if (editingId) {
         const { error: err } = await supabase.from('registration_questions').update(payload).eq('id', editingId);
@@ -334,6 +372,45 @@ export default function AdminSettingsPage() {
             <TextField fullWidth margin="normal" label="Options (one per line)" value={formOptionsText} onChange={e => setFormOptionsText(e.target.value)} multiline rows={4} placeholder="One option per line" />
           )}
           <TextField fullWidth margin="normal" type="number" label="Sort order" value={formSortOrder} onChange={e => setFormSortOrder(Number(e.target.value) || 0)} inputProps={{ min: 0 }} />
+
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show for roles</Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {(['pecc', 'mentor', 'manager'] as const).map(role => (
+              <FormControlLabel
+                key={role}
+                control={<Checkbox checked={formTargetRoles.includes(role)} onChange={e => setFormTargetRoles(prev => e.target.checked ? [...prev, role] : prev.filter(r => r !== role))} />}
+                label={role.charAt(0).toUpperCase() + role.slice(1)}
+              />
+            ))}
+          </Box>
+
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show only when (optional)</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>When this question...</InputLabel>
+              <Select value={formShowWhenQuestionId} label="When this question..." onChange={e => setFormShowWhenQuestionId(e.target.value)}>
+                <MenuItem value="">— Always show</MenuItem>
+                {questions.filter(q => q.id !== editingId).map(q => (
+                  <MenuItem key={q.id} value={q.id}>{q.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {formShowWhenQuestionId && (
+              <>
+                <FormControl fullWidth size="small">
+                  <InputLabel>…is</InputLabel>
+                  <Select value={formShowWhenOperator} label="…is" onChange={e => setFormShowWhenOperator(e.target.value as 'equals' | 'not_empty' | 'in')}>
+                    <MenuItem value="equals">equals</MenuItem>
+                    <MenuItem value="not_empty">not empty</MenuItem>
+                    <MenuItem value="in">one of (comma-separated)</MenuItem>
+                  </Select>
+                </FormControl>
+                {formShowWhenOperator !== 'not_empty' && (
+                  <TextField size="small" label={formShowWhenOperator === 'in' ? 'Values (comma-separated)' : 'Value'} value={formShowWhenValue} onChange={e => setFormShowWhenValue(e.target.value)} placeholder={formShowWhenOperator === 'in' ? 'A, B, C' : 'e.g. Yes'} />
+                )}
+              </>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>

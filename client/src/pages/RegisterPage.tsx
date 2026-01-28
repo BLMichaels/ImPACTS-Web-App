@@ -23,7 +23,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import TermsOfService from '../components/TermsOfService';
-import type { RegistrationQuestion, RegistrationQuestionType } from '../types/database';
+import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface HospitalOption {
   id: string;
@@ -135,17 +135,26 @@ export default function RegisterPage() {
         if (err || !data) {
           setRegistrationQuestions([]);
         } else {
-          const rows = (data as Record<string, unknown>[]).map((r) => ({
-            id: String(r.id),
-            label: String(r.label),
-            question_type: (r.question_type as RegistrationQuestionType) || 'short_answer',
-            required: Boolean(r.required),
-            options: Array.isArray(r.options) ? (r.options as unknown[]).map((x) => String(x)) : [],
-            sort_order: Number(r.sort_order) || 0,
-            is_active: Boolean(r.is_active),
-            created_at: r.created_at as string | undefined,
-            updated_at: r.updated_at as string | undefined
-          }));
+          const role = 'pecc'; // RegisterPage is PECC self-registration
+          const rows = (data as Record<string, unknown>[])
+            .map((r) => {
+              const targetRoles = r.target_roles != null && Array.isArray(r.target_roles) ? (r.target_roles as unknown[]).map((x) => String(x)) : null;
+              const dc = r.display_condition as RegistrationQuestionDisplayCondition | null | undefined;
+              return {
+                id: String(r.id),
+                label: String(r.label),
+                question_type: (r.question_type as RegistrationQuestionType) || 'short_answer',
+                required: Boolean(r.required),
+                options: Array.isArray(r.options) ? (r.options as unknown[]).map((x) => String(x)) : [],
+                sort_order: Number(r.sort_order) || 0,
+                is_active: Boolean(r.is_active),
+                created_at: r.created_at as string | undefined,
+                updated_at: r.updated_at as string | undefined,
+                target_roles: targetRoles,
+                display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null
+              } as RegistrationQuestion;
+            })
+            .filter((q) => !q.target_roles?.length || q.target_roles.includes(role));
           setRegistrationQuestions(rows);
         }
       } finally {
@@ -158,6 +167,19 @@ export default function RegisterPage() {
   const isOtherHospital = hospitalValue?.id === OTHER_HOSPITAL_ID;
   const selectedHospitalFromCrm = hospitalValue && hospitalValue.id !== OTHER_HOSPITAL_ID ? hospitalValue : null;
   const effectiveHospitalSystem = selectedHospitalFromCrm?.hospitalSystem ?? hospitalSystem;
+
+  const satisfiesDisplayCondition = (q: RegistrationQuestion, answers: Record<string, string | boolean | string[]>): boolean => {
+    const dc = q.display_condition;
+    if (!dc || !dc.question_id) return true;
+    const val = answers[dc.question_id];
+    const str = val === true ? 'true' : val === false ? 'false' : Array.isArray(val) ? val.join(',') : String(val ?? '');
+    if (dc.operator === 'not_empty') return str.trim() !== '';
+    if (dc.operator === 'equals') return dc.value !== undefined && str.trim() === String(dc.value).trim();
+    if (dc.operator === 'in') return Array.isArray(dc.value) && dc.value.some((v) => String(v).trim() === str.trim());
+    return true;
+  };
+
+  const visibleQuestions = registrationQuestions.filter((q) => satisfiesDisplayCondition(q, dynamicAnswers));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,7 +195,7 @@ export default function RegisterPage() {
     if (!hospitalValue) return setError('Please select your hospital or choose "Other" and enter it.');
     if (hospitalValue.id === OTHER_HOSPITAL_ID && !hospitalOtherText.trim()) return setError('Please enter your hospital name when selecting "Other".');
 
-    const requiredQuestions = registrationQuestions.filter((q) => q.required);
+    const requiredQuestions = registrationQuestions.filter((q) => q.required && satisfiesDisplayCondition(q, dynamicAnswers));
     for (const q of requiredQuestions) {
       const v = dynamicAnswers[q.id];
       if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) {
@@ -460,11 +482,11 @@ export default function RegisterPage() {
           {questionsLoading ? (
             <Box sx={{ py: 2 }}><CircularProgress size={24} /></Box>
           ) : (
-            registrationQuestions.length > 0 && (
+            visibleQuestions.length > 0 && (
               <>
                 <Divider sx={{ my: 3 }} />
                 <Typography variant="subtitle1" color="primary" sx={{ mb: 1 }}>Additional questions</Typography>
-                {registrationQuestions.map(renderQuestion)}
+                {visibleQuestions.map(renderQuestion)}
               </>
             )
           )}
