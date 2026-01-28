@@ -454,13 +454,14 @@ const AdminCRMPage: React.FC = () => {
     };
     if (editingContact?.type === 'hospital' && (editingContact.facilityId || editingContact.id)) {
       setSaveInProgress(true);
-      const key = editingContact.facilityId ?? editingContact.id;
+      const key = String(editingContact.facilityId ?? editingContact.id);
+      const updatePayload: { region: string | null; custom_fields?: Record<string, string> } = { region: formData.region || null };
+      if (formData.customFields && Object.keys(formData.customFields).length > 0) {
+        updatePayload.custom_fields = formData.customFields;
+      }
       const { error } = await supabase
         .from('hospitals')
-        .update({
-          region: formData.region || null,
-          custom_fields: formData.customFields && Object.keys(formData.customFields).length ? formData.customFields : {}
-        })
+        .update(updatePayload)
         .eq('facility_id', key);
       setSaveInProgress(false);
       if (error) {
@@ -1017,7 +1018,12 @@ const AdminCRMPage: React.FC = () => {
                 Expand to full view
               </Button>
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, customFields: detailContact.customFields ?? {} }); setPanelOpen(false); setDialogOpen(true); }}>
+                <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => {
+                  const c = detailContact;
+                  setFormData({ type: c.type, name: c.name, organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, customFields: c.customFields ?? {} });
+                  setPanelOpen(false);
+                  setTimeout(() => { setEditingContact(c); setDialogOpen(true); }, 150);
+                }}>
                   Edit
                 </Button>
                 <Button size="small" variant="outlined" startIcon={<EmailIcon />} fullWidth>Email</Button>
@@ -1087,7 +1093,12 @@ const AdminCRMPage: React.FC = () => {
                 </Grid>
               </Grid>
               <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
-                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, customFields: detailContact.customFields ?? {} }); setFullScreenOpen(false); setDialogOpen(true); }}>
+                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
+                  const c = detailContact;
+                  setFormData({ type: c.type, name: c.name, organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, customFields: c.customFields ?? {} });
+                  setFullScreenOpen(false);
+                  setTimeout(() => { setEditingContact(c); setDialogOpen(true); }, 150);
+                }}>
                   Edit
                 </Button>
                 <Button variant="contained" startIcon={<EmailIcon />}>Email</Button>
