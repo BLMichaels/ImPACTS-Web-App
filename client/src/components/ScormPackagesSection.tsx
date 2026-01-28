@@ -473,11 +473,13 @@ export default function ScormPackagesSection(props: { title?: string }) {
                 value={selectedPrograms}
                 onChange={(_, v) => setSelectedPrograms(v.map(x => String(x)).filter(Boolean))}
                 renderTags={(value, getTagProps) =>
-                  value.map((opt, i) => {
-                    const tagProps = getTagProps({ index: i });
-                    const { key, ...rest } = tagProps as { key: string; [k: string]: unknown };
-                    return <Chip key={key} label={opt} size="small" {...(rest as any)} />;
-                  })
+                  value.map((opt, i) => (
+                    <Chip
+                      {...getTagProps({ index: i })}
+                      label={opt}
+                      size="small"
+                    />
+                  ))
                 }
                 renderInput={(params) => <TextField {...params} label="Program(s)" placeholder="Select or type new program" />}
                 disabled={uploading}
