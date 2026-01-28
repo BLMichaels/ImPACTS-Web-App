@@ -670,8 +670,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
                 <TableRow>
                   <TableCell 
                     sx={{ 
-                      minWidth: 350, 
-                      maxWidth: 350,
+                      minWidth: 250, 
+                      maxWidth: 250,
                       position: 'sticky', 
                       left: 0, 
                       zIndex: 10, 
@@ -760,7 +760,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             fontWeight: 600,
                             borderRight: '1px solid',
                             borderColor: 'divider',
-                            fontSize: '0.8rem'
+                            fontSize: '0.8rem',
+                            minWidth: 250,
+                            maxWidth: 250
                           }}
                         >
                           {row.stageTitle}
@@ -786,7 +788,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             bgcolor: 'background.paper',
                             borderRight: '1px solid',
                             borderColor: 'divider',
-                            pl: 3
+                            pl: 2,
+                            minWidth: 250,
+                            maxWidth: 250
                           }}
                         >
                           {renderTaskText(row.task)}
@@ -833,7 +837,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             fontWeight: 600,
                             borderRight: '1px solid',
                             borderColor: 'divider',
-                            pl: 3
+                            pl: 2,
+                            minWidth: 250,
+                            maxWidth: 250
                           }}
                         >
                           Stage {stageNum} Complete
