@@ -38,7 +38,8 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
+  Autocomplete
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -60,7 +61,8 @@ import {
   Delete as DeleteIcon,
   Contacts as ContactsIcon,
   KeyboardArrowUp as ArrowUpIcon,
-  OpenInFull as OpenInFullIcon
+  OpenInFull as OpenInFullIcon,
+  Settings as SettingsIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -87,6 +89,7 @@ interface Contact {
   county?: string;
   hospitalType?: string;
   ownership?: string;
+  customFields?: Record<string, string>;
 }
 
 type SortField = 'name' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId';
@@ -127,6 +130,8 @@ const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: 
 ];
 
 const CRM_PREFS_KEY = 'adminCrm_prefs';
+const CRM_CUSTOM_FIELD_DEFS_KEY = 'adminCrm_customFieldDefinitions';
+type CustomFieldDefinition = { id: string; label: string };
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250, 1000, 'all'] as const;
 type PageSize = number | 'all';
 
@@ -198,8 +203,25 @@ const AdminCRMPage: React.FC = () => {
     phone: '',
     status: 'Active',
     region: '',
-    notes: ''
+    notes: '',
+    customFields: {} as Record<string, string>
   });
+
+  const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>(() => {
+    try {
+      const s = localStorage.getItem(CRM_CUSTOM_FIELD_DEFS_KEY);
+      if (s) {
+        const parsed = JSON.parse(s) as CustomFieldDefinition[];
+        if (Array.isArray(parsed) && parsed.every((x: unknown) => x && typeof x === 'object' && 'id' in x && 'label' in x)) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return [];
+  });
+  const [customFieldsDialogOpen, setCustomFieldsDialogOpen] = useState(false);
+  const [newCustomFieldLabel, setNewCustomFieldLabel] = useState('');
+  const [saveInProgress, setSaveInProgress] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -221,7 +243,7 @@ const AdminCRMPage: React.FC = () => {
             const id = String(row.facility_id ?? row.id ?? '');
             const name = String(row.name ?? 'Unknown');
             const organization = String(row.company_name ?? '');
-            const region = [row.state, row.county ?? row.region].filter(Boolean).join(', ') || String(row.region ?? '');
+            const region = String(row.region ?? '');
             const created = row.created_at ? String(row.created_at).split('T')[0] : new Date().toISOString().split('T')[0];
             list.push({
               id,
@@ -241,7 +263,8 @@ const AdminCRMPage: React.FC = () => {
               zip: row.zip != null ? String(row.zip) : undefined,
               county: row.county != null ? String(row.county) : undefined,
               hospitalType: row.hospital_type != null ? String(row.hospital_type) : undefined,
-              ownership: row.ownership != null ? String(row.ownership) : undefined
+              ownership: row.ownership != null ? String(row.ownership) : undefined,
+              customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined
             });
           }
           hasMore = batch.length >= chunk;
@@ -267,6 +290,12 @@ const AdminCRMPage: React.FC = () => {
       }));
     } catch {}
   }, [viewMode, visibleColumns, pageSize]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CRM_CUSTOM_FIELD_DEFS_KEY, JSON.stringify(customFieldDefs));
+    } catch {}
+  }, [customFieldDefs]);
 
   const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))].sort() as string[], [contacts]);
   const states = useMemo(() => [...new Set(contacts.map(c => c.state).filter(Boolean))].sort() as string[], [contacts]);
@@ -339,22 +368,46 @@ const AdminCRMPage: React.FC = () => {
     });
   };
 
-  const handleSaveContact = () => {
-    const payload = {
+  const handleSaveContact = async () => {
+    const payload: Contact = {
       id: editingContact?.id ?? `contact_${Date.now()}`,
-      ...formData,
       type: formData.type,
+      name: formData.name,
+      organization: formData.organization,
+      email: formData.email,
+      phone: formData.phone,
+      status: formData.status,
+      region: formData.region,
+      notes: formData.notes,
       createdAt: editingContact?.createdAt ?? new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
+      updatedAt: new Date().toISOString().split('T')[0],
+      ...(Object.keys(formData.customFields || {}).length ? { customFields: formData.customFields } : {})
     };
-    if (editingContact) {
+    if (editingContact?.type === 'hospital' && (editingContact.facilityId || editingContact.id)) {
+      setSaveInProgress(true);
+      const key = editingContact.facilityId ?? editingContact.id;
+      const { error } = await supabase
+        .from('hospitals')
+        .update({
+          region: formData.region || null,
+          custom_fields: formData.customFields && Object.keys(formData.customFields).length ? formData.customFields : {}
+        })
+        .eq('facility_id', key);
+      setSaveInProgress(false);
+      if (error) {
+        console.error('Failed to update hospital:', error);
+        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+      } else {
+        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+      }
+    } else if (editingContact) {
       setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
     } else {
-      setContacts(prev => [...prev, payload as Contact]);
+      setContacts(prev => [...prev, payload]);
     }
     setDialogOpen(false);
     setEditingContact(null);
-    setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '' });
+    setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', customFields: {} });
   };
 
   const openDetail = (c: Contact) => {
@@ -444,7 +497,12 @@ const AdminCRMPage: React.FC = () => {
               Export
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '' }); setDialogOpen(true); }}>
+          <Tooltip title="Add or remove custom fields for contacts (Admins only)">
+            <Button startIcon={<SettingsIcon />} onClick={() => setCustomFieldsDialogOpen(true)} size="medium" variant="outlined">
+              Manage custom fields
+            </Button>
+          </Tooltip>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', customFields: {} }); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -653,7 +711,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '' }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', customFields: {} }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -722,7 +780,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '' }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', customFields: {} }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>
@@ -786,7 +844,7 @@ const AdminCRMPage: React.FC = () => {
       {/* Row actions menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
         <MenuItem onClick={() => { if (detailContact) openDetail(detailContact); setAnchorEl(null); }}>View details</MenuItem>
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes }); setDialogOpen(true); } setAnchorEl(null); }}>
+        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, customFields: detailContact.customFields ?? {} }); setDialogOpen(true); } setAnchorEl(null); }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
@@ -840,6 +898,13 @@ const AdminCRMPage: React.FC = () => {
               <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="State" secondary={detailContact.state ?? '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
+              {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.length > 0 && (
+                <>
+                  {customFieldDefs.filter(d => detailContact.customFields![d.id]).map((d) => (
+                    <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={detailContact.customFields![d.id] || '—'} /></ListItem>
+                  ))}
+                </>
+              )}
               {detailContact.notes && (
                 <ListItem disablePadding>
                   <ListItemText primary="Notes" secondary={detailContact.notes.length > 120 ? `${detailContact.notes.slice(0, 120)}…` : detailContact.notes} />
@@ -851,7 +916,7 @@ const AdminCRMPage: React.FC = () => {
                 Expand to full view
               </Button>
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes }); setPanelOpen(false); setDialogOpen(true); }}>
+                <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, customFields: detailContact.customFields ?? {} }); setPanelOpen(false); setDialogOpen(true); }}>
                   Edit
                 </Button>
                 <Button size="small" variant="outlined" startIcon={<EmailIcon />} fullWidth>Email</Button>
@@ -904,6 +969,9 @@ const AdminCRMPage: React.FC = () => {
                     <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Added" secondary={detailContact.createdAt} /></ListItem>
+                    {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.length > 0 && customFieldDefs.filter(d => detailContact.customFields![d.id]).map((d) => (
+                      <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={detailContact.customFields![d.id] || '—'} /></ListItem>
+                    ))}
                   </List>
                 </Grid>
                 <Grid item xs={12} md={6}>
@@ -918,7 +986,7 @@ const AdminCRMPage: React.FC = () => {
                 </Grid>
               </Grid>
               <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
-                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes }); setFullScreenOpen(false); setDialogOpen(true); }}>
+                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, customFields: detailContact.customFields ?? {} }); setFullScreenOpen(false); setDialogOpen(true); }}>
                   Edit
                 </Button>
                 <Button variant="contained" startIcon={<EmailIcon />}>Email</Button>
@@ -954,7 +1022,16 @@ const AdminCRMPage: React.FC = () => {
               <TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth size="small" />
             </Grid>
             <Grid item xs={6}>
-              <TextField label="Region" value={formData.region} onChange={(e) => setFormData(prev => ({ ...prev, region: e.target.value }))} fullWidth size="small" />
+              <Autocomplete
+                freeSolo
+                size="small"
+                options={regions}
+                value={formData.region || null}
+                inputValue={formData.region}
+                onInputChange={(_, v) => setFormData(prev => ({ ...prev, region: v }))}
+                onChange={(_, v) => setFormData(prev => ({ ...prev, region: v == null ? '' : String(v) }))}
+                renderInput={(params) => <TextField {...params} label="Region" placeholder="Select or type new" />}
+              />
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth size="small">
@@ -969,11 +1046,64 @@ const AdminCRMPage: React.FC = () => {
             <Grid item xs={12}>
               <TextField label="Notes" value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} fullWidth size="small" multiline rows={3} />
             </Grid>
+            {customFieldDefs.length > 0 && (
+              <>
+                <Grid item xs={12}>
+                  <Divider sx={{ mt: 1 }} />
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>Custom fields</Typography>
+                </Grid>
+                {customFieldDefs.map((def) => (
+                  <Grid item xs={12} key={def.id}>
+                    <TextField
+                      label={def.label}
+                      value={(formData.customFields || {})[def.id] ?? ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))}
+                      fullWidth
+                      size="small"
+                    />
+                  </Grid>
+                ))}
+              </>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setDialogOpen(false); setEditingContact(null); }}>Cancel</Button>
-          <Button onClick={handleSaveContact} variant="contained">{editingContact ? 'Save changes' : 'Save contact'}</Button>
+          <Button onClick={() => handleSaveContact()} variant="contained" disabled={saveInProgress}>{saveInProgress ? 'Saving…' : (editingContact ? 'Save changes' : 'Save contact')}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Manage custom fields (Admins only) */}
+      <Dialog open={customFieldsDialogOpen} onClose={() => setCustomFieldsDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Manage custom fields</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Custom fields appear when adding or editing contacts. Values are saved per contact (hospitals are stored in the database).
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <TextField
+              size="small"
+              label="New field label"
+              value={newCustomFieldLabel}
+              onChange={(e) => setNewCustomFieldLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (newCustomFieldLabel.trim()) { setCustomFieldDefs(prev => [...prev, { id: `cf_${Date.now()}`, label: newCustomFieldLabel.trim() }]); setNewCustomFieldLabel(''); } } }}
+              fullWidth
+            />
+            <Button variant="contained" onClick={() => { if (newCustomFieldLabel.trim()) { setCustomFieldDefs(prev => [...prev, { id: `cf_${Date.now()}`, label: newCustomFieldLabel.trim() }]); setNewCustomFieldLabel(''); } }} startIcon={<AddIcon />}>
+              Add
+            </Button>
+          </Box>
+          <List dense>
+            {customFieldDefs.map((def) => (
+              <ListItem key={def.id} secondaryAction={<IconButton size="small" onClick={() => setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id))}><DeleteIcon /></IconButton>}>
+                <ListItemText primary={def.label} />
+              </ListItem>
+            ))}
+            {customFieldDefs.length === 0 && <ListItem><ListItemText primary="No custom fields yet. Add one above." secondary="These apply to all contacts in the CRM." /></ListItem>}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCustomFieldsDialogOpen(false)}>Done</Button>
         </DialogActions>
       </Dialog>
 
