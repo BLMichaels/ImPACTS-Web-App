@@ -41,6 +41,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { supabase } from '../../supabase';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../../types/database';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '../../types/database';
+import ScormPackagesSection from '../../components/ScormPackagesSection';
 
 // ---- Registration section constants ----
 const QUESTION_TYPES: { value: RegistrationQuestionType; label: string }[] = [
@@ -249,6 +250,7 @@ export default function AdminSettingsPage() {
       <Tabs value={tabIndex} onChange={(_, v) => setTabIndex(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tab label="Registration Questions" />
         <Tab label="Permissions" />
+        <Tab label="Learning Modules" />
       </Tabs>
 
       {/* Registration Questions */}
@@ -354,6 +356,17 @@ export default function AdminSettingsPage() {
               ))}
             </Box>
           </Paper>
+        </Box>
+      )}
+
+      {/* Learning Modules (SCORM) */}
+      {tabIndex === 2 && (
+        <Box>
+          <Typography variant="h6" gutterBottom>Learning Modules</Typography>
+          <Typography color="textSecondary" sx={{ mb: 2 }}>
+            Upload and manage SCORM learning modules. Only Admins can add modules; all users can launch any modules that apply to their hospital/program.
+          </Typography>
+          <ScormPackagesSection title="Learning Modules" />
         </Box>
       )}
 
