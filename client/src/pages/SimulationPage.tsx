@@ -54,6 +54,7 @@ import {
   PictureAsPdf as PdfIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface SimulationCase {
   id: string;
@@ -1044,6 +1045,8 @@ const SimulationPage: React.FC = () => {
             Use the structured debriefing process to track improvements and link to your activities.
           </Typography>
         </Box>
+
+        <ScormPackagesSection title="SCORM simulation modules" />
 
         {/* Statistics Cards */}
         <Grid container spacing={isMobile ? 2 : 3} sx={{ mb: 4 }}>

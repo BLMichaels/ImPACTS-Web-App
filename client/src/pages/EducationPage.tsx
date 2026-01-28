@@ -16,6 +16,7 @@ import {
 import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { ASSESSMENT_QUESTIONS } from './PRSPage';
+import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface EducationContent {
   question: string;
@@ -190,6 +191,8 @@ const EducationPage: React.FC = () => {
           return true;
         })
         .map(renderQuestionCard)}
+
+      <ScormPackagesSection title="SCORM learning modules" />
 
       {/* Education Dialog */}
       <Dialog 
