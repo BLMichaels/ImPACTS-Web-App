@@ -693,6 +693,22 @@ const MentorSiteMilestonesPage: React.FC = () => {
     }
   };
 
+  // Match stage colors from PECC checklist page
+  const getStageColor = (stageId: string) => {
+    switch (stageId) {
+      case 'stage1':
+        return '#2196F3'; // Blue
+      case 'stage2':
+        return '#4CAF50'; // Green
+      case 'stage3':
+        return '#FF9800'; // Orange
+      case 'stage4':
+        return '#9C27B0'; // Purple
+      default:
+        return '#2196F3';
+    }
+  };
+
   const tableRows = useMemo(() => {
     const rows: Array<{ type: 'stage' | 'task' | 'completion'; stageId?: string; stageTitle?: string; taskId?: string; task?: MilestoneTask }> = [];
     
