@@ -89,12 +89,23 @@ interface MentorActivity {
   hours: number;
   description: string;
   hospitalIds: string[];
+  readinessDomain?: string; // Domain of pediatric readiness
   simulationCase: string | null;
   simParticipants: number | null;
   facilitatorFeedbackSubmitted: boolean;
   participantFeedbackSubmitted: boolean;
   createdAt: string;
 }
+
+const READINESS_DOMAINS = [
+  'Administration & Coordination',
+  'Care Team Competencies',
+  'Policies, Procedures, & Protocols',
+  'Equipment, Supplies, & Medication',
+  'Pediatric Patient & Medication Safety',
+  'Quality & Process Improvement',
+  'Support Services'
+];
 
 // Hospital interface (for dropdown)
 interface Hospital {
@@ -127,6 +138,7 @@ const MentorActivitiesPage: React.FC = () => {
     hours: 0,
     description: '',
     hospitalIds: [] as string[],
+    readinessDomain: '',
     simulationCase: '',
     simParticipants: 1,
     facilitatorFeedbackSubmitted: false,
@@ -221,6 +233,7 @@ const MentorActivitiesPage: React.FC = () => {
       hours: 0,
       description: '',
       hospitalIds: [],
+      readinessDomain: '',
       simulationCase: '',
       simParticipants: 1,
       facilitatorFeedbackSubmitted: false,
@@ -240,6 +253,7 @@ const MentorActivitiesPage: React.FC = () => {
       hours: activity.hours,
       description: activity.description,
       hospitalIds: activity.hospitalIds,
+      readinessDomain: activity.readinessDomain || '',
       simulationCase: activity.simulationCase || '',
       simParticipants: activity.simParticipants || 1,
       facilitatorFeedbackSubmitted: activity.facilitatorFeedbackSubmitted,
@@ -273,12 +287,6 @@ const MentorActivitiesPage: React.FC = () => {
       return;
     }
     
-    // For activities with PECCs (TR, SC, DM), description is required
-    if (['TR', 'SC', 'DM'].includes(formData.category) && !formData.description.trim()) {
-      setError('Description is required for this category');
-      return;
-    }
-    
     // For simulation activities, additional validation
     if (formData.category === 'SC') {
       if (!formData.simulationCase) {
@@ -295,6 +303,7 @@ const MentorActivitiesPage: React.FC = () => {
       hours: formData.hours,
       description: formData.description.trim(),
       hospitalIds: formData.hospitalIds,
+      readinessDomain: formData.hospitalIds.length > 0 && formData.readinessDomain ? formData.readinessDomain : undefined,
       simulationCase: formData.category === 'SC' ? formData.simulationCase : null,
       simParticipants: formData.category === 'SC' ? formData.simParticipants : null,
       facilitatorFeedbackSubmitted: formData.category === 'SC' ? formData.facilitatorFeedbackSubmitted : false,
@@ -313,7 +322,25 @@ const MentorActivitiesPage: React.FC = () => {
     newActivities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     
     saveActivities(newActivities);
+    setError(null);
     setDialogOpen(false);
+    
+    // Reset form after a brief delay to ensure state updates
+    setTimeout(() => {
+      setFormData({
+        date: new Date(),
+        activityName: '',
+        category: '',
+        hours: 0,
+        description: '',
+        hospitalIds: [],
+        readinessDomain: '',
+        simulationCase: '',
+        simParticipants: 1,
+        facilitatorFeedbackSubmitted: false,
+        participantFeedbackSubmitted: false
+      });
+    }, 100);
   };
 
   // Handle hospital selection
@@ -516,7 +543,16 @@ const MentorActivitiesPage: React.FC = () => {
         )}
 
         {/* Add/Edit Dialog */}
-        <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
+        <Dialog 
+          open={dialogOpen} 
+          onClose={() => {
+            setDialogOpen(false);
+            setError(null);
+          }} 
+          maxWidth="md" 
+          fullWidth
+          disableEnforceFocus
+        >
           <DialogTitle>
             {editingActivity ? 'Edit Activity' : 'Add Activity'}
           </DialogTitle>
@@ -537,13 +573,15 @@ const MentorActivitiesPage: React.FC = () => {
                 />
               </Grid>
               
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12}>
                 <TextField
                   label="Activity (name of meeting or individual)"
                   value={formData.activityName}
                   onChange={(e) => setFormData(prev => ({ ...prev, activityName: e.target.value }))}
                   fullWidth
                   required
+                  multiline
+                  rows={3}
                 />
               </Grid>
               
@@ -607,18 +645,38 @@ const MentorActivitiesPage: React.FC = () => {
                 </FormControl>
               </Grid>
               
-              {/* Description - required for TR, SC, DM */}
-              {['TR', 'SC', 'DM'].includes(formData.category) && (
+              {/* Description - for all categories */}
+              <Grid item xs={12}>
+                <TextField
+                  label="Description (outcomes of meetings, next steps, deliverables)"
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  fullWidth
+                  multiline
+                  rows={4}
+                />
+              </Grid>
+              
+              {/* Readiness Domain - only shown when hospitals are selected */}
+              {formData.hospitalIds.length > 0 && (
                 <Grid item xs={12}>
-                  <TextField
-                    label="Description (outcomes of meeting, next steps, deliverables)"
-                    value={formData.description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    fullWidth
-                    multiline
-                    rows={3}
-                    required
-                  />
+                  <FormControl fullWidth>
+                    <InputLabel>Which domain of pediatric readiness does this apply to? *only for activities with hospital PECCs</InputLabel>
+                    <Select
+                      value={formData.readinessDomain}
+                      onChange={(e) => setFormData(prev => ({ ...prev, readinessDomain: e.target.value }))}
+                      label="Which domain of pediatric readiness does this apply to? *only for activities with hospital PECCs"
+                    >
+                      <MenuItem value="">
+                        <em>None</em>
+                      </MenuItem>
+                      {READINESS_DOMAINS.map((domain) => (
+                        <MenuItem key={domain} value={domain}>
+                          {domain}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Grid>
               )}
               
