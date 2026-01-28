@@ -1,0 +1,13 @@
+---
+description: After making code changes per user request, commit and push to GitHub so Vercel auto-deploys
+alwaysApply: true
+---
+
+# Push updates after changes
+
+When the user asks for code changes or updates:
+
+1. **Commit** the changed files with a clear, short message (e.g. `CRM: add State column and quick-view panel`).
+2. **Push** to `origin main`: `git push origin main`.
+
+Do this as part of finishing the task, unless the user says not to push or to hold off. Vercel is connected to GitHub and will deploy from `main` automatically.

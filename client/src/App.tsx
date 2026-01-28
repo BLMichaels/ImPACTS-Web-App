@@ -36,6 +36,7 @@ const MentorWagesExpensesPage = lazy(() => import('./pages/mentor/MentorWagesExp
 const ManagerDashboardPage = lazy(() => import('./pages/manager/ManagerDashboardPage'));
 const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
 const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
+const ManagerWagesExpensesPage = lazy(() => import('./pages/manager/ManagerWagesExpensesPage'));
 
 // Admin Pages (lazy loaded)
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
@@ -200,6 +201,7 @@ function App() {
                   <Route path="/manager/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerDashboardPage /></ProtectedRoute>} />
                   <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />
                   <Route path="/manager/crm" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCRMPage /></ProtectedRoute>} />
+                  <Route path="/manager/wages" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerWagesExpensesPage /></ProtectedRoute>} />
                   
                   {/* Admin Routes */}
                   <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboardPage /></ProtectedRoute>} />

@@ -110,7 +110,8 @@ const Navbar: React.FC = () => {
         return [
           { path: '/manager/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
-          { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> }
+          { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
+          { path: '/manager/wages', label: 'Wages & Expenses', icon: <MoneyIcon /> }
         ];
 
       case UserRole.MENTOR:
