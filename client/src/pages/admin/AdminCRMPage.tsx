@@ -238,6 +238,7 @@ const AdminCRMPage: React.FC = () => {
   const [hospitalTypeFilter, setHospitalTypeFilter] = useState<string[]>([]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ single?: string; bulk?: Set<string> } | null>(null);
+  const [deleteConfirmTyped, setDeleteConfirmTyped] = useState('');
   const [bulkStatusAnchor, setBulkStatusAnchor] = useState<null | HTMLElement>(null);
 
   const [formData, setFormData] = useState({
@@ -552,6 +553,7 @@ const AdminCRMPage: React.FC = () => {
     setContacts(prev => prev.filter(c => !deleteTarget.bulk!.has(c.id)));
     setDeleteConfirmOpen(false);
     setDeleteTarget(null);
+    setDeleteConfirmTyped('');
     setSelectedIds(new Set());
     if (detailContact && deleteTarget.bulk.has(detailContact.id)) { setPanelOpen(false); setFullScreenOpen(false); setDetailContact(null); }
   };
@@ -763,7 +765,7 @@ const AdminCRMPage: React.FC = () => {
               <MenuItem key={s} onClick={() => handleBulkStatusChange(s)}>{s}</MenuItem>
             ))}
           </Menu>
-          <Button size="small" variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { setDeleteTarget({ bulk: new Set(selectedIds) }); setDeleteConfirmOpen(true); }}>
+          <Button size="small" variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { setDeleteConfirmTyped(''); setDeleteTarget({ bulk: new Set(selectedIds) }); setDeleteConfirmOpen(true); }}>
             Delete selected
           </Button>
           <Button size="small" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
@@ -934,7 +936,7 @@ const AdminCRMPage: React.FC = () => {
       </Menu>
 
       {/* Delete confirmation */}
-      <Dialog open={deleteConfirmOpen} onClose={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); }}>
+      <Dialog open={deleteConfirmOpen} onClose={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); setDeleteConfirmTyped(''); }}>
         <DialogTitle>
           {deleteTarget?.bulk ? `Delete ${deleteTarget.bulk.size} contacts?` : 'Delete contact?'}
         </DialogTitle>
@@ -944,10 +946,29 @@ const AdminCRMPage: React.FC = () => {
               ? 'These contacts will be removed. This cannot be undone.'
               : 'This contact will be removed. This cannot be undone.'}
           </Typography>
+          {deleteTarget?.bulk && (
+            <TextField
+              autoFocus
+              fullWidth
+              size="small"
+              label='Type DELETE to confirm'
+              value={deleteConfirmTyped}
+              onChange={(e) => setDeleteConfirmTyped(e.target.value)}
+              placeholder="DELETE"
+              sx={{ mt: 2 }}
+              error={deleteConfirmTyped.length > 0 && deleteConfirmTyped !== 'DELETE'}
+              helperText={deleteConfirmTyped.length > 0 && deleteConfirmTyped !== 'DELETE' ? 'Must type exactly DELETE' : undefined}
+            />
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); }}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => deleteTarget?.single ? handleDeleteContact(deleteTarget.single) : handleBulkDelete()}>
+          <Button onClick={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); setDeleteConfirmTyped(''); }}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => { if (deleteTarget?.single) handleDeleteContact(deleteTarget.single); else if (deleteTarget?.bulk && deleteConfirmTyped === 'DELETE') handleBulkDelete(); }}
+            disabled={Boolean(deleteTarget?.bulk) && deleteConfirmTyped !== 'DELETE'}
+          >
             Delete
           </Button>
         </DialogActions>
