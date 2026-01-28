@@ -39,7 +39,11 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Autocomplete
+  Autocomplete,
+  FormGroup,
+  FormControlLabel,
+  RadioGroup,
+  Radio
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -115,6 +119,8 @@ const TYPE_COLORS: Record<ContactType, string> = {
   other: '#607d8b'
 };
 
+const CONTACT_TYPES: ContactType[] = ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'];
+
 const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'name', label: 'Name', sortable: true, defaultVisible: true },
   { id: 'type', label: 'Type', sortable: true, defaultVisible: true },
@@ -131,7 +137,26 @@ const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: 
 
 const CRM_PREFS_KEY = 'adminCrm_prefs';
 const CRM_CUSTOM_FIELD_DEFS_KEY = 'adminCrm_customFieldDefinitions';
-type CustomFieldDefinition = { id: string; label: string };
+
+export type CustomFieldType = 'checkbox' | 'radio' | 'date' | 'numeric' | 'short_answer' | 'paragraph' | 'dropdown' | 'dropdown_csv';
+type CustomFieldDefinition = {
+  id: string;
+  label: string;
+  applicableTypes: ContactType[];
+  fieldType: CustomFieldType;
+  options?: string[];
+};
+const CUSTOM_FIELD_TYPE_LABELS: Record<CustomFieldType, string> = {
+  checkbox: 'Checkbox',
+  radio: 'Radio',
+  date: 'Date',
+  numeric: 'Numeric',
+  short_answer: 'Short answer',
+  paragraph: 'Paragraph',
+  dropdown: 'Dropdown (type options)',
+  dropdown_csv: 'Dropdown (upload options from CSV)'
+};
+const OPTIONS_FIELD_TYPES: CustomFieldType[] = ['radio', 'dropdown', 'dropdown_csv'];
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250, 1000, 'all'] as const;
 type PageSize = number | 'all';
 
@@ -211,16 +236,36 @@ const AdminCRMPage: React.FC = () => {
     try {
       const s = localStorage.getItem(CRM_CUSTOM_FIELD_DEFS_KEY);
       if (s) {
-        const parsed = JSON.parse(s) as CustomFieldDefinition[];
-        if (Array.isArray(parsed) && parsed.every((x: unknown) => x && typeof x === 'object' && 'id' in x && 'label' in x)) {
-          return parsed;
+        const parsed = JSON.parse(s) as unknown[];
+        if (Array.isArray(parsed)) {
+          return parsed.map((x: unknown) => {
+            const o = x as Record<string, unknown>;
+            if (!o || typeof o !== 'object' || !('id' in o) || !('label' in o)) return null;
+            const def: CustomFieldDefinition = {
+              id: String(o.id),
+              label: String(o.label),
+              applicableTypes: Array.isArray(o.applicableTypes) && o.applicableTypes.length
+                ? (o.applicableTypes as ContactType[]).filter(t => CONTACT_TYPES.includes(t))
+                : (['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'] as ContactType[]),
+              fieldType: (o.fieldType && ['checkbox', 'radio', 'date', 'numeric', 'short_answer', 'paragraph', 'dropdown', 'dropdown_csv'].includes(String(o.fieldType)))
+                ? o.fieldType as CustomFieldType
+                : 'short_answer',
+              options: Array.isArray(o.options) ? (o.options as string[]).filter(Boolean) : undefined
+            };
+            return def;
+          }).filter((d): d is CustomFieldDefinition => d !== null);
         }
       }
     } catch {}
     return [];
   });
   const [customFieldsDialogOpen, setCustomFieldsDialogOpen] = useState(false);
-  const [newCustomFieldLabel, setNewCustomFieldLabel] = useState('');
+  const [editingDefId, setEditingDefId] = useState<string | null>(null);
+  const [newDefLabel, setNewDefLabel] = useState('');
+  const [newDefApplicableTypes, setNewDefApplicableTypes] = useState<ContactType[]>(['hospital']);
+  const [newDefFieldType, setNewDefFieldType] = useState<CustomFieldType>('short_answer');
+  const [newDefOptions, setNewDefOptions] = useState('');
+  const [csvUploadError, setCsvUploadError] = useState<string | null>(null);
   const [saveInProgress, setSaveInProgress] = useState(false);
 
   useEffect(() => {
@@ -898,10 +943,10 @@ const AdminCRMPage: React.FC = () => {
               <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="State" secondary={detailContact.state ?? '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
-              {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.length > 0 && (
+              {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type)).length > 0 && (
                 <>
-                  {customFieldDefs.filter(d => detailContact.customFields![d.id]).map((d) => (
-                    <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={detailContact.customFields![d.id] || '—'} /></ListItem>
+                  {customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
+                    <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} /></ListItem>
                   ))}
                 </>
               )}
@@ -969,8 +1014,8 @@ const AdminCRMPage: React.FC = () => {
                     <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Added" secondary={detailContact.createdAt} /></ListItem>
-                    {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.length > 0 && customFieldDefs.filter(d => detailContact.customFields![d.id]).map((d) => (
-                      <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={detailContact.customFields![d.id] || '—'} /></ListItem>
+                    {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
+                      <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} /></ListItem>
                     ))}
                   </List>
                 </Grid>
@@ -1046,21 +1091,55 @@ const AdminCRMPage: React.FC = () => {
             <Grid item xs={12}>
               <TextField label="Notes" value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} fullWidth size="small" multiline rows={3} />
             </Grid>
-            {customFieldDefs.length > 0 && (
+            {customFieldDefs.filter(d => d.applicableTypes.includes(formData.type)).length > 0 && (
               <>
                 <Grid item xs={12}>
                   <Divider sx={{ mt: 1 }} />
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>Custom fields</Typography>
                 </Grid>
-                {customFieldDefs.map((def) => (
+                {customFieldDefs.filter(d => d.applicableTypes.includes(formData.type)).map((def) => (
                   <Grid item xs={12} key={def.id}>
-                    <TextField
-                      label={def.label}
-                      value={(formData.customFields || {})[def.id] ?? ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))}
-                      fullWidth
-                      size="small"
-                    />
+                    {def.fieldType === 'checkbox' && (
+                      <FormControlLabel
+                        control={<Checkbox size="small" checked={((formData.customFields || {})[def.id] ?? '') === 'true'} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.checked ? 'true' : 'false' } }))} />}
+                        label={def.label}
+                      />
+                    )}
+                    {def.fieldType === 'radio' && (
+                      <FormControl fullWidth size="small">
+                        <Typography variant="body2" sx={{ mb: 0.5 }}>{def.label}</Typography>
+                        <RadioGroup row value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))}>
+                          {(def.options ?? []).map((opt) => (
+                            <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />
+                          ))}
+                          {(!def.options || def.options.length === 0) && <Typography variant="caption" color="text.secondary">Add options in Manage custom fields</Typography>}
+                        </RadioGroup>
+                      </FormControl>
+                    )}
+                    {def.fieldType === 'date' && (
+                      <TextField label={def.label} type="date" value={((formData.customFields || {})[def.id] ?? '').slice(0, 10)} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+                    )}
+                    {def.fieldType === 'numeric' && (
+                      <TextField label={def.label} type="number" value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" inputProps={{ inputMode: 'numeric' }} />
+                    )}
+                    {def.fieldType === 'short_answer' && (
+                      <TextField label={def.label} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />
+                    )}
+                    {def.fieldType === 'paragraph' && (
+                      <TextField label={def.label} multiline rows={3} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />
+                    )}
+                    {(def.fieldType === 'dropdown' || def.fieldType === 'dropdown_csv') && (
+                      <FormControl fullWidth size="small">
+                        <InputLabel>{def.label}</InputLabel>
+                        <Select value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} label={def.label}>
+                          <MenuItem value=""><em>—</em></MenuItem>
+                          {(def.options ?? []).map((opt) => (
+                            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                          ))}
+                          {(!def.options || def.options.length === 0) && <MenuItem value="" disabled>Add options in Manage custom fields</MenuItem>}
+                        </Select>
+                      </FormControl>
+                    )}
                   </Grid>
                 ))}
               </>
@@ -1074,36 +1153,101 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Manage custom fields (Admins only) */}
-      <Dialog open={customFieldsDialogOpen} onClose={() => setCustomFieldsDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={customFieldsDialogOpen} onClose={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setCsvUploadError(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>Manage custom fields</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Custom fields appear when adding or editing contacts. Values are saved per contact (hospitals are stored in the database).
+            Define fields and which contact types they apply to (e.g. trauma level for hospitals only). Values are saved per contact.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-            <TextField
-              size="small"
-              label="New field label"
-              value={newCustomFieldLabel}
-              onChange={(e) => setNewCustomFieldLabel(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (newCustomFieldLabel.trim()) { setCustomFieldDefs(prev => [...prev, { id: `cf_${Date.now()}`, label: newCustomFieldLabel.trim() }]); setNewCustomFieldLabel(''); } } }}
-              fullWidth
-            />
-            <Button variant="contained" onClick={() => { if (newCustomFieldLabel.trim()) { setCustomFieldDefs(prev => [...prev, { id: `cf_${Date.now()}`, label: newCustomFieldLabel.trim() }]); setNewCustomFieldLabel(''); } }} startIcon={<AddIcon />}>
-              Add
-            </Button>
-          </Box>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={12}>
+              <TextField size="small" label="Field label" value={newDefLabel} onChange={(e) => setNewDefLabel(e.target.value)} fullWidth placeholder="e.g. Trauma center level" />
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Applies to</Typography>
+              <FormGroup row>
+                {CONTACT_TYPES.map((t) => (
+                  <FormControlLabel
+                    key={t}
+                    control={<Checkbox size="small" checked={newDefApplicableTypes.includes(t)} onChange={(e) => setNewDefApplicableTypes(prev => e.target.checked ? [...prev, t] : prev.filter(x => x !== t))} />}
+                    label={TYPE_LABELS[t]}
+                  />
+                ))}
+              </FormGroup>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Field type</InputLabel>
+                <Select value={newDefFieldType} onChange={(e) => { setNewDefFieldType(e.target.value as CustomFieldType); setNewDefOptions(''); setCsvUploadError(null); }} label="Field type">
+                  {(Object.keys(CUSTOM_FIELD_TYPE_LABELS) as CustomFieldType[]).map((ft) => (
+                    <MenuItem key={ft} value={ft}>{CUSTOM_FIELD_TYPE_LABELS[ft]}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            {OPTIONS_FIELD_TYPES.includes(newDefFieldType) && (
+              <Grid item xs={12}>
+                {newDefFieldType === 'dropdown_csv' ? (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Upload CSV or paste (first column = options)</Typography>
+                    <TextField size="small" multiline rows={3} fullWidth value={newDefOptions} onChange={(e) => setNewDefOptions(e.target.value)} placeholder="Paste CSV here, one value per line or comma-separated. Or use file upload below." />
+                    <Button component="label" size="small" sx={{ mt: 1 }}>Choose CSV file
+                      <input type="file" accept=".csv,.txt" hidden onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setCsvUploadError(null);
+                        const r = new FileReader();
+                        r.onload = () => {
+                          const text = String(r.result ?? '');
+                          const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                          const opts = lines.flatMap(l => l.split(',').map(c => c.trim()).filter(Boolean));
+                          setNewDefOptions(opts.join('\n'));
+                        };
+                        r.onerror = () => setCsvUploadError('Could not read file');
+                        r.readAsText(f);
+                      }} />
+                    </Button>
+                    {csvUploadError && <Typography color="error" variant="caption" display="block">{csvUploadError}</Typography>}
+                  </Box>
+                ) : (
+                  <TextField size="small" multiline rows={3} fullWidth label="Options (one per line)" value={newDefOptions} onChange={(e) => setNewDefOptions(e.target.value)} placeholder="Option 1&#10;Option 2&#10;Option 3" />
+                )}
+              </Grid>
+            )}
+            <Grid item xs={12}>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => {
+                  if (!newDefLabel.trim() || newDefApplicableTypes.length === 0) return;
+                  const opts = newDefOptions.split(/\r?\n/).map(l => l.trim()).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+                  const def: CustomFieldDefinition = { id: editingDefId ?? `cf_${Date.now()}`, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined };
+                  if (editingDefId) {
+                    setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? def : d));
+                    setEditingDefId(null);
+                  } else {
+                    setCustomFieldDefs(prev => [...prev, def]);
+                  }
+                  setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions('');
+                }}
+              >
+                {editingDefId ? 'Update field' : 'Add field'}
+              </Button>
+            </Grid>
+          </Grid>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Existing fields</Typography>
           <List dense>
             {customFieldDefs.map((def) => (
-              <ListItem key={def.id} secondaryAction={<IconButton size="small" onClick={() => setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id))}><DeleteIcon /></IconButton>}>
-                <ListItemText primary={def.label} />
+              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={() => setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id))}><DeleteIcon fontSize="small" /></IconButton></>}>
+                <ListItemText primary={def.label} secondary={`${CUSTOM_FIELD_TYPE_LABELS[def.fieldType]} · ${def.applicableTypes.map(t => TYPE_LABELS[t]).join(', ')}`} />
               </ListItem>
             ))}
-            {customFieldDefs.length === 0 && <ListItem><ListItemText primary="No custom fields yet. Add one above." secondary="These apply to all contacts in the CRM." /></ListItem>}
+            {customFieldDefs.length === 0 && <ListItem><ListItemText primary="No custom fields yet. Use the form above to add one." /></ListItem>}
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCustomFieldsDialogOpen(false)}>Done</Button>
+          <Button onClick={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); }}>Done</Button>
         </DialogActions>
       </Dialog>
 
