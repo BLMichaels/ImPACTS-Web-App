@@ -287,29 +287,6 @@ const ManagerDashboardPage: React.FC = () => {
             </Box>
           </Paper>
 
-          {/* Alerts */}
-          <Paper sx={{ p: 2, mt: 2 }}>
-            <Typography variant="h6" gutterBottom>Alerts</Typography>
-            <Divider sx={{ mb: 2 }} />
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Box sx={{ p: 1, bgcolor: 'warning.light', borderRadius: 1 }}>
-                <Typography variant="body2">
-                  <strong>2 mentors</strong> haven't logged activities in 7+ days
-                </Typography>
-              </Box>
-              <Box sx={{ p: 1, bgcolor: 'info.light', borderRadius: 1 }}>
-                <Typography variant="body2">
-                  <strong>3 expenses</strong> pending approval
-                </Typography>
-              </Box>
-              <Box sx={{ p: 1, bgcolor: 'success.light', borderRadius: 1 }}>
-                <Typography variant="body2">
-                  <strong>5 simulations</strong> completed this week
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
         </Grid>
       </Grid>
 
