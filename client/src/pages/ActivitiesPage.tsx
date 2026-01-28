@@ -69,6 +69,7 @@ interface Activity {
   created_at?: string;
   updated_at?: string;
   last_sync_at?: string;
+  submitted_by?: string; // User id who submitted (for shared-site per-person hours)
 }
 
 interface GapPlan {
@@ -191,10 +192,12 @@ const ActivitiesPage = () => {
       setActivities(newActivities);
       if (currentUser?.uid) {
         // Add timestamps to activities before saving
+        const uid = currentUser.uid ?? (currentUser as { id?: string }).id;
         const timestampedActivities = newActivities.map(activity => ({
           ...activity,
           created_at: activity.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          submitted_by: activity.submitted_by ?? uid
         }));
         
         localStorage.setItem(`activities_${currentUser.uid}`, JSON.stringify(timestampedActivities));
@@ -260,6 +263,7 @@ const ActivitiesPage = () => {
         );
         saveActivities(updatedActivities);
       } else {
+        const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
         const newActivity: Activity = {
           id: Date.now().toString(),
           date: formData.date,
@@ -272,7 +276,8 @@ const ActivitiesPage = () => {
           feedbackForms: formData.category === 'Simulation Facilitation' ? formData.feedbackForms : undefined,
           associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
           associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
-          notes: formData.notes || undefined
+          notes: formData.notes || undefined,
+          submitted_by: uid ?? undefined
         };
         saveActivities([...activities, newActivity]);
       }

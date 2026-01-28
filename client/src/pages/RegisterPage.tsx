@@ -213,6 +213,35 @@ export default function RegisterPage() {
         // Still allow login; profile can be updated later
       }
 
+      // Add this person to the CRM as a contact associated with their hospital
+      if (hospitalFacilityId) {
+        const { data: hosp } = await supabase
+          .from('hospitals')
+          .select('id')
+          .or(`id.eq.${hospitalFacilityId},facility_id.eq.${hospitalFacilityId}`)
+          .limit(1)
+          .maybeSingle();
+        const hospitalId = hosp && typeof (hosp as { id?: string }).id === 'string' ? (hosp as { id: string }).id : null;
+        if (hospitalId) {
+          await supabase.from('hospital_contacts').upsert(
+            {
+              hospital_id: hospitalId,
+              user_id: userId,
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              email: email.trim(),
+              phone: phone.trim() || null,
+              contact_status: 'New PECC',
+              role_at_hospital: jobTitle.trim() || null,
+              is_primary_contact: false,
+              is_actively_engaged: true,
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: 'hospital_id,user_id' }
+          );
+        }
+      }
+
       localStorage.setItem('termsAccepted', 'true');
       localStorage.setItem('termsAcceptedDate', new Date().toISOString());
       navigate('/', { replace: true });

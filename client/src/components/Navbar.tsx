@@ -49,7 +49,7 @@ interface NavItem {
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, actualRole } = useUserProfile();
+  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, actualRole, visibleTabs } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -123,8 +123,8 @@ const Navbar: React.FC = () => {
         ];
 
       case UserRole.PECC:
-      default:
-        return [
+      default: {
+        const peccItems: NavItem[] = [
           { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
@@ -132,6 +132,12 @@ const Navbar: React.FC = () => {
           { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> },
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
+        const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/education': 'education', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
+        if (visibleTabs && visibleTabs.length > 0) {
+          return peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''));
+        }
+        return peccItems;
+      }
     }
   };
 

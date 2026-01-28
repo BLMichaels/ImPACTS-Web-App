@@ -176,7 +176,26 @@ export interface MentorActivity {
   updated_at: string;
 }
 
-// PECC Activities (existing structure, keeping for reference)
+// PECC nav tab keys (for per-site visibility and shared page)
+export const PECC_TAB_KEYS = ['activities', 'snapshot', 'milestones', 'education', 'gap-plan', 'simulation'] as const;
+export type PeccTabKey = typeof PECC_TAB_KEYS[number];
+
+// Site tab visibility: which PECC tabs are shown for a given hospital/site
+export interface SiteTabVisibility {
+  site_id: string;
+  tab_key: string;
+  visible: boolean;
+  updated_at: string;
+}
+
+// Site members: users who share access to one site (hospital) PECC page
+export interface SiteMember {
+  site_id: string;
+  user_id: string;
+  added_at: string;
+}
+
+// PECC Activities (existing structure + attribution for shared sites)
 export interface PeccActivity {
   id: string;
   pecc_id: string;
@@ -187,6 +206,7 @@ export interface PeccActivity {
   description: string | null;
   created_at: string;
   updated_at: string;
+  submitted_by?: string | null;  // User who submitted (for per-person hours when multiple people share site)
 }
 
 // ============================================

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../supabase';
-import { UserRole, PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '../types/database';
+import { UserRole, PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } from '../types/database';
 
 // Re-export UserRole as UserTier for backward compatibility
 export { UserRole as UserTier } from '../types/database';
@@ -25,6 +25,7 @@ export interface UserProfile {
   hospital_name?: string;
   mentor_name?: string;
   manager_name?: string;
+  hospital_facility_id?: string | null;  // PECC's site (hospital); matches CRM contact id
 }
 
 interface UserProfileContextType {
@@ -40,6 +41,9 @@ interface UserProfileContextType {
   viewAsRole: UserRole | null;
   setViewAsRole: (role: UserRole | null) => void;
   isViewingAs: boolean;
+  // PECC site and tab visibility (page = hospital/site; tabs toggled in CRM)
+  siteId: string | null;
+  visibleTabs: string[];  // Tab keys that are visible for this PECC's site; empty = all visible
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -62,12 +66,16 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [permissions, setPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewAsRole, setViewAsRole] = useState<UserRole | null>(null);
+  const [siteId, setSiteId] = useState<string | null>(null);
+  const [visibleTabs, setVisibleTabs] = useState<string[]>([]);
 
   // Fetch user profile from Supabase
   const fetchUserProfile = useCallback(async () => {
     if (!currentUser) {
       setUserProfile(null);
       setPermissions([]);
+      setSiteId(null);
+      setVisibleTabs([]);
       setIsLoading(false);
       return;
     }
@@ -116,20 +124,55 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           createDefaultProfile();
         }
       } else if (profile) {
-        setUserProfile(profile as UserProfile);
-        
+        const prof = profile as UserProfile & { hospital_facility_id?: string | null };
+        setUserProfile(prof);
+
         // Fetch permissions from database
         const { data: perms } = await supabase
           .from('role_permissions')
           .select('permission_key')
           .eq('role', profile.role)
           .eq('is_enabled', true);
-        
+
         if (perms) {
           setPermissions(perms.map(p => p.permission_key));
         } else {
           // Fall back to default permissions
           setPermissions(DEFAULT_ROLE_PERMISSIONS[profile.role as UserRole] || []);
+        }
+
+        // PECC: resolve site and visible tabs (page = hospital/site; tabs set in CRM)
+        if (profile.role === 'pecc') {
+          let sid: string | null = prof.hospital_facility_id ?? null;
+          if (!sid) {
+            const { data: memberRow, error: memErr } = await supabase
+              .from('site_members')
+              .select('site_id')
+              .eq('user_id', currentUser.id)
+              .limit(1)
+              .maybeSingle();
+            if (!memErr && memberRow && typeof (memberRow as { site_id?: string }).site_id === 'string') {
+              sid = (memberRow as { site_id: string }).site_id;
+            }
+          }
+          setSiteId(sid);
+          if (sid) {
+            const { data: tabRows, error: tabErr } = await supabase
+              .from('site_tab_visibility')
+              .select('tab_key, visible')
+              .eq('site_id', sid);
+            if (!tabErr && tabRows && tabRows.length > 0) {
+              setVisibleTabs((tabRows as { tab_key: string; visible: boolean }[])
+                .filter(r => r.visible).map(r => r.tab_key));
+            } else {
+              setVisibleTabs([...PECC_TAB_KEYS]);
+            }
+          } else {
+            setVisibleTabs([...PECC_TAB_KEYS]);
+          }
+        } else {
+          setSiteId(null);
+          setVisibleTabs([]);
         }
 
         // Update last login
@@ -148,7 +191,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
 
   const createDefaultProfile = () => {
     if (!currentUser) return;
-    
+
     const defaultProfile: UserProfile = {
       id: currentUser.id,
       email: currentUser.email || '',
@@ -163,9 +206,11 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       manager_id: null,
       mentor_id: null
     };
-    
+
     setUserProfile(defaultProfile);
     setPermissions(DEFAULT_ROLE_PERMISSIONS[UserRole.PECC]);
+    setSiteId(null);
+    setVisibleTabs([...PECC_TAB_KEYS]);
   };
 
   useEffect(() => {
@@ -238,7 +283,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     refreshProfile,
     viewAsRole,
     setViewAsRole,
-    isViewingAs: viewAsRole !== null && userProfile?.role === UserRole.ADMIN
+    isViewingAs: viewAsRole !== null && userProfile?.role === UserRole.ADMIN,
+    siteId,
+    visibleTabs
   };
 
   return (

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { UserRole } from '../../types/database';
+import { UserRole, PECC_TAB_KEYS } from '../../types/database';
 import {
   Box,
   Typography,
@@ -70,7 +70,8 @@ import {
   OpenInFull as OpenInFullIcon,
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
-  DragIndicator as DragIndicatorIcon
+  DragIndicator as DragIndicatorIcon,
+  PersonAdd as PersonAddIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -314,6 +315,13 @@ const AdminCRMPage: React.FC = () => {
   const [deleteConfirmTyped, setDeleteConfirmTyped] = useState('');
   const [bulkStatusAnchor, setBulkStatusAnchor] = useState<null | HTMLElement>(null);
 
+  // PECC page (site) settings: tab visibility + shared access (when viewing a hospital contact)
+  const [siteTabVisibility, setSiteTabVisibility] = useState<Record<string, boolean>>({});
+  const [siteMembers, setSiteMembers] = useState<{ user_id: string; email?: string; first_name?: string; last_name?: string }[]>([]);
+  const [siteSettingsLoading, setSiteSettingsLoading] = useState(false);
+  const [addMemberEmail, setAddMemberEmail] = useState('');
+  const [addMemberLoading, setAddMemberLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     type: 'other' as ContactType,
     name: '',
@@ -536,6 +544,101 @@ const AdminCRMPage: React.FC = () => {
   const deleteReminder = useCallback(async (id: string) => {
     await supabase.from('crm_reminders').delete().eq('id', id);
     setReminders(prev => prev.filter(r => r.id !== id));
+  }, []);
+
+  // Load PECC page (site) settings when viewing a hospital contact in full screen
+  const currentSiteId = detailContact?.type === 'hospital' ? (detailContact.facilityId ?? detailContact.id) : null;
+  useEffect(() => {
+    let cancelled = false;
+    if (!fullScreenOpen || !currentSiteId) {
+      setSiteTabVisibility({});
+      setSiteMembers([]);
+      setSiteSettingsLoading(false);
+      return;
+    }
+    setSiteSettingsLoading(true);
+    (async () => {
+      const sid = currentSiteId;
+      const { data: tabRows } = await supabase.from('site_tab_visibility').select('tab_key, visible').eq('site_id', sid);
+      if (cancelled) return;
+      const tabVis: Record<string, boolean> = {};
+      PECC_TAB_KEYS.forEach(k => { tabVis[k] = true; });
+      if (tabRows?.length) {
+        (tabRows as { tab_key: string; visible: boolean }[]).forEach(r => { tabVis[r.tab_key] = r.visible; });
+      }
+      setSiteTabVisibility(tabVis);
+
+      const { data: memberRows } = await supabase.from('site_members').select('user_id').eq('site_id', sid);
+      if (cancelled) return;
+      if (memberRows?.length) {
+        const ids = (memberRows as { user_id: string }[]).map(r => r.user_id);
+        const { data: users } = await supabase.from('users').select('id, email, first_name, last_name').in('id', ids);
+        const list = (users ?? []).map((u: { id: string; email?: string; first_name?: string; last_name?: string }) => ({
+          user_id: u.id,
+          email: u.email,
+          first_name: u.first_name,
+          last_name: u.last_name
+        }));
+        setSiteMembers(list);
+      } else {
+        setSiteMembers([]);
+      }
+      if (!cancelled) setSiteSettingsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [fullScreenOpen, currentSiteId]);
+
+  const saveSiteTabVisibility = useCallback(async (siteId: string, tabKey: string, visible: boolean) => {
+    await supabase.from('site_tab_visibility').upsert(
+      { site_id: siteId, tab_key: tabKey, visible, updated_at: new Date().toISOString() },
+      { onConflict: 'site_id,tab_key' }
+    );
+    setSiteTabVisibility(prev => ({ ...prev, [tabKey]: visible }));
+  }, []);
+
+  const addSiteMemberByEmail = useCallback(async (siteId: string, email: string) => {
+    if (!email.trim()) return;
+    setAddMemberLoading(true);
+    try {
+      const { data: u } = await supabase.from('users').select('id').ilike('email', email.trim()).limit(1).maybeSingle();
+      if (u && (u as { id: string }).id) {
+        const uid = (u as { id: string }).id;
+        await supabase.from('site_members').upsert({ site_id: siteId, user_id: uid }, { onConflict: 'site_id,user_id' });
+        const { data: prof } = await supabase.from('users').select('id, email, first_name, last_name, phone').eq('id', uid).single();
+        if (prof) {
+          setSiteMembers(prev => [...prev, { user_id: (prof as { id: string }).id, email: (prof as { email?: string }).email, first_name: (prof as { first_name?: string }).first_name, last_name: (prof as { last_name?: string }).last_name }]);
+          // Add this person to the CRM as a contact associated with this hospital
+          const { data: hosp } = await supabase.from('hospitals').select('id').or(`id.eq.${siteId},facility_id.eq.${siteId}`).limit(1).maybeSingle();
+          const hospitalId = hosp && typeof (hosp as { id?: string }).id === 'string' ? (hosp as { id: string }).id : null;
+          if (hospitalId) {
+            await supabase.from('hospital_contacts').upsert(
+              {
+                hospital_id: hospitalId,
+                user_id: uid,
+                first_name: (prof as { first_name?: string }).first_name ?? '',
+                last_name: (prof as { last_name?: string }).last_name ?? '',
+                email: (prof as { email?: string }).email ?? email.trim(),
+                phone: (prof as { phone?: string | null }).phone ?? null,
+                contact_status: 'Already a PECC',
+                role_at_hospital: null,
+                is_primary_contact: false,
+                is_actively_engaged: true,
+                updated_at: new Date().toISOString()
+              },
+              { onConflict: 'hospital_id,user_id' }
+            );
+          }
+        }
+        setAddMemberEmail('');
+      }
+    } finally {
+      setAddMemberLoading(false);
+    }
+  }, []);
+
+  const removeSiteMember = useCallback(async (siteId: string, userId: string) => {
+    await supabase.from('site_members').delete().eq('site_id', siteId).eq('user_id', userId);
+    setSiteMembers(prev => prev.filter(m => m.user_id !== userId));
   }, []);
 
   const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))].sort() as string[], [contacts]);
@@ -1512,6 +1615,57 @@ const AdminCRMPage: React.FC = () => {
                   </Grid>
                 )}
               </Grid>
+              {/* PECC page (site) settings: tab visibility + shared access — only for hospital contacts */}
+              {detailContact.type === 'hospital' && (detailContact.facilityId != null || detailContact.id) && (
+                <Grid container spacing={3} sx={{ mt: 2 }}>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>PECC page (site settings)</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      This site is the PECC page. Toggle which tabs PECCs see; add people to share access (e.g. Nurse Manager + PECC share one page). Activities record who submitted for per-person hours.
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Tab visibility for PECCs at this site</Typography>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      {siteSettingsLoading ? (
+                        <Typography variant="body2" color="text.secondary">Loading…</Typography>
+                      ) : (
+                        <FormGroup>
+                          {([['activities', 'Activities'], ['snapshot', 'Snapshot'], ['milestones', 'Checklist'], ['education', 'Education'], ['gap-plan', 'Gap Plan'], ['simulation', 'Simulation']] as [string, string][]).map(([k, lbl]) => (
+                            <FormControlLabel key={k} control={<Checkbox checked={siteTabVisibility[k] !== false} onChange={(_, v) => currentSiteId && saveSiteTabVisibility(currentSiteId, k, v)} />} label={lbl} />
+                          ))}
+                        </FormGroup>
+                      )}
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>People with access (share this page)</Typography>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      {siteSettingsLoading ? (
+                        <Typography variant="body2" color="text.secondary">Loading…</Typography>
+                      ) : (
+                        <>
+                          <List dense disablePadding sx={{ mb: 1, maxHeight: 160, overflow: 'auto' }}>
+                            {siteMembers.length === 0 ? (
+                              <ListItem><ListItemText primary="No one added yet" secondary="Add by email below" /></ListItem>
+                            ) : (
+                              siteMembers.map((m) => (
+                                <ListItem key={m.user_id} disablePadding secondaryAction={<IconButton size="small" onClick={() => currentSiteId && removeSiteMember(currentSiteId, m.user_id)}><DeleteIcon fontSize="small" /></IconButton>}>
+                                  <ListItemText primary={[m.first_name, m.last_name].filter(Boolean).join(' ') || m.email || m.user_id} secondary={m.email} />
+                                </ListItem>
+                              ))
+                            )}
+                          </List>
+                          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                            <TextField size="small" placeholder="User email" value={addMemberEmail} onChange={(e) => setAddMemberEmail(e.target.value)} sx={{ flex: 1 }} />
+                            <Button size="small" variant="contained" startIcon={<PersonAddIcon />} disabled={addMemberLoading || !addMemberEmail.trim()} onClick={() => currentSiteId && addSiteMemberByEmail(currentSiteId, addMemberEmail)}>Add</Button>
+                          </Box>
+                        </>
+                      )}
+                    </Paper>
+                  </Grid>
+                </Grid>
+              )}
               <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
                 <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                   const c = detailContact;
