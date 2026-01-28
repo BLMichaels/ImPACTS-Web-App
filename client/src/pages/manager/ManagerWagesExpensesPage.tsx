@@ -508,7 +508,7 @@ const ManagerWagesExpensesPage: React.FC = () => {
                   <TableRow key={month.month}>
                     <TableCell>
                       {month.monthName}
-                      {month.hoursAfterPayment && month.hoursAfterPayment > 0 && (
+                      {month.hoursAfterPayment !== undefined && month.hoursAfterPayment > 0 && (
                         <Tooltip title={`${month.hoursAfterPayment.toFixed(2)} hours submitted after payment`}>
                           <Chip 
                             label={`+${month.hoursAfterPayment.toFixed(1)}h`} 
