@@ -157,7 +157,7 @@ const TYPE_COLORS: Record<ContactType, string> = {
 
 const CONTACT_TYPES: ContactType[] = ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'];
 
-const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
+const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
   { id: 'lastName', label: 'Last Name', sortable: true, defaultVisible: true },
   { id: 'name', label: 'Name', sortable: true, defaultVisible: false },
