@@ -1121,12 +1121,34 @@ const AdminCRMPage: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
-              <TextField label="Name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField label="Organization" value={formData.organization} onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))} fullWidth size="small" />
-            </Grid>
+            {formData.type === 'organization' ? (
+              <Grid item xs={12}>
+                <TextField label="Organization name" value={formData.name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, name: v, organization: v })); }} fullWidth size="small" required />
+              </Grid>
+            ) : (
+              <>
+                <Grid item xs={12}>
+                  <TextField
+                    label={formData.type === 'hospital' ? 'Hospital name' : 'Full name'}
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    fullWidth
+                    size="small"
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label={formData.type === 'hospital' ? 'Company / Parent organization' : 'Organization'}
+                    value={formData.organization}
+                    onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))}
+                    fullWidth
+                    size="small"
+                    placeholder={formData.type === 'hospital' ? 'e.g. health system or owner' : undefined}
+                  />
+                </Grid>
+              </>
+            )}
             <Grid item xs={6}>
               <TextField label="Email" type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} fullWidth size="small" />
             </Grid>
