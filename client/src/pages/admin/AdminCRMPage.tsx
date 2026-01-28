@@ -923,7 +923,7 @@ const AdminCRMPage: React.FC = () => {
                 value={programFilter}
                 onChange={(_, v) => setProgramFilter(v.map(x => (typeof x === 'string' ? x : '')).filter(Boolean))}
                 renderInput={(params) => <TextField {...params} placeholder="Select or type new program" variant="outlined" />}
-                renderTags={(value, getTagProps) => value.map((opt, i) => <Chip key={opt} label={opt} size="small" {...getTagProps({ index: i })} />)}
+                renderTags={(value, getTagProps) => value.map((opt, i) => <Chip {...getTagProps({ index: i })} label={opt} size="small" />)}
               />
             </Box>
             <MenuItem onClick={clearFilters}><ClearIcon fontSize="small" sx={{ mr: 1 }} /> Clear filters</MenuItem>
@@ -1580,7 +1580,7 @@ const AdminCRMPage: React.FC = () => {
                 value={formData.programs ?? []}
                 onChange={(_, v) => setFormData(prev => ({ ...prev, programs: v.map(x => (typeof x === 'string' ? x : '')).filter(Boolean) }))}
                 renderInput={(params) => <TextField {...params} label="Program(s)" placeholder="Select or type new (cohorts, groups, service offerings…)" />}
-                renderTags={(value, getTagProps) => value.map((opt, i) => <Chip key={opt} label={opt} size="small" {...getTagProps({ index: i })} />)}
+                renderTags={(value, getTagProps) => value.map((opt, i) => <Chip {...getTagProps({ index: i })} label={opt} size="small" />)}
               />
             </Grid>
             <Grid item xs={12}>
