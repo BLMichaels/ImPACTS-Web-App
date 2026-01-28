@@ -583,13 +583,13 @@ const MilestonesPage = () => {
                 }
               }}
             >
-              <Box sx={{ width: '100%' }}>
-                <Typography variant="h4" gutterBottom fontWeight="bold" color="white">
+              <Box sx={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="h4" fontWeight="bold" color="white">
                   {stage.title}
                 </Typography>
                 
                 {/* Progress */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Chip 
                     label={`${progress.percentage}% Complete`}
                     color="primary"
