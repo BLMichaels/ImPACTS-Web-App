@@ -132,6 +132,7 @@ const MentorActivitiesPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [hospitalFilter, setHospitalFilter] = useState<string[]>([]);
   const [readinessDomainFilter, setReadinessDomainFilter] = useState<string[]>([]);
+  const [simulationTypeFilter, setSimulationTypeFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
   
   // Form state
@@ -200,6 +201,13 @@ const MentorActivitiesPage: React.FC = () => {
       );
     }
     
+    // Apply simulation type filter
+    if (simulationTypeFilter.length > 0) {
+      result = result.filter(a => 
+        a.simulationCase && simulationTypeFilter.includes(a.simulationCase)
+      );
+    }
+    
     // Apply date filter
     if (dateFilter.start) {
       result = result.filter(a => new Date(a.date) >= dateFilter.start!);
@@ -229,7 +237,7 @@ const MentorActivitiesPage: React.FC = () => {
     });
     
     return result;
-  }, [activities, categoryFilter, hospitalFilter, readinessDomainFilter, dateFilter, sortField, sortOrder]);
+  }, [activities, categoryFilter, hospitalFilter, readinessDomainFilter, simulationTypeFilter, dateFilter, sortField, sortOrder]);
 
   // Handle sort
   const handleSort = (field: SortField) => {
@@ -550,6 +558,7 @@ const MentorActivitiesPage: React.FC = () => {
                 setCategoryFilter([]);
                 setHospitalFilter([]);
                 setReadinessDomainFilter([]);
+                setSimulationTypeFilter([]);
                 setDateFilter({ start: null, end: null });
               }}
             >
@@ -615,6 +624,25 @@ const MentorActivitiesPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Simulation Type</InputLabel>
+                <Select
+                  multiple
+                  value={simulationTypeFilter}
+                  onChange={(e) => setSimulationTypeFilter(e.target.value as string[])}
+                  input={<OutlinedInput label="Simulation Type" />}
+                  renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
+                >
+                  {SIMULATION_CASES.map((simCase) => (
+                    <MenuItem key={simCase} value={simCase}>
+                      <Checkbox checked={simulationTypeFilter.includes(simCase)} />
+                      <ListItemText primary={simCase} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
               <DatePicker
                 label="Start Date"
                 value={dateFilter.start}
@@ -634,11 +662,11 @@ const MentorActivitiesPage: React.FC = () => {
         </Paper>
 
         {/* Activities Table */}
-        <TableContainer component={Paper} sx={{ maxHeight: 600, overflow: 'auto' }}>
-          <Table>
+        <TableContainer component={Paper} sx={{ maxHeight: 600, overflowX: 'auto', overflowY: 'auto' }}>
+          <Table sx={{ minWidth: 1000 }}>
             <TableHead>
               <TableRow>
-                <TableCell>
+                <TableCell sx={{ minWidth: 120 }}>
                   <TableSortLabel
                     active={sortField === 'date'}
                     direction={sortField === 'date' ? sortOrder : 'asc'}
@@ -647,7 +675,7 @@ const MentorActivitiesPage: React.FC = () => {
                     Date
                   </TableSortLabel>
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ minWidth: 200 }}>
                   <TableSortLabel
                     active={sortField === 'activityName'}
                     direction={sortField === 'activityName' ? sortOrder : 'asc'}
@@ -656,7 +684,7 @@ const MentorActivitiesPage: React.FC = () => {
                     Activity
                   </TableSortLabel>
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ minWidth: 100 }}>
                   <TableSortLabel
                     active={sortField === 'category'}
                     direction={sortField === 'category' ? sortOrder : 'asc'}
@@ -665,22 +693,16 @@ const MentorActivitiesPage: React.FC = () => {
                     Category
                   </TableSortLabel>
                 </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={sortField === 'hours'}
-                    direction={sortField === 'hours' ? sortOrder : 'asc'}
-                    onClick={() => handleSort('hours')}
-                  >
-                    Hours
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>Hospitals</TableCell>
+                <TableCell sx={{ minWidth: 80 }}>Hours</TableCell>
+                <TableCell sx={{ minWidth: 150 }}>Hospitals</TableCell>
+                <TableCell sx={{ minWidth: 250 }}>Description</TableCell>
+                <TableCell sx={{ minWidth: 200 }}>Simulation</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredActivities.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} align="center">
+                  <TableCell colSpan={7} align="center">
                     <Typography color="textSecondary" sx={{ py: 4 }}>
                       No activities recorded yet. Click "Add Activity" to get started.
                     </Typography>
@@ -700,12 +722,9 @@ const MentorActivitiesPage: React.FC = () => {
                   >
                     <TableCell>{format(parseISO(activity.date), 'MMM d, yyyy')}</TableCell>
                     <TableCell>
-                      {activity.activityName}
-                      {activity.category === 'SC' && activity.simulationCase && (
-                        <Typography variant="caption" display="block" color="textSecondary">
-                          Sim: {activity.simulationCase}
-                        </Typography>
-                      )}
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {activity.activityName}
+                      </Typography>
                     </TableCell>
                     <TableCell>
                       <Chip 
@@ -720,6 +739,18 @@ const MentorActivitiesPage: React.FC = () => {
                         ? getHospitalNames(activity.hospitalIds)
                         : '-'
                       }
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="textSecondary" sx={{ whiteSpace: 'pre-wrap', maxWidth: 250 }}>
+                        {activity.description || '-'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {activity.simulationCase ? (
+                        <Typography variant="body2">{activity.simulationCase}</Typography>
+                      ) : (
+                        <Typography variant="body2" color="textSecondary">-</Typography>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
