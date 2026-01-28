@@ -550,8 +550,8 @@ const AdminCRMPage: React.FC = () => {
     });
 
     list = [...list].sort((a, b) => {
-      let av: string | number = ((a as Record<string, unknown>)[sortField] as string | number | undefined) ?? '';
-      let bv: string | number = ((b as Record<string, unknown>)[sortField] as string | number | undefined) ?? '';
+      let av: string | number = ((a as unknown as Record<string, unknown>)[sortField] as string | number | undefined) ?? '';
+      let bv: string | number = ((b as unknown as Record<string, unknown>)[sortField] as string | number | undefined) ?? '';
       if (sortField === 'name') {
         av = contactDisplayName(a);
         bv = contactDisplayName(b);
