@@ -70,7 +70,8 @@ import {
   KeyboardArrowUp as ArrowUpIcon,
   OpenInFull as OpenInFullIcon,
   Settings as SettingsIcon,
-  Notifications as NotificationsIcon
+  Notifications as NotificationsIcon,
+  DragIndicator as DragIndicatorIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -288,6 +289,22 @@ const AdminCRMPage: React.FC = () => {
     } catch {}
     return new Set(COLUMNS.filter(c => c.defaultVisible).map(c => c.id));
   });
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    try {
+      const s = localStorage.getItem(CRM_PREFS_KEY);
+      if (s) {
+        const p = JSON.parse(s);
+        const allIds = COLUMNS.map(c => c.id);
+        if (p.columnOrder && Array.isArray(p.columnOrder) && p.columnOrder.length > 0) {
+          const valid = (p.columnOrder as string[]).filter(id => allIds.includes(id));
+          const missing = allIds.filter(id => !valid.includes(id));
+          if (valid.length > 0) return [...valid, ...missing];
+        }
+      }
+    } catch {}
+    return COLUMNS.map(c => c.id);
+  });
+  const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [regionFilter, setRegionFilter] = useState<string[]>([]);
   const [stateFilter, setStateFilter] = useState<string[]>([]);
@@ -444,10 +461,11 @@ const AdminCRMPage: React.FC = () => {
       localStorage.setItem(CRM_PREFS_KEY, JSON.stringify({
         viewMode,
         visibleColumns: Array.from(visibleColumns),
-        pageSize
+        pageSize,
+        columnOrder
       }));
     } catch {}
-  }, [viewMode, visibleColumns, pageSize]);
+  }, [viewMode, visibleColumns, pageSize, columnOrder]);
 
   useEffect(() => {
     try {
@@ -525,6 +543,50 @@ const AdminCRMPage: React.FC = () => {
   const states = useMemo(() => [...new Set(contacts.map(c => c.state).filter(Boolean))].sort() as string[], [contacts]);
   const hospitalTypes = useMemo(() => [...new Set(contacts.map(c => c.hospitalType).filter(Boolean))].sort() as string[], [contacts]);
   const programOptions = useMemo(() => [...new Set(contacts.flatMap(c => c.programs ?? []).filter(Boolean))].sort() as string[], [contacts]);
+
+  const orderedDataColumnIds = useMemo(() =>
+    columnOrder.filter(id => id !== 'actions' && visibleColumns.has(id)),
+    [columnOrder, visibleColumns]
+  );
+
+  const handleColumnDragStart = (colId: string) => () => setDraggedColumnId(colId);
+  const handleColumnDragEnd = () => setDraggedColumnId(null);
+  const handleColumnDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+  const handleColumnDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedColumnId || draggedColumnId === targetId) return;
+    setColumnOrder(prev => {
+      const without = prev.filter(id => id !== draggedColumnId);
+      const insertIdx = without.indexOf(targetId);
+      if (insertIdx === -1) return prev;
+      const next = [...without];
+      next.splice(insertIdx, 0, draggedColumnId);
+      return next;
+    });
+    setDraggedColumnId(null);
+  };
+
+  const renderCellContent = (contact: Contact, colId: string): React.ReactNode => {
+    switch (colId) {
+      case 'firstName': return <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.firstName ?? '—') : (contact.type === 'organization' || contact.type === 'hospital' ? contact.name : '—')}</Typography>;
+      case 'lastName': return <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.lastName ?? '—') : '—'}</Typography>;
+      case 'name': return <Typography fontWeight={500}>{contactDisplayName(contact)}</Typography>;
+      case 'type': return <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[contact.type], color: 'white' }} />;
+      case 'facilityId': return contact.facilityId ?? '—';
+      case 'organization': return contact.organization || '—';
+      case 'hospitalSystem': return contact.hospitalSystem ?? '—';
+      case 'programs': return (contact.programs ?? []).length ? (contact.programs ?? []).join(', ') : '—';
+      case 'email': return contact.email;
+      case 'phone': return contact.phone || '—';
+      case 'region': return contact.region || '—';
+      case 'state': return contact.state ?? '—';
+      case 'status': return <Chip label={contact.status} size="small" color={contact.status === 'Active' ? 'success' : 'default'} variant="outlined" />;
+      case 'createdAt': return contact.createdAt;
+      default: return '—';
+    }
+  };
+
+  const getColById = (id: string) => COLUMNS.find(c => c.id === id);
 
   const filteredAndSortedContacts = useMemo(() => {
     let list = contacts.filter(contact => {
@@ -1039,37 +1101,53 @@ const AdminCRMPage: React.FC = () => {
           )}
         </Grid>
       ) : (
-        <TableContainer component={Paper}>
-          <Table size="medium">
+        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
+          <Table size="medium" sx={{ minWidth: 140 * (orderedDataColumnIds.length + (visibleColumns.has('actions') ? 1 : 0) + 1) }}>
             <TableHead>
               <TableRow>
-                <TableCell padding="checkbox">
+                <TableCell padding="checkbox" sx={{ minWidth: 48 }}>
                   <Checkbox
                     checked={displayedContacts.length > 0 && selectedIds.size === displayedContacts.length}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < displayedContacts.length}
                     onChange={(e) => handleSelectAll(e.target.checked)}
                   />
                 </TableCell>
-                {COLUMNS.filter(c => c.id !== 'actions' && visibleColumns.has(c.id)).map((col) => (
-                  <TableCell key={col.id}>
-                    {col.sortable ? (
-                      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleSort(col.id as SortField)}>
-                        {col.label}
-                        <SortIcon sx={{ fontSize: 16, ml: 0.5, opacity: sortField === col.id ? 1 : 0.4 }} />
-                        {sortField === col.id && <Typography component="span" variant="caption" sx={{ ml: 0.25 }}>({sortOrder})</Typography>}
+                {orderedDataColumnIds.map((colId) => {
+                  const col = getColById(colId);
+                  if (!col) return null;
+                  const isDragging = draggedColumnId === colId;
+                  return (
+                    <TableCell
+                      key={colId}
+                      sx={{ minWidth: 120, whiteSpace: 'nowrap', cursor: 'grab', userSelect: 'none', opacity: isDragging ? 0.6 : 1, bgcolor: isDragging ? 'action.hover' : undefined }}
+                      draggable
+                      onDragStart={handleColumnDragStart(colId)}
+                      onDragEnd={handleColumnDragEnd}
+                      onDragOver={handleColumnDragOver}
+                      onDrop={(e) => handleColumnDrop(e, colId)}
+                    >
+                      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                        <DragIndicatorIcon sx={{ fontSize: 16, color: 'action.disabled' }} />
+                        {col.sortable ? (
+                          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleSort(col.id as SortField)}>
+                            {col.label}
+                            <SortIcon sx={{ fontSize: 16, ml: 0.5, opacity: sortField === col.id ? 1 : 0.4 }} />
+                            {sortField === col.id && <Typography component="span" variant="caption" sx={{ ml: 0.25 }}>({sortOrder})</Typography>}
+                          </Box>
+                        ) : (
+                          col.label
+                        )}
                       </Box>
-                    ) : (
-                      col.label
-                    )}
-                  </TableCell>
-                ))}
-                {visibleColumns.has('actions') && <TableCell align="right">Actions</TableCell>}
+                    </TableCell>
+                  );
+                })}
+                {visibleColumns.has('actions') && <TableCell align="right" sx={{ minWidth: 56 }}>Actions</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredAndSortedContacts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 10 }}>
+                  <TableCell colSpan={1 + orderedDataColumnIds.length + (visibleColumns.has('actions') ? 1 : 0)} align="center" sx={{ py: 10 }}>
                     <ContactsIcon sx={{ fontSize: 64, color: 'action.disabled', display: 'block', mx: 'auto', mb: 1 }} />
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
@@ -1087,48 +1165,19 @@ const AdminCRMPage: React.FC = () => {
                     sx={{ cursor: 'pointer' }}
                     onClick={() => openDetail(contact)}
                   >
-                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()} sx={{ minWidth: 48 }}>
                       <Checkbox
                         checked={selectedIds.has(contact.id)}
                         onChange={(e) => handleSelectOne(contact.id, e.target.checked)}
                       />
                     </TableCell>
-                    {visibleColumns.has('firstName') && (
-                      <TableCell>
-                        <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.firstName ?? '—') : (contact.type === 'organization' || contact.type === 'hospital' ? contact.name : '—')}</Typography>
+                    {orderedDataColumnIds.map((colId) => (
+                      <TableCell key={colId} sx={{ minWidth: 120 }}>
+                        {renderCellContent(contact, colId)}
                       </TableCell>
-                    )}
-                    {visibleColumns.has('lastName') && (
-                      <TableCell>
-                        <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.lastName ?? '—') : '—'}</Typography>
-                      </TableCell>
-                    )}
-                    {visibleColumns.has('name') && (
-                      <TableCell>
-                        <Typography fontWeight={500}>{contactDisplayName(contact)}</Typography>
-                      </TableCell>
-                    )}
-                    {visibleColumns.has('type') && (
-                      <TableCell>
-                        <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[contact.type], color: 'white' }} />
-                      </TableCell>
-                    )}
-                    {visibleColumns.has('facilityId') && <TableCell>{contact.facilityId ?? '—'}</TableCell>}
-                    {visibleColumns.has('organization') && <TableCell>{contact.organization || '—'}</TableCell>}
-                    {visibleColumns.has('hospitalSystem') && <TableCell>{contact.hospitalSystem ?? '—'}</TableCell>}
-                    {visibleColumns.has('programs') && <TableCell>{(contact.programs ?? []).length ? (contact.programs ?? []).join(', ') : '—'}</TableCell>}
-                    {visibleColumns.has('email') && <TableCell>{contact.email}</TableCell>}
-                    {visibleColumns.has('phone') && <TableCell>{contact.phone || '—'}</TableCell>}
-                    {visibleColumns.has('region') && <TableCell>{contact.region || '—'}</TableCell>}
-                    {visibleColumns.has('state') && <TableCell>{contact.state ?? '—'}</TableCell>}
-                    {visibleColumns.has('status') && (
-                      <TableCell>
-                        <Chip label={contact.status} size="small" color={contact.status === 'Active' ? 'success' : 'default'} variant="outlined" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.has('createdAt') && <TableCell>{contact.createdAt}</TableCell>}
+                    ))}
                     {visibleColumns.has('actions') && (
-                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      <TableCell align="right" onClick={(e) => e.stopPropagation()} sx={{ minWidth: 56 }}>
                         <IconButton size="small" onClick={(e) => { e.stopPropagation(); setAnchorEl(e.currentTarget); setDetailContact(contact); }}>
                           <MoreIcon />
                         </IconButton>
