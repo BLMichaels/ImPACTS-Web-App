@@ -734,8 +734,8 @@ const MentorHospitalContactsPage: React.FC = () => {
               </Box>
             </DialogTitle>
             <DialogContent>
-              <Grid container spacing={3} sx={{ mt: 0 }}>
-          <Grid item xs={12} md={4}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={4}>
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" gutterBottom>Hospital Information</Typography>
               <Divider sx={{ mb: 2 }} />
@@ -887,13 +887,13 @@ const MentorHospitalContactsPage: React.FC = () => {
             </Paper>
           </Grid>
         </Grid>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setHospitalDetailsDialogOpen(false)}>Close</Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setHospitalDetailsDialogOpen(false)}>Close</Button>
+              </DialogActions>
+            </>
+          )}
+        </Dialog>
 
       {/* Hospital Dialog */}
       <Dialog open={hospitalDialogOpen} onClose={() => setHospitalDialogOpen(false)} maxWidth="sm" fullWidth>
