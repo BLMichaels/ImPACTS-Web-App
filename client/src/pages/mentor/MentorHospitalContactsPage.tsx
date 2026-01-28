@@ -454,7 +454,6 @@ const MentorHospitalContactsPage: React.FC = () => {
       saveHospitals(newHospitals);
       if (selectedHospital?.id === hospitalId) {
         setSelectedHospital(null);
-        setTabValue(0);
       }
       setSnackbar({ open: true, message: 'Hospital removed from dashboard', severity: 'success' });
     }
