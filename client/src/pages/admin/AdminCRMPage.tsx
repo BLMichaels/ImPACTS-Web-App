@@ -67,7 +67,6 @@ import {
   Sort as SortIcon,
   Delete as DeleteIcon,
   Contacts as ContactsIcon,
-  KeyboardArrowUp as ArrowUpIcon,
   OpenInFull as OpenInFullIcon,
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
@@ -1845,24 +1844,6 @@ const AdminCRMPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Back to top – fixed bottom-right */}
-      <Tooltip title="Back to top">
-        <IconButton
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          sx={{
-            position: 'fixed',
-            bottom: 16,
-            right: 16,
-            zIndex: 1300,
-            bgcolor: 'background.paper',
-            boxShadow: 2,
-            '&:hover': { bgcolor: 'action.hover' }
-          }}
-        >
-          <ArrowUpIcon />
-        </IconButton>
-      </Tooltip>
     </Box>
   );
 };

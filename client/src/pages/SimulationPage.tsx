@@ -54,7 +54,6 @@ import {
   PictureAsPdf as PdfIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import ScrollToTop from '../components/ScrollToTop';
 
 interface SimulationCase {
   id: string;
@@ -1031,8 +1030,6 @@ const SimulationPage: React.FC = () => {
 
   return (
     <Container maxWidth="xl">
-      <ScrollToTop />
-      
       <Box sx={{ mb: 4, mt: 3 }}>
         {/* Header */}
         <Box sx={{ mb: 3 }}>

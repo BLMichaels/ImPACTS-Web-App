@@ -10,6 +10,7 @@ import { UserRole } from './types/database';
 
 // Essential Components Only
 import Navbar from './components/Navbar';
+import ScrollToTop from './components/ScrollToTop';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -164,6 +165,7 @@ function App() {
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Suspense fallback={<LoadingSpinner />}>
               <Navbar />
+              <ScrollToTop />
               <Container>
                 <Routes>
                   {/* Public Routes */}

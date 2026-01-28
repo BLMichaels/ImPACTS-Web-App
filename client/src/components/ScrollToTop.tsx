@@ -39,9 +39,11 @@ const ScrollToTop = () => {
         onClick={scrollToTop}
         sx={{
           position: 'fixed',
-          bottom: 24,
-          right: 24,
-          zIndex: 1000,
+          top: 'auto',
+          left: 'auto',
+          bottom: 16,
+          right: 16,
+          zIndex: 1300,
           boxShadow: 3,
           '&:hover': {
             transform: 'scale(1.1)',

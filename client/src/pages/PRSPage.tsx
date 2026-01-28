@@ -46,7 +46,6 @@ import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ExpandMore as E
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
-import ScrollToTop from '../components/ScrollToTop';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
@@ -2231,8 +2230,6 @@ const PRSPage: React.FC = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <ScrollToTop />
-      
       <Typography variant="h3" component="h1" gutterBottom color="primary">
         National Pediatric Readiness Assessment
       </Typography>

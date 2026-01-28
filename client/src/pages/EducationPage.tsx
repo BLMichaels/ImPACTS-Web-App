@@ -15,7 +15,6 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import ScrollToTop from '../components/ScrollToTop';
 import { ASSESSMENT_QUESTIONS } from './PRSPage';
 
 interface EducationContent {
@@ -166,8 +165,6 @@ const EducationPage: React.FC = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <ScrollToTop />
-      
       <Typography variant="h3" component="h1" gutterBottom color="primary">
         Pediatric Readiness Education
       </Typography>

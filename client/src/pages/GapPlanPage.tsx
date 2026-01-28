@@ -32,7 +32,6 @@ import { FileDownload as DownloadIcon, Upload as UploadIcon, Image as ImageIcon,
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
-import ScrollToTop from '../components/ScrollToTop';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -1175,7 +1174,6 @@ const GapPlanPage: React.FC = () => {
           <Button onClick={handleEditSubmit} variant="contained">Update Gap Plan</Button>
         </DialogActions>
       </Dialog>
-      <ScrollToTop />
     </Container>
     );
   } catch (error) {

@@ -58,8 +58,7 @@ import {
   ViewColumn as ViewColumnIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Contacts as ContactsIcon,
-  KeyboardArrowUp as ArrowUpIcon
+  Contacts as ContactsIcon
 } from '@mui/icons-material';
 
 type ManagerContactType = 'hospital' | 'mentor' | 'pecc';
@@ -681,24 +680,6 @@ const ManagerCRMPage: React.FC = () => {
           <Button color="error" variant="contained" onClick={() => deleteTarget?.single ? handleDeleteContact(deleteTarget.single) : handleBulkDelete()}>Delete</Button>
         </DialogActions>
       </Dialog>
-
-      {/* Back to top - fixed top-right */}
-      <Tooltip title="Back to top">
-        <IconButton
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          sx={{
-            position: 'fixed',
-            top: 16,
-            right: 16,
-            zIndex: 1300,
-            bgcolor: 'background.paper',
-            boxShadow: 2,
-            '&:hover': { bgcolor: 'action.hover' }
-          }}
-        >
-          <ArrowUpIcon />
-        </IconButton>
-      </Tooltip>
     </Box>
   );
 };

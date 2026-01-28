@@ -50,7 +50,6 @@ import {
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
-import ScrollToTop from '../components/ScrollToTop';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
@@ -1314,8 +1313,6 @@ const ActivitiesPage = () => {
           <AddIcon />
         </Fab>
       )}
-      
-      <ScrollToTop />
     </Container>
   );
 };

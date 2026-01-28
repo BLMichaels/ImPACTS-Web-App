@@ -17,7 +17,6 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import { useAuth } from '../context/AuthContext';
-import ScrollToTop from '../components/ScrollToTop';
 
 interface MilestoneTask {
   id: string;
@@ -744,7 +743,6 @@ const MilestonesPage = () => {
           </Accordion>
         );
       })}
-      <ScrollToTop />
     </Container>
   );
 };
