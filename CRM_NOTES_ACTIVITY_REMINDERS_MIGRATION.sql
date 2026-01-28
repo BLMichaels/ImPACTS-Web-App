@@ -5,6 +5,10 @@
 ALTER TABLE public.hospitals ADD COLUMN IF NOT EXISTS hospital_system TEXT;
 COMMENT ON COLUMN public.hospitals.hospital_system IS 'Hospital system or health network (primary field in CRM contact view).';
 
+-- Program(s): cohorts, groups, service offerings. Multi-select, type-in new.
+ALTER TABLE public.hospitals ADD COLUMN IF NOT EXISTS programs JSONB DEFAULT '[]';
+COMMENT ON COLUMN public.hospitals.programs IS 'CRM programs: ["Program A", "Program B"]. Multi-valued; used as filter and field.';
+
 -- Notes log: array of { date, text } on each contact (hospital or future crm_contacts).
 ALTER TABLE public.hospitals ADD COLUMN IF NOT EXISTS notes_log JSONB DEFAULT '[]';
 COMMENT ON COLUMN public.hospitals.notes_log IS 'CRM notes log: [{ "date": "YYYY-MM-DD", "text": "..." }]. Newest first in UI.';

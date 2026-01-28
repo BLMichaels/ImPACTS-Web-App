@@ -118,6 +118,7 @@ interface Contact {
   hospitalType?: string;
   ownership?: string;
   hospitalSystem?: string;
+  programs?: string[];
   linkedOrganizationIds?: string[];
   linkedHospitalIds?: string[];
   customFields?: Record<string, string>;
@@ -164,6 +165,7 @@ const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: 
   { id: 'facilityId', label: 'Facility ID', sortable: true, defaultVisible: true },
   { id: 'organization', label: 'Organization', sortable: true, defaultVisible: true },
   { id: 'hospitalSystem', label: 'Hospital System', sortable: true, defaultVisible: false },
+  { id: 'programs', label: 'Program(s)', sortable: false, defaultVisible: true },
   { id: 'email', label: 'Email', sortable: true, defaultVisible: true },
   { id: 'phone', label: 'Phone', sortable: false, defaultVisible: true },
   { id: 'region', label: 'Region', sortable: true, defaultVisible: true },
@@ -181,6 +183,7 @@ const EXPORT_COLUMNS: { id: string; label: string }[] = [
   { id: 'facilityId', label: 'Facility ID' },
   { id: 'organization', label: 'Organization' },
   { id: 'hospitalSystem', label: 'Hospital System' },
+  { id: 'programs', label: 'Program(s)' },
   { id: 'email', label: 'Email' },
   { id: 'phone', label: 'Phone' },
   { id: 'region', label: 'Region' },
@@ -289,6 +292,7 @@ const AdminCRMPage: React.FC = () => {
   const [regionFilter, setRegionFilter] = useState<string[]>([]);
   const [stateFilter, setStateFilter] = useState<string[]>([]);
   const [hospitalTypeFilter, setHospitalTypeFilter] = useState<string[]>([]);
+  const [programFilter, setProgramFilter] = useState<string[]>([]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ single?: string; bulk?: Set<string> } | null>(null);
   const [deleteConfirmTyped, setDeleteConfirmTyped] = useState('');
@@ -306,6 +310,7 @@ const AdminCRMPage: React.FC = () => {
     region: '',
     notes: '',
     hospitalSystem: '',
+    programs: [] as string[],
     linkedOrganizationIds: [] as string[],
     linkedHospitalIds: [] as string[],
     customFields: {} as Record<string, string>
@@ -416,6 +421,7 @@ const AdminCRMPage: React.FC = () => {
               hospitalType: row.hospital_type != null ? String(row.hospital_type) : undefined,
               ownership: row.ownership != null ? String(row.ownership) : undefined,
               hospitalSystem: row.hospital_system != null ? String(row.hospital_system) : undefined,
+              programs: Array.isArray(row.programs) ? (row.programs as unknown[]).map((x) => String(x)).filter(Boolean) : undefined,
               customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined
             });
           }
@@ -518,6 +524,7 @@ const AdminCRMPage: React.FC = () => {
   const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))].sort() as string[], [contacts]);
   const states = useMemo(() => [...new Set(contacts.map(c => c.state).filter(Boolean))].sort() as string[], [contacts]);
   const hospitalTypes = useMemo(() => [...new Set(contacts.map(c => c.hospitalType).filter(Boolean))].sort() as string[], [contacts]);
+  const programOptions = useMemo(() => [...new Set(contacts.flatMap(c => c.programs ?? []).filter(Boolean))].sort() as string[], [contacts]);
 
   const filteredAndSortedContacts = useMemo(() => {
     let list = contacts.filter(contact => {
@@ -530,7 +537,8 @@ const AdminCRMPage: React.FC = () => {
         (contact.organization || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (contact.region || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (contact.notes || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (contact.hospitalSystem ?? '').toLowerCase().includes(searchQuery.toLowerCase());
+        (contact.hospitalSystem ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (contact.programs ?? []).some(p => p.toLowerCase().includes(searchQuery.toLowerCase()));
       if (!matchesSearch) return false;
 
       if (tabValue === 0) {}
@@ -546,6 +554,10 @@ const AdminCRMPage: React.FC = () => {
       if (regionFilter.length && !regionFilter.includes(contact.region)) return false;
       if (stateFilter.length && !(contact.state && stateFilter.includes(contact.state))) return false;
       if (hospitalTypeFilter.length && !(contact.hospitalType && hospitalTypeFilter.includes(contact.hospitalType))) return false;
+      if (programFilter.length > 0) {
+        const contactPrograms = contact.programs ?? [];
+        if (!programFilter.some(p => contactPrograms.includes(p))) return false;
+      }
       return true;
     });
 
@@ -572,7 +584,7 @@ const AdminCRMPage: React.FC = () => {
       return 0;
     });
     return list;
-  }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter, regionFilter, stateFilter, hospitalTypeFilter]);
+  }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter, regionFilter, stateFilter, hospitalTypeFilter, programFilter]);
 
   const displayedContacts = useMemo(() => {
     if (pageSize === 'all') return filteredAndSortedContacts;
@@ -613,6 +625,7 @@ const AdminCRMPage: React.FC = () => {
       region: formData.region,
       notes: formData.notes,
       hospitalSystem: formData.type === 'hospital' ? formData.hospitalSystem : undefined,
+      programs: (formData.programs ?? []).length ? formData.programs : undefined,
       linkedOrganizationIds: isPersonType(formData.type) ? formData.linkedOrganizationIds : undefined,
       linkedHospitalIds: isPersonType(formData.type) ? formData.linkedHospitalIds : undefined,
       createdAt: editingContact?.createdAt ?? new Date().toISOString().split('T')[0],
@@ -623,13 +636,14 @@ const AdminCRMPage: React.FC = () => {
       setSaveInProgress(true);
       const key = String(editingContact.facilityId ?? editingContact.id);
       const currentInState = contacts.find(c => c.id === editingContact.id);
-      const updatePayload: { region: string | null; custom_fields?: Record<string, string>; notes_log?: NotesLogEntry[]; activity_log?: ActivityLogEntry[]; hospital_system?: string | null } = { region: formData.region || null };
+      const updatePayload: { region: string | null; custom_fields?: Record<string, string>; notes_log?: NotesLogEntry[]; activity_log?: ActivityLogEntry[]; hospital_system?: string | null; programs?: string[] } = { region: formData.region || null };
       if (formData.customFields && Object.keys(formData.customFields).length > 0) {
         updatePayload.custom_fields = formData.customFields;
       }
       updatePayload.notes_log = currentInState?.notesLog ?? editingContact.notesLog ?? [];
       updatePayload.activity_log = currentInState?.activityLog ?? editingContact.activityLog ?? [];
       updatePayload.hospital_system = formData.hospitalSystem?.trim() || null;
+      updatePayload.programs = formData.programs ?? [];
       const { error } = await supabase
         .from('hospitals')
         .update(updatePayload)
@@ -648,7 +662,7 @@ const AdminCRMPage: React.FC = () => {
     }
     setDialogOpen(false);
     setEditingContact(null);
-    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} });
+    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} });
   };
 
   const openDetail = (c: Contact) => {
@@ -673,6 +687,7 @@ const AdminCRMPage: React.FC = () => {
       if (customFieldDefs.some(d => d.id === id)) return c.customFields?.[id] ?? '';
       if (id === 'type') return TYPE_LABELS[c.type];
       if (id === 'name') return contactDisplayName(c);
+      if (id === 'programs') return (c.programs ?? []).join('; ');
       const v = (c as unknown as Record<string, unknown>)[id];
       return v != null ? String(v) : '';
     };
@@ -693,10 +708,11 @@ const AdminCRMPage: React.FC = () => {
     setRegionFilter([]);
     setStateFilter([]);
     setHospitalTypeFilter([]);
+    setProgramFilter([]);
     setFilterMenuAnchor(null);
   };
 
-  const activeFilterCount = statusFilter.length + regionFilter.length + stateFilter.length + hospitalTypeFilter.length;
+  const activeFilterCount = statusFilter.length + regionFilter.length + stateFilter.length + hospitalTypeFilter.length + programFilter.length;
   const hasActiveFilters = searchQuery || activeFilterCount > 0;
 
   const summaryCounts = useMemo(() => ({
@@ -711,7 +727,7 @@ const AdminCRMPage: React.FC = () => {
     pending: contacts.filter(c => c.status === 'Pending').length
   }), [contacts]);
 
-  const activePendingFilter = statusFilter.includes('Pending') && statusFilter.length === 1 && !searchQuery && regionFilter.length === 0 && stateFilter.length === 0 && hospitalTypeFilter.length === 0;
+  const activePendingFilter = statusFilter.includes('Pending') && statusFilter.length === 1 && !searchQuery && regionFilter.length === 0 && stateFilter.length === 0 && hospitalTypeFilter.length === 0 && programFilter.length === 0;
 
   const handleDeleteContact = (id: string) => {
     setContacts(prev => prev.filter(c => c.id !== id));
@@ -764,7 +780,7 @@ const AdminCRMPage: React.FC = () => {
               Manage custom fields
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -894,6 +910,22 @@ const AdminCRMPage: React.FC = () => {
                 <ListItemText primary={ht || '(blank)'} />
               </MenuItem>
             ))}
+            <Divider />
+            <ListItem dense>
+              <ListItemText primary="Program" secondary={programFilter.length ? programFilter.join(', ') : 'Any'} />
+            </ListItem>
+            <Box sx={{ px: 2, py: 1 }}>
+              <Autocomplete
+                multiple
+                freeSolo
+                size="small"
+                options={programOptions}
+                value={programFilter}
+                onChange={(_, v) => setProgramFilter(v.map(x => (typeof x === 'string' ? x : '')).filter(Boolean))}
+                renderInput={(params) => <TextField {...params} placeholder="Select or type new program" variant="outlined" />}
+                renderTags={(value, getTagProps) => value.map((opt, i) => <Chip key={opt} label={opt} size="small" {...getTagProps({ index: i })} />)}
+              />
+            </Box>
             <MenuItem onClick={clearFilters}><ClearIcon fontSize="small" sx={{ mr: 1 }} /> Clear filters</MenuItem>
           </Menu>
           <Button size="small" startIcon={<ViewColumnIcon />} onClick={(e) => setColumnMenuAnchor(e.currentTarget)} variant="outlined">
@@ -973,7 +1005,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -1042,7 +1074,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>
@@ -1084,6 +1116,7 @@ const AdminCRMPage: React.FC = () => {
                     {visibleColumns.has('facilityId') && <TableCell>{contact.facilityId ?? '—'}</TableCell>}
                     {visibleColumns.has('organization') && <TableCell>{contact.organization || '—'}</TableCell>}
                     {visibleColumns.has('hospitalSystem') && <TableCell>{contact.hospitalSystem ?? '—'}</TableCell>}
+                    {visibleColumns.has('programs') && <TableCell>{(contact.programs ?? []).length ? (contact.programs ?? []).join(', ') : '—'}</TableCell>}
                     {visibleColumns.has('email') && <TableCell>{contact.email}</TableCell>}
                     {visibleColumns.has('phone') && <TableCell>{contact.phone || '—'}</TableCell>}
                     {visibleColumns.has('region') && <TableCell>{contact.region || '—'}</TableCell>}
@@ -1112,7 +1145,7 @@ const AdminCRMPage: React.FC = () => {
       {/* Row actions menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
         <MenuItem onClick={() => { if (detailContact) openDetail(detailContact); setAnchorEl(null); }}>View details</MenuItem>
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], customFields: detailContact.customFields ?? {} }); setDialogOpen(true); } setAnchorEl(null); }}>
+        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], customFields: detailContact.customFields ?? {} }); setDialogOpen(true); } setAnchorEl(null); }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
@@ -1219,6 +1252,9 @@ const AdminCRMPage: React.FC = () => {
               <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="State" secondary={detailContact.state ?? '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
+              {(detailContact.programs ?? []).length > 0 && (
+                <ListItem disablePadding><ListItemText primary="Program(s)" secondary={(detailContact.programs ?? []).join(', ')} /></ListItem>
+              )}
               {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type)).length > 0 && (
                 <>
                   {customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
@@ -1260,7 +1296,7 @@ const AdminCRMPage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {} });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {} });
                   setPanelOpen(false);
                   setTimeout(() => { setEditingContact(c); setDialogOpen(true); }, 150);
                 }}>
@@ -1319,6 +1355,9 @@ const AdminCRMPage: React.FC = () => {
                     <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Added" secondary={detailContact.createdAt} /></ListItem>
+                    {(detailContact.programs ?? []).length > 0 && (
+                      <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Program(s)" secondary={(detailContact.programs ?? []).join(', ')} /></ListItem>
+                    )}
                     {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
                       <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} /></ListItem>
                     ))}
@@ -1428,7 +1467,7 @@ const AdminCRMPage: React.FC = () => {
               <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
                 <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {} });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {} });
                   setFullScreenOpen(false);
                   setTimeout(() => { setEditingContact(c); setDialogOpen(true); }, 150);
                 }}>
@@ -1531,6 +1570,18 @@ const AdminCRMPage: React.FC = () => {
                   <MenuItem value="Pending">Pending</MenuItem>
                 </Select>
               </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <Autocomplete
+                multiple
+                freeSolo
+                size="small"
+                options={programOptions}
+                value={formData.programs ?? []}
+                onChange={(_, v) => setFormData(prev => ({ ...prev, programs: v.map(x => (typeof x === 'string' ? x : '')).filter(Boolean) }))}
+                renderInput={(params) => <TextField {...params} label="Program(s)" placeholder="Select or type new (cohorts, groups, service offerings…)" />}
+                renderTags={(value, getTagProps) => value.map((opt, i) => <Chip key={opt} label={opt} size="small" {...getTagProps({ index: i })} />)}
+              />
             </Grid>
             <Grid item xs={12}>
               <TextField label="Notes" value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} fullWidth size="small" multiline rows={3} />
