@@ -24,7 +24,10 @@ import {
 import {
   MoreVert as MoreIcon,
   Visibility as ViewIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  DragIndicator as DragIcon,
+  VisibilityOff as HideIcon,
+  Visibility as ShowIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -324,14 +327,19 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [editingStage, setEditingStage] = useState<{ hospitalId: string; stageId: string } | null>(null);
   const [completionDate, setCompletionDate] = useState<Date | null>(null);
+  const [hiddenHospitals, setHiddenHospitals] = useState<Set<string>>(new Set());
+  const [draggedHospitalId, setDraggedHospitalId] = useState<string | null>(null);
 
-  // Load hospitals (only "working with" ones)
+  // Load hospitals (only "working with" ones) and hidden hospitals
   useEffect(() => {
     if (currentUser?.id) {
       const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser.id}`);
+      const savedHidden = localStorage.getItem(`mentorHiddenHospitals_${currentUser.id}`);
+      const savedOrder = localStorage.getItem(`mentorHospitalOrder_${currentUser.id}`);
+      
       if (savedHospitals) {
         const parsed: any[] = JSON.parse(savedHospitals);
-        const workingHospitals = parsed
+        let workingHospitals = parsed
           .filter((h: any) => h.isWorkingWith !== false)
           .map((h: any) => ({
             id: h.id,
@@ -340,10 +348,76 @@ const MentorSiteMilestonesPage: React.FC = () => {
             siteId: h.id,
             isWorkingWith: h.isWorkingWith
           }));
+        
+        // Apply saved order if exists
+        if (savedOrder) {
+          try {
+            const order: string[] = JSON.parse(savedOrder);
+            const ordered = order.map(id => workingHospitals.find(h => h.id === id)).filter(Boolean) as Hospital[];
+            const remaining = workingHospitals.filter(h => !order.includes(h.id));
+            workingHospitals = [...ordered, ...remaining];
+          } catch {}
+        }
+        
         setHospitals(workingHospitals);
+      }
+      
+      if (savedHidden) {
+        try {
+          const hidden: string[] = JSON.parse(savedHidden);
+          setHiddenHospitals(new Set(hidden));
+        } catch {}
       }
     }
   }, [currentUser]);
+
+  // Save hospital order
+  const saveHospitalOrder = (newOrder: Hospital[]) => {
+    if (currentUser?.id) {
+      localStorage.setItem(`mentorHospitalOrder_${currentUser.id}`, JSON.stringify(newOrder.map(h => h.id)));
+      setHospitals(newOrder);
+    }
+  };
+
+  // Toggle hospital visibility
+  const toggleHospitalVisibility = (hospitalId: string) => {
+    const newHidden = new Set(hiddenHospitals);
+    if (newHidden.has(hospitalId)) {
+      newHidden.delete(hospitalId);
+    } else {
+      newHidden.add(hospitalId);
+    }
+    setHiddenHospitals(newHidden);
+    if (currentUser?.id) {
+      localStorage.setItem(`mentorHiddenHospitals_${currentUser.id}`, JSON.stringify(Array.from(newHidden)));
+    }
+  };
+
+  // Handle drag and drop
+  const handleDragStart = (hospitalId: string) => {
+    setDraggedHospitalId(hospitalId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, hospitalId: string) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetHospitalId: string) => {
+    e.preventDefault();
+    if (!draggedHospitalId || draggedHospitalId === targetHospitalId) return;
+
+    const draggedIndex = hospitals.findIndex(h => h.id === draggedHospitalId);
+    const targetIndex = hospitals.findIndex(h => h.id === targetHospitalId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newHospitals = [...hospitals];
+    const [dragged] = newHospitals.splice(draggedIndex, 1);
+    newHospitals.splice(targetIndex, 0, dragged);
+    
+    saveHospitalOrder(newHospitals);
+    setDraggedHospitalId(null);
+  };
 
   // Load milestones for each hospital's PECC(s)
   useEffect(() => {
@@ -653,37 +727,56 @@ const MentorSiteMilestonesPage: React.FC = () => {
             <Typography color="textSecondary">No hospitals assigned yet. Add hospitals from the Hospital Contacts page.</Typography>
           </Paper>
         ) : (
-          <TableContainer 
-            component={Paper} 
-            sx={{ 
-              maxHeight: 'calc(100vh - 200px)',
-              overflowX: 'auto',
-              overflowY: 'auto',
-              '& .MuiTableCell-root': {
-                padding: '4px 8px',
-                fontSize: '0.75rem'
-              }
-            }}
-          >
-            <Table stickyHeader size="small" sx={{ minWidth: 600 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell 
-                    sx={{ 
-                      minWidth: 250, 
-                      maxWidth: 250,
-                      position: 'sticky', 
-                      left: 0, 
-                      zIndex: 10, 
-                      bgcolor: 'background.paper',
-                      fontWeight: 600,
-                      borderRight: '1px solid',
-                      borderColor: 'divider'
-                    }}
-                  >
-                    Stage / Task
-                  </TableCell>
-                  {hospitals.map(hospital => {
+          <>
+            {/* Hospital Management Controls */}
+            <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Typography variant="body2" color="textSecondary">
+                {visibleHospitals.length} of {hospitals.length} hospitals visible
+              </Typography>
+              {hospitals.map(hospital => (
+                <Chip
+                  key={hospital.id}
+                  label={hospital.name}
+                  size="small"
+                  icon={hiddenHospitals.has(hospital.id) ? <HideIcon /> : <ShowIcon />}
+                  onClick={() => toggleHospitalVisibility(hospital.id)}
+                  color={hiddenHospitals.has(hospital.id) ? 'default' : 'primary'}
+                  sx={{ cursor: 'pointer' }}
+                />
+              ))}
+            </Box>
+            
+            <TableContainer 
+              component={Paper} 
+              sx={{ 
+                maxHeight: 'calc(100vh - 200px)',
+                overflowX: 'auto',
+                overflowY: 'auto',
+                '& .MuiTableCell-root': {
+                  padding: '4px 8px',
+                  fontSize: '0.75rem'
+                }
+              }}
+            >
+              <Table stickyHeader size="small" sx={{ minWidth: 600 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell 
+                      sx={{ 
+                        minWidth: 250, 
+                        maxWidth: 250,
+                        position: 'sticky', 
+                        left: 0, 
+                        zIndex: 10, 
+                        bgcolor: 'background.paper',
+                        fontWeight: 600,
+                        borderRight: '1px solid',
+                        borderColor: 'divider'
+                      }}
+                    >
+                      Stage / Task
+                    </TableCell>
+                    {visibleHospitals.map((hospital, index) => {
                     const metrics = hospitalMetrics[hospital.id];
                     return (
                       <TableCell 
@@ -795,7 +888,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
                         >
                           {renderTaskText(row.task)}
                         </TableCell>
-                        {hospitals.map(hospital => {
+                        {visibleHospitals.map(hospital => {
                           const hospitalData = hospitalMilestones[hospital.id];
                           const stage = hospitalData?.stages.find(s => s.id === row.stageId);
                           const task = stage?.tasks.find(t => t.id === row.taskId);
@@ -816,15 +909,17 @@ const MentorSiteMilestonesPage: React.FC = () => {
                     );
                   } else {
                     const stageNum = row.stageId?.replace('stage', '');
+                    const stageColor = getStageColor(row.stageId!);
                     return (
                       <TableRow 
                         key={`${row.stageId}-completion`} 
                         sx={{ 
-                          bgcolor: 'grey.100',
+                          bgcolor: stageColor,
                           '& .MuiTableCell-root': {
                             borderTop: '1px solid',
                             borderBottom: '1px solid',
-                            borderColor: 'divider'
+                            borderColor: stageColor,
+                            color: 'white'
                           }
                         }}
                       >
@@ -833,30 +928,31 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             position: 'sticky', 
                             left: 0, 
                             zIndex: 9, 
-                            bgcolor: 'grey.100',
+                            bgcolor: stageColor,
                             fontWeight: 600,
                             borderRight: '1px solid',
                             borderColor: 'divider',
                             pl: 2,
                             minWidth: 250,
-                            maxWidth: 250
+                            maxWidth: 250,
+                            color: 'white'
                           }}
                         >
                           Stage {stageNum} Complete
                         </TableCell>
-                        {hospitals.map(hospital => {
+                        {visibleHospitals.map(hospital => {
                           const hospitalData = hospitalMilestones[hospital.id];
                           const completion = hospitalData?.stageCompletions[row.stageId!];
                           const isCompleted = completion?.completed || false;
 
                           return (
-                            <TableCell key={hospital.id} align="center" sx={{ py: 0.5 }}>
+                            <TableCell key={hospital.id} align="center" sx={{ py: 0.5, bgcolor: stageColor }}>
                               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
                                 <Checkbox
                                   checked={isCompleted}
                                   onChange={() => handleStageCompletionToggle(hospital.id, row.stageId!)}
                                   size="small"
-                                  sx={{ padding: '2px' }}
+                                  sx={{ padding: '2px', color: 'white', '&.Mui-checked': { color: 'white' } }}
                                 />
                                 {isCompleted && (
                                   <Button
@@ -871,7 +967,10 @@ const MentorSiteMilestonesPage: React.FC = () => {
                                       fontSize: '0.65rem',
                                       padding: '2px 6px',
                                       minWidth: 'auto',
-                                      height: '20px'
+                                      height: '20px',
+                                      borderColor: 'white',
+                                      color: 'white',
+                                      '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' }
                                     }}
                                   >
                                     {completion?.completionDate ? format(parseISO(completion.completionDate), 'M/d/yy') : 'Date'}
@@ -888,6 +987,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+        </>
         )}
 
         <Menu

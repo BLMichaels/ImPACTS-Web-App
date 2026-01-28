@@ -4,9 +4,6 @@ import {
   Typography,
   Grid,
   Paper,
-  Card,
-  CardContent,
-  CardActions,
   Button,
   List,
   ListItem,
@@ -28,12 +25,16 @@ import {
   FormControlLabel,
   Checkbox,
   IconButton,
-  Tab,
-  Tabs,
   Alert,
   Snackbar,
   CircularProgress,
-  Autocomplete
+  Autocomplete,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
@@ -115,7 +116,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
-  const [tabValue, setTabValue] = useState(0);
+  const [hospitalDetailsDialogOpen, setHospitalDetailsDialogOpen] = useState(false);
   
   // Dialog states
   const [hospitalDialogOpen, setHospitalDialogOpen] = useState(false);
@@ -351,6 +352,46 @@ const MentorHospitalContactsPage: React.FC = () => {
     setHospitalDialogOpen(true);
   };
 
+  // Link PECCs and Mentors to CRM when hospital is selected
+  const linkHospitalToCRM = async (hospital: Hospital) => {
+    if (!currentUser?.id) return;
+
+    try {
+      const hospitalId = hospital.id; // facility_id or id
+      
+      // Find PECCs for this hospital
+      const { data: peccUsers } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .eq('role', 'pecc')
+        .or(`hospital_facility_id.eq.${hospitalId},hospital_facility_id.eq.${hospital.id}`);
+
+      // Also check site_members
+      const { data: siteMembers } = await supabase
+        .from('site_members')
+        .select('user_id')
+        .eq('site_id', hospitalId);
+
+      const peccUserIds = [
+        ...(peccUsers?.map(u => u.id) || []),
+        ...(siteMembers?.map(sm => sm.user_id) || [])
+      ];
+
+      // Update CRM hospital record with PECC and Mentor info
+      // This would ideally update a notes_log or activity_log field
+      // For now, we'll just ensure the relationship exists
+      console.log('Linking hospital to CRM:', {
+        hospitalId,
+        peccs: peccUsers,
+        mentor: currentUser.id
+      });
+
+      // Could add to CRM notes_log or activity_log here
+    } catch (err) {
+      console.error('Error linking hospital to CRM:', err);
+    }
+  };
+
   const handleSaveHospital = () => {
     if (editingHospital) {
       // Edit flow: require name
@@ -397,7 +438,14 @@ const MentorHospitalContactsPage: React.FC = () => {
     saveHospitals(newHospitals);
     setHospitalDialogOpen(false);
     setSelectedHospital(hospitalData);
+    linkHospitalToCRM(hospitalData);
     setSnackbar({ open: true, message: 'Hospital added successfully', severity: 'success' });
+  };
+
+  const handleHospitalRowClick = (hospital: Hospital) => {
+    setSelectedHospital(hospital);
+    linkHospitalToCRM(hospital);
+    setHospitalDetailsDialogOpen(true);
   };
 
   const handleRemoveHospital = (hospitalId: string) => {
@@ -543,128 +591,150 @@ const MentorHospitalContactsPage: React.FC = () => {
         </Button>
       </Box>
 
-      <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ mb: 2 }}>
-        <Tab label="List View" />
-        <Tab label="Hospital Details" />
-      </Tabs>
-
-      {tabValue === 0 && (
-        // List View
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={showAllHospitals}
-                  onChange={(e) => setShowAllHospitals(e.target.checked)}
-                />
-              }
-              label="Show all hospitals (including contacts only)"
-            />
-            <Typography variant="body2" color="textSecondary">
-              {displayedHospitals.length} of {hospitals.length} hospitals
-            </Typography>
-          </Box>
-          <Grid container spacing={3}>
-            {displayedHospitals.map(hospital => {
-            const hContacts = contacts.filter(c => c.hospitalId === hospital.id);
-            const primaryContact = hContacts.find(c => c.isPrimaryContact);
-            
-            return (
-              <Grid item xs={12} md={6} lg={4} key={hospital.id}>
-                <Card 
-                  sx={{ 
-                    cursor: 'pointer',
-                    border: selectedHospital?.id === hospital.id ? 2 : 0,
-                    borderColor: 'primary.main'
-                  }}
-                  onClick={() => {
-                    setSelectedHospital(hospital);
-                    setTabValue(1);
-                  }}
-                >
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                        <HospitalIcon />
-                      </Avatar>
-                      <Box sx={{ flex: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="h6">{hospital.name}</Typography>
-                          {hospital.isWorkingWith ? (
-                            <Chip label="Working With" size="small" color="success" />
-                          ) : (
-                            <Chip label="Contact Only" size="small" color="default" />
-                          )}
-                        </Box>
-                        <Chip label={hospital.traumaLevel} size="small" sx={{ mt: 0.5 }} />
-                      </Box>
-                    </Box>
-                    
-                    <Typography variant="body2" color="textSecondary">
-                      {hospital.city}, {hospital.state}
-                    </Typography>
-                    
-                    {primaryContact && (
-                      <Box sx={{ mt: 2, p: 1, bgcolor: 'grey.100', borderRadius: 1 }}>
-                        <Typography variant="caption" color="textSecondary">Primary Contact</Typography>
-                        <Typography variant="body2">
-                          {primaryContact.firstName} {primaryContact.lastName}
-                        </Typography>
-                        <Typography variant="caption">{primaryContact.email}</Typography>
-                      </Box>
-                    )}
-                    
-                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                      {hContacts.length} contact(s)
-                    </Typography>
-                  </CardContent>
-                  <CardActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-                    <Button size="small" onClick={(e) => { e.stopPropagation(); handleEditHospital(hospital); }}>
-                      Edit
-                    </Button>
-                    <Button 
-                      size="small" 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        handleToggleWorkingWith(hospital.id);
-                      }}
-                    >
-                      {hospital.isWorkingWith ? 'Mark as Contact Only' : 'Mark as Working With'}
-                    </Button>
-                    <Button 
-                      size="small" 
-                      startIcon={<SendIcon />}
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setSelectedHospital(hospital);
-                        setInviteDialogOpen(true); 
-                      }}
-                    >
-                      Invite PECC
-                    </Button>
-                    <Button 
-                      size="small" 
-                      color="error"
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        handleRemoveHospital(hospital.id);
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </CardActions>
-                </Card>
-              </Grid>
-            );
-          })}
-          </Grid>
+      {/* List View - Table */}
+      <Box>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={showAllHospitals}
+                onChange={(e) => setShowAllHospitals(e.target.checked)}
+              />
+            }
+            label="Show all hospitals (including contacts only)"
+          />
+          <Typography variant="body2" color="textSecondary">
+            {displayedHospitals.length} of {hospitals.length} hospitals
+          </Typography>
         </Box>
-      )}
+        <Paper>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Hospital Name</strong></TableCell>
+                  <TableCell><strong>Location</strong></TableCell>
+                  <TableCell><strong>Trauma Level</strong></TableCell>
+                  <TableCell><strong>Status</strong></TableCell>
+                  <TableCell><strong>Contacts</strong></TableCell>
+                  <TableCell><strong>Primary Contact</strong></TableCell>
+                  <TableCell><strong>Actions</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {displayedHospitals.map(hospital => {
+                  const hContacts = contacts.filter(c => c.hospitalId === hospital.id);
+                  const primaryContact = hContacts.find(c => c.isPrimaryContact);
+                  
+                  return (
+                    <TableRow 
+                      key={hospital.id}
+                      hover
+                      sx={{ cursor: 'pointer' }}
+                      onClick={() => handleHospitalRowClick(hospital)}
+                    >
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <HospitalIcon color="primary" />
+                          <Typography variant="body2" fontWeight={500}>
+                            {hospital.name}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="textSecondary">
+                          {hospital.city}, {hospital.state}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={hospital.traumaLevel} size="small" />
+                      </TableCell>
+                      <TableCell>
+                        {hospital.isWorkingWith ? (
+                          <Chip label="Working With" size="small" color="success" />
+                        ) : (
+                          <Chip label="Contact Only" size="small" color="default" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{hContacts.length}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        {primaryContact ? (
+                          <Typography variant="body2">
+                            {primaryContact.firstName} {primaryContact.lastName}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="textSecondary">-</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <IconButton size="small" onClick={() => handleEditHospital(hospital)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleToggleWorkingWith(hospital.id)}
+                            color={hospital.isWorkingWith ? 'default' : 'success'}
+                          >
+                            {hospital.isWorkingWith ? 'Contact' : 'Working'}
+                          </IconButton>
+                          <IconButton 
+                            size="small" 
+                            onClick={() => {
+                              setSelectedHospital(hospital);
+                              setInviteDialogOpen(true);
+                            }}
+                          >
+                            <SendIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton 
+                            size="small" 
+                            color="error"
+                            onClick={() => handleRemoveHospital(hospital.id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {displayedHospitals.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                      <Typography color="textSecondary">
+                        No hospitals found. Click "Add Hospital" to get started.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      </Box>
 
-      {tabValue === 1 && selectedHospital && (
-        // Hospital Details View
-        <Grid container spacing={3}>
+      {/* Hospital Details Dialog */}
+      <Dialog 
+        open={hospitalDetailsDialogOpen} 
+        onClose={() => setHospitalDetailsDialogOpen(false)} 
+        maxWidth="md" 
+        fullWidth
+      >
+        {selectedHospital && (
+          <>
+            <DialogTitle>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6">{selectedHospital.name}</Typography>
+                <IconButton onClick={() => setHospitalDetailsDialogOpen(false)} size="small">
+                  <DeleteIcon />
+                </IconButton>
+              </Box>
+            </DialogTitle>
+            <DialogContent>
+              <Grid container spacing={3} sx={{ mt: 0 }}>
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" gutterBottom>Hospital Information</Typography>
@@ -817,7 +887,13 @@ const MentorHospitalContactsPage: React.FC = () => {
             </Paper>
           </Grid>
         </Grid>
-      )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setHospitalDetailsDialogOpen(false)}>Close</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       {/* Hospital Dialog */}
       <Dialog open={hospitalDialogOpen} onClose={() => setHospitalDialogOpen(false)} maxWidth="sm" fullWidth>
