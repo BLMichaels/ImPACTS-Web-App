@@ -123,6 +123,8 @@ const MentorActivitiesPage: React.FC = () => {
   const [activities, setActivities] = useState<MentorActivity[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [viewingActivity, setViewingActivity] = useState<MentorActivity | null>(null);
   const [editingActivity, setEditingActivity] = useState<MentorActivity | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>('date');
@@ -362,6 +364,59 @@ const MentorActivitiesPage: React.FC = () => {
     return ids.map(id => hospitals.find(h => h.id === id)?.name || id).join(', ');
   };
 
+  // Calculate statistics
+  const calculateStats = () => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    
+    const thisMonth = activities.filter(a => new Date(a.date) >= startOfMonth);
+    const thisYear = activities.filter(a => new Date(a.date) >= startOfYear);
+    
+    return {
+      thisMonth: {
+        count: thisMonth.length,
+        hours: thisMonth.reduce((sum, a) => sum + a.hours, 0)
+      },
+      thisYear: {
+        count: thisYear.length,
+        hours: thisYear.reduce((sum, a) => sum + a.hours, 0)
+      },
+      allTime: {
+        count: activities.length,
+        hours: activities.reduce((sum, a) => sum + a.hours, 0)
+      }
+    };
+  };
+
+  const stats = calculateStats();
+
+  // Handle row click to view details
+  const handleRowClick = (activity: MentorActivity) => {
+    setViewingActivity(activity);
+    setDetailDialogOpen(true);
+  };
+
+  // Handle edit from detail view
+  const handleEditFromDetail = () => {
+    if (viewingActivity) {
+      setDetailDialogOpen(false);
+      handleEdit(viewingActivity);
+    }
+  };
+
+  // Handle delete from detail view
+  const handleDeleteFromDetail = () => {
+    if (viewingActivity) {
+      if (window.confirm('Are you sure you want to delete this activity?')) {
+        const newActivities = activities.filter(a => a.id !== viewingActivity.id);
+        saveActivities(newActivities);
+        setDetailDialogOpen(false);
+        setViewingActivity(null);
+      }
+    }
+  };
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ py: 3 }}>
@@ -439,8 +494,44 @@ const MentorActivitiesPage: React.FC = () => {
           </Paper>
         </Collapse>
 
+        {/* Summary Statistics */}
+        {activities.length > 0 && (
+          <Paper sx={{ mb: 3, p: 2 }}>
+            <Typography variant="h6" gutterBottom>Summary</Typography>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={4}>
+                <Box>
+                  <Typography variant="subtitle2" color="textSecondary">This Month</Typography>
+                  <Typography variant="h5">{stats.thisMonth.count}</Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    {stats.thisMonth.hours.toFixed(2)} hours
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Box>
+                  <Typography variant="subtitle2" color="textSecondary">This Year</Typography>
+                  <Typography variant="h5">{stats.thisYear.count}</Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    {stats.thisYear.hours.toFixed(2)} hours
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Box>
+                  <Typography variant="subtitle2" color="textSecondary">All Time</Typography>
+                  <Typography variant="h5">{stats.allTime.count}</Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    {stats.allTime.hours.toFixed(2)} hours
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+          </Paper>
+        )}
+
         {/* Activities Table */}
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} sx={{ maxHeight: 600, overflow: 'auto' }}>
           <Table>
             <TableHead>
               <TableRow>
@@ -481,13 +572,12 @@ const MentorActivitiesPage: React.FC = () => {
                   </TableSortLabel>
                 </TableCell>
                 <TableCell>Hospitals</TableCell>
-                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredActivities.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">
+                  <TableCell colSpan={5} align="center">
                     <Typography color="textSecondary" sx={{ py: 4 }}>
                       No activities recorded yet. Click "Add Activity" to get started.
                     </Typography>
@@ -495,7 +585,16 @@ const MentorActivitiesPage: React.FC = () => {
                 </TableRow>
               ) : (
                 filteredActivities.map((activity) => (
-                  <TableRow key={activity.id}>
+                  <TableRow 
+                    key={activity.id}
+                    onClick={() => handleRowClick(activity)}
+                    sx={{ 
+                      cursor: 'pointer',
+                      '&:hover': { 
+                        backgroundColor: 'action.hover' 
+                      }
+                    }}
+                  >
                     <TableCell>{format(parseISO(activity.date), 'MMM d, yyyy')}</TableCell>
                     <TableCell>
                       {activity.activityName}
@@ -519,14 +618,6 @@ const MentorActivitiesPage: React.FC = () => {
                         : '-'
                       }
                     </TableCell>
-                    <TableCell>
-                      <IconButton size="small" onClick={() => handleEdit(activity)}>
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton size="small" onClick={() => handleDelete(activity.id)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -534,13 +625,108 @@ const MentorActivitiesPage: React.FC = () => {
           </Table>
         </TableContainer>
 
-        {/* Summary */}
-        {activities.length > 0 && (
-          <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-            <Chip label={`Total Activities: ${filteredActivities.length}`} />
-            <Chip label={`Total Hours: ${filteredActivities.reduce((sum, a) => sum + a.hours, 0).toFixed(2)}`} color="primary" />
-          </Box>
-        )}
+        {/* Activity Detail Dialog */}
+        <Dialog 
+          open={detailDialogOpen} 
+          onClose={() => {
+            setDetailDialogOpen(false);
+            setViewingActivity(null);
+          }} 
+          maxWidth="md" 
+          fullWidth
+        >
+          <DialogTitle>
+            Activity Details
+          </DialogTitle>
+          <DialogContent>
+            {viewingActivity && (
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="textSecondary">Date</Typography>
+                  <Typography>{format(parseISO(viewingActivity.date), 'MMM d, yyyy')}</Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="textSecondary">Category</Typography>
+                  <Chip 
+                    label={getCategoryLabel(viewingActivity.category)} 
+                    size="small" 
+                    color={viewingActivity.category === 'SC' ? 'secondary' : 'default'}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="textSecondary">Activity</Typography>
+                  <Typography sx={{ whiteSpace: 'pre-wrap' }}>{viewingActivity.activityName}</Typography>
+                </Grid>
+                {viewingActivity.description && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="textSecondary">Description</Typography>
+                    <Typography sx={{ whiteSpace: 'pre-wrap' }}>{viewingActivity.description}</Typography>
+                  </Grid>
+                )}
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="textSecondary">Hours</Typography>
+                  <Typography>{viewingActivity.hours}</Typography>
+                </Grid>
+                {viewingActivity.hospitalIds.length > 0 && (
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" color="textSecondary">Hospitals</Typography>
+                    <Typography>{getHospitalNames(viewingActivity.hospitalIds)}</Typography>
+                  </Grid>
+                )}
+                {viewingActivity.readinessDomain && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="textSecondary">Domain of Pediatric Readiness</Typography>
+                    <Typography>{viewingActivity.readinessDomain}</Typography>
+                  </Grid>
+                )}
+                {viewingActivity.category === 'SC' && (
+                  <>
+                    {viewingActivity.simulationCase && (
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="textSecondary">Simulation Case</Typography>
+                        <Typography>{viewingActivity.simulationCase}</Typography>
+                      </Grid>
+                    )}
+                    {viewingActivity.simParticipants && (
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="textSecondary"># of Participants</Typography>
+                        <Typography>{viewingActivity.simParticipants}</Typography>
+                      </Grid>
+                    )}
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" color="textSecondary">Feedback Forms Submitted</Typography>
+                      <Box sx={{ display: 'flex', gap: 2 }}>
+                        {viewingActivity.facilitatorFeedbackSubmitted && (
+                          <Chip label="Facilitator" size="small" color="success" />
+                        )}
+                        {viewingActivity.participantFeedbackSubmitted && (
+                          <Chip label="Participant" size="small" color="success" />
+                        )}
+                        {!viewingActivity.facilitatorFeedbackSubmitted && !viewingActivity.participantFeedbackSubmitted && (
+                          <Typography variant="body2" color="textSecondary">None</Typography>
+                        )}
+                      </Box>
+                    </Grid>
+                  </>
+                )}
+              </Grid>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => {
+              setDetailDialogOpen(false);
+              setViewingActivity(null);
+            }}>
+              Close
+            </Button>
+            <Button onClick={handleEditFromDetail} variant="outlined" startIcon={<EditIcon />}>
+              Edit
+            </Button>
+            <Button onClick={handleDeleteFromDetail} variant="outlined" color="error" startIcon={<DeleteIcon />}>
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Add/Edit Dialog */}
         <Dialog 
