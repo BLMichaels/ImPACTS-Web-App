@@ -658,7 +658,8 @@ const MentorHospitalContactsPage: React.FC = () => {
               </Grid>
             );
           })}
-        </Grid>
+          </Grid>
+        </Box>
       )}
 
       {tabValue === 1 && selectedHospital && (
