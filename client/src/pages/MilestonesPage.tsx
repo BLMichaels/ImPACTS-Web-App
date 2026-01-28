@@ -587,9 +587,6 @@ const MilestonesPage = () => {
                 <Typography variant="h4" gutterBottom fontWeight="bold" color="white">
                   {stage.title}
                 </Typography>
-                <Typography variant="h6" gutterBottom color="white" sx={{ opacity: 0.9 }}>
-                  {stage.subtitle}
-                </Typography>
                 
                 {/* Progress */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
