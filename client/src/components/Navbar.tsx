@@ -102,6 +102,7 @@ const Navbar: React.FC = () => {
           { path: '/admin/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/admin/users', label: 'Users', icon: <PeopleIcon /> },
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
+          { path: '/admin/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon /> }
         ];
 
