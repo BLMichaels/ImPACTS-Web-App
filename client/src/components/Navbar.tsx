@@ -328,16 +328,6 @@ const Navbar: React.FC = () => {
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
-          <Typography 
-            variant="h6" 
-            sx={{ 
-              ml: 1,
-              fontWeight: 'bold',
-              display: { xs: 'none', sm: 'block' }
-            }}
-          >
-            ImPACTS
-          </Typography>
         </Box>
 
         {/* Desktop Navigation Items */}
