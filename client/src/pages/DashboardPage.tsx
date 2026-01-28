@@ -41,6 +41,12 @@ interface DepartmentContact {
   notes: string;
 }
 
+interface ReadinessScore {
+  id: string;
+  date: string;
+  score: number;
+}
+
   const DashboardPage = () => {
     const { userProfile } = useUserProfile();
     const { currentUser } = useAuth();
@@ -51,6 +57,10 @@ interface DepartmentContact {
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
     
+  const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
+  const [readinessScoreDialogOpen, setReadinessScoreDialogOpen] = useState(false);
+  const [readinessScoreForm, setReadinessScoreForm] = useState({ date: new Date(), score: '' });
+
   const [departmentContacts, setDepartmentContacts] = useState<DepartmentContact[]>([
     { id: '1', department: 'Chief Nursing Officer', contactName: '', phone: '', email: '', notes: '' },
     { id: '2', department: 'Chief Medical Officer', contactName: '', phone: '', email: '', notes: '' },
@@ -86,6 +96,53 @@ interface DepartmentContact {
     key: keyof DepartmentContact;
     direction: 'asc' | 'desc';
   } | null>(null);
+
+  // Load readiness scores
+  useEffect(() => {
+    if (currentUser?.uid) {
+      const saved = localStorage.getItem(`readinessScores_${currentUser.uid}`);
+      if (saved) {
+        try {
+          setReadinessScores(JSON.parse(saved));
+        } catch {
+          setReadinessScores([]);
+        }
+      }
+    }
+  }, [currentUser]);
+
+  // Save readiness scores
+  const saveReadinessScores = (scores: ReadinessScore[]) => {
+    if (currentUser?.uid) {
+      localStorage.setItem(`readinessScores_${currentUser.uid}`, JSON.stringify(scores));
+      setReadinessScores(scores);
+    }
+  };
+
+  // Handle add readiness score
+  const handleAddReadinessScore = () => {
+    setReadinessScoreForm({ date: new Date(), score: '' });
+    setReadinessScoreDialogOpen(true);
+  };
+
+  const handleSaveReadinessScore = () => {
+    if (!readinessScoreForm.score || isNaN(parseFloat(readinessScoreForm.score))) {
+      return;
+    }
+
+    const newScore: ReadinessScore = {
+      id: `score_${Date.now()}`,
+      date: format(readinessScoreForm.date, 'yyyy-MM-dd'),
+      score: parseFloat(readinessScoreForm.score)
+    };
+
+    const updated = [...readinessScores, newScore].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+
+    saveReadinessScores(updated);
+    setReadinessScoreDialogOpen(false);
+  };
   
   const [isEditMode, setIsEditMode] = useState(false);
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
@@ -266,6 +323,49 @@ interface DepartmentContact {
         </Grid>
       </Grid>
 
+      {/* Pediatric Readiness Score Section */}
+      <Box sx={{ mb: 6 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h4" color="primary">
+            Pediatric Readiness Scores
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAddReadinessScore}
+            sx={{ fontSize: '0.875rem' }}
+          >
+            Add Score
+          </Button>
+        </Box>
+        <Card>
+          <CardContent>
+            {readinessScores.length === 0 ? (
+              <Typography color="textSecondary" align="center" sx={{ py: 2 }}>
+                No readiness scores recorded yet. Click "Add Score" to add your first score.
+              </Typography>
+            ) : (
+              <Grid container spacing={2}>
+                {readinessScores.map((score) => (
+                  <Grid item xs={12} sm={6} md={4} key={score.id}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="h6" color="primary">
+                          {score.score}
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary">
+                          {format(parseISO(score.date), 'MMM d, yyyy')}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </CardContent>
+        </Card>
+      </Box>
+
       {/* Hospital Department Contacts Section */}
       <Box sx={{ mb: 6 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -427,6 +527,41 @@ interface DepartmentContact {
       </Box>
 
       <DashboardResources userId={currentUser?.uid} isMobile={isMobile} />
+
+      {/* Readiness Score Dialog */}
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <Dialog open={readinessScoreDialogOpen} onClose={() => setReadinessScoreDialogOpen(false)}>
+          <DialogTitle>Add Pediatric Readiness Score</DialogTitle>
+          <DialogContent>
+            <DatePicker
+              label="Assessment Date"
+              value={readinessScoreForm.date}
+              onChange={(newValue) => newValue && setReadinessScoreForm(prev => ({ ...prev, date: newValue }))}
+              slotProps={{ textField: { fullWidth: true, sx: { mt: 2 } } }}
+            />
+            <TextField
+              label="Readiness Score"
+              type="number"
+              value={readinessScoreForm.score}
+              onChange={(e) => setReadinessScoreForm(prev => ({ ...prev, score: e.target.value }))}
+              fullWidth
+              sx={{ mt: 2 }}
+              inputProps={{ min: 0, max: 100, step: 0.1 }}
+              helperText="Enter the score from your National Pediatric Readiness Project assessment"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setReadinessScoreDialogOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={handleSaveReadinessScore} 
+              variant="contained"
+              disabled={!readinessScoreForm.score || isNaN(parseFloat(readinessScoreForm.score))}
+            >
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </LocalizationProvider>
 
       {/* Delete Confirmation Dialog */}
       <Dialog
