@@ -41,8 +41,7 @@ const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminCRMPage = lazy(() => import('./pages/admin/AdminCRMPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
-const AdminPermissionsPage = lazy(() => import('./pages/admin/AdminPermissionsPage'));
-const AdminRegistrationPage = lazy(() => import('./pages/admin/AdminRegistrationPage'));
+const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
@@ -205,8 +204,7 @@ function App() {
                   <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboardPage /></ProtectedRoute>} />
                   <Route path="/admin/crm" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCRMPage /></ProtectedRoute>} />
                   <Route path="/admin/users" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminUsersPage /></ProtectedRoute>} />
-                  <Route path="/admin/permissions" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminPermissionsPage /></ProtectedRoute>} />
-                  <Route path="/admin/registration" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminRegistrationPage /></ProtectedRoute>} />
+                  <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSettingsPage /></ProtectedRoute>} />
                   
                   {/* Common Routes */}
                   <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />

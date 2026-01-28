@@ -102,8 +102,7 @@ const Navbar: React.FC = () => {
           { path: '/admin/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/admin/users', label: 'Users', icon: <PeopleIcon /> },
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
-          { path: '/admin/registration', label: 'Registration', icon: <AssignmentIcon /> },
-          { path: '/admin/permissions', label: 'Permissions', icon: <SecurityIcon /> }
+          { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon /> }
         ];
 
       case UserRole.MANAGER:
