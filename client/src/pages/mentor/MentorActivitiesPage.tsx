@@ -39,7 +39,8 @@ import {
   Delete as DeleteIcon,
   FilterList as FilterIcon,
   ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
+  ExpandLess as ExpandLessIcon,
+  Download as DownloadIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -126,10 +127,11 @@ const MentorActivitiesPage: React.FC = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [viewingActivity, setViewingActivity] = useState<MentorActivity | null>(null);
   const [editingActivity, setEditingActivity] = useState<MentorActivity | null>(null);
-  const [filterOpen, setFilterOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [hospitalFilter, setHospitalFilter] = useState<string[]>([]);
+  const [readinessDomainFilter, setReadinessDomainFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
   
   // Form state
@@ -184,6 +186,20 @@ const MentorActivitiesPage: React.FC = () => {
       result = result.filter(a => categoryFilter.includes(a.category));
     }
     
+    // Apply hospital filter
+    if (hospitalFilter.length > 0) {
+      result = result.filter(a => 
+        a.hospitalIds.some(hid => hospitalFilter.includes(hid))
+      );
+    }
+    
+    // Apply readiness domain filter
+    if (readinessDomainFilter.length > 0) {
+      result = result.filter(a => 
+        a.readinessDomain && readinessDomainFilter.includes(a.readinessDomain)
+      );
+    }
+    
     // Apply date filter
     if (dateFilter.start) {
       result = result.filter(a => new Date(a.date) >= dateFilter.start!);
@@ -213,7 +229,7 @@ const MentorActivitiesPage: React.FC = () => {
     });
     
     return result;
-  }, [activities, categoryFilter, dateFilter, sortField, sortOrder]);
+  }, [activities, categoryFilter, hospitalFilter, readinessDomainFilter, dateFilter, sortField, sortOrder]);
 
   // Handle sort
   const handleSort = (field: SortField) => {
@@ -417,6 +433,37 @@ const MentorActivitiesPage: React.FC = () => {
     }
   };
 
+  // Export to CSV
+  const handleExportCSV = () => {
+    const headers = ['Date', 'Activity', 'Category', 'Description', 'Hours', 'Hospitals', 'Readiness Domain', 'Simulation Case', 'Participants'];
+    const rows = filteredActivities.map(activity => [
+      format(parseISO(activity.date), 'yyyy-MM-dd'),
+      activity.activityName,
+      getCategoryLabel(activity.category),
+      activity.description || '',
+      activity.hours.toString(),
+      activity.hospitalIds.length > 0 ? getHospitalNames(activity.hospitalIds) : '',
+      activity.readinessDomain || '',
+      activity.simulationCase || '',
+      activity.simParticipants?.toString() || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `activities_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ py: 3 }}>
@@ -424,11 +471,12 @@ const MentorActivitiesPage: React.FC = () => {
           <Typography variant="h4">My Activities</Typography>
           <Box>
             <Button
-              startIcon={<FilterIcon />}
-              onClick={() => setFilterOpen(!filterOpen)}
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={handleExportCSV}
               sx={{ mr: 2 }}
             >
-              Filters
+              Export CSV
             </Button>
             <Button
               variant="contained"
@@ -440,88 +488,49 @@ const MentorActivitiesPage: React.FC = () => {
           </Box>
         </Box>
 
-        {/* Filters */}
-        <Collapse in={filterOpen}>
-          <Paper sx={{ p: 2, mb: 3 }}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Category Filter</InputLabel>
-                  <Select
-                    multiple
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value as string[])}
-                    input={<OutlinedInput label="Category Filter" />}
-                    renderValue={(selected) => selected.map(s => CATEGORIES.find(c => c.value === s)?.value).join(', ')}
-                  >
-                    {CATEGORIES.map((cat) => (
-                      <MenuItem key={cat.value} value={cat.value}>
-                        <Checkbox checked={categoryFilter.includes(cat.value)} />
-                        <ListItemText primary={cat.label} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <DatePicker
-                  label="Start Date"
-                  value={dateFilter.start}
-                  onChange={(date) => setDateFilter(prev => ({ ...prev, start: date }))}
-                  slotProps={{ textField: { size: 'small', fullWidth: true } }}
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <DatePicker
-                  label="End Date"
-                  value={dateFilter.end}
-                  onChange={(date) => setDateFilter(prev => ({ ...prev, end: date }))}
-                  slotProps={{ textField: { size: 'small', fullWidth: true } }}
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    setCategoryFilter([]);
-                    setDateFilter({ start: null, end: null });
-                  }}
-                >
-                  Clear Filters
-                </Button>
-              </Grid>
-            </Grid>
-          </Paper>
-        </Collapse>
-
         {/* Summary Statistics */}
         {activities.length > 0 && (
-          <Paper sx={{ mb: 3, p: 2 }}>
-            <Typography variant="h6" gutterBottom>Summary</Typography>
+          <Paper sx={{ mb: 3, p: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>Summary</Typography>
             <Grid container spacing={3}>
               <Grid item xs={12} md={4}>
-                <Box>
-                  <Typography variant="subtitle2" color="textSecondary">This Month</Typography>
-                  <Typography variant="h5">{stats.thisMonth.count}</Typography>
-                  <Typography variant="body2" color="textSecondary">
+                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'grey.50', borderRadius: 2, minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>This Month</Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                    {stats.thisMonth.count}
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                    {stats.thisMonth.count === 1 ? 'activity' : 'activities'}
+                  </Typography>
+                  <Typography variant="h6" color="primary">
                     {stats.thisMonth.hours.toFixed(2)} hours
                   </Typography>
                 </Box>
               </Grid>
               <Grid item xs={12} md={4}>
-                <Box>
-                  <Typography variant="subtitle2" color="textSecondary">This Year</Typography>
-                  <Typography variant="h5">{stats.thisYear.count}</Typography>
-                  <Typography variant="body2" color="textSecondary">
+                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'grey.50', borderRadius: 2, minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>This Year</Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                    {stats.thisYear.count}
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                    {stats.thisYear.count === 1 ? 'activity' : 'activities'}
+                  </Typography>
+                  <Typography variant="h6" color="primary">
                     {stats.thisYear.hours.toFixed(2)} hours
                   </Typography>
                 </Box>
               </Grid>
               <Grid item xs={12} md={4}>
-                <Box>
-                  <Typography variant="subtitle2" color="textSecondary">All Time</Typography>
-                  <Typography variant="h5">{stats.allTime.count}</Typography>
-                  <Typography variant="body2" color="textSecondary">
+                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'grey.50', borderRadius: 2, minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>All Time</Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                    {stats.allTime.count}
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                    {stats.allTime.count === 1 ? 'activity' : 'activities'}
+                  </Typography>
+                  <Typography variant="h6" color="primary">
                     {stats.allTime.hours.toFixed(2)} hours
                   </Typography>
                 </Box>
@@ -529,6 +538,100 @@ const MentorActivitiesPage: React.FC = () => {
             </Grid>
           </Paper>
         )}
+
+        {/* Filters - Always Visible */}
+        <Paper sx={{ mb: 3, p: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">Filters</Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                setCategoryFilter([]);
+                setHospitalFilter([]);
+                setReadinessDomainFilter([]);
+                setDateFilter({ start: null, end: null });
+              }}
+            >
+              Clear All
+            </Button>
+          </Box>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Category</InputLabel>
+                <Select
+                  multiple
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value as string[])}
+                  input={<OutlinedInput label="Category" />}
+                  renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
+                >
+                  {CATEGORIES.map((cat) => (
+                    <MenuItem key={cat.value} value={cat.value}>
+                      <Checkbox checked={categoryFilter.includes(cat.value)} />
+                      <ListItemText primary={cat.label} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Hospital</InputLabel>
+                <Select
+                  multiple
+                  value={hospitalFilter}
+                  onChange={(e) => setHospitalFilter(e.target.value as string[])}
+                  input={<OutlinedInput label="Hospital" />}
+                  renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
+                >
+                  {hospitals.map((hospital) => (
+                    <MenuItem key={hospital.id} value={hospital.id}>
+                      <Checkbox checked={hospitalFilter.includes(hospital.id)} />
+                      <ListItemText primary={hospital.name} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Readiness Domain</InputLabel>
+                <Select
+                  multiple
+                  value={readinessDomainFilter}
+                  onChange={(e) => setReadinessDomainFilter(e.target.value as string[])}
+                  input={<OutlinedInput label="Readiness Domain" />}
+                  renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
+                >
+                  {READINESS_DOMAINS.map((domain) => (
+                    <MenuItem key={domain} value={domain}>
+                      <Checkbox checked={readinessDomainFilter.includes(domain)} />
+                      <ListItemText primary={domain} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <DatePicker
+                label="Start Date"
+                value={dateFilter.start}
+                onChange={(date) => setDateFilter(prev => ({ ...prev, start: date }))}
+                slotProps={{ textField: { size: 'small', fullWidth: true } }}
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <DatePicker
+                label="End Date"
+                value={dateFilter.end}
+                onChange={(date) => setDateFilter(prev => ({ ...prev, end: date }))}
+                slotProps={{ textField: { size: 'small', fullWidth: true } }}
+              />
+            </Grid>
+          </Grid>
+        </Paper>
 
         {/* Activities Table */}
         <TableContainer component={Paper} sx={{ maxHeight: 600, overflow: 'auto' }}>
