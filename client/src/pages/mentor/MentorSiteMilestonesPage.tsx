@@ -10,23 +10,18 @@ import {
   TableHead,
   TableRow,
   Checkbox,
-  TextField,
   Button,
-  Chip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Grid,
   Link,
-  Tooltip,
   IconButton,
   Menu,
   MenuItem,
   Divider
 } from '@mui/material';
 import {
-  OpenInNew as OpenInNewIcon,
   MoreVert as MoreIcon,
   Visibility as ViewIcon,
   Business as BusinessIcon
@@ -60,7 +55,7 @@ interface Hospital {
   id: string;
   name: string;
   facilityId?: string;
-  siteId: string; // facility_id or id
+  siteId: string;
   isWorkingWith?: boolean;
 }
 
@@ -70,7 +65,7 @@ interface HospitalMetrics {
   readinessScore: number | null;
   readinessScoreDate: string | null;
   simulationCount: number;
-  peccUserId?: string; // For viewing PECC account
+  peccUserId?: string;
 }
 
 interface StageCompletion {
@@ -81,12 +76,12 @@ interface StageCompletion {
 interface HospitalMilestones {
   hospitalId: string;
   stages: MilestoneStage[];
-  stageCompletions: Record<string, StageCompletion>; // stage id -> completion
+  stageCompletions: Record<string, StageCompletion>;
 }
 
 const STIPEND_PER_STAGE = 200;
 
-// Default stages structure (same as MilestonesPage)
+// Full stages structure with links from MilestonesPage
 const DEFAULT_STAGES: MilestoneStage[] = [
   {
     id: 'stage1',
@@ -95,16 +90,70 @@ const DEFAULT_STAGES: MilestoneStage[] = [
     objectives: [],
     goal: '',
     tasks: [
-      { id: '1.1', text: 'Review the role responsibilities for Nurse PECC or Physician PECC', completed: false },
-      { id: '1.2', text: 'Complete the Emergency Medical Services for Children (EMSC) PECC Modules', completed: false },
-      { id: '1.3', text: 'Contact your emergency department (ED) nursing leadership and/or physician partners with the following email template', completed: false },
-      { id: '1.4', text: 'Share Pediatric Readiness resources with ED leadership', completed: false },
+      { 
+        id: '1.1', 
+        text: 'Review the role responsibilities for Nurse PECC or Physician PECC', 
+        completed: false,
+        links: [
+          { text: 'Nurse PECC', url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/readiness-toolkit-checklist/pecc/role-of-the-nursing-pecc-in-the-ed/' },
+          { text: 'Physician PECC', url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/readiness-toolkit-checklist/pecc/md-pecc/' }
+        ]
+      },
+      { 
+        id: '1.2', 
+        text: 'Complete the Emergency Medical Services for Children (EMSC) PECC Modules', 
+        completed: false,
+        links: [
+          { text: 'PECC Modules', url: 'https://emscimprovement.center/domains/pecc/pecc-module-ed/' }
+        ]
+      },
+      { 
+        id: '1.3', 
+        text: 'Contact your emergency department (ED) nursing leadership and/or physician partners with the following email template', 
+        completed: false,
+        links: [
+          { text: 'email template', url: 'https://docs.google.com/document/d/14QcAO6S8llniLOKo-NoIuwDpYgo63GCN/edit' }
+        ]
+      },
+      { 
+        id: '1.4', 
+        text: 'Share Pediatric Readiness resources with ED leadership', 
+        completed: false,
+        links: [
+          { text: 'Joint Policy Statement', url: 'https://publications.aap.org/pediatrics/article/142/5/e20182459/38608/Pediatric-Readiness-in-the-Emergency-Department' },
+          { text: 'How Pediatric Readiness Saves Lives', url: 'https://emscimprovement.center/domains/pediatric-readiness-project/' },
+          { text: 'The National Pediatric Readiness Project Assessment', url: 'https://www.pedsready.org/' },
+          { text: 'Importance of a PECC', url: 'https://emscimprovement.center/domains/pecc/' }
+        ]
+      },
       { id: '1.5', text: 'Meet your PRISM mentor (virtual or in-person) and schedule monthly check-ins', completed: false },
-      { id: '1.6', text: 'Join the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', completed: false },
+      { 
+        id: '1.6', 
+        text: 'Join the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', 
+        completed: false,
+        links: [
+          { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
+        ]
+      },
       { id: '1.7', text: 'Review the National Pediatric Readiness Project assessment with your PRISM', completed: false },
       { id: '1.8', text: 'Work with your PRISM to attend an in-person PECC training event', completed: false },
-      { id: '1.9', text: 'Review SimBox How-To Video and Simulation/Education Guide', completed: false },
-      { id: '1.10', text: 'Plan your in-person simulation with your PRISM by selecting a simulation case, assigning roles, and setting up technology to run during Stage 2', completed: false },
+      { 
+        id: '1.9', 
+        text: 'Review SimBox How-To Video and Simulation/Education Guide', 
+        completed: false,
+        links: [
+          { text: 'How-To Video', url: 'https://www.emergencysimbox.com/how-to-use' },
+          { text: 'Simulation/Education Guide', url: 'https://www.emergencysimbox.com/respiratory-distress' }
+        ]
+      },
+      { 
+        id: '1.10', 
+        text: 'Plan your in-person simulation with your PRISM by selecting a simulation case, assigning roles, and setting up technology to run during Stage 2', 
+        completed: false,
+        links: [
+          { text: 'simulation case', url: 'https://www.emergencysimbox.com/' }
+        ]
+      },
       { id: '1.11', text: 'Communicate to leadership your progress', completed: false }
     ]
   },
@@ -117,14 +166,35 @@ const DEFAULT_STAGES: MilestoneStage[] = [
     tasks: [
       { id: '2.1', text: 'Complete Stage 1 objectives', completed: false },
       { id: '2.2', text: 'After completing Stage 1 objectives, re-evaluate your available time commitment to Pediatric Readiness', completed: false },
-      { id: '2.3', text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', completed: false },
+      { 
+        id: '2.3', 
+        text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', 
+        completed: false,
+        links: [
+          { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
+        ]
+      },
       { id: '2.4', text: 'Complete your National Pediatric Readiness Project assessment and review score with your PRISM', completed: false },
       { id: '2.5', text: 'Review, prioritize, and address one ongoing gap utilizing resources from ImPACTS with your PRISM', completed: false },
       { id: '2.6', text: 'Create a SMART aim goal to address the prioritized gap with support from your PRISM', completed: false },
       { id: '2.7', text: 'Schedule your first simulation with an ED team with support from your PRISM', completed: false },
       { id: '2.8', text: 'Run and complete your first simulation with support from your PRISM', completed: false },
-      { id: '2.9', text: 'Complete the associated Facilitator Checklist with that scenario', completed: false },
-      { id: '2.10', text: 'Ask all participants to complete the Participant Survey to access the simulation report', completed: false },
+      { 
+        id: '2.9', 
+        text: 'Complete the associated Facilitator Checklist with that scenario', 
+        completed: false,
+        links: [
+          { text: 'Facilitator Checklist', url: 'https://yalesurvey.ca1.qualtrics.com/jfe/form/SV_2i2AQF9Lq5ixm6i' }
+        ]
+      },
+      { 
+        id: '2.10', 
+        text: 'Ask all participants to complete the Participant Survey to access the simulation report', 
+        completed: false,
+        links: [
+          { text: 'Participant Survey', url: 'https://yalesurvey.ca1.qualtrics.com/jfe/form/SV_3vXMUgYvIPFWKUK' }
+        ]
+      },
       { id: '2.11', text: 'Communicate to leadership your progress', completed: false }
     ]
   },
@@ -137,12 +207,26 @@ const DEFAULT_STAGES: MilestoneStage[] = [
     tasks: [
       { id: '3.1', text: 'Complete Stage 2 objectives', completed: false },
       { id: '3.2', text: 'After completing Stage 2 objectives, re-evaluate your available time commitment to Pediatric Readiness', completed: false },
-      { id: '3.3', text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', completed: false },
+      { 
+        id: '3.3', 
+        text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', 
+        completed: false,
+        links: [
+          { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
+        ]
+      },
       { id: '3.4', text: 'Continue addressing prioritized gaps from Stage 2 with virtual support and consultation from your PRISM', completed: false },
       { id: '3.5', text: 'Review the "Gap Analysis" tab on your ImPACTS dashboard with your PRISM', completed: false },
       { id: '3.6', text: 'Begin logging activities in your ImPACTS dashboard', completed: false },
       { id: '3.7', text: 'Independently create a SMART aim goal to address ongoing gaps, with consultation and feedback from your PRISM', completed: false },
-      { id: '3.8', text: 'Schedule and facilitate quarterly simulations with an ED team with virtual support from your PRISM', completed: false },
+      { 
+        id: '3.8', 
+        text: 'Schedule and facilitate quarterly simulations with an ED team with virtual support from your PRISM', 
+        completed: false,
+        links: [
+          { text: 'simulations', url: 'https://www.emergencysimbox.com/' }
+        ]
+      },
       { id: '3.9', text: 'Communicate to leadership your progress', completed: false }
     ]
   },
@@ -155,16 +239,78 @@ const DEFAULT_STAGES: MilestoneStage[] = [
     tasks: [
       { id: '4.1', text: 'Complete Stage 3 objectives', completed: false },
       { id: '4.2', text: 'After completing Stage 3 objectives, re-evaluate your available time commitment to Pediatric Readiness', completed: false },
-      { id: '4.3', text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', completed: false },
+      { 
+        id: '4.3', 
+        text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', 
+        completed: false,
+        links: [
+          { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
+        ]
+      },
       { id: '4.4', text: 'Review and update the status of the current "Gap Analysis" on your ImPACTS dashboard', completed: false },
       { id: '4.5', text: 'Log monthly activities on your ImPACTS dashboard', completed: false },
       { id: '4.6', text: 'Present your ImPACTS dashboard snapshots to ED and hospital leadership', completed: false },
-      { id: '4.7', text: 'Each year, complete the National Pediatric Readiness Project assessment, address new or ongoing gaps utilizing resources from ImPACTS, and create a SMART aim goal to tackle the next identified gap', completed: false },
-      { id: '4.8', text: 'Facilitate, independently, ongoing quarterly simulations in the ED', completed: false },
+      { 
+        id: '4.7', 
+        text: 'Each year, complete the National Pediatric Readiness Project assessment, address new or ongoing gaps utilizing resources from ImPACTS, and create a SMART aim goal to tackle the next identified gap', 
+        completed: false,
+        links: [
+          { text: 'National Pediatric Readiness Project assessment', url: 'https://www.pedsready.org/' }
+        ]
+      },
+      { 
+        id: '4.8', 
+        text: 'Facilitate, independently, ongoing quarterly simulations in the ED', 
+        completed: false,
+        links: [
+          { text: 'simulations', url: 'https://www.emergencysimbox.com/' }
+        ]
+      },
       { id: '4.9', text: 'Fill out the ImPACTS Program Evaluation Survey to share your feedback and indicate interest in becoming a PRISM', completed: false }
     ]
   }
 ];
+
+// Helper to render task text with links
+const renderTaskText = (task: MilestoneTask) => {
+  if (!task.links || task.links.length === 0) {
+    return <Typography variant="body2" sx={{ fontSize: '0.75rem', lineHeight: 1.3 }}>{task.text}</Typography>;
+  }
+
+  let text = task.text;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+
+  task.links.forEach((link, idx) => {
+    const linkIndex = text.indexOf(link.text, lastIndex);
+    if (linkIndex !== -1) {
+      // Add text before link
+      if (linkIndex > lastIndex) {
+        parts.push(text.substring(lastIndex, linkIndex));
+      }
+      // Add link
+      parts.push(
+        <Link
+          key={idx}
+          href={link.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{ fontSize: '0.75rem', textDecoration: 'underline' }}
+        >
+          {link.text}
+        </Link>
+      );
+      lastIndex = linkIndex + link.text.length;
+    }
+  });
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+
+  return <Typography variant="body2" sx={{ fontSize: '0.75rem', lineHeight: 1.3 }}>{parts}</Typography>;
+};
 
 const MentorSiteMilestonesPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -185,14 +331,13 @@ const MentorSiteMilestonesPage: React.FC = () => {
       const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser.id}`);
       if (savedHospitals) {
         const parsed: any[] = JSON.parse(savedHospitals);
-        // Filter to only "working with" hospitals
         const workingHospitals = parsed
           .filter((h: any) => h.isWorkingWith !== false)
           .map((h: any) => ({
             id: h.id,
             name: h.name,
-            facilityId: h.id, // Assuming id is facility_id
-            siteId: h.id, // site_id = facility_id or id
+            facilityId: h.id,
+            siteId: h.id,
             isWorkingWith: h.isWorkingWith
           }));
         setHospitals(workingHospitals);
@@ -212,14 +357,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
       const metrics: Record<string, HospitalMetrics> = {};
 
       for (const hospital of hospitals) {
-        // Find PECC users for this hospital
         const { data: peccUsers } = await supabase
           .from('users')
           .select('id, first_name, last_name')
           .eq('role', 'pecc')
           .or(`hospital_facility_id.eq.${hospital.siteId},hospital_facility_id.eq.${hospital.id}`);
 
-        // Also check site_members
         const { data: siteMembers } = await supabase
           .from('site_members')
           .select('user_id')
@@ -231,7 +374,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
         ];
 
         if (peccUserIds.length > 0) {
-          // Load milestones from first PECC (assuming shared milestones per site)
           const peccId = peccUserIds[0];
           const savedMilestones = localStorage.getItem(`milestones_${peccId}`);
           
@@ -258,10 +400,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
             };
           }
 
-          // Load metrics
           const peccActivities = JSON.parse(localStorage.getItem(`activities_${peccId}`) || '[]');
           const mentorActivities = JSON.parse(localStorage.getItem(`mentorActivities_${currentUser.id}`) || '[]');
-          // Try both readinessScores keys
           let readinessScores = JSON.parse(localStorage.getItem(`readinessScores_${peccId}`) || '[]');
           if (readinessScores.length === 0) {
             readinessScores = JSON.parse(localStorage.getItem(`readinessScores_${currentUser.id}`) || '[]');
@@ -288,7 +428,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
             peccUserId: peccId
           };
         } else {
-          // No PECC yet, initialize empty milestones
           milestones[hospital.id] = {
             hospitalId: hospital.id,
             stages: DEFAULT_STAGES.map(s => ({ ...s, tasks: s.tasks.map(t => ({ ...t, completed: false })) })),
@@ -303,7 +442,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
           };
         }
 
-        // Load stage completions from mentor's stored data
         const savedCompletions = localStorage.getItem(`mentorStageCompletions_${currentUser.id}_${hospital.id}`);
         if (savedCompletions) {
           try {
@@ -320,7 +458,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
     loadMilestones();
   }, [currentUser, hospitals]);
 
-  // Save stage completions
   const saveStageCompletions = (hospitalId: string, completions: Record<string, StageCompletion>) => {
     if (currentUser?.id) {
       localStorage.setItem(`mentorStageCompletions_${currentUser.id}_${hospitalId}`, JSON.stringify(completions));
@@ -328,7 +465,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
     }
   };
 
-  // Update stipends in Wages & Expenses
   const updateStipends = (hospitalId: string, completions: Record<string, StageCompletion>) => {
     if (!currentUser?.id) return;
 
@@ -339,11 +475,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
       const wagesData = JSON.parse(wagesDataStr);
       const currentYear = new Date().getFullYear();
       
-      // Count completed stages
-      const completedStages = Object.values(completions).filter(c => c.completed).length;
-      const totalStipend = completedStages * STIPEND_PER_STAGE;
-
-      // Distribute across months (simplified - could be more sophisticated)
       const monthsWithStages: Record<number, number> = {};
       Object.entries(completions).forEach(([stageId, completion]) => {
         if (completion.completed && completion.completionDate) {
@@ -355,7 +486,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
         }
       });
 
-      // Update stipends
       const updatedStipends = { ...wagesData.stipends };
       Object.entries(monthsWithStages).forEach(([month, amount]) => {
         const key = `${currentYear}-${month}`;
@@ -371,7 +501,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
     }
   };
 
-  // Handle task checkbox toggle
   const handleTaskToggle = (hospitalId: string, stageId: string, taskId: string) => {
     const hospital = hospitalMilestones[hospitalId];
     if (!hospital) return;
@@ -395,7 +524,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
     setHospitalMilestones(prev => ({ ...prev, [hospitalId]: updated }));
 
-    // Sync to PECC's milestones
     const metrics = hospitalMetrics[hospitalId];
     if (metrics?.peccUserId) {
       const peccMilestones = localStorage.getItem(`milestones_${metrics.peccUserId}`);
@@ -419,7 +547,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
     }
   };
 
-  // Handle stage completion toggle
   const handleStageCompletionToggle = (hospitalId: string, stageId: string) => {
     const hospital = hospitalMilestones[hospitalId];
     if (!hospital) return;
@@ -441,7 +568,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
     saveStageCompletions(hospitalId, updated);
   };
 
-  // Handle completion date change
   const handleCompletionDateChange = () => {
     if (!editingStage) return;
 
@@ -468,7 +594,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
     setCompletionDate(null);
   };
 
-  // Handle hospital menu
   const handleHospitalMenuOpen = (event: React.MouseEvent<HTMLElement>, hospitalId: string) => {
     event.stopPropagation();
     setHospitalMenuAnchor({ el: event.currentTarget, hospitalId });
@@ -481,27 +606,23 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const handleViewCRM = (hospitalId: string) => {
     handleHospitalMenuClose();
     navigate(`/mentor/hospitals`);
-    // Could navigate to specific hospital in CRM if we add that route
   };
 
   const handleViewPECCAccount = (hospitalId: string) => {
     const metrics = hospitalMetrics[hospitalId];
     if (metrics?.peccUserId) {
       handleHospitalMenuClose();
-      // Navigate to PECC view (would need admin/manager view or special route)
-      // For now, just show a message
       alert(`Viewing PECC account for ${hospitals.find(h => h.id === hospitalId)?.name}`);
     }
   };
 
-  // Flatten all tasks for table rows
   const tableRows = useMemo(() => {
-    const rows: Array<{ type: 'stage' | 'task' | 'completion'; stageId?: string; stageTitle?: string; taskId?: string; taskText?: string }> = [];
+    const rows: Array<{ type: 'stage' | 'task' | 'completion'; stageId?: string; stageTitle?: string; taskId?: string; task?: MilestoneTask }> = [];
     
     DEFAULT_STAGES.forEach(stage => {
       rows.push({ type: 'stage', stageId: stage.id, stageTitle: stage.title });
       stage.tasks.forEach(task => {
-        rows.push({ type: 'task', stageId: stage.id, taskId: task.id, taskText: task.text });
+        rows.push({ type: 'task', stageId: stage.id, taskId: task.id, task });
       });
       rows.push({ type: 'completion', stageId: stage.id, stageTitle: stage.title });
     });
@@ -519,47 +640,94 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box sx={{ py: 3 }}>
-        <Typography variant="h4" gutterBottom>Site Milestones</Typography>
-        <Typography color="textSecondary" gutterBottom sx={{ mb: 3 }}>
-          Track checklist progress for each of your hospital sites. Changes sync with PECC accounts.
+      <Box sx={{ py: 2, px: 1 }}>
+        <Typography variant="h5" gutterBottom sx={{ mb: 1, fontSize: '1.25rem', fontWeight: 600 }}>
+          Site Milestones
+        </Typography>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 2, fontSize: '0.75rem' }}>
+          Track checklist progress for each hospital site. Changes sync with PECC accounts.
         </Typography>
 
         {hospitals.length === 0 ? (
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Paper sx={{ p: 3, textAlign: 'center' }}>
             <Typography color="textSecondary">No hospitals assigned yet. Add hospitals from the Hospital Contacts page.</Typography>
           </Paper>
         ) : (
-          <TableContainer component={Paper} sx={{ maxHeight: 800, overflowX: 'auto', overflowY: 'auto' }}>
-            <Table stickyHeader sx={{ minWidth: 800 }}>
+          <TableContainer 
+            component={Paper} 
+            sx={{ 
+              maxHeight: 'calc(100vh - 200px)',
+              overflowX: 'auto',
+              overflowY: 'auto',
+              '& .MuiTableCell-root': {
+                padding: '4px 8px',
+                fontSize: '0.75rem'
+              }
+            }}
+          >
+            <Table stickyHeader size="small" sx={{ minWidth: 600 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ minWidth: 300, position: 'sticky', left: 0, zIndex: 10, bgcolor: 'background.paper' }}>
-                    <strong>Stage / Task</strong>
+                  <TableCell 
+                    sx={{ 
+                      minWidth: 350, 
+                      maxWidth: 350,
+                      position: 'sticky', 
+                      left: 0, 
+                      zIndex: 10, 
+                      bgcolor: 'background.paper',
+                      fontWeight: 600,
+                      borderRight: '1px solid',
+                      borderColor: 'divider'
+                    }}
+                  >
+                    Stage / Task
                   </TableCell>
                   {hospitals.map(hospital => {
                     const metrics = hospitalMetrics[hospital.id];
                     return (
-                      <TableCell key={hospital.id} align="center" sx={{ minWidth: 200 }}>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <TableCell 
+                        key={hospital.id} 
+                        align="center" 
+                        sx={{ 
+                          minWidth: 180,
+                          maxWidth: 180,
+                          bgcolor: 'background.paper',
+                          fontWeight: 600,
+                          borderBottom: '2px solid',
+                          borderColor: 'primary.main'
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Link
                               component="button"
                               onClick={() => handleViewCRM(hospital.id)}
-                              sx={{ textDecoration: 'none', fontWeight: 'bold', color: 'primary.main', cursor: 'pointer' }}
+                              sx={{ 
+                                textDecoration: 'none', 
+                                fontWeight: 600, 
+                                color: 'primary.main', 
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                '&:hover': { textDecoration: 'underline' }
+                              }}
                             >
                               {hospital.name}
                             </Link>
-                            <IconButton size="small" onClick={(e) => handleHospitalMenuOpen(e, hospital.id)}>
+                            <IconButton 
+                              size="small" 
+                              onClick={(e) => handleHospitalMenuOpen(e, hospital.id)}
+                              sx={{ padding: '2px' }}
+                            >
                               <MoreIcon fontSize="small" />
                             </IconButton>
                           </Box>
                           {metrics && (
-                            <Box sx={{ fontSize: '0.75rem', color: 'text.secondary', textAlign: 'center' }}>
-                              <div>PECC Hours: {metrics.peccActivityHours.toFixed(1)}</div>
-                              <div>Mentor Hours: {metrics.mentorHours.toFixed(1)}</div>
-                              <div>Readiness: {metrics.readinessScore !== null ? `${metrics.readinessScore}` : 'N/A'}</div>
-                              <div>Simulations: {metrics.simulationCount}</div>
+                            <Box sx={{ fontSize: '0.65rem', color: 'text.secondary', textAlign: 'center', lineHeight: 1.2 }}>
+                              <div>PECC: {metrics.peccActivityHours.toFixed(1)}h</div>
+                              <div>Mentor: {metrics.mentorHours.toFixed(1)}h</div>
+                              <div>Score: {metrics.readinessScore !== null ? `${metrics.readinessScore}` : 'N/A'}</div>
+                              <div>Sims: {metrics.simulationCount}</div>
                             </Box>
                           )}
                         </Box>
@@ -572,20 +740,56 @@ const MentorSiteMilestonesPage: React.FC = () => {
                 {tableRows.map((row, rowIndex) => {
                   if (row.type === 'stage') {
                     return (
-                      <TableRow key={`${row.stageId}-header`} sx={{ bgcolor: 'grey.100' }}>
-                        <TableCell sx={{ position: 'sticky', left: 0, zIndex: 9, bgcolor: 'grey.100', fontWeight: 'bold' }}>
+                      <TableRow 
+                        key={`${row.stageId}-header`} 
+                        sx={{ 
+                          bgcolor: 'primary.light',
+                          '& .MuiTableCell-root': {
+                            borderBottom: '2px solid',
+                            borderColor: 'primary.main',
+                            fontWeight: 600
+                          }
+                        }}
+                      >
+                        <TableCell 
+                          sx={{ 
+                            position: 'sticky', 
+                            left: 0, 
+                            zIndex: 9, 
+                            bgcolor: 'primary.light',
+                            fontWeight: 600,
+                            borderRight: '1px solid',
+                            borderColor: 'divider',
+                            fontSize: '0.8rem'
+                          }}
+                        >
                           {row.stageTitle}
                         </TableCell>
                         {hospitals.map(() => (
-                          <TableCell key={`empty-${rowIndex}`} />
+                          <TableCell key={`empty-${rowIndex}`} sx={{ bgcolor: 'primary.light' }} />
                         ))}
                       </TableRow>
                     );
-                  } else if (row.type === 'task') {
+                  } else if (row.type === 'task' && row.task) {
                     return (
-                      <TableRow key={`${row.stageId}-${row.taskId}`}>
-                        <TableCell sx={{ position: 'sticky', left: 0, zIndex: 9, bgcolor: 'background.paper', pl: 4 }}>
-                          {row.taskText}
+                      <TableRow 
+                        key={`${row.stageId}-${row.taskId}`}
+                        sx={{
+                          '&:hover': { bgcolor: 'action.hover' }
+                        }}
+                      >
+                        <TableCell 
+                          sx={{ 
+                            position: 'sticky', 
+                            left: 0, 
+                            zIndex: 9, 
+                            bgcolor: 'background.paper',
+                            borderRight: '1px solid',
+                            borderColor: 'divider',
+                            pl: 3
+                          }}
+                        >
+                          {renderTaskText(row.task)}
                         </TableCell>
                         {hospitals.map(hospital => {
                           const hospitalData = hospitalMilestones[hospital.id];
@@ -594,10 +798,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
                           const isCompleted = task?.completed || false;
 
                           return (
-                            <TableCell key={hospital.id} align="center">
+                            <TableCell key={hospital.id} align="center" sx={{ py: 0.5 }}>
                               <Checkbox
                                 checked={isCompleted}
                                 onChange={() => handleTaskToggle(hospital.id, row.stageId!, row.taskId!)}
+                                size="small"
+                                sx={{ padding: '2px' }}
                               />
                             </TableCell>
                           );
@@ -605,11 +811,31 @@ const MentorSiteMilestonesPage: React.FC = () => {
                       </TableRow>
                     );
                   } else {
-                    // Completion row
                     const stageNum = row.stageId?.replace('stage', '');
                     return (
-                      <TableRow key={`${row.stageId}-completion`} sx={{ bgcolor: 'grey.50' }}>
-                        <TableCell sx={{ position: 'sticky', left: 0, zIndex: 9, bgcolor: 'grey.50', fontWeight: 'bold', pl: 4 }}>
+                      <TableRow 
+                        key={`${row.stageId}-completion`} 
+                        sx={{ 
+                          bgcolor: 'grey.100',
+                          '& .MuiTableCell-root': {
+                            borderTop: '1px solid',
+                            borderBottom: '1px solid',
+                            borderColor: 'divider'
+                          }
+                        }}
+                      >
+                        <TableCell 
+                          sx={{ 
+                            position: 'sticky', 
+                            left: 0, 
+                            zIndex: 9, 
+                            bgcolor: 'grey.100',
+                            fontWeight: 600,
+                            borderRight: '1px solid',
+                            borderColor: 'divider',
+                            pl: 3
+                          }}
+                        >
                           Stage {stageNum} Complete
                         </TableCell>
                         {hospitals.map(hospital => {
@@ -618,11 +844,13 @@ const MentorSiteMilestonesPage: React.FC = () => {
                           const isCompleted = completion?.completed || false;
 
                           return (
-                            <TableCell key={hospital.id} align="center">
-                              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                            <TableCell key={hospital.id} align="center" sx={{ py: 0.5 }}>
+                              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
                                 <Checkbox
                                   checked={isCompleted}
                                   onChange={() => handleStageCompletionToggle(hospital.id, row.stageId!)}
+                                  size="small"
+                                  sx={{ padding: '2px' }}
                                 />
                                 {isCompleted && (
                                   <Button
@@ -633,8 +861,14 @@ const MentorSiteMilestonesPage: React.FC = () => {
                                       setCompletionDate(completion?.completionDate ? parseISO(completion.completionDate) : new Date());
                                       setDateDialogOpen(true);
                                     }}
+                                    sx={{ 
+                                      fontSize: '0.65rem',
+                                      padding: '2px 6px',
+                                      minWidth: 'auto',
+                                      height: '20px'
+                                    }}
                                   >
-                                    {completion?.completionDate ? format(parseISO(completion.completionDate), 'MMM d, yyyy') : 'Set Date'}
+                                    {completion?.completionDate ? format(parseISO(completion.completionDate), 'M/d/yy') : 'Date'}
                                   </Button>
                                 )}
                               </Box>
@@ -650,38 +884,36 @@ const MentorSiteMilestonesPage: React.FC = () => {
           </TableContainer>
         )}
 
-        {/* Hospital Menu */}
         <Menu
           anchorEl={hospitalMenuAnchor?.el}
           open={Boolean(hospitalMenuAnchor)}
           onClose={handleHospitalMenuClose}
         >
           <MenuItem onClick={() => hospitalMenuAnchor && handleViewCRM(hospitalMenuAnchor.hospitalId)}>
-            <BusinessIcon sx={{ mr: 1 }} />
+            <BusinessIcon sx={{ mr: 1, fontSize: '1rem' }} />
             View in CRM
           </MenuItem>
           {hospitalMenuAnchor && hospitalMetrics[hospitalMenuAnchor.hospitalId]?.peccUserId && (
             <MenuItem onClick={() => hospitalMenuAnchor && handleViewPECCAccount(hospitalMenuAnchor.hospitalId)}>
-              <ViewIcon sx={{ mr: 1 }} />
+              <ViewIcon sx={{ mr: 1, fontSize: '1rem' }} />
               View PECC Account
             </MenuItem>
           )}
         </Menu>
 
-        {/* Completion Date Dialog */}
-        <Dialog open={dateDialogOpen} onClose={() => setDateDialogOpen(false)}>
-          <DialogTitle>Set Completion Date</DialogTitle>
+        <Dialog open={dateDialogOpen} onClose={() => setDateDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontSize: '1rem', pb: 1 }}>Set Completion Date</DialogTitle>
           <DialogContent>
             <DatePicker
               label="Stage Completion Date"
               value={completionDate}
               onChange={(newValue) => setCompletionDate(newValue)}
-              slotProps={{ textField: { fullWidth: true, sx: { mt: 2 } } }}
+              slotProps={{ textField: { fullWidth: true, size: 'small', sx: { mt: 1 } } }}
             />
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDateDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleCompletionDateChange} variant="contained">Save</Button>
+          <DialogActions sx={{ px: 2, pb: 2 }}>
+            <Button onClick={() => setDateDialogOpen(false)} size="small">Cancel</Button>
+            <Button onClick={handleCompletionDateChange} variant="contained" size="small">Save</Button>
           </DialogActions>
         </Dialog>
       </Box>
