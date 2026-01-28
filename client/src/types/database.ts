@@ -364,3 +364,27 @@ export interface SiteMilestone {
   created_at: string;
   updated_at: string;
 }
+
+// Admin-configurable PECC registration questions
+export type RegistrationQuestionType =
+  | 'short_answer'
+  | 'paragraph'
+  | 'checkbox'
+  | 'radio'
+  | 'date'
+  | 'select'
+  | 'number'
+  | 'email'
+  | 'phone';
+
+export interface RegistrationQuestion {
+  id: string;
+  label: string;
+  question_type: RegistrationQuestionType;
+  required: boolean;
+  options: string[];
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}

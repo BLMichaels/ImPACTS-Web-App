@@ -42,6 +42,7 @@ const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage')
 const AdminCRMPage = lazy(() => import('./pages/admin/AdminCRMPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 const AdminPermissionsPage = lazy(() => import('./pages/admin/AdminPermissionsPage'));
+const AdminRegistrationPage = lazy(() => import('./pages/admin/AdminRegistrationPage'));
 
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
@@ -144,15 +145,18 @@ const ProtectedRoute = ({
 
 
 
-// Smart redirect based on user role
+// Smart redirect: logged-out -> /login; logged-in -> role dashboard (e.g. /admin/dashboard, /mentor/dashboard)
 const RoleBasedRedirect = () => {
-  const { userProfile, isLoading } = useUserProfile();
-  
-  if (isLoading) {
+  const { currentUser, loading: authLoading } = useAuth();
+  const { userProfile, isLoading: profileLoading } = useUserProfile();
+
+  if (authLoading || profileLoading) {
     return <LoadingSpinner />;
   }
-  
-  const dashboard = getDefaultDashboard(userProfile?.role || UserRole.PECC);
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+  const dashboard = getDefaultDashboard(userProfile?.role ?? UserRole.PECC);
   return <Navigate to={dashboard} replace />;
 };
 
@@ -202,6 +206,7 @@ function App() {
                   <Route path="/admin/crm" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCRMPage /></ProtectedRoute>} />
                   <Route path="/admin/users" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminUsersPage /></ProtectedRoute>} />
                   <Route path="/admin/permissions" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminPermissionsPage /></ProtectedRoute>} />
+                  <Route path="/admin/registration" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminRegistrationPage /></ProtectedRoute>} />
                   
                   {/* Common Routes */}
                   <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
