@@ -17,7 +17,9 @@ import {
   Select,
   TextField,
   Typography,
-  Alert
+  Alert,
+  Autocomplete,
+  Chip
 } from '@mui/material';
 import { Add as AddIcon, PlayArrow as PlayIcon } from '@mui/icons-material';
 import { supabase } from '../supabase';
@@ -32,6 +34,9 @@ type ScormPackage = {
   storage_prefix: string;
   entry_path: string;
   manifest_path: string | null;
+  applies_to_all?: boolean;
+  applies_to_site_ids?: string[] | null;
+  applies_to_programs?: string[] | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -60,10 +65,10 @@ const guessContentType = (path: string): string => {
 };
 
 export default function ScormPackagesSection(props: { title?: string }) {
-  const { title = 'SCORM packages' } = props;
+  const { title = 'Learning Modules' } = props;
   const { userRole, siteId } = useUserProfile();
 
-  const canManage = userRole === UserRole.ADMIN || userRole === UserRole.MANAGER || userRole === UserRole.MENTOR;
+  const canManage = userRole === UserRole.ADMIN;
 
   const [loading, setLoading] = useState(true);
   const [packages, setPackages] = useState<ScormPackage[]>([]);
@@ -81,21 +86,24 @@ export default function ScormPackagesSection(props: { title?: string }) {
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
+  // Scoping for upload
+  const [scopeMode, setScopeMode] = useState<'all' | 'hospitals' | 'programs'>('all');
+  const [selectedHospitalIds, setSelectedHospitalIds] = useState<string[]>([]);
+  const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
+  const [hospitalOptions, setHospitalOptions] = useState<{ id: string; label: string; state: string; city: string; name: string }[]>([]);
+  const [programOptions, setProgramOptions] = useState<string[]>([]);
+
+  // Viewer context: try to resolve this site's programs (for filtering visibility)
+  const [sitePrograms, setSitePrograms] = useState<string[]>([]);
+
   const loadPackages = async () => {
     setLoading(true);
     setError('');
     try {
-      // MVP: show global packages + (optionally) site-scoped ones
-      // If siteId exists, include both site_id is null and site_id == siteId.
-      const q = supabase
+      const { data, error: err } = await supabase
         .from('scorm_packages')
         .select('*')
         .order('updated_at', { ascending: false });
-
-      const { data, error: err } = siteId
-        ? await q.or(`site_id.is.null,site_id.eq.${siteId}`)
-        : await q.eq('site_id', null);
-
       if (err) throw err;
       setPackages((data as unknown as ScormPackage[]) ?? []);
     } catch (e: unknown) {
@@ -110,6 +118,41 @@ export default function ScormPackagesSection(props: { title?: string }) {
     loadPackages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!siteId) { setSitePrograms([]); return; }
+      try {
+        const { data } = await supabase
+          .from('hospitals')
+          .select('programs')
+          .or(`facility_id.eq.${siteId},id.eq.${siteId}`)
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        const raw = data && typeof data === 'object' && data != null && 'programs' in data ? (data as { programs?: unknown }).programs : null;
+        const list = Array.isArray(raw) ? (raw as unknown[]).map((x) => String(x)).filter(Boolean) : [];
+        setSitePrograms(list);
+      } catch {
+        if (!cancelled) setSitePrograms([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [siteId]);
+
+  // Only show packages that apply to the viewer's context (unless admin)
+  const visiblePackages = useMemo(() => {
+    if (canManage) return packages;
+    return packages.filter((p) => {
+      const appliesAll = p.applies_to_all !== false; // default true if missing
+      if (appliesAll) return true;
+      const siteMatch = siteId && Array.isArray(p.applies_to_site_ids) && p.applies_to_site_ids.includes(siteId);
+      if (siteMatch) return true;
+      const progMatch = sitePrograms.length > 0 && Array.isArray(p.applies_to_programs) && p.applies_to_programs.some((x) => sitePrograms.includes(x));
+      return Boolean(progMatch);
+    });
+  }, [packages, canManage, siteId, sitePrograms]);
 
   const launchSelected = async () => {
     if (!selected) return;
@@ -152,7 +195,10 @@ export default function ScormPackagesSection(props: { title?: string }) {
         .insert({
           title: uploadTitle.trim(),
           description: uploadDescription.trim() || null,
-          site_id: siteId ?? null,
+          site_id: null,
+          applies_to_all: scopeMode === 'all',
+          applies_to_site_ids: scopeMode === 'hospitals' ? selectedHospitalIds : null,
+          applies_to_programs: scopeMode === 'programs' ? selectedPrograms : null,
           storage_prefix: 'packages/pending',
           entry_path: 'index.html',
           manifest_path: null,
@@ -210,6 +256,9 @@ export default function ScormPackagesSection(props: { title?: string }) {
       setUploadTitle('');
       setUploadDescription('');
       setUploadFile(null);
+      setScopeMode('all');
+      setSelectedHospitalIds([]);
+      setSelectedPrograms([]);
       await loadPackages();
     } catch (e: unknown) {
       setError(e && typeof e === 'object' && 'message' in e ? String((e as { message: string }).message) : 'Upload failed.');
@@ -218,6 +267,70 @@ export default function ScormPackagesSection(props: { title?: string }) {
     }
   };
 
+  // Load options for Admin scoping controls (only when dialog is opened)
+  useEffect(() => {
+    if (!open || !canManage) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const list: { id: string; label: string; state: string; city: string; name: string }[] = [];
+        const chunk = 1000;
+        let offset = 0;
+        let hasMore = true;
+        while (mounted && hasMore) {
+          const { data, error: err } = await supabase
+            .from('hospitals')
+            .select('facility_id, id, name, state, city, programs')
+            .range(offset, offset + chunk - 1);
+          if (!mounted) return;
+          if (err || !data || data.length === 0) break;
+          for (const row of data as Record<string, unknown>[]) {
+            const id = String(row.facility_id ?? row.id ?? '');
+            const name = String(row.name ?? 'Unknown');
+            const state = String(row.state ?? '');
+            const city = String(row.city ?? '');
+            list.push({ id, name, state, city, label: [state, city, name].filter(Boolean).join(' – ') || name });
+          }
+          hasMore = data.length >= chunk;
+          offset += chunk;
+        }
+        list.sort((a, b) => {
+          if ((a.state || '') !== (b.state || '')) return (a.state || '').localeCompare(b.state || '');
+          if ((a.city || '') !== (b.city || '')) return (a.city || '').localeCompare(b.city || '');
+          return (a.name || '').localeCompare(b.name || '');
+        });
+        const programsSet = new Set<string>();
+        // Best effort: infer program options from CRM (AdminCRM already uses hospitals.programs)
+        // Pull programs from the same query by selecting again with programs is expensive; instead keep it simple:
+        // We'll offer free-typed programs and also suggest from any programs visible in CRM page later.
+        // Here: if hospitals returned have programs, use them.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { data: progData } = await supabase.from('hospitals').select('programs').limit(2000);
+        if (Array.isArray(progData)) {
+          for (const row of progData as Record<string, unknown>[]) {
+            const raw = row.programs;
+            if (Array.isArray(raw)) raw.map((x) => String(x)).filter(Boolean).forEach((p) => programsSet.add(p));
+          }
+        }
+        if (mounted) {
+          setHospitalOptions(list);
+          setProgramOptions(Array.from(programsSet).sort());
+        }
+      } catch {
+        if (mounted) {
+          setHospitalOptions([]);
+          setProgramOptions([]);
+        }
+      }
+    })();
+    return () => { mounted = false; };
+  }, [open, canManage]);
+
+  // Hide section entirely for non-admin users unless there is at least one visible package
+  if (!canManage && !loading && visiblePackages.length === 0) {
+    return null;
+  }
+
   return (
     <Card variant="outlined" sx={{ mt: 3 }}>
       <CardContent>
@@ -225,12 +338,12 @@ export default function ScormPackagesSection(props: { title?: string }) {
           <Box>
             <Typography variant="h6">{title}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Upload and launch SCORM packages (MVP: launch-only; tracking can be added next).
+              Launch learning modules (SCORM). Admins can upload; everyone can launch.
             </Typography>
           </Box>
           {canManage && (
             <Button startIcon={<AddIcon />} variant="contained" onClick={() => setOpen(true)}>
-              Add SCORM package
+              Add Learning Module
             </Button>
           )}
         </Box>
@@ -243,9 +356,9 @@ export default function ScormPackagesSection(props: { title?: string }) {
           <Box sx={{ py: 3, display: 'flex', justifyContent: 'center' }}>
             <CircularProgress size={24} />
           </Box>
-        ) : packages.length === 0 ? (
+        ) : visiblePackages.length === 0 ? (
           <Typography color="text.secondary">
-            No SCORM packages yet.
+            No learning modules yet.
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'center' } }}>
@@ -257,7 +370,7 @@ export default function ScormPackagesSection(props: { title?: string }) {
                 onChange={(e) => { setSelectedId(String(e.target.value)); setPlayerUrl(''); }}
               >
                 <MenuItem value="">—</MenuItem>
-                {packages.map((p) => (
+                {visiblePackages.map((p) => (
                   <MenuItem key={p.id} value={p.id}>
                     {p.title}
                   </MenuItem>
@@ -301,7 +414,7 @@ export default function ScormPackagesSection(props: { title?: string }) {
       </CardContent>
 
       <Dialog open={open} onClose={() => (!uploading ? setOpen(false) : null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add SCORM package</DialogTitle>
+        <DialogTitle>Add Learning Module (SCORM)</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 1, display: 'grid', gap: 2 }}>
             <TextField
@@ -321,6 +434,56 @@ export default function ScormPackagesSection(props: { title?: string }) {
               minRows={2}
               disabled={uploading}
             />
+
+            <FormControl fullWidth disabled={uploading}>
+              <InputLabel>Visible to</InputLabel>
+              <Select
+                label="Visible to"
+                value={scopeMode}
+                onChange={(e) => {
+                  const v = String(e.target.value) as 'all' | 'hospitals' | 'programs';
+                  setScopeMode(v);
+                  if (v !== 'hospitals') setSelectedHospitalIds([]);
+                  if (v !== 'programs') setSelectedPrograms([]);
+                }}
+              >
+                <MenuItem value="all">All hospitals / users</MenuItem>
+                <MenuItem value="hospitals">Only selected hospitals</MenuItem>
+                <MenuItem value="programs">Only selected program(s)</MenuItem>
+              </Select>
+            </FormControl>
+
+            {scopeMode === 'hospitals' && (
+              <Autocomplete
+                multiple
+                options={hospitalOptions}
+                value={hospitalOptions.filter((h) => selectedHospitalIds.includes(h.id))}
+                onChange={(_, v) => setSelectedHospitalIds(v.map(x => x.id))}
+                getOptionLabel={(opt) => opt.label}
+                renderInput={(params) => <TextField {...params} label="Hospitals" placeholder="Search by state, city, name" />}
+                disabled={uploading}
+              />
+            )}
+
+            {scopeMode === 'programs' && (
+              <Autocomplete
+                multiple
+                freeSolo
+                options={programOptions}
+                value={selectedPrograms}
+                onChange={(_, v) => setSelectedPrograms(v.map(x => String(x)).filter(Boolean))}
+                renderTags={(value, getTagProps) =>
+                  value.map((opt, i) => {
+                    const tagProps = getTagProps({ index: i });
+                    const { key, ...rest } = tagProps as { key: string; [k: string]: unknown };
+                    return <Chip key={key} label={opt} size="small" {...(rest as any)} />;
+                  })
+                }
+                renderInput={(params) => <TextField {...params} label="Program(s)" placeholder="Select or type new program" />}
+                disabled={uploading}
+              />
+            )}
+
             <Button
               variant="outlined"
               component="label"
@@ -341,7 +504,17 @@ export default function ScormPackagesSection(props: { title?: string }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)} disabled={uploading}>Cancel</Button>
-          <Button onClick={handleUpload} variant="contained" disabled={uploading || !uploadTitle.trim() || !uploadFile}>
+          <Button
+            onClick={handleUpload}
+            variant="contained"
+            disabled={
+              uploading ||
+              !uploadTitle.trim() ||
+              !uploadFile ||
+              (scopeMode === 'hospitals' && selectedHospitalIds.length === 0) ||
+              (scopeMode === 'programs' && selectedPrograms.length === 0)
+            }
+          >
             {uploading ? 'Uploading…' : 'Upload'}
           </Button>
         </DialogActions>
