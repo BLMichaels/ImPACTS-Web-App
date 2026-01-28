@@ -707,6 +707,11 @@ const MentorSiteMilestonesPage: React.FC = () => {
     return rows;
   }, []);
 
+  const visibleHospitals = useMemo(
+    () => hospitals.filter((h) => !hiddenHospitals.has(h.id)),
+    [hospitals, hiddenHospitals]
+  );
+
   if (loading) {
     return (
       <Box sx={{ py: 3 }}>
