@@ -294,15 +294,15 @@ const AdminCRMPage: React.FC = () => {
       const s = localStorage.getItem(CRM_PREFS_KEY);
       if (s) {
         const p = JSON.parse(s);
-        const allIds = COLUMNS.map(c => c.id);
+        const allIds = COLUMNS.map(c => c.id) as string[];
         if (p.columnOrder && Array.isArray(p.columnOrder) && p.columnOrder.length > 0) {
           const valid = (p.columnOrder as string[]).filter(id => allIds.includes(id));
-          const missing = allIds.filter(id => !valid.includes(id));
+          const missing = allIds.filter((id: string) => !valid.includes(id));
           if (valid.length > 0) return [...valid, ...missing];
         }
       }
     } catch {}
-    return COLUMNS.map(c => c.id);
+    return COLUMNS.map(c => c.id) as string[];
   });
   const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
