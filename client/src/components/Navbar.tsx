@@ -119,7 +119,7 @@ const Navbar: React.FC = () => {
           { path: '/mentor/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
-          { path: '/mentor/milestones', label: 'Milestones', icon: <AssignmentIcon /> },
+          { path: '/mentor/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> },
           { path: '/mentor/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/mentor/wages', label: 'Wages', icon: <MoneyIcon /> }
         ];
