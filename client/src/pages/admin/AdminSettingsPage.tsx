@@ -163,7 +163,7 @@ export default function AdminSettingsPage() {
     const dc = q.display_condition;
     setFormShowWhenQuestionId(dc?.question_id ?? '');
     setFormShowWhenOperator(dc?.operator ?? 'equals');
-    setFormShowWhenValue(Array.isArray(dc?.value) ? (dc.value as string[]).join(', ') : (dc?.value ?? ''));
+    setFormShowWhenValue(Array.isArray(dc?.value) ? ((dc?.value) as string[]).join(', ') : (dc?.value ?? ''));
     setDialogOpen(true);
   };
   const handleRegSave = async () => {
