@@ -90,7 +90,7 @@ interface MentorActivity {
   hours: number;
   description: string;
   hospitalIds: string[];
-  readinessDomain?: string; // Domain of pediatric readiness
+  readinessDomains?: string[]; // Domains of pediatric readiness (multiple)
   simulationCase: string | null;
   simParticipants: number | null;
   facilitatorFeedbackSubmitted: boolean;
@@ -142,7 +142,7 @@ const MentorActivitiesPage: React.FC = () => {
     hours: 0,
     description: '',
     hospitalIds: [] as string[],
-    readinessDomain: '',
+    readinessDomains: [] as string[],
     simulationCase: '',
     simParticipants: 1,
     facilitatorFeedbackSubmitted: false,
@@ -196,7 +196,7 @@ const MentorActivitiesPage: React.FC = () => {
     // Apply readiness domain filter
     if (readinessDomainFilter.length > 0) {
       result = result.filter(a => 
-        a.readinessDomain && readinessDomainFilter.includes(a.readinessDomain)
+        a.readinessDomains && a.readinessDomains.some(domain => readinessDomainFilter.includes(domain))
       );
     }
     
@@ -251,7 +251,7 @@ const MentorActivitiesPage: React.FC = () => {
       hours: 0,
       description: '',
       hospitalIds: [],
-      readinessDomain: '',
+      readinessDomains: [],
       simulationCase: '',
       simParticipants: 1,
       facilitatorFeedbackSubmitted: false,
@@ -271,7 +271,7 @@ const MentorActivitiesPage: React.FC = () => {
       hours: activity.hours,
       description: activity.description,
       hospitalIds: activity.hospitalIds,
-      readinessDomain: activity.readinessDomain || '',
+      readinessDomains: activity.readinessDomains || [],
       simulationCase: activity.simulationCase || '',
       simParticipants: activity.simParticipants || 1,
       facilitatorFeedbackSubmitted: activity.facilitatorFeedbackSubmitted,
@@ -321,7 +321,7 @@ const MentorActivitiesPage: React.FC = () => {
       hours: formData.hours,
       description: formData.description.trim(),
       hospitalIds: formData.hospitalIds,
-      readinessDomain: formData.hospitalIds.length > 0 && formData.readinessDomain ? formData.readinessDomain : undefined,
+      readinessDomains: formData.readinessDomains.length > 0 ? formData.readinessDomains : undefined,
       simulationCase: formData.category === 'SC' ? formData.simulationCase : null,
       simParticipants: formData.category === 'SC' ? formData.simParticipants : null,
       facilitatorFeedbackSubmitted: formData.category === 'SC' ? formData.facilitatorFeedbackSubmitted : false,
@@ -343,7 +343,7 @@ const MentorActivitiesPage: React.FC = () => {
     setError(null);
     setDialogOpen(false);
     
-    // Reset form after a brief delay to ensure state updates
+      // Reset form after a brief delay to ensure state updates
     setTimeout(() => {
       setFormData({
         date: new Date(),
@@ -352,7 +352,7 @@ const MentorActivitiesPage: React.FC = () => {
         hours: 0,
         description: '',
         hospitalIds: [],
-        readinessDomain: '',
+        readinessDomains: [],
         simulationCase: '',
         simParticipants: 1,
         facilitatorFeedbackSubmitted: false,
@@ -435,7 +435,7 @@ const MentorActivitiesPage: React.FC = () => {
 
   // Export to CSV
   const handleExportCSV = () => {
-    const headers = ['Date', 'Activity', 'Category', 'Description', 'Hours', 'Hospitals', 'Readiness Domain', 'Simulation Case', 'Participants'];
+    const headers = ['Date', 'Activity', 'Category', 'Description', 'Hours', 'Hospitals', 'Readiness Domain(s)', 'Simulation Case', 'Participants'];
     const rows = filteredActivities.map(activity => [
       format(parseISO(activity.date), 'yyyy-MM-dd'),
       activity.activityName,
@@ -443,7 +443,7 @@ const MentorActivitiesPage: React.FC = () => {
       activity.description || '',
       activity.hours.toString(),
       activity.hospitalIds.length > 0 ? getHospitalNames(activity.hospitalIds) : '',
-      activity.readinessDomain || '',
+      activity.readinessDomains?.join('; ') || '',
       activity.simulationCase || '',
       activity.simParticipants?.toString() || ''
     ]);
@@ -776,10 +776,14 @@ const MentorActivitiesPage: React.FC = () => {
                     <Typography>{getHospitalNames(viewingActivity.hospitalIds)}</Typography>
                   </Grid>
                 )}
-                {viewingActivity.readinessDomain && (
+                {viewingActivity.readinessDomains && viewingActivity.readinessDomains.length > 0 && (
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2" color="textSecondary">Domain of Pediatric Readiness</Typography>
-                    <Typography>{viewingActivity.readinessDomain}</Typography>
+                    <Typography variant="subtitle2" color="textSecondary">Domain(s) of Pediatric Readiness</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                      {viewingActivity.readinessDomains.map((domain, idx) => (
+                        <Chip key={idx} label={domain} size="small" />
+                      ))}
+                    </Box>
                   </Grid>
                 )}
                 {viewingActivity.category === 'SC' && (
@@ -946,28 +950,32 @@ const MentorActivitiesPage: React.FC = () => {
                 />
               </Grid>
               
-              {/* Readiness Domain - only shown when hospitals are selected */}
-              {formData.hospitalIds.length > 0 && (
-                <Grid item xs={12}>
-                  <FormControl fullWidth>
-                    <InputLabel>Which domain of pediatric readiness does this apply to? *only for activities with hospital PECCs</InputLabel>
-                    <Select
-                      value={formData.readinessDomain}
-                      onChange={(e) => setFormData(prev => ({ ...prev, readinessDomain: e.target.value }))}
-                      label="Which domain of pediatric readiness does this apply to? *only for activities with hospital PECCs"
-                    >
-                      <MenuItem value="">
-                        <em>None</em>
+              {/* Readiness Domain - for all categories */}
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Which domain(s) of pediatric readiness does this apply to? (select all that apply)</InputLabel>
+                  <Select
+                    multiple
+                    value={formData.readinessDomains}
+                    onChange={(e) => setFormData(prev => ({ ...prev, readinessDomains: e.target.value as string[] }))}
+                    input={<OutlinedInput label="Which domain(s) of pediatric readiness does this apply to? (select all that apply)" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((domain) => (
+                          <Chip key={domain} label={domain} size="small" />
+                        ))}
+                      </Box>
+                    )}
+                  >
+                    {READINESS_DOMAINS.map((domain) => (
+                      <MenuItem key={domain} value={domain}>
+                        <Checkbox checked={formData.readinessDomains.includes(domain)} />
+                        <ListItemText primary={domain} />
                       </MenuItem>
-                      {READINESS_DOMAINS.map((domain) => (
-                        <MenuItem key={domain} value={domain}>
-                          {domain}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              )}
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
               
               {/* Simulation-specific fields */}
               {formData.category === 'SC' && (
