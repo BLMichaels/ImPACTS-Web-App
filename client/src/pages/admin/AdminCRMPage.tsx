@@ -135,6 +135,26 @@ const COLUMNS: { id: SortField | 'phone' | 'actions'; label: string; sortable?: 
   { id: 'actions', label: '', sortable: false, defaultVisible: true }
 ];
 
+const EXPORT_COLUMNS: { id: string; label: string }[] = [
+  { id: 'name', label: 'Name' },
+  { id: 'type', label: 'Type' },
+  { id: 'facilityId', label: 'Facility ID' },
+  { id: 'organization', label: 'Organization' },
+  { id: 'email', label: 'Email' },
+  { id: 'phone', label: 'Phone' },
+  { id: 'region', label: 'Region' },
+  { id: 'state', label: 'State' },
+  { id: 'status', label: 'Status' },
+  { id: 'createdAt', label: 'Added' },
+  { id: 'address', label: 'Address' },
+  { id: 'city', label: 'City' },
+  { id: 'zip', label: 'ZIP' },
+  { id: 'county', label: 'County' },
+  { id: 'hospitalType', label: 'Hospital Type' },
+  { id: 'ownership', label: 'Ownership' },
+  { id: 'notes', label: 'Notes' }
+];
+
 const CRM_PREFS_KEY = 'adminCrm_prefs';
 const CRM_CUSTOM_FIELD_DEFS_KEY = 'adminCrm_customFieldDefinitions';
 
@@ -267,6 +287,9 @@ const AdminCRMPage: React.FC = () => {
   const [newDefOptions, setNewDefOptions] = useState('');
   const [csvUploadError, setCsvUploadError] = useState<string | null>(null);
   const [saveInProgress, setSaveInProgress] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<'all' | 'selected'>('all');
+  const [exportColumnIds, setExportColumnIds] = useState<string[]>(() => EXPORT_COLUMNS.map(c => c.id));
 
   useEffect(() => {
     let mounted = true;
@@ -465,17 +488,29 @@ const AdminCRMPage: React.FC = () => {
     setFullScreenOpen(true);
   };
 
-  const handleExport = () => {
-    const headers = ['Name', 'Type', 'Facility ID', 'Organization', 'Email', 'Phone', 'Region', 'Status', 'Added', 'Address', 'City', 'State', 'ZIP', 'County', 'Hospital Type', 'Ownership'];
-    const rows = (selectedIds.size ? filteredAndSortedContacts.filter(c => selectedIds.has(c.id)) : filteredAndSortedContacts)
-      .map(c => [c.name, TYPE_LABELS[c.type], c.facilityId ?? '', c.organization || '', c.email, c.phone || '', c.region || '', c.status, c.createdAt, c.address ?? '', c.city ?? '', c.state ?? '', c.zip ?? '', c.county ?? '', c.hospitalType ?? '', c.ownership ?? '']);
-    const csv = [headers.join(','), ...rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n');
+  const allExportColumns = useMemo(() => [...EXPORT_COLUMNS, ...customFieldDefs.map(d => ({ id: d.id, label: d.label }))], [customFieldDefs]);
+
+  const runExport = (scope: 'all' | 'selected', columnIds: string[]) => {
+    const contactsToExport = scope === 'selected'
+      ? filteredAndSortedContacts.filter(c => selectedIds.has(c.id))
+      : filteredAndSortedContacts;
+    const ids = columnIds.filter(id => allExportColumns.some(col => col.id === id));
+    const labels = ids.map(id => allExportColumns.find(col => col.id === id)!.label);
+    const valueFor = (c: Contact, id: string): string => {
+      if (customFieldDefs.some(d => d.id === id)) return c.customFields?.[id] ?? '';
+      if (id === 'type') return TYPE_LABELS[c.type];
+      const v = (c as Record<string, unknown>)[id];
+      return v != null ? String(v) : '';
+    };
+    const rows = contactsToExport.map(c => ids.map(id => valueFor(c, id)));
+    const csv = [labels.join(','), ...rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `crm-contacts-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
+    setExportDialogOpen(false);
   };
 
   const clearFilters = () => {
@@ -537,8 +572,8 @@ const AdminCRMPage: React.FC = () => {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Tooltip title="Export filtered contacts as CSV">
-            <Button startIcon={<DownloadIcon />} onClick={handleExport} size="medium">
+          <Tooltip title="Choose columns and export all filtered or selected contacts">
+            <Button startIcon={<DownloadIcon />} onClick={() => setExportDialogOpen(true)} size="medium">
               Export
             </Button>
           </Tooltip>
@@ -1248,6 +1283,57 @@ const AdminCRMPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); }}>Done</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Export – choose scope and columns */}
+      <Dialog open={exportDialogOpen} onClose={() => setExportDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Export contacts</DialogTitle>
+        <DialogContent>
+          <Typography variant="subtitle2" sx={{ mt: 0.5, mb: 1 }}>What to export</Typography>
+          <FormControl component="fieldset" fullWidth sx={{ mb: 2 }}>
+            <RadioGroup value={exportScope} onChange={(e) => setExportScope(e.target.value as 'all' | 'selected')}>
+              <FormControlLabel
+                value="all"
+                control={<Radio size="small" />}
+                label={`All filtered contacts (${filteredAndSortedContacts.length})`}
+              />
+              <FormControlLabel
+                value="selected"
+                control={<Radio size="small" />}
+                label={`Selected contacts only (${selectedIds.size})`}
+                disabled={selectedIds.size === 0}
+              />
+            </RadioGroup>
+            {exportScope === 'selected' && selectedIds.size === 0 && (
+              <Typography variant="caption" color="text.secondary">Select contacts in the table first.</Typography>
+            )}
+          </FormControl>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Columns to include</Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+            <Button size="small" onClick={() => setExportColumnIds(allExportColumns.map(c => c.id))}>Select all</Button>
+            <Button size="small" onClick={() => setExportColumnIds([])}>Clear all</Button>
+          </Box>
+          <Box sx={{ maxHeight: 280, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, px: 1.5, py: 0.5 }}>
+            <FormGroup>
+              {allExportColumns.map((col) => (
+                <FormControlLabel
+                  key={col.id}
+                  control={<Checkbox size="small" checked={exportColumnIds.includes(col.id)} onChange={(e) => setExportColumnIds(prev => e.target.checked ? [...prev, col.id] : prev.filter(id => id !== col.id))} />}
+                  label={col.label}
+                />
+              ))}
+            </FormGroup>
+          </Box>
+          {exportColumnIds.length === 0 && (
+            <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>Select at least one column.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" startIcon={<DownloadIcon />} onClick={() => runExport(exportScope, exportColumnIds)} disabled={exportColumnIds.length === 0 || (exportScope === 'selected' && selectedIds.size === 0)}>
+            Export
+          </Button>
         </DialogActions>
       </Dialog>
 
