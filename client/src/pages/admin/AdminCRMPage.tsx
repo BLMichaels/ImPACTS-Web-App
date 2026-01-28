@@ -499,7 +499,7 @@ const AdminCRMPage: React.FC = () => {
     const valueFor = (c: Contact, id: string): string => {
       if (customFieldDefs.some(d => d.id === id)) return c.customFields?.[id] ?? '';
       if (id === 'type') return TYPE_LABELS[c.type];
-      const v = (c as Record<string, unknown>)[id];
+      const v = (c as unknown as Record<string, unknown>)[id];
       return v != null ? String(v) : '';
     };
     const rows = contactsToExport.map(c => ids.map(id => valueFor(c, id)));
