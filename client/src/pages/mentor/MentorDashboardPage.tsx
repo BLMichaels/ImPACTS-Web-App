@@ -30,6 +30,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { format, subDays, isAfter } from 'date-fns';
+import DashboardResources from '../../components/DashboardResources';
 
 interface DashboardStats {
   totalHospitals: number;
@@ -367,6 +368,8 @@ const MentorDashboardPage: React.FC = () => {
           </Grid>
         </Grid>
       </Paper>
+
+      <DashboardResources userId={currentUser?.uid} />
     </Box>
   );
 };

@@ -26,7 +26,9 @@ import {
   Timeline as TimelineIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
+import DashboardResources from '../../components/DashboardResources';
 
 interface SystemStats {
   totalUsers: number;
@@ -40,6 +42,7 @@ interface SystemStats {
 }
 
 const AdminDashboardPage: React.FC = () => {
+  const { currentUser } = useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
   
@@ -189,6 +192,8 @@ const AdminDashboardPage: React.FC = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      <DashboardResources userId={currentUser?.uid} />
     </Box>
   );
 };
