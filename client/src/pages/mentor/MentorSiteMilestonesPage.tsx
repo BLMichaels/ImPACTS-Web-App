@@ -58,7 +58,7 @@ interface MilestoneStage {
 interface Hospital {
   id: string;
   name: string;
-  facilityId?: string;
+  facilityId: string;
   siteId: string;
   isWorkingWith?: boolean;
 }
@@ -340,22 +340,24 @@ const MentorSiteMilestonesPage: React.FC = () => {
       
       if (savedHospitals) {
         const parsed: any[] = JSON.parse(savedHospitals);
-        let workingHospitals = parsed
+        let workingHospitals: Hospital[] = parsed
           .filter((h: any) => h.isWorkingWith !== false)
           .map((h: any) => ({
-            id: h.id,
-            name: h.name,
-            facilityId: h.id,
-            siteId: h.id,
-            isWorkingWith: h.isWorkingWith
-          }));
+            id: String(h.id),
+            name: String(h.name ?? ''),
+            facilityId: String(h.id),
+            siteId: String(h.id),
+            isWorkingWith: Boolean(h.isWorkingWith)
+          })) as Hospital[];
         
         // Apply saved order if exists
         if (savedOrder) {
           try {
             const order: string[] = JSON.parse(savedOrder);
-            const ordered = order.map(id => workingHospitals.find(h => h.id === id)).filter(Boolean) as Hospital[];
-            const remaining = workingHospitals.filter(h => !order.includes(h.id));
+            const ordered: Hospital[] = order
+              .map((id) => workingHospitals.find((h) => h.id === id))
+              .filter((h): h is Hospital => Boolean(h));
+            const remaining: Hospital[] = workingHospitals.filter((h) => !order.includes(h.id));
             workingHospitals = [...ordered, ...remaining];
           } catch {}
         }
