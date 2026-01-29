@@ -34,7 +34,8 @@ import {
   Timeline as TimelineIcon,
   AttachMoney as MoneyIcon,
   Security as SecurityIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  AccountTree as PipelineIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -102,6 +103,7 @@ const Navbar: React.FC = () => {
           { path: '/admin/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/admin/users', label: 'Users', icon: <PeopleIcon /> },
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
+          { path: '/admin/pipeline', label: 'Project Pipeline', icon: <PipelineIcon /> },
           { path: '/admin/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon /> }
         ];

@@ -44,6 +44,7 @@ const AdminCRMPage = lazy(() => import('./pages/admin/AdminCRMPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 const AdminSnapshotPage = lazy(() => import('./pages/admin/AdminSnapshotPage'));
+const AdminProjectPipelinePage = lazy(() => import('./pages/admin/AdminProjectPipelinePage'));
 
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
@@ -209,6 +210,7 @@ function App() {
                   <Route path="/admin/users" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminUsersPage /></ProtectedRoute>} />
                   <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSettingsPage /></ProtectedRoute>} />
                   <Route path="/admin/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSnapshotPage /></ProtectedRoute>} />
+                  <Route path="/admin/pipeline" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProjectPipelinePage /></ProtectedRoute>} />
                   
                   {/* Common Routes */}
                   <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
