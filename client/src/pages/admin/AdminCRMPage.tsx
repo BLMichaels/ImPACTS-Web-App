@@ -461,7 +461,7 @@ const AdminCRMPage: React.FC = () => {
               organization,
               email: '',
               phone: String(row.phone ?? ''),
-              status: 'Active',
+              status: (row.crm_status != null ? String(row.crm_status) : null) || 'Active',
               region,
               createdAt: created,
               notes: legacyNotes,
@@ -482,6 +482,44 @@ const AdminCRMPage: React.FC = () => {
           }
           hasMore = batch.length >= chunk;
           offset += chunk;
+        }
+        // Load CRM organizations (persisted so they show after refresh)
+        if (mounted) {
+          const { data: orgsData, error: orgsError } = await supabase
+            .from('crm_organizations')
+            .select('id, name, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type');
+          if (!orgsError && orgsData && orgsData.length > 0) {
+            for (const row of orgsData as Record<string, unknown>[]) {
+              const id = String(row.id ?? '');
+              const name = String(row.name ?? 'Unknown');
+              const contactType = row.contact_type === 'other' ? 'other' : 'organization';
+              const created = row.created_at ? String(row.created_at).split('T')[0] : new Date().toISOString().split('T')[0];
+              const rawNotesLog = row.notes_log;
+              const rawActivityLog = row.activity_log;
+              const notesLog: NotesLogEntry[] = Array.isArray(rawNotesLog)
+                ? (rawNotesLog as unknown[]).filter((e): e is NotesLogEntry => typeof e === 'object' && e != null && 'date' in e && 'text' in e).map(e => ({ date: String((e as NotesLogEntry).date), text: String((e as NotesLogEntry).text) }))
+                : [];
+              const activityLog: ActivityLogEntry[] = Array.isArray(rawActivityLog)
+                ? (rawActivityLog as unknown[]).filter((e): e is ActivityLogEntry => typeof e === 'object' && e != null && 'type' in e && 'date' in e && 'text' in e).map(e => ({ type: (e as ActivityLogEntry).type as ActivityLogType, date: String((e as ActivityLogEntry).date), text: String((e as ActivityLogEntry).text) }))
+                : [];
+              list.push({
+                id,
+                type: contactType,
+                name,
+                organization: name,
+                email: String(row.email ?? ''),
+                phone: String(row.phone ?? ''),
+                status: String(row.status ?? 'Active'),
+                region: String(row.region ?? ''),
+                state: row.state != null ? String(row.state) : undefined,
+                createdAt: created,
+                notes: String(row.notes ?? ''),
+                notesLog,
+                activityLog,
+                customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined
+              });
+            }
+          }
         }
         // Append app users (manager, mentor, pecc) so they show in CRM tabs — same fetch as Team tab, filter by role in JS
         if (mounted) {
@@ -538,6 +576,26 @@ const AdminCRMPage: React.FC = () => {
     } catch {}
   }, [viewMode, visibleColumns, pageSize, columnOrder]);
 
+  // Load custom field definitions from Supabase (shared for all admins); fallback to localStorage if table missing
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data, error } = await supabase.from('crm_custom_field_definitions').select('id, label, applicable_types, field_type, options, sort_order').order('sort_order', { ascending: true });
+      if (!mounted) return;
+      if (!error && data && data.length > 0) {
+        const mapped: CustomFieldDefinition[] = (data as Record<string, unknown>[]).map((row) => ({
+          id: String(row.id),
+          label: String(row.label),
+          applicableTypes: (Array.isArray(row.applicable_types) ? row.applicable_types as string[] : ['hospital']).filter(t => CONTACT_TYPES.includes(t as ContactType)) as ContactType[],
+          fieldType: (['checkbox', 'radio', 'date', 'numeric', 'short_answer', 'paragraph', 'dropdown', 'dropdown_csv'].includes(String(row.field_type)) ? row.field_type : 'short_answer') as CustomFieldType,
+          options: Array.isArray(row.options) ? (row.options as string[]).filter(Boolean) : undefined
+        }));
+        setCustomFieldDefs(mapped);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(CRM_CUSTOM_FIELD_DEFS_KEY, JSON.stringify(customFieldDefs));
@@ -569,11 +627,14 @@ const AdminCRMPage: React.FC = () => {
   }, [canSeeReminders, currentUser?.id]);
 
   const persistNotesAndActivity = useCallback(async (c: Contact) => {
-    if (c.type !== 'hospital' || !(c.facilityId ?? c.id)) return;
-    const key = String(c.facilityId ?? c.id);
     const notesLog = c.notesLog ?? [];
     const activityLog = c.activityLog ?? [];
-    await supabase.from('hospitals').update({ notes_log: notesLog, activity_log: activityLog }).or(`facility_id.eq.${key},id.eq.${key}`);
+    if (c.type === 'hospital' && (c.facilityId ?? c.id)) {
+      const key = String(c.facilityId ?? c.id);
+      await supabase.from('hospitals').update({ notes_log: notesLog, activity_log: activityLog }).or(`facility_id.eq.${key},id.eq.${key}`);
+    } else if ((c.type === 'organization' || c.type === 'other') && c.id) {
+      await supabase.from('crm_organizations').update({ notes_log: notesLog, activity_log: activityLog, updated_at: new Date().toISOString() }).eq('id', c.id);
+    }
   }, []);
 
   const addNote = useCallback((c: Contact, entry: NotesLogEntry) => {
@@ -862,7 +923,7 @@ const AdminCRMPage: React.FC = () => {
       setSaveInProgress(true);
       const key = String(editingContact.facilityId ?? editingContact.id);
       const currentInState = contacts.find(c => c.id === editingContact.id);
-      const updatePayload: { region: string | null; state?: string | null; custom_fields?: Record<string, string>; notes_log?: NotesLogEntry[]; activity_log?: ActivityLogEntry[]; hospital_system?: string | null; programs?: string[] } = { region: formData.region || null, state: formData.state?.trim() || null };
+      const updatePayload: { region: string | null; state?: string | null; crm_status?: string; custom_fields?: Record<string, string>; notes_log?: NotesLogEntry[]; activity_log?: ActivityLogEntry[]; hospital_system?: string | null; programs?: string[] } = { region: formData.region || null, state: formData.state?.trim() || null, crm_status: formData.status || 'Active' };
       if (formData.customFields && Object.keys(formData.customFields).length > 0) {
         updatePayload.custom_fields = formData.customFields;
       }
@@ -880,6 +941,53 @@ const AdminCRMPage: React.FC = () => {
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
       } else {
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+      }
+    } else if (formData.type === 'organization' || formData.type === 'other') {
+      setSaveInProgress(true);
+      const currentInState = contacts.find(c => c.id === (editingContact?.id ?? payload.id));
+      const notesLog = currentInState?.notesLog ?? editingContact?.notesLog ?? [];
+      const activityLog = currentInState?.activityLog ?? editingContact?.activityLog ?? [];
+      const contactType = formData.type === 'other' ? 'other' : 'organization';
+      const payloadDb = {
+        name: formData.name.trim() || payload.name,
+        email: formData.email?.trim() || null,
+        phone: formData.phone?.trim() || null,
+        region: formData.region?.trim() || null,
+        state: formData.state?.trim() || null,
+        status: formData.status || 'Active',
+        notes: formData.notes?.trim() || null,
+        notes_log: notesLog,
+        activity_log: activityLog,
+        custom_fields: Object.keys(formData.customFields || {}).length ? formData.customFields : {},
+        contact_type: contactType
+      };
+      if ((editingContact?.type === 'organization' || editingContact?.type === 'other') && editingContact.id) {
+        const { error } = await supabase
+          .from('crm_organizations')
+          .update({ ...payloadDb, updated_at: new Date().toISOString() })
+          .eq('id', editingContact.id);
+        setSaveInProgress(false);
+        if (error) {
+          console.error('Failed to update organization/other:', error);
+        }
+        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+      } else {
+        const { data: inserted, error } = await supabase
+          .from('crm_organizations')
+          .insert(payloadDb)
+          .select('id, created_at')
+          .single();
+        setSaveInProgress(false);
+        if (error) {
+          console.error('Failed to insert organization/other:', error);
+          setContacts(prev => [...prev, payload]);
+        } else if (inserted && typeof (inserted as { id?: string }).id === 'string') {
+          const id = (inserted as { id: string; created_at?: string }).id;
+          const createdAt = (inserted as { created_at?: string }).created_at ? String((inserted as { created_at: string }).created_at).split('T')[0] : payload.createdAt;
+          setContacts(prev => [...prev, { ...payload, id, createdAt }]);
+        } else {
+          setContacts(prev => [...prev, payload]);
+        }
       }
     } else if (editingContact) {
       setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
@@ -961,7 +1069,11 @@ const AdminCRMPage: React.FC = () => {
 
   const activePendingFilter = statusFilter.includes('Pending') && statusFilter.length === 1 && !searchQuery && regionFilter.length === 0 && stateFilter.length === 0 && hospitalTypeFilter.length === 0 && programFilter.length === 0;
 
-  const handleDeleteContact = (id: string) => {
+  const handleDeleteContact = async (id: string) => {
+    const contact = contacts.find(c => c.id === id);
+    if (contact?.type === 'organization' || contact?.type === 'other') {
+      await supabase.from('crm_organizations').delete().eq('id', id);
+    }
     setContacts(prev => prev.filter(c => c.id !== id));
     setDeleteConfirmOpen(false);
     setDeleteTarget(null);
@@ -969,8 +1081,14 @@ const AdminCRMPage: React.FC = () => {
     setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (!deleteTarget?.bulk) return;
+    for (const id of deleteTarget.bulk) {
+      const contact = contacts.find(c => c.id === id);
+      if (contact?.type === 'organization' || contact?.type === 'other') {
+        await supabase.from('crm_organizations').delete().eq('id', id);
+      }
+    }
     setContacts(prev => prev.filter(c => !deleteTarget.bulk!.has(c.id)));
     setDeleteConfirmOpen(false);
     setDeleteTarget(null);
@@ -979,7 +1097,16 @@ const AdminCRMPage: React.FC = () => {
     if (detailContact && deleteTarget.bulk.has(detailContact.id)) { setPanelOpen(false); setFullScreenOpen(false); setDetailContact(null); }
   };
 
-  const handleBulkStatusChange = (status: string) => {
+  const handleBulkStatusChange = async (status: string) => {
+    const selected = contacts.filter(c => selectedIds.has(c.id));
+    for (const c of selected) {
+      if (c.type === 'organization' || c.type === 'other') {
+        await supabase.from('crm_organizations').update({ status, updated_at: new Date().toISOString() }).eq('id', c.id);
+      } else if (c.type === 'hospital' && (c.facilityId ?? c.id)) {
+        const key = String(c.facilityId ?? c.id);
+        await supabase.from('hospitals').update({ crm_status: status }).or(`facility_id.eq.${key},id.eq.${key}`);
+      }
+    }
     setContacts(prev => prev.map(c => selectedIds.has(c.id) ? { ...c, status } : c));
     setBulkStatusAnchor(null);
   };
@@ -2109,15 +2236,20 @@ const AdminCRMPage: React.FC = () => {
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
-                onClick={() => {
+                onClick={async () => {
                   if (!newDefLabel.trim() || newDefApplicableTypes.length === 0) return;
                   const opts = newDefOptions.split(/\r?\n/).map(l => l.trim()).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
                   const def: CustomFieldDefinition = { id: editingDefId ?? `cf_${Date.now()}`, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined };
+                  const payload = { id: def.id, label: def.label, applicable_types: def.applicableTypes, field_type: def.fieldType, options: def.options ?? [], sort_order: 0, updated_at: new Date().toISOString() };
                   if (editingDefId) {
-                    setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? def : d));
-                    setEditingDefId(null);
+                    const { error } = await supabase.from('crm_custom_field_definitions').update(payload).eq('id', editingDefId);
+                    if (!error) {
+                      setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? def : d));
+                      setEditingDefId(null);
+                    }
                   } else {
-                    setCustomFieldDefs(prev => [...prev, def]);
+                    const { error } = await supabase.from('crm_custom_field_definitions').insert(payload);
+                    if (!error) setCustomFieldDefs(prev => [...prev, def]);
                   }
                   setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions('');
                 }}
@@ -2130,7 +2262,7 @@ const AdminCRMPage: React.FC = () => {
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Existing fields</Typography>
           <List dense>
             {customFieldDefs.map((def) => (
-              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={() => setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id))}><DeleteIcon fontSize="small" /></IconButton></>}>
+              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
                 <ListItemText primary={def.label} secondary={`${CUSTOM_FIELD_TYPE_LABELS[def.fieldType]} · ${def.applicableTypes.map(t => TYPE_LABELS[t]).join(', ')}`} />
               </ListItem>
             ))}
