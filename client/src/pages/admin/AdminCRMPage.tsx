@@ -1586,7 +1586,7 @@ const AdminCRMPage: React.FC = () => {
                       <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'organization').map(c => ({ id: c.id, label: c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedOrganizationIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedOrganizationIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked organizations" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
                     <Grid item xs={12}>
-                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital').map(c => ({ id: c.id, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem).trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem).trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
+                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital').map(c => ({ id: c.id, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
                   </>
                 ) : (
@@ -1621,7 +1621,7 @@ const AdminCRMPage: React.FC = () => {
                     <Grid item xs={12}><Divider sx={{ mt: 1 }} /><Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>Custom fields</Typography></Grid>
                     {customFieldDefs.filter(d => d.applicableTypes.includes(formData.type)).map((def) => (
                       <Grid item xs={12} key={def.id}>
-                        {def.fieldType === 'checkbox' && <FormControlLabel control={<Checkbox size="small" checked={((formData.customFields || {})[def.id] ?? '') === 'true'} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.checked ? 'true' : 'false' } }))} />} label={def.label} />
+                        {def.fieldType === 'checkbox' && <FormControlLabel control={<Checkbox size="small" checked={((formData.customFields || {})[def.id] ?? '') === 'true'} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.checked ? 'true' : 'false' } }))} />} label={def.label} />}
                         {def.fieldType === 'radio' && <FormControl fullWidth size="small"><Typography variant="body2" sx={{ mb: 0.5 }}>{def.label}</Typography><RadioGroup row value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))}>{(def.options ?? []).map((opt) => <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />)}</RadioGroup></FormControl>}
                         {def.fieldType === 'date' && <TextField label={def.label} type="date" value={((formData.customFields || {})[def.id] ?? '').slice(0, 10)} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" InputLabelProps={{ shrink: true }} />}
                         {def.fieldType === 'numeric' && <TextField label={def.label} type="number" value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" inputProps={{ inputMode: 'numeric' }} />}
@@ -1900,12 +1900,12 @@ const AdminCRMPage: React.FC = () => {
                     size="small"
                     options={contacts.filter(c => c.type === 'hospital').map(c => ({
                       id: c.id,
-                      label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem).trim()} – ${c.name}` : c.name
+                      label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name
                     }))}
                     filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
                     value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({
                       id: c!.id,
-                      label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem).trim()} – ${c!.name}` : c!.name
+                      label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name
                     }))}
                     getOptionLabel={(opt) => opt.label}
                     isOptionEqualToValue={(a, b) => a.id === b.id}
