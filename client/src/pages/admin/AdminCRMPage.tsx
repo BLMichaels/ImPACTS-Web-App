@@ -161,6 +161,19 @@ const TYPE_COLORS: Record<ContactType, string> = {
 
 const CONTACT_TYPES: ContactType[] = ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'];
 
+/** Filter autocomplete options by search text: every word/token in inputValue must appear in the option label (case-insensitive). */
+function filterOptionsBySearch<T extends { label: string }>(
+  options: T[],
+  inputValue: string
+): T[] {
+  const tokens = inputValue.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return options;
+  return options.filter((opt) => {
+    const label = (opt.label ?? '').toLowerCase();
+    return tokens.every((t) => label.includes(t));
+  });
+}
+
 /** Tab index for Team (user management) - when selected, show AdminTeamTab instead of contacts. */
 const TEAM_TAB_INDEX = 8;
 
@@ -1570,10 +1583,10 @@ const AdminCRMPage: React.FC = () => {
                     <Grid item xs={6}><TextField label="First name" value={formData.firstName} onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))} fullWidth size="small" required /></Grid>
                     <Grid item xs={6}><TextField label="Last name" value={formData.lastName} onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))} fullWidth size="small" required /></Grid>
                     <Grid item xs={12}>
-                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'organization').map(c => ({ id: c.id, label: c.name }))} value={formData.linkedOrganizationIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedOrganizationIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked organizations" placeholder="Select organizations" />} />
+                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'organization').map(c => ({ id: c.id, label: c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedOrganizationIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedOrganizationIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked organizations" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
                     <Grid item xs={12}>
-                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital').map(c => ({ id: c.id, label: c.name }))} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals" placeholder="Select hospitals" />} />
+                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital').map(c => ({ id: c.id, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem).trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem).trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
                   </>
                 ) : (
@@ -1873,23 +1886,31 @@ const AdminCRMPage: React.FC = () => {
                     multiple
                     size="small"
                     options={contacts.filter(c => c.type === 'organization').map(c => ({ id: c.id, label: c.name }))}
+                    filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
                     value={formData.linkedOrganizationIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))}
                     getOptionLabel={(opt) => opt.label}
                     isOptionEqualToValue={(a, b) => a.id === b.id}
                     onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedOrganizationIds: arr.map(x => x.id) }))}
-                    renderInput={(params) => <TextField {...params} label="Linked organizations" placeholder="Select organizations" />}
+                    renderInput={(params) => <TextField {...params} label="Linked organizations" placeholder="Type to search (e.g. Riley, Memorial)" />}
                   />
                 </Grid>
                 <Grid item xs={12}>
                   <Autocomplete
                     multiple
                     size="small"
-                    options={contacts.filter(c => c.type === 'hospital').map(c => ({ id: c.id, label: c.name }))}
-                    value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))}
+                    options={contacts.filter(c => c.type === 'hospital').map(c => ({
+                      id: c.id,
+                      label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem).trim()} – ${c.name}` : c.name
+                    }))}
+                    filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                    value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({
+                      id: c!.id,
+                      label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem).trim()} – ${c!.name}` : c!.name
+                    }))}
                     getOptionLabel={(opt) => opt.label}
                     isOptionEqualToValue={(a, b) => a.id === b.id}
                     onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))}
-                    renderInput={(params) => <TextField {...params} label="Linked hospitals" placeholder="Select hospitals" />}
+                    renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />}
                   />
                 </Grid>
               </>
