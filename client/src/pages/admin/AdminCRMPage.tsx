@@ -1150,9 +1150,9 @@ const AdminCRMPage: React.FC = () => {
           Team members (managers, mentors, PECCs) could not be loaded: {usersLoadError}. Check your connection and that you have access. You can manage users in the Team tab.
         </Alert>
       )}
-      {/* Summary cards (hidden on Team tab) */}
+      {/* Summary cards – single row (hidden on Team tab) */}
       {tabValue !== TEAM_TAB_INDEX && (
-      <Grid container spacing={2} sx={{ mb: 3 }}>
+      <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1.5, mb: 3, overflowX: 'auto', pb: 0.5 }}>
         {[
           { key: 'all', label: 'All', count: summaryCounts.all },
           { key: 'organization', label: 'Organizations', count: summaryCounts.organization },
@@ -1170,36 +1170,37 @@ const AdminCRMPage: React.FC = () => {
           const isActive = isPending ? activePendingFilter : isAll ? tabValue === 0 && !activePendingFilter : tabValue > 0 && typeKeys[tabValue - 1] === key;
           const borderColor = isPending ? theme.palette.warning.main : isAll ? theme.palette.primary.main : TYPE_COLORS[key as ContactType] || theme.palette.grey[400];
           return (
-            <Grid item xs={6} sm={4} md={2} key={key}>
-              <Paper
-                onClick={() => {
-                  if (isPending) { setTabValue(0); setStatusFilter(['Pending']); }
-                  else if (isAll) { setTabValue(0); setStatusFilter([]); }
-                  else { setTabValue(typeKeys.indexOf(key) + 1); setStatusFilter([]); }
-                }}
-                sx={{
-                  p: 2,
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  borderTop: 3,
-                  borderColor,
-                  bgcolor: isActive ? alpha(theme.palette.primary.main, 0.04) : 'background.paper',
-                  '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) }
-                }}
-              >
-                {loading ? (
-                  <Skeleton variant="text" width={40} height={36} sx={{ mx: 'auto' }} />
-                ) : (
-                  <Typography variant="h5" fontWeight={700} sx={{ color: isPending ? 'warning.main' : isAll ? 'primary.main' : TYPE_COLORS[key as ContactType] || 'text.primary' }}>
-                    {count}
-                  </Typography>
-                )}
-                <Typography variant="body2" color="text.secondary">{label}</Typography>
-              </Paper>
-            </Grid>
+            <Paper
+              key={key}
+              onClick={() => {
+                if (isPending) { setTabValue(0); setStatusFilter(['Pending']); }
+                else if (isAll) { setTabValue(0); setStatusFilter([]); }
+                else { setTabValue(typeKeys.indexOf(key) + 1); setStatusFilter([]); }
+              }}
+              sx={{
+                flex: '1 1 0',
+                minWidth: 0,
+                p: 1.5,
+                textAlign: 'center',
+                cursor: 'pointer',
+                borderTop: 3,
+                borderColor,
+                bgcolor: isActive ? alpha(theme.palette.primary.main, 0.04) : 'background.paper',
+                '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) }
+              }}
+            >
+              {loading ? (
+                <Skeleton variant="text" width={32} height={28} sx={{ mx: 'auto' }} />
+              ) : (
+                <Typography variant="h6" fontWeight={700} sx={{ color: isPending ? 'warning.main' : isAll ? 'primary.main' : TYPE_COLORS[key as ContactType] || 'text.primary' }}>
+                  {count}
+                </Typography>
+              )}
+              <Typography variant="caption" display="block" color="text.secondary" sx={{ lineHeight: 1.2 }}>{label}</Typography>
+            </Paper>
           );
         })}
-      </Grid>
+      </Box>
       )}
 
       {/* Toolbar: tabs, view mode, search, filters */}
