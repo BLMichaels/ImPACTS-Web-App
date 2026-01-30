@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { UserRole, PECC_TAB_KEYS } from '../../types/database';
+import AdminTeamTab from './AdminTeamTab';
 import {
   Box,
   Typography,
@@ -158,6 +160,9 @@ const TYPE_COLORS: Record<ContactType, string> = {
 
 const CONTACT_TYPES: ContactType[] = ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'];
 
+/** Tab index for Team (user management) - when selected, show AdminTeamTab instead of contacts. */
+const TEAM_TAB_INDEX = 8;
+
 const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
   { id: 'lastName', label: 'Last Name', sortable: true, defaultVisible: true },
@@ -235,11 +240,20 @@ const ACTIVITY_TYPE_LABELS: Record<ActivityLogType, string> = {
 
 const AdminCRMPage: React.FC = () => {
   const theme = useTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { currentUser } = useAuth();
   const { actualRole } = useUserProfile();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
 
-  const [tabValue, setTabValue] = useState(0);
+  const [tabValue, setTabValue] = useState(() => (searchParams.get('tab') === 'team' ? TEAM_TAB_INDEX : 0));
+  useEffect(() => {
+    if (searchParams.get('tab') === 'team') setTabValue(TEAM_TAB_INDEX);
+  }, [searchParams]);
+  const handleTabChange = (_: React.SyntheticEvent, v: number) => {
+    setTabValue(v);
+    if (v === TEAM_TAB_INDEX) setSearchParams({ tab: 'team' });
+    else setSearchParams({});
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -976,7 +990,8 @@ const AdminCRMPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Summary cards */}
+      {/* Summary cards (hidden on Team tab) */}
+      {tabValue !== TEAM_TAB_INDEX && (
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
           { key: 'all', label: 'All', count: summaryCounts.all },
@@ -1025,11 +1040,12 @@ const AdminCRMPage: React.FC = () => {
           );
         })}
       </Grid>
+      )}
 
       {/* Toolbar: tabs, view mode, search, filters */}
       <Paper sx={{ mb: 2 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2, pt: 1 }}>
-          <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
+          <Tabs value={tabValue} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
             <Tab label="All" />
             <Tab label="Organizations" />
             <Tab label="Hospitals" />
@@ -1038,8 +1054,14 @@ const AdminCRMPage: React.FC = () => {
             <Tab label="PECCs" />
             <Tab label="Staff" />
             <Tab label="Other" />
+            <Tab label="Team" />
           </Tabs>
         </Box>
+        {tabValue === TEAM_TAB_INDEX ? (
+          <Box sx={{ p: 2 }}>
+            <AdminTeamTab />
+          </Box>
+        ) : (
         <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, p: 2 }}>
           <TextField
             size="small"
@@ -1153,10 +1175,11 @@ const AdminCRMPage: React.FC = () => {
             {filteredAndSortedContacts.length === 0 ? '0 contacts' : pageSize === 'all' ? `${filteredAndSortedContacts.length} contact${filteredAndSortedContacts.length !== 1 ? 's' : ''}` : `Showing 1–${displayedContacts.length} of ${filteredAndSortedContacts.length}`}
           </Typography>
         </Box>
+        )}
       </Paper>
 
-      {/* Bulk actions bar */}
-      {selectedIds.size > 0 && (
+      {/* Bulk actions bar (contacts only) */}
+      {tabValue !== TEAM_TAB_INDEX && selectedIds.size > 0 && (
         <Paper sx={{ mb: 2, py: 1.5, px: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', bgcolor: alpha(theme.palette.primary.main, 0.06), border: '1px solid', borderColor: 'primary.main' }}>
           <Chip label={`${selectedIds.size} selected`} color="primary" onDelete={() => setSelectedIds(new Set())} />
           <Button size="small" variant="outlined" startIcon={<FilterIcon />} onClick={(e) => setBulkStatusAnchor(e.currentTarget)}>
@@ -1174,8 +1197,8 @@ const AdminCRMPage: React.FC = () => {
         </Paper>
       )}
 
-      {/* Content */}
-      {loading ? (
+      {/* Content (contacts only; Team tab shows AdminTeamTab above) */}
+      {tabValue !== TEAM_TAB_INDEX && (loading ? (
         <Paper sx={{ p: 4 }}>
           <Grid container spacing={2}>
             {[1, 2, 3, 4, 5].map(i => (
@@ -1317,7 +1340,7 @@ const AdminCRMPage: React.FC = () => {
             </TableBody>
           </Table>
         </TableContainer>
-      )}
+      ))}
 
       {/* Row actions menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>

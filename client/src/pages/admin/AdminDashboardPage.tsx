@@ -158,7 +158,7 @@ const AdminDashboardPage: React.FC = () => {
             <Typography variant="h6" gutterBottom>Quick Actions</Typography>
             <Divider sx={{ mb: 2 }} />
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Button variant="outlined" startIcon={<PeopleIcon />} onClick={() => navigate('/admin/users')}>
+              <Button variant="outlined" startIcon={<PeopleIcon />} onClick={() => navigate('/admin/crm?tab=team')}>
                 Manage Users
               </Button>
               <Button variant="outlined" startIcon={<HospitalIcon />} onClick={() => navigate('/admin/crm')}>

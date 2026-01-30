@@ -41,7 +41,6 @@ const ManagerWagesExpensesPage = lazy(() => import('./pages/manager/ManagerWages
 // Admin Pages (lazy loaded)
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminCRMPage = lazy(() => import('./pages/admin/AdminCRMPage'));
-const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 const AdminSnapshotPage = lazy(() => import('./pages/admin/AdminSnapshotPage'));
 const AdminProjectPipelinePage = lazy(() => import('./pages/admin/AdminProjectPipelinePage'));
@@ -207,7 +206,7 @@ function App() {
                   {/* Admin Routes */}
                   <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboardPage /></ProtectedRoute>} />
                   <Route path="/admin/crm" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCRMPage /></ProtectedRoute>} />
-                  <Route path="/admin/users" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminUsersPage /></ProtectedRoute>} />
+                  <Route path="/admin/users" element={<Navigate to="/admin/crm?tab=team" replace />} />
                   <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSettingsPage /></ProtectedRoute>} />
                   <Route path="/admin/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSnapshotPage /></ProtectedRoute>} />
                   <Route path="/admin/pipeline" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProjectPipelinePage /></ProtectedRoute>} />

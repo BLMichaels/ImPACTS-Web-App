@@ -39,7 +39,6 @@ import {
   Search as SearchIcon,
   Add as AddIcon,
   MoreVert as MoreIcon,
-  Person as PersonIcon,
   Send as SendIcon,
   Close as CloseIcon,
   Edit as EditIcon,
@@ -64,7 +63,8 @@ interface User {
   mentorName?: string;
 }
 
-const AdminUsersPage: React.FC = () => {
+/** Team (user) management content for Admin CRM Team tab. */
+const AdminTeamTab: React.FC = () => {
   const { resetPasswordForEmail } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' }>({ open: false, message: '' });
@@ -87,7 +87,6 @@ const AdminUsersPage: React.FC = () => {
   });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -152,7 +151,7 @@ const AdminUsersPage: React.FC = () => {
   }, []);
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = 
+    const matchesSearch =
       `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
@@ -303,8 +302,8 @@ const AdminUsersPage: React.FC = () => {
 
   const handleToggleStatus = () => {
     if (selectedUser) {
-      setUsers(users.map(u => 
-        u.id === selectedUser.id 
+      setUsers(users.map(u =>
+        u.id === selectedUser.id
           ? { ...u, status: u.status === 'active' ? 'inactive' : 'active' }
           : u
       ));
@@ -313,15 +312,14 @@ const AdminUsersPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ py: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">User Management</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+    <Box sx={{ py: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">Team</Typography>
+        <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
           Add User
         </Button>
       </Box>
 
-      {/* Filters */}
       <Paper sx={{ p: 2, mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <TextField
           size="small"
@@ -335,11 +333,7 @@ const AdminUsersPage: React.FC = () => {
         />
         <FormControl size="small" sx={{ minWidth: 150 }}>
           <InputLabel>Role</InputLabel>
-          <Select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            label="Role"
-          >
+          <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} label="Role">
             <MenuItem value="all">All Roles</MenuItem>
             <MenuItem value="admin">Admin</MenuItem>
             <MenuItem value="manager">Manager</MenuItem>
@@ -347,98 +341,76 @@ const AdminUsersPage: React.FC = () => {
             <MenuItem value="pecc">PECC</MenuItem>
           </Select>
         </FormControl>
-        
         <Box sx={{ flexGrow: 1 }} />
-        
         <Typography variant="body2" color="textSecondary" sx={{ alignSelf: 'center' }}>
           {filteredUsers.length} users
         </Typography>
       </Paper>
 
-      {/* Users Table */}
       {loadingUsers ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress />
         </Box>
       ) : (
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>User</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Phone</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell>Reports to</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Last Login</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredUsers.map((user) => (
-              <TableRow key={user.id} hover>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Avatar sx={{ bgcolor: `${getRoleColor(user.role)}.main` }}>
-                      {(user.firstName || user.lastName || user.email || '?')[0].toUpperCase()}
-                    </Avatar>
-                    <Box>
-                      <Typography variant="body2">
-                        {(user.firstName || user.lastName).trim() ? `${user.firstName} ${user.lastName}`.trim() : (user.email || 'No name')}
-                      </Typography>
-                      <Typography variant="caption" color="textSecondary">
-                        Joined {user.createdAt}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>{user.phone}</TableCell>
-                <TableCell>
-                  <Chip label={user.role.toUpperCase()} size="small" color={getRoleColor(user.role)} />
-                </TableCell>
-                <TableCell>
-                  {user.role === 'mentor' && user.managerName
-                    ? user.managerName
-                    : user.role === 'pecc' && user.mentorName
-                    ? user.mentorName
-                    : '—'}
-                </TableCell>
-                <TableCell>
-                  <Chip label={user.status} size="small" color={getStatusColor(user.status)} variant="outlined" />
-                </TableCell>
-                <TableCell>
-                  {user.lastLogin || 'Never'}
-                </TableCell>
-                <TableCell>
-                  <IconButton size="small" onClick={(e) => handleMenuOpen(e, user)}>
-                    <MoreIcon />
-                  </IconButton>
-                </TableCell>
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>User</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Phone</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Reports to</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Last Login</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {filteredUsers.map((user) => (
+                <TableRow key={user.id} hover>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: `${getRoleColor(user.role)}.main`, fontSize: '0.875rem' }}>
+                        {(user.firstName || user.lastName || user.email || '?')[0].toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2">
+                          {(user.firstName || user.lastName).trim() ? `${user.firstName} ${user.lastName}`.trim() : (user.email || 'No name')}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">Joined {user.createdAt}</Typography>
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>{user.phone}</TableCell>
+                  <TableCell>
+                    <Chip label={user.role.toUpperCase()} size="small" color={getRoleColor(user.role)} />
+                  </TableCell>
+                  <TableCell>
+                    {user.role === 'mentor' && user.managerName ? user.managerName : user.role === 'pecc' && user.mentorName ? user.mentorName : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={user.status} size="small" color={getStatusColor(user.status)} variant="outlined" />
+                  </TableCell>
+                  <TableCell>{user.lastLogin || 'Never'}</TableCell>
+                  <TableCell>
+                    <IconButton size="small" onClick={(e) => handleMenuOpen(e, user)}><MoreIcon /></IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
-      {/* Actions Menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
-        <MenuItem onClick={() => openProfileDrawer(false)}>
-          View Profile
-        </MenuItem>
-        <MenuItem onClick={() => openProfileDrawer(true)}>
-          <EditIcon sx={{ mr: 1, fontSize: 18 }} /> Edit User
-        </MenuItem>
+        <MenuItem onClick={() => openProfileDrawer(false)}>View Profile</MenuItem>
+        <MenuItem onClick={() => openProfileDrawer(true)}><EditIcon sx={{ mr: 1, fontSize: 18 }} /> Edit User</MenuItem>
         <MenuItem onClick={() => openProfileDrawer(true)}>Change Role</MenuItem>
-        <MenuItem onClick={handleToggleStatus}>
-          {selectedUser?.status === 'active' ? 'Deactivate' : 'Activate'}
-        </MenuItem>
+        <MenuItem onClick={handleToggleStatus}>{selectedUser?.status === 'active' ? 'Deactivate' : 'Activate'}</MenuItem>
         {selectedUser?.status === 'pending' && (
-          <MenuItem onClick={() => setAnchorEl(null)}>
-            <SendIcon sx={{ mr: 1, fontSize: 18 }} /> Resend Invite
-          </MenuItem>
+          <MenuItem onClick={() => setAnchorEl(null)}><SendIcon sx={{ mr: 1, fontSize: 18 }} /> Resend Invite</MenuItem>
         )}
         <MenuItem onClick={async () => {
           if (!selectedUser?.email) return;
@@ -455,7 +427,6 @@ const AdminUsersPage: React.FC = () => {
         <MenuItem onClick={() => setAnchorEl(null)} sx={{ color: 'error.main' }}>Delete User</MenuItem>
       </Menu>
 
-      {/* Profile Drawer */}
       <Drawer
         anchor="right"
         open={profileDrawerOpen}
@@ -471,58 +442,21 @@ const AdminUsersPage: React.FC = () => {
               <IconButton onClick={() => { setProfileDrawerOpen(false); setProfileEditMode(false); }}><CloseIcon /></IconButton>
             </Box>
             {profileError && (
-              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setProfileError(null)}>
-                {profileError}
-              </Alert>
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setProfileError(null)}>{profileError}</Alert>
             )}
             {profileEditMode ? (
               <Grid container spacing={2} sx={{ flex: 1, overflow: 'auto' }}>
-                <Grid item xs={12}>
-                  <TextField
-                    label="First Name"
-                    value={profileForm.firstName}
-                    onChange={(e) => setProfileForm(p => ({ ...p, firstName: e.target.value }))}
-                    fullWidth
-                    size="small"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Last Name"
-                    value={profileForm.lastName}
-                    onChange={(e) => setProfileForm(p => ({ ...p, lastName: e.target.value }))}
-                    fullWidth
-                    size="small"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField label="Email" value={profileForm.email} fullWidth size="small" disabled helperText="Email cannot be changed here." />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Phone"
-                    value={profileForm.phone}
-                    onChange={(e) => setProfileForm(p => ({ ...p, phone: e.target.value }))}
-                    fullWidth
-                    size="small"
-                  />
-                </Grid>
+                <Grid item xs={12}><TextField label="First Name" value={profileForm.firstName} onChange={(e) => setProfileForm(p => ({ ...p, firstName: e.target.value }))} fullWidth size="small" /></Grid>
+                <Grid item xs={12}><TextField label="Last Name" value={profileForm.lastName} onChange={(e) => setProfileForm(p => ({ ...p, lastName: e.target.value }))} fullWidth size="small" /></Grid>
+                <Grid item xs={12}><TextField label="Email" value={profileForm.email} fullWidth size="small" disabled helperText="Email cannot be changed here." /></Grid>
+                <Grid item xs={12}><TextField label="Phone" value={profileForm.phone} onChange={(e) => setProfileForm(p => ({ ...p, phone: e.target.value }))} fullWidth size="small" /></Grid>
                 <Grid item xs={12}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Role</InputLabel>
-                    <Select
-                      value={profileForm.role}
-                      label="Role"
-                      onChange={(e) => {
-                        const role = e.target.value as User['role'];
-                        setProfileForm(p => ({
-                          ...p,
-                          role,
-                          assignedManagerId: role !== 'mentor' ? '' : p.assignedManagerId,
-                          assignedMentorId: role !== 'pecc' ? '' : p.assignedMentorId
-                        }));
-                      }}
-                    >
+                    <Select value={profileForm.role} label="Role" onChange={(e) => {
+                      const role = e.target.value as User['role'];
+                      setProfileForm(p => ({ ...p, role, assignedManagerId: role !== 'mentor' ? '' : p.assignedManagerId, assignedMentorId: role !== 'pecc' ? '' : p.assignedMentorId }));
+                    }}>
                       <MenuItem value="admin">Admin</MenuItem>
                       <MenuItem value="manager">Manager</MenuItem>
                       <MenuItem value="mentor">Mentor</MenuItem>
@@ -534,15 +468,9 @@ const AdminUsersPage: React.FC = () => {
                   <Grid item xs={12}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Reports to (Manager)</InputLabel>
-                      <Select
-                        value={profileForm.assignedManagerId}
-                        onChange={(e) => setProfileForm(p => ({ ...p, assignedManagerId: e.target.value }))}
-                        label="Reports to (Manager)"
-                      >
+                      <Select value={profileForm.assignedManagerId} onChange={(e) => setProfileForm(p => ({ ...p, assignedManagerId: e.target.value }))} label="Reports to (Manager)">
                         <MenuItem value=""><em>None</em></MenuItem>
-                        {managers.filter(m => m.id !== selectedUser.id).map((m) => (
-                          <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>
-                        ))}
+                        {managers.filter(m => m.id !== selectedUser.id).map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -551,15 +479,9 @@ const AdminUsersPage: React.FC = () => {
                   <Grid item xs={12}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Mentor</InputLabel>
-                      <Select
-                        value={profileForm.assignedMentorId}
-                        onChange={(e) => setProfileForm(p => ({ ...p, assignedMentorId: e.target.value }))}
-                        label="Mentor"
-                      >
+                      <Select value={profileForm.assignedMentorId} onChange={(e) => setProfileForm(p => ({ ...p, assignedMentorId: e.target.value }))} label="Mentor">
                         <MenuItem value=""><em>None</em></MenuItem>
-                        {mentors.filter(m => m.id !== selectedUser.id).map((m) => (
-                          <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>
-                        ))}
+                        {mentors.filter(m => m.id !== selectedUser.id).map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -567,11 +489,7 @@ const AdminUsersPage: React.FC = () => {
                 <Grid item xs={12}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Status</InputLabel>
-                    <Select
-                      value={profileForm.status}
-                      label="Status"
-                      onChange={(e) => setProfileForm(p => ({ ...p, status: e.target.value as 'active' | 'pending' | 'inactive' }))}
-                    >
+                    <Select value={profileForm.status} label="Status" onChange={(e) => setProfileForm(p => ({ ...p, status: e.target.value as 'active' | 'pending' | 'inactive' }))}>
                       <MenuItem value="active">Active</MenuItem>
                       <MenuItem value="pending">Pending</MenuItem>
                       <MenuItem value="inactive">Inactive</MenuItem>
@@ -580,12 +498,8 @@ const AdminUsersPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} sx={{ mt: 'auto', pt: 2 }}>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button variant="outlined" fullWidth onClick={() => setProfileEditMode(false)} disabled={profileSaving}>
-                      Cancel
-                    </Button>
-                    <Button variant="contained" fullWidth startIcon={<SaveIcon />} onClick={handleSaveProfile} disabled={profileSaving}>
-                      {profileSaving ? 'Saving…' : 'Save'}
-                    </Button>
+                    <Button variant="outlined" fullWidth onClick={() => setProfileEditMode(false)} disabled={profileSaving}>Cancel</Button>
+                    <Button variant="contained" fullWidth startIcon={<SaveIcon />} onClick={handleSaveProfile} disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save'}</Button>
                   </Box>
                 </Grid>
               </Grid>
@@ -607,75 +521,29 @@ const AdminUsersPage: React.FC = () => {
                   {selectedUser.managerName && <ListItem disablePadding><ListItemText primary="Manager" secondary={selectedUser.managerName} /></ListItem>}
                   {selectedUser.mentorName && <ListItem disablePadding><ListItemText primary="Mentor" secondary={selectedUser.mentorName} /></ListItem>}
                 </List>
-                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)} sx={{ mt: 2 }}>
-                  Edit user
-                </Button>
+                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)} sx={{ mt: 2 }}>Edit user</Button>
               </>
             )}
           </Box>
         )}
       </Drawer>
 
-      {/* Add User Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add New User</DialogTitle>
         <DialogContent>
-          <Alert severity="info" sx={{ mb: 2, mt: 1 }}>
-            The user will receive an invitation email to set up their account.
-          </Alert>
+          <Alert severity="info" sx={{ mb: 2, mt: 1 }}>The user will receive an invitation email to set up their account.</Alert>
           <Grid container spacing={2}>
-            <Grid item xs={6}>
-              <TextField
-                label="First Name"
-                value={formData.firstName}
-                onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
-                fullWidth
-                required
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="Last Name"
-                value={formData.lastName}
-                onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
-                fullWidth
-                required
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                fullWidth
-                required
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="Phone"
-                value={formData.phone}
-                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                fullWidth
-              />
-            </Grid>
+            <Grid item xs={6}><TextField label="First Name" value={formData.firstName} onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))} fullWidth required /></Grid>
+            <Grid item xs={6}><TextField label="Last Name" value={formData.lastName} onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))} fullWidth required /></Grid>
+            <Grid item xs={12}><TextField label="Email" type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} fullWidth required /></Grid>
+            <Grid item xs={6}><TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth /></Grid>
             <Grid item xs={6}>
               <FormControl fullWidth required>
                 <InputLabel>Role</InputLabel>
-                <Select
-                  value={formData.role}
-                  onChange={(e) => {
-                    const role = e.target.value as User['role'];
-                    setFormData((prev) => ({
-                      ...prev,
-                      role,
-                      assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId,
-                      assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId
-                    }));
-                  }}
-                  label="Role"
-                >
+                <Select value={formData.role} label="Role" onChange={(e) => {
+                  const role = e.target.value as User['role'];
+                  setFormData((prev) => ({ ...prev, role, assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId, assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId }));
+                }}>
                   <MenuItem value="admin">Admin</MenuItem>
                   <MenuItem value="manager">Manager</MenuItem>
                   <MenuItem value="mentor">Mentor</MenuItem>
@@ -687,19 +555,9 @@ const AdminUsersPage: React.FC = () => {
               <Grid item xs={12}>
                 <FormControl fullWidth>
                   <InputLabel>Assign to Manager</InputLabel>
-                  <Select
-                    value={formData.assignedManagerId}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, assignedManagerId: e.target.value }))}
-                    label="Assign to Manager"
-                  >
-                    <MenuItem value="">
-                      <em>None</em>
-                    </MenuItem>
-                    {managers.map((m) => (
-                      <MenuItem key={m.id} value={m.id}>
-                        {m.firstName} {m.lastName} ({m.email})
-                      </MenuItem>
-                    ))}
+                  <Select value={formData.assignedManagerId} onChange={(e) => setFormData((prev) => ({ ...prev, assignedManagerId: e.target.value }))} label="Assign to Manager">
+                    <MenuItem value=""><em>None</em></MenuItem>
+                    {managers.map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -708,56 +566,29 @@ const AdminUsersPage: React.FC = () => {
               <Grid item xs={12}>
                 <FormControl fullWidth>
                   <InputLabel>Assign to Mentor</InputLabel>
-                  <Select
-                    value={formData.assignedMentorId}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, assignedMentorId: e.target.value }))}
-                    label="Assign to Mentor"
-                  >
-                    <MenuItem value="">
-                      <em>None</em>
-                    </MenuItem>
-                    {mentors.map((m) => (
-                      <MenuItem key={m.id} value={m.id}>
-                        {m.firstName} {m.lastName} ({m.email})
-                      </MenuItem>
-                    ))}
+                  <Select value={formData.assignedMentorId} onChange={(e) => setFormData((prev) => ({ ...prev, assignedMentorId: e.target.value }))} label="Assign to Mentor">
+                    <MenuItem value=""><em>None</em></MenuItem>
+                    {mentors.map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
             )}
             <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.sendInvite}
-                    onChange={(e) => setFormData(prev => ({ ...prev, sendInvite: e.target.checked }))}
-                  />
-                }
-                label="Send invitation email immediately"
-              />
+              <FormControlLabel control={<Switch checked={formData.sendInvite} onChange={(e) => setFormData(prev => ({ ...prev, sendInvite: e.target.checked }))} />} label="Send invitation email immediately" />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreateUser} variant="contained" startIcon={<SendIcon />}>
-            Create & Send Invite
-          </Button>
+          <Button onClick={handleCreateUser} variant="contained" startIcon={<SendIcon />}>Create & Send Invite</Button>
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar(s => ({ ...s, open: false }))}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity={snackbar.severity || 'success'} onClose={() => setSnackbar(s => ({ ...s, open: false }))} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </Alert>
+      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity={snackbar.severity || 'success'} onClose={() => setSnackbar(s => ({ ...s, open: false }))} sx={{ width: '100%' }}>{snackbar.message}</Alert>
       </Snackbar>
     </Box>
   );
 };
 
-export default AdminUsersPage;
+export default AdminTeamTab;
