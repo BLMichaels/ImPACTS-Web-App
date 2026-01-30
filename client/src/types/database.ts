@@ -76,10 +76,11 @@ export interface User {
   phone: string | null;
   role: UserRole;
   is_active: boolean;
+  is_admin?: boolean;  // If true, user has admin access in addition to their role (multiple roles)
   created_at: string;
   updated_at: string;
   last_login: string | null;
-  
+
   // Role-specific foreign keys
   manager_id: string | null;  // For mentors - who manages them
   mentor_id: string | null;   // For PECCs - who mentors them

@@ -15,12 +15,13 @@ export interface UserProfile {
   phone: string | null;
   role: UserRole;
   is_active: boolean;
+  is_admin?: boolean;  // If true, user has admin access in addition to their primary role
   created_at: string;
   updated_at: string;
   last_login: string | null;
   manager_id: string | null;
   mentor_id: string | null;
-  
+
   // Computed/joined fields
   hospital_name?: string;
   mentor_name?: string;
@@ -251,12 +252,12 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
 
   const hasPermission = (permission: string): boolean => {
     // If viewing as a different role, check permissions for that role
-    if (viewAsRole && userProfile?.role === UserRole.ADMIN) {
+    if (viewAsRole && (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin)) {
       // Admin viewing as another role - use that role's permissions
       return DEFAULT_ROLE_PERMISSIONS[viewAsRole]?.includes(permission) || false;
     }
-    // Admins always have all permissions when not viewing as another role
-    if (userProfile?.role === UserRole.ADMIN) {
+    // Admins (role or is_admin) always have all permissions when not viewing as another role
+    if (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin) {
       return true;
     }
     return permissions.includes(permission);
@@ -267,10 +268,11 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     await fetchUserProfile();
   };
 
-  // Get the effective role (either viewAsRole or actual role)
-  const effectiveRole = (viewAsRole && userProfile?.role === UserRole.ADMIN) 
-    ? viewAsRole 
-    : (userProfile?.role || UserRole.PECC);
+  // Get the effective role (either viewAsRole or actual role). Anyone with admin access (role or is_admin) can use admin.
+  const hasAdminAccess = userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true;
+  const effectiveRole = (viewAsRole && hasAdminAccess)
+    ? viewAsRole
+    : (hasAdminAccess ? UserRole.ADMIN : (userProfile?.role || UserRole.PECC));
 
   const value = {
     userProfile,
@@ -283,7 +285,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     refreshProfile,
     viewAsRole,
     setViewAsRole,
-    isViewingAs: viewAsRole !== null && userProfile?.role === UserRole.ADMIN,
+    isViewingAs: viewAsRole !== null && (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true),
     siteId,
     visibleTabs
   };

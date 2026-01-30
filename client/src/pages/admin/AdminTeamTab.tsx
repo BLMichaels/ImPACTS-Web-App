@@ -54,6 +54,7 @@ interface User {
   email: string;
   phone: string;
   role: 'admin' | 'manager' | 'mentor' | 'pecc';
+  is_admin?: boolean;
   status: 'active' | 'pending' | 'inactive';
   lastLogin: string | null;
   createdAt: string;
@@ -81,6 +82,7 @@ const AdminTeamTab: React.FC = () => {
     email: '',
     phone: '',
     role: 'pecc' as User['role'],
+    is_admin: false,
     status: 'active' as 'active' | 'pending' | 'inactive',
     assignedManagerId: '' as string,
     assignedMentorId: '' as string
@@ -93,6 +95,7 @@ const AdminTeamTab: React.FC = () => {
     email: '',
     phone: '',
     role: 'pecc' as User['role'],
+    is_admin: false,
     sendInvite: true,
     assignedManagerId: '' as string,
     assignedMentorId: '' as string
@@ -104,7 +107,7 @@ const AdminTeamTab: React.FC = () => {
       setLoadingUsers(true);
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, first_name, last_name, phone, role, is_active, last_login, created_at, manager_id, mentor_id');
+        .select('id, email, first_name, last_name, phone, role, is_admin, is_active, last_login, created_at, manager_id, mentor_id');
       if (error) {
         setUsers([]);
       } else {
@@ -115,6 +118,7 @@ const AdminTeamTab: React.FC = () => {
           email: string;
           phone: string | null;
           role: string;
+          is_admin?: boolean;
           is_active: boolean;
           last_login: string | null;
           created_at: string;
@@ -127,6 +131,7 @@ const AdminTeamTab: React.FC = () => {
           email: r.email || '',
           phone: r.phone || '',
           role: r.role as User['role'],
+          is_admin: r.is_admin === true,
           status: r.is_active ? 'active' : 'inactive',
           lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,
           createdAt: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : '',
@@ -151,9 +156,9 @@ const AdminTeamTab: React.FC = () => {
   }, []);
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch =
-      `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchTokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const searchable = `${user.firstName} ${user.lastName} ${user.email}`.toLowerCase();
+    const matchesSearch = searchTokens.length === 0 || searchTokens.every(token => searchable.includes(token));
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
     return matchesSearch && matchesRole;
   });
@@ -185,6 +190,7 @@ const AdminTeamTab: React.FC = () => {
       email: formData.email,
       phone: formData.phone,
       role: formData.role,
+      is_admin: formData.is_admin,
       status: 'pending',
       lastLogin: null,
       createdAt: new Date().toISOString().split('T')[0],
@@ -207,6 +213,7 @@ const AdminTeamTab: React.FC = () => {
       email: '',
       phone: '',
       role: 'pecc',
+      is_admin: false,
       sendInvite: true,
       assignedManagerId: '',
       assignedMentorId: ''
@@ -230,6 +237,7 @@ const AdminTeamTab: React.FC = () => {
         email: selectedUser.email,
         phone: selectedUser.phone,
         role: selectedUser.role,
+        is_admin: selectedUser.is_admin ?? false,
         status: selectedUser.status,
         assignedManagerId: selectedUser.role === 'mentor' && selectedUser.manager_id ? selectedUser.manager_id : '',
         assignedMentorId: selectedUser.role === 'pecc' && selectedUser.mentor_id ? selectedUser.mentor_id : ''
@@ -249,6 +257,7 @@ const AdminTeamTab: React.FC = () => {
       last_name: profileForm.lastName.trim(),
       phone: profileForm.phone || null,
       role: profileForm.role,
+      is_admin: profileForm.is_admin === true,
       is_active: profileForm.status === 'active',
       manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
       mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null
@@ -271,6 +280,7 @@ const AdminTeamTab: React.FC = () => {
         lastName: profileForm.lastName.trim(),
         phone: profileForm.phone,
         role: profileForm.role,
+        is_admin: profileForm.is_admin,
         status: profileForm.status,
         manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
         mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null
@@ -291,6 +301,7 @@ const AdminTeamTab: React.FC = () => {
       lastName: profileForm.lastName.trim(),
       phone: profileForm.phone,
       role: profileForm.role,
+      is_admin: profileForm.is_admin,
       status: profileForm.status,
       manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
       mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
@@ -385,7 +396,10 @@ const AdminTeamTab: React.FC = () => {
                   <TableCell>{user.email}</TableCell>
                   <TableCell>{user.phone}</TableCell>
                   <TableCell>
-                    <Chip label={user.role.toUpperCase()} size="small" color={getRoleColor(user.role)} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                      <Chip label={user.role.toUpperCase()} size="small" color={getRoleColor(user.role)} />
+                      {user.is_admin && <Chip label="Admin" size="small" color="error" variant="outlined" />}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     {user.role === 'mentor' && user.managerName ? user.managerName : user.role === 'pecc' && user.mentorName ? user.mentorName : '—'}
@@ -464,6 +478,12 @@ const AdminTeamTab: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
+                <Grid item xs={12}>
+                  <FormControlLabel
+                    control={<Switch checked={profileForm.is_admin} onChange={(e) => setProfileForm(p => ({ ...p, is_admin: e.target.checked }))} />}
+                    label="Grant admin access (user can have multiple roles; e.g. Manager + Admin)"
+                  />
+                </Grid>
                 {profileForm.role === 'mentor' && (
                   <Grid item xs={12}>
                     <FormControl fullWidth size="small">
@@ -511,7 +531,10 @@ const AdminTeamTab: React.FC = () => {
                 <Typography variant="h6">
                   {(selectedUser.firstName || selectedUser.lastName).trim() ? `${selectedUser.firstName} ${selectedUser.lastName}`.trim() : (selectedUser.email || 'No name')}
                 </Typography>
-                <Chip label={selectedUser.role} size="small" color={getRoleColor(selectedUser.role)} sx={{ my: 1 }} />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', my: 1 }}>
+                  <Chip label={selectedUser.role} size="small" color={getRoleColor(selectedUser.role)} />
+                  {selectedUser.is_admin && <Chip label="Admin" size="small" color="error" variant="outlined" />}
+                </Box>
                 <List dense disablePadding>
                   <ListItem disablePadding><ListItemText primary="Email" secondary={selectedUser.email} /></ListItem>
                   <ListItem disablePadding><ListItemText primary="Phone" secondary={selectedUser.phone || '—'} /></ListItem>
@@ -550,6 +573,12 @@ const AdminTeamTab: React.FC = () => {
                   <MenuItem value="pecc">PECC</MenuItem>
                 </Select>
               </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={<Switch checked={formData.is_admin} onChange={(e) => setFormData((prev) => ({ ...prev, is_admin: e.target.checked }))} />}
+                label="Grant admin access (user can have multiple roles; e.g. Manager + Admin)"
+              />
             </Grid>
             {formData.role === 'mentor' && (
               <Grid item xs={12}>
