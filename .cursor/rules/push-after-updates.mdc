@@ -1,13 +1,16 @@
 ---
-description: After making code changes per user request, commit and push to GitHub so Vercel auto-deploys
+description: After making code changes, always commit, push, and deploy so the live app is updated
 alwaysApply: true
 ---
 
-# Push updates after changes
+# Deploy after edits
 
-When the user asks for code changes or updates:
+**Always deploy after we make edits.** As part of finishing any code-change task:
 
-1. **Commit** the changed files with a clear, short message (e.g. `CRM: add State column and quick-view panel`).
+1. **Commit** the changed files with a clear, short message (e.g. `User Management: editable profile, drawer focus fix`).
 2. **Push** to `origin main`: `git push origin main`.
+3. **Deploy** so the live app is updated:
+   - If the project uses Vercel and is connected to GitHub, pushing to `main` triggers an automatic deploy. Confirm the deploy started or completed.
+   - Otherwise run: `npx vercel --prod --yes` from the project root (ensure you're logged in with `npx vercel login` if needed).
 
-Do this as part of finishing the task, unless the user says not to push or to hold off. Vercel is connected to GitHub and will deploy from `main` automatically.
+Do this at the end of the task unless the user says not to push or to hold off.

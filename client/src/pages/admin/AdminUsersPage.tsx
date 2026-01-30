@@ -40,7 +40,9 @@ import {
   MoreVert as MoreIcon,
   Person as PersonIcon,
   Send as SendIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Edit as EditIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 
@@ -68,7 +70,20 @@ const AdminUsersPage: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
-  
+  const [profileEditMode, setProfileEditMode] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    role: 'pecc' as User['role'],
+    status: 'active' as 'active' | 'pending' | 'inactive',
+    assignedManagerId: '' as string,
+    assignedMentorId: '' as string
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -203,6 +218,85 @@ const AdminUsersPage: React.FC = () => {
     setSelectedUser(user);
   };
 
+  const openProfileDrawer = (editMode = false) => {
+    setAnchorEl(null);
+    if (selectedUser) {
+      setProfileForm({
+        firstName: selectedUser.firstName,
+        lastName: selectedUser.lastName,
+        email: selectedUser.email,
+        phone: selectedUser.phone,
+        role: selectedUser.role,
+        status: selectedUser.status,
+        assignedManagerId: selectedUser.role === 'mentor' && selectedUser.manager_id ? selectedUser.manager_id : '',
+        assignedMentorId: selectedUser.role === 'pecc' && selectedUser.mentor_id ? selectedUser.mentor_id : ''
+      });
+      setProfileEditMode(editMode);
+      setProfileError(null);
+      setProfileDrawerOpen(true);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!selectedUser) return;
+    setProfileSaving(true);
+    setProfileError(null);
+    const payload: Record<string, unknown> = {
+      first_name: profileForm.firstName.trim(),
+      last_name: profileForm.lastName.trim(),
+      phone: profileForm.phone || null,
+      role: profileForm.role,
+      is_active: profileForm.status === 'active',
+      manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
+      mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null
+    };
+    const { error } = await supabase
+      .from('users')
+      .update(payload)
+      .eq('id', selectedUser.id);
+    setProfileSaving(false);
+    if (error) {
+      const msg = error.code ? `${error.message} (${error.code})` : error.message;
+      setProfileError(msg);
+      return;
+    }
+    setUsers(prev => prev.map(u => {
+      if (u.id !== selectedUser.id) return u;
+      const updated: User = {
+        ...u,
+        firstName: profileForm.firstName.trim(),
+        lastName: profileForm.lastName.trim(),
+        phone: profileForm.phone,
+        role: profileForm.role,
+        status: profileForm.status,
+        manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
+        mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null
+      };
+      if (profileForm.role === 'mentor' && profileForm.assignedManagerId) {
+        const m = prev.find(x => x.id === profileForm.assignedManagerId);
+        updated.managerName = m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined;
+      } else updated.managerName = undefined;
+      if (profileForm.role === 'pecc' && profileForm.assignedMentorId) {
+        const ment = prev.find(x => x.id === profileForm.assignedMentorId);
+        updated.mentorName = ment ? `${ment.firstName} ${ment.lastName}`.trim() || ment.email : undefined;
+      } else updated.mentorName = undefined;
+      return updated;
+    }));
+    setSelectedUser(prev => prev ? {
+      ...prev,
+      firstName: profileForm.firstName.trim(),
+      lastName: profileForm.lastName.trim(),
+      phone: profileForm.phone,
+      role: profileForm.role,
+      status: profileForm.status,
+      manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
+      mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
+      managerName: profileForm.role === 'mentor' && profileForm.assignedManagerId ? (() => { const m = users.find(u => u.id === profileForm.assignedManagerId); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined,
+      mentorName: profileForm.role === 'pecc' && profileForm.assignedMentorId ? (() => { const m = users.find(u => u.id === profileForm.assignedMentorId); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined
+    } : null);
+    setProfileEditMode(false);
+  };
+
   const handleToggleStatus = () => {
     if (selectedUser) {
       setUsers(users.map(u => 
@@ -283,10 +377,12 @@ const AdminUsersPage: React.FC = () => {
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Avatar sx={{ bgcolor: `${getRoleColor(user.role)}.main` }}>
-                      {user.firstName[0]}{user.lastName[0]}
+                      {(user.firstName || user.lastName || user.email || '?')[0].toUpperCase()}
                     </Avatar>
                     <Box>
-                      <Typography variant="body2">{user.firstName} {user.lastName}</Typography>
+                      <Typography variant="body2">
+                        {(user.firstName || user.lastName).trim() ? `${user.firstName} ${user.lastName}`.trim() : (user.email || 'No name')}
+                      </Typography>
                       <Typography variant="caption" color="textSecondary">
                         Joined {user.createdAt}
                       </Typography>
@@ -325,14 +421,13 @@ const AdminUsersPage: React.FC = () => {
 
       {/* Actions Menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
-        <MenuItem onClick={() => {
-          setAnchorEl(null);
-          setTimeout(() => setProfileDrawerOpen(true), 150);
-        }}>
+        <MenuItem onClick={() => openProfileDrawer(false)}>
           View Profile
         </MenuItem>
-        <MenuItem onClick={() => setAnchorEl(null)}>Edit User</MenuItem>
-        <MenuItem onClick={() => setAnchorEl(null)}>Change Role</MenuItem>
+        <MenuItem onClick={() => openProfileDrawer(true)}>
+          <EditIcon sx={{ mr: 1, fontSize: 18 }} /> Edit User
+        </MenuItem>
+        <MenuItem onClick={() => openProfileDrawer(true)}>Change Role</MenuItem>
         <MenuItem onClick={handleToggleStatus}>
           {selectedUser?.status === 'active' ? 'Deactivate' : 'Activate'}
         </MenuItem>
@@ -346,27 +441,162 @@ const AdminUsersPage: React.FC = () => {
       </Menu>
 
       {/* Profile Drawer */}
-      <Drawer anchor="right" open={profileDrawerOpen} onClose={() => setProfileDrawerOpen(false)} PaperProps={{ sx: { width: { xs: '100%', sm: 400 } } }}>
+      <Drawer
+        anchor="right"
+        open={profileDrawerOpen}
+        onClose={() => { setProfileDrawerOpen(false); setProfileEditMode(false); }}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 420 } } }}
+        container={typeof document !== 'undefined' ? document.body : undefined}
+        ModalProps={{ disableEnforceFocus: true, disableAutoFocus: true }}
+      >
         {selectedUser && (
-          <Box sx={{ p: 2 }}>
+          <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">User Profile</Typography>
-              <IconButton onClick={() => setProfileDrawerOpen(false)}><CloseIcon /></IconButton>
+              <Typography variant="h6">{profileEditMode ? 'Edit User' : 'User Profile'}</Typography>
+              <IconButton onClick={() => { setProfileDrawerOpen(false); setProfileEditMode(false); }}><CloseIcon /></IconButton>
             </Box>
-            <Avatar sx={{ width: 64, height: 64, bgcolor: 'primary.main', fontSize: '1.5rem', mb: 2 }}>
-              {(selectedUser.firstName || selectedUser.lastName || '?')[0].toUpperCase()}
-            </Avatar>
-            <Typography variant="h6">{selectedUser.firstName} {selectedUser.lastName}</Typography>
-            <Chip label={selectedUser.role} size="small" color={getRoleColor(selectedUser.role)} sx={{ my: 1 }} />
-            <List dense disablePadding>
-              <ListItem disablePadding><ListItemText primary="Email" secondary={selectedUser.email} /></ListItem>
-              <ListItem disablePadding><ListItemText primary="Phone" secondary={selectedUser.phone || '—'} /></ListItem>
-              <ListItem disablePadding><ListItemText primary="Status" secondary={<Chip label={selectedUser.status} size="small" color={getStatusColor(selectedUser.status)} variant="outlined" />} /></ListItem>
-              <ListItem disablePadding><ListItemText primary="Last login" secondary={selectedUser.lastLogin || 'Never'} /></ListItem>
-              <ListItem disablePadding><ListItemText primary="Joined" secondary={selectedUser.createdAt} /></ListItem>
-              {selectedUser.managerName && <ListItem disablePadding><ListItemText primary="Manager" secondary={selectedUser.managerName} /></ListItem>}
-              {selectedUser.mentorName && <ListItem disablePadding><ListItemText primary="Mentor" secondary={selectedUser.mentorName} /></ListItem>}
-            </List>
+            {profileError && (
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setProfileError(null)}>
+                {profileError}
+              </Alert>
+            )}
+            {profileEditMode ? (
+              <Grid container spacing={2} sx={{ flex: 1, overflow: 'auto' }}>
+                <Grid item xs={12}>
+                  <TextField
+                    label="First Name"
+                    value={profileForm.firstName}
+                    onChange={(e) => setProfileForm(p => ({ ...p, firstName: e.target.value }))}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label="Last Name"
+                    value={profileForm.lastName}
+                    onChange={(e) => setProfileForm(p => ({ ...p, lastName: e.target.value }))}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField label="Email" value={profileForm.email} fullWidth size="small" disabled helperText="Email cannot be changed here." />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label="Phone"
+                    value={profileForm.phone}
+                    onChange={(e) => setProfileForm(p => ({ ...p, phone: e.target.value }))}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Role</InputLabel>
+                    <Select
+                      value={profileForm.role}
+                      label="Role"
+                      onChange={(e) => {
+                        const role = e.target.value as User['role'];
+                        setProfileForm(p => ({
+                          ...p,
+                          role,
+                          assignedManagerId: role !== 'mentor' ? '' : p.assignedManagerId,
+                          assignedMentorId: role !== 'pecc' ? '' : p.assignedMentorId
+                        }));
+                      }}
+                    >
+                      <MenuItem value="admin">Admin</MenuItem>
+                      <MenuItem value="manager">Manager</MenuItem>
+                      <MenuItem value="mentor">Mentor</MenuItem>
+                      <MenuItem value="pecc">PECC</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                {profileForm.role === 'mentor' && (
+                  <Grid item xs={12}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Reports to (Manager)</InputLabel>
+                      <Select
+                        value={profileForm.assignedManagerId}
+                        onChange={(e) => setProfileForm(p => ({ ...p, assignedManagerId: e.target.value }))}
+                        label="Reports to (Manager)"
+                      >
+                        <MenuItem value=""><em>None</em></MenuItem>
+                        {managers.filter(m => m.id !== selectedUser.id).map((m) => (
+                          <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                )}
+                {profileForm.role === 'pecc' && (
+                  <Grid item xs={12}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Mentor</InputLabel>
+                      <Select
+                        value={profileForm.assignedMentorId}
+                        onChange={(e) => setProfileForm(p => ({ ...p, assignedMentorId: e.target.value }))}
+                        label="Mentor"
+                      >
+                        <MenuItem value=""><em>None</em></MenuItem>
+                        {mentors.filter(m => m.id !== selectedUser.id).map((m) => (
+                          <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                )}
+                <Grid item xs={12}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={profileForm.status}
+                      label="Status"
+                      onChange={(e) => setProfileForm(p => ({ ...p, status: e.target.value as 'active' | 'pending' | 'inactive' }))}
+                    >
+                      <MenuItem value="active">Active</MenuItem>
+                      <MenuItem value="pending">Pending</MenuItem>
+                      <MenuItem value="inactive">Inactive</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sx={{ mt: 'auto', pt: 2 }}>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button variant="outlined" fullWidth onClick={() => setProfileEditMode(false)} disabled={profileSaving}>
+                      Cancel
+                    </Button>
+                    <Button variant="contained" fullWidth startIcon={<SaveIcon />} onClick={handleSaveProfile} disabled={profileSaving}>
+                      {profileSaving ? 'Saving…' : 'Save'}
+                    </Button>
+                  </Box>
+                </Grid>
+              </Grid>
+            ) : (
+              <>
+                <Avatar sx={{ width: 64, height: 64, bgcolor: 'primary.main', fontSize: '1.5rem', mb: 2 }}>
+                  {(selectedUser.firstName || selectedUser.lastName || selectedUser.email || '?')[0].toUpperCase()}
+                </Avatar>
+                <Typography variant="h6">
+                  {(selectedUser.firstName || selectedUser.lastName).trim() ? `${selectedUser.firstName} ${selectedUser.lastName}`.trim() : (selectedUser.email || 'No name')}
+                </Typography>
+                <Chip label={selectedUser.role} size="small" color={getRoleColor(selectedUser.role)} sx={{ my: 1 }} />
+                <List dense disablePadding>
+                  <ListItem disablePadding><ListItemText primary="Email" secondary={selectedUser.email} /></ListItem>
+                  <ListItem disablePadding><ListItemText primary="Phone" secondary={selectedUser.phone || '—'} /></ListItem>
+                  <ListItem disablePadding><ListItemText primary="Status" secondary={<Chip label={selectedUser.status} size="small" color={getStatusColor(selectedUser.status)} variant="outlined" />} /></ListItem>
+                  <ListItem disablePadding><ListItemText primary="Last login" secondary={selectedUser.lastLogin || 'Never'} /></ListItem>
+                  <ListItem disablePadding><ListItemText primary="Joined" secondary={selectedUser.createdAt} /></ListItem>
+                  {selectedUser.managerName && <ListItem disablePadding><ListItemText primary="Manager" secondary={selectedUser.managerName} /></ListItem>}
+                  {selectedUser.mentorName && <ListItem disablePadding><ListItemText primary="Mentor" secondary={selectedUser.mentorName} /></ListItem>}
+                </List>
+                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)} sx={{ mt: 2 }}>
+                  Edit user
+                </Button>
+              </>
+            )}
           </Box>
         )}
       </Drawer>

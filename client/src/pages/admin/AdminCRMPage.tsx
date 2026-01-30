@@ -452,6 +452,32 @@ const AdminCRMPage: React.FC = () => {
           hasMore = batch.length >= chunk;
           offset += chunk;
         }
+        // Append app users (manager, mentor, pecc) so they show in CRM tabs
+        if (mounted) {
+          const { data: usersData } = await supabase
+            .from('users')
+            .select('id, email, first_name, last_name, phone, role, is_active, created_at')
+            .in('role', ['manager', 'mentor', 'pecc']);
+          const userRows = (usersData ?? []) as { id: string; email: string; first_name?: string; last_name?: string; phone?: string; role: string; is_active: boolean; created_at: string }[];
+          for (const u of userRows) {
+            const roleType = u.role as 'manager' | 'mentor' | 'pecc';
+            const displayName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email;
+            list.push({
+              id: u.id,
+              type: roleType,
+              name: displayName,
+              firstName: u.first_name ?? '',
+              lastName: u.last_name ?? '',
+              organization: '',
+              email: u.email ?? '',
+              phone: u.phone ?? '',
+              status: u.is_active ? 'Active' : 'Inactive',
+              region: '',
+              createdAt: u.created_at ? u.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+              notes: ''
+            });
+          }
+        }
       } catch (_) {
         if (mounted) list.length = 0;
       }
