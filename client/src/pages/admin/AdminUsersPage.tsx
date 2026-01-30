@@ -32,7 +32,8 @@ import {
   Drawer,
   List,
   ListItem,
-  ListItemText
+  ListItemText,
+  Snackbar
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -45,6 +46,7 @@ import {
   Save as SaveIcon
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
+import { useAuth } from '../../context/AuthContext';
 
 interface User {
   id: string;
@@ -63,7 +65,9 @@ interface User {
 }
 
 const AdminUsersPage: React.FC = () => {
+  const { resetPasswordForEmail } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' }>({ open: false, message: '' });
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -436,7 +440,18 @@ const AdminUsersPage: React.FC = () => {
             <SendIcon sx={{ mr: 1, fontSize: 18 }} /> Resend Invite
           </MenuItem>
         )}
-        <MenuItem onClick={() => setAnchorEl(null)}>Reset Password</MenuItem>
+        <MenuItem onClick={async () => {
+          if (!selectedUser?.email) return;
+          setAnchorEl(null);
+          try {
+            await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined);
+            setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
+          } catch (err) {
+            setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
+          }
+        }}>
+          Reset Password
+        </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)} sx={{ color: 'error.main' }}>Delete User</MenuItem>
       </Menu>
 
@@ -730,6 +745,17 @@ const AdminUsersPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar(s => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={snackbar.severity || 'success'} onClose={() => setSnackbar(s => ({ ...s, open: false }))} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
