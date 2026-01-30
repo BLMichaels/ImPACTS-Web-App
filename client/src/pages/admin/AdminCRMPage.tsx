@@ -1691,6 +1691,9 @@ const AdminCRMPage: React.FC = () => {
               <IconButton onClick={() => { setFullScreenOpen(false); setFullScreenEditMode(false); setEditingContact(null); }}><CloseIcon /></IconButton>
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+            <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+              <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
+            </Alert>
             {fullScreenEditMode ? (
               /* Inline edit form in full-screen – same fields as Add/Edit dialog */
               <Grid container spacing={2}>
@@ -1988,6 +1991,9 @@ const AdminCRMPage: React.FC = () => {
       <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditingContact(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>{editingContact ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
+          </Alert>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}>
               <FormControl fullWidth size="small">

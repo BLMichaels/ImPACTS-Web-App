@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { supabase } from '../../supabase';
 import {
   Box,
   Typography,
@@ -37,7 +38,8 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
+  Alert
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -172,9 +174,63 @@ const ManagerCRMPage: React.FC = () => {
   const [bulkStatusAnchor, setBulkStatusAnchor] = useState<null | HTMLElement>(null);
 
   useEffect(() => {
+    let mounted = true;
     setLoading(true);
-    setContacts([]);
-    setLoading(false);
+    (async () => {
+      const list: Contact[] = [];
+      try {
+        const { data: hospitalsData, error: hospitalsError } = await supabase.from('hospitals').select('id, facility_id, name, company_name, phone, region, created_at');
+        if (mounted && !hospitalsError && hospitalsData?.length) {
+          for (const row of hospitalsData as { id: string; facility_id?: string; name: string; company_name?: string; phone?: string; region?: string; created_at?: string }[]) {
+            const id = String(row.facility_id ?? row.id ?? '');
+            list.push({
+              id,
+              type: 'hospital',
+              name: String(row.name ?? 'Unknown'),
+              organization: String(row.company_name ?? ''),
+              email: '',
+              phone: String(row.phone ?? ''),
+              status: 'Active',
+              lastContact: '',
+              assignedTo: 'Unassigned',
+              notes: ''
+            });
+          }
+        }
+        if (mounted) {
+          const { data: usersData, error: usersError } = await supabase.from('users').select('id, email, first_name, last_name, phone, role, is_active, created_at');
+          if (!usersError && usersData?.length) {
+            const userRows = usersData as { id: string; email: string; first_name?: string; last_name?: string; phone?: string; role: string; is_active: boolean; created_at?: string }[];
+            const crmRoles = ['mentor', 'pecc'];
+            for (const u of userRows) {
+              const role = (u.role && typeof u.role === 'string' ? u.role.toLowerCase() : '') as string;
+              if (!crmRoles.includes(role)) continue;
+              const roleType = role as 'mentor' | 'pecc';
+              const displayName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || '—';
+              list.push({
+                id: u.id,
+                type: roleType,
+                name: displayName,
+                organization: '',
+                email: u.email ?? '',
+                phone: u.phone ?? '',
+                status: u.is_active ? 'Active' : 'Inactive',
+                lastContact: '',
+                assignedTo: 'Unassigned',
+                notes: ''
+              });
+            }
+          }
+        }
+      } catch (_) {
+        if (mounted) list.length = 0;
+      }
+      if (mounted) {
+        setContacts(list);
+        setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
@@ -620,6 +676,9 @@ const ManagerCRMPage: React.FC = () => {
       <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditingContact(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>{editingContact ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
+          </Alert>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}>
               <FormControl fullWidth size="small">

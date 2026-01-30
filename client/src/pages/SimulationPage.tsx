@@ -1044,6 +1044,9 @@ const SimulationPage: React.FC = () => {
             Practice pediatric emergency scenarios and systematically identify gaps in your team's readiness. 
             Use the structured debriefing process to track improvements and link to your activities.
           </Typography>
+          <Alert severity="info" sx={{ mt: 2 }} icon={false}>
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in sessions, debrief notes, or gap descriptions.
+          </Alert>
         </Box>
 
         <ScormPackagesSection title="SCORM simulation modules" />

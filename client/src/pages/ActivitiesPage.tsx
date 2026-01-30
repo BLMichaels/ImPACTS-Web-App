@@ -656,6 +656,9 @@ const ActivitiesPage = () => {
   return (
     <Container maxWidth="xl">
       <Box sx={{ mb: 4, mt: 3 }}>
+        <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in activities or notes.
+        </Alert>
         {/* Mobile Header */}
         {isMobile ? (
           <Box sx={{ mb: 3 }}>

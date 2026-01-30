@@ -583,6 +583,9 @@ const MentorHospitalContactsPage: React.FC = () => {
 
   return (
     <Box sx={{ py: 3 }}>
+      <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+        <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital or contact notes.
+      </Alert>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Hospital Contacts</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddHospital}>
@@ -898,6 +901,9 @@ const MentorHospitalContactsPage: React.FC = () => {
       <Dialog open={hospitalDialogOpen} onClose={() => setHospitalDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingHospital ? 'Edit Hospital' : 'Add Hospital'}</DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital details or notes.
+          </Alert>
           {editingHospital ? (
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
@@ -1089,6 +1095,9 @@ const MentorHospitalContactsPage: React.FC = () => {
       <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingContact ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
+          </Alert>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={6}>
               <TextField

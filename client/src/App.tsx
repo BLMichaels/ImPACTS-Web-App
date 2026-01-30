@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, CssBaseline, Container, CircularProgress } from '@mui/material';
+import { ThemeProvider, CssBaseline, Container, Box, CircularProgress } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
 
 // Context
@@ -10,6 +10,7 @@ import { UserRole } from './types/database';
 
 // Essential Components Only
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -171,7 +172,8 @@ function App() {
             <Suspense fallback={<LoadingSpinner />}>
               <Navbar />
               <ScrollToTop />
-              <Container>
+              <Container sx={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 64px)' }}>
+                <Box component="main" sx={{ flex: 1 }}>
                 <Routes>
                   {/* Public Routes */}
                   <Route path="/" element={<RoleBasedRedirect />} />
@@ -215,6 +217,8 @@ function App() {
                   <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
+                </Box>
+                <Footer />
               </Container>
             </Suspense>
           </Router>

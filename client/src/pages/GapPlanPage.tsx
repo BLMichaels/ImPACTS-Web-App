@@ -625,6 +625,10 @@ const GapPlanPage: React.FC = () => {
             View and manage all your gap analysis reduction plans in one place.
           </Typography>
 
+        <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in plans, notes, or attachments.
+        </Alert>
+
         {/* Gap Plan Reminder Banner */}
         <GapPlanReminderBanner />
 

@@ -475,6 +475,9 @@ const MentorActivitiesPage: React.FC = () => {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ py: 3 }}>
+        <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in activities, descriptions, or notes.
+        </Alert>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4">My Activities</Typography>
           <Box>
