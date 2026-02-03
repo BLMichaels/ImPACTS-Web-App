@@ -28,8 +28,18 @@ import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/ico
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+
+/** Safely format a date; returns null if the date is invalid */
+const safeFormatDate = (d: Date | null | undefined, fmt: string): string | null => {
+  if (!d || !isValid(d)) return null;
+  try {
+    return format(d, fmt);
+  } catch {
+    return null;
+  }
+};
 
 // SimBox status options
 const SIMBOX_STATUSES = [
@@ -806,7 +816,7 @@ const AdminProjectPipelinePage: React.FC = () => {
               <DatePicker
                 label="Due Date"
                 value={form.dueDate ? parseISO(form.dueDate) : null}
-                onChange={(d) => setForm(f => ({ ...f, dueDate: d ? format(d, 'yyyy-MM-dd') : null }))}
+                onChange={(d) => setForm(f => ({ ...f, dueDate: safeFormatDate(d, 'yyyy-MM-dd') }))}
                 slotProps={{ textField: { size: 'small', sx: { minWidth: 160 } } }}
               />
               <FormControl size="small" sx={{ minWidth: 280 }}>
@@ -959,7 +969,7 @@ const AdminProjectPipelinePage: React.FC = () => {
               <DatePicker
                 label="Due Date"
                 value={scholarshipForm.dueDate ? parseISO(scholarshipForm.dueDate) : null}
-                onChange={(d) => setScholarshipForm(f => ({ ...f, dueDate: d ? format(d, 'yyyy-MM-dd') : null }))}
+                onChange={(d) => setScholarshipForm(f => ({ ...f, dueDate: safeFormatDate(d, 'yyyy-MM-dd') }))}
                 slotProps={{ textField: { size: 'small', sx: { minWidth: 160 } } }}
               />
               <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -1238,7 +1248,7 @@ const AdminProjectPipelinePage: React.FC = () => {
               <DatePicker
                 label="Due Date"
                 value={abstractsForm.dueDate ? parseISO(abstractsForm.dueDate) : null}
-                onChange={(d) => setAbstractsForm(f => ({ ...f, dueDate: d ? format(d, 'yyyy-MM-dd') : null }))}
+                onChange={(d) => setAbstractsForm(f => ({ ...f, dueDate: safeFormatDate(d, 'yyyy-MM-dd') }))}
                 slotProps={{ textField: { size: 'small', sx: { minWidth: 160 } } }}
               />
               <FormControl size="small" sx={{ minWidth: 180 }}>
