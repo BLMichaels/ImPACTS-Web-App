@@ -101,19 +101,21 @@ ImPACTS-Web-App/
 
 ### Vercel (Recommended)
 
-1. Connect your GitHub repository to Vercel
-2. Set environment variables in Vercel dashboard:
+We deploy only to the Vercel project **impacts** (not impacts-web-app). The repo is linked via `.vercel/project.json`.
+
+1. Connect your GitHub repository to the Vercel project **impacts**
+2. Set environment variables in the Vercel dashboard for that project:
    - `REACT_APP_SUPABASE_URL`
    - `REACT_APP_SUPABASE_ANON_KEY`
-3. Deploy automatically on push to main
+3. Deploy from project root: `npx vercel --prod --yes` (or rely on auto-deploy on push to main)
 
 ### Manual Deploy
 
 ```bash
 npm i -g vercel
-cd client
-vercel
+npx vercel --prod --yes
 ```
+(Run from project root; deploys to the linked project **impacts**.)
 
 ## Git Workflow
 

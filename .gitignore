@@ -29,3 +29,5 @@ coverage/
 *.tmp
 *.temp
 *.backup
+.vercel
+.env*.local

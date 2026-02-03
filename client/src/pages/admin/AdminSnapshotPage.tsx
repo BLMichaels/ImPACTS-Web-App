@@ -19,9 +19,9 @@ import {
   Select,
   MenuItem,
   Chip,
+  TextField,
   SelectChangeEvent,
 } from '@mui/material';
-import TimelineIcon from '@mui/icons-material/Timeline';
 import PeopleIcon from '@mui/icons-material/People';
 import PageviewIcon from '@mui/icons-material/Pageview';
 import ScheduleIcon from '@mui/icons-material/Schedule';
@@ -32,6 +32,8 @@ const PERIODS = [
   { value: '7', label: 'Last 7 days' },
   { value: '30', label: 'Last 30 days' },
   { value: '90', label: 'Last 90 days' },
+  { value: 'all', label: 'All time' },
+  { value: 'custom', label: 'Custom range' },
 ];
 
 interface UsageEvent {
@@ -45,7 +47,9 @@ interface UsageEvent {
 }
 
 export default function AdminSnapshotPage() {
-  const [periodDays, setPeriodDays] = useState('30');
+  const [periodValue, setPeriodValue] = useState<string>('30');
+  const [customFrom, setCustomFrom] = useState<string>('');
+  const [customTo, setCustomTo] = useState<string>('');
   const [events, setEvents] = useState<UsageEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,18 +58,33 @@ export default function AdminSnapshotPage() {
     let mounted = true;
     setLoading(true);
     setError(null);
-    const days = parseInt(periodDays, 10);
-    const since = new Date();
-    since.setDate(since.getDate() - days);
-    const sinceIso = since.toISOString();
 
-    supabase
-      .from('usage_events')
-      .select('id, user_id, role, event_type, path, metadata, created_at')
-      .gte('created_at', sinceIso)
-      .order('created_at', { ascending: false })
-      .limit(50000)
-      .then(({ data, error: err }) => {
+    const runQuery = () => {
+      let query = supabase
+        .from('usage_events')
+        .select('id, user_id, role, event_type, path, metadata, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50000);
+
+      if (periodValue === 'all') {
+        // No date filter
+      } else if (periodValue === 'custom' && customFrom && customTo) {
+        const fromIso = new Date(customFrom + 'T00:00:00.000Z').toISOString();
+        const toEnd = new Date(customTo + 'T23:59:59.999Z').toISOString();
+        query = query.gte('created_at', fromIso).lte('created_at', toEnd);
+      } else if (['7', '30', '90'].includes(periodValue)) {
+        const days = parseInt(periodValue, 10);
+        const since = new Date();
+        since.setDate(since.getDate() - days);
+        query = query.gte('created_at', since.toISOString());
+      } else {
+        // custom but missing dates – don't fetch
+        setLoading(false);
+        setEvents([]);
+        return;
+      }
+
+      query.then(({ data, error: err }) => {
         if (!mounted) return;
         if (err) {
           setError(err.message);
@@ -75,8 +94,11 @@ export default function AdminSnapshotPage() {
         }
         setLoading(false);
       });
+    };
+
+    runQuery();
     return () => { mounted = false; };
-  }, [periodDays]);
+  }, [periodValue, customFrom, customTo]);
 
   const metrics = useMemo(() => {
     const logins = events.filter((e) => e.event_type === 'login');
@@ -173,18 +195,42 @@ export default function AdminSnapshotPage() {
         <Typography variant="h6" gutterBottom>
           Usage analytics
         </Typography>
-        <FormControl size="small" sx={{ minWidth: 180, mb: 2 }}>
-          <InputLabel>Period</InputLabel>
-          <Select
-            value={periodDays}
-            label="Period"
-            onChange={(e: SelectChangeEvent) => setPeriodDays(e.target.value)}
-          >
-            {PERIODS.map((p) => (
-              <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel>Period</InputLabel>
+            <Select
+              value={periodValue}
+              label="Period"
+              onChange={(e: SelectChangeEvent) => setPeriodValue(e.target.value)}
+            >
+              {PERIODS.map((p) => (
+                <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          {periodValue === 'custom' && (
+            <>
+              <TextField
+                size="small"
+                label="From"
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ width: 160 }}
+              />
+              <TextField
+                size="small"
+                label="To"
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ width: 160 }}
+              />
+            </>
+          )}
+        </Box>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>

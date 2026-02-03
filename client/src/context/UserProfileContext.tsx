@@ -90,19 +90,31 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         .single();
 
       if (error) {
+        console.error(
+          '[UserProfile] Profile fetch failed. You may see PECC instead of your real role. Error:',
+          error.code,
+          error.message,
+          '— Ensure public.users has a row where id = your Auth User UID (Supabase → Authentication → Users).'
+        );
         // If no profile exists yet (new user), check localStorage for legacy data
         const savedProfile = localStorage.getItem(`userProfile_${currentUser.uid || currentUser.id}`);
         if (savedProfile) {
           try {
             const parsed = JSON.parse(savedProfile);
             // Convert legacy profile to new format
+            const legacyRole =
+              parsed.role === 'admin' || parsed.tier === 'admin'
+                ? UserRole.ADMIN
+                : parsed.tier === 'PRISM'
+                  ? UserRole.MENTOR
+                  : UserRole.PECC;
             const legacyProfile: UserProfile = {
               id: currentUser.id,
               email: currentUser.email || '',
               first_name: parsed.firstName || 'User',
               last_name: parsed.lastName || '',
               phone: parsed.phone || null,
-              role: parsed.tier === 'PRISM' ? UserRole.MENTOR : UserRole.PECC,
+              role: legacyRole,
               is_active: true,
               created_at: parsed.createdAt || new Date().toISOString(),
               updated_at: new Date().toISOString(),
@@ -222,12 +234,17 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     if (!userProfile || !currentUser) return;
 
     try {
+      // When updating own profile, never persist role/tier so the user cannot demote themselves from Account page
+      const isSelfUpdate = !updates.id || updates.id === currentUser.id;
+      const safeUpdates: Record<string, unknown> = { ...updates, updated_at: new Date().toISOString() };
+      if (isSelfUpdate) {
+        delete safeUpdates.role;
+        delete safeUpdates.tier;
+      }
+
       const { error } = await supabase
         .from('users')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
+        .update(safeUpdates)
         .eq('id', currentUser.id);
 
       if (error) {
@@ -243,7 +260,13 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           email: updatedProfile.email
         }));
       } else {
-        setUserProfile({ ...userProfile, ...updates });
+        // For self-update, preserve role and is_admin so we never overwrite admin with PECC in local state
+        const merged = { ...userProfile, ...updates };
+        if (isSelfUpdate) {
+          merged.role = userProfile.role;
+          merged.is_admin = userProfile.is_admin;
+        }
+        setUserProfile(merged);
       }
     } catch (err) {
       console.error('Error updating profile:', err);

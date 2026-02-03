@@ -77,6 +77,8 @@ interface Contact {
   lastContact: string;
   assignedTo: string;
   notes?: string;
+  /** Hospital UUID for type 'hospital' (for usage by site) */
+  hospitalId?: string;
 }
 
 type SortField = 'name' | 'organization' | 'status' | 'lastContact' | 'assignedTo' | 'type';
@@ -174,6 +176,9 @@ const ManagerCRMPage: React.FC = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ single?: string; bulk?: Set<string> } | null>(null);
   const [bulkStatusAnchor, setBulkStatusAnchor] = useState<null | HTMLElement>(null);
+  const [contactUsage, setContactUsage] = useState<{ logins: number; pageViews: number } | null>(null);
+  const [contactUsageLoading, setContactUsageLoading] = useState(false);
+  const [contactUsagePeriod, setContactUsagePeriod] = useState<'7' | '30' | '90' | 'all'>('30');
 
   useEffect(() => {
     let mounted = true;
@@ -195,7 +200,8 @@ const ManagerCRMPage: React.FC = () => {
               status: 'Active',
               lastContact: '',
               assignedTo: 'Unassigned',
-              notes: ''
+              notes: '',
+              hospitalId: row.id
             });
           }
         }
@@ -234,6 +240,44 @@ const ManagerCRMPage: React.FC = () => {
     })();
     return () => { mounted = false; };
   }, []);
+
+  // Load usage for the selected contact – by user_id for person (mentor/pecc), by hospital_id for hospital; period = 7/30/90 days or all
+  useEffect(() => {
+    const c = detailContact;
+    if (!c) {
+      setContactUsage(null);
+      return;
+    }
+    const isPerson = c.type === 'mentor' || c.type === 'pecc';
+    const hospitalId = c.type === 'hospital' ? c.hospitalId : null;
+    if (!isPerson && !hospitalId) {
+      setContactUsage(null);
+      return;
+    }
+    let cancelled = false;
+    setContactUsageLoading(true);
+    let q = supabase.from('usage_events').select('id, event_type');
+    if (contactUsagePeriod !== 'all') {
+      const days = parseInt(contactUsagePeriod, 10);
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      q = q.gte('created_at', since.toISOString());
+    }
+    const query = isPerson ? q.eq('user_id', c.id) : q.eq('hospital_id', hospitalId);
+    query.then(({ data, error }) => {
+      if (cancelled) return;
+      setContactUsageLoading(false);
+      if (error || !data) {
+        setContactUsage(null);
+        return;
+      }
+      const events = data as { event_type: string }[];
+      const logins = events.filter((e) => e.event_type === 'login').length;
+      const pageViews = events.filter((e) => e.event_type === 'page_view').length;
+      setContactUsage({ logins, pageViews });
+    });
+    return () => { cancelled = true; };
+  }, [detailContact?.id, detailContact?.type, detailContact?.hospitalId, contactUsagePeriod]);
 
   useEffect(() => {
     try {
@@ -661,6 +705,29 @@ const ManagerCRMPage: React.FC = () => {
               <ListItem><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
               <ListItem><ListItemText primary="Assigned to" secondary={detailContact.assignedTo || '—'} /></ListItem>
               <ListItem><ListItemText primary="Last contact" secondary={detailContact.lastContact || '—'} /></ListItem>
+              {(detailContact.type === 'mentor' || detailContact.type === 'pecc' || (detailContact.type === 'hospital' && detailContact.hospitalId)) && (
+                <ListItem sx={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <ListItemText primary="Usage" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
+                    <FormControl size="small" variant="outlined" sx={{ minWidth: 120 }}>
+                      <Select
+                        value={contactUsagePeriod}
+                        onChange={(e) => setContactUsagePeriod(e.target.value as '7' | '30' | '90' | 'all')}
+                        sx={{ height: 28, fontSize: '0.875rem' }}
+                      >
+                        <MenuItem value="7">Last 7 days</MenuItem>
+                        <MenuItem value="30">Last 30 days</MenuItem>
+                        <MenuItem value="90">Last 90 days</MenuItem>
+                        <MenuItem value="all">All time</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+                  <ListItemText
+                    secondary={contactUsageLoading ? 'Loading…' : contactUsage != null ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s)` : '—'}
+                    secondaryTypographyProps={{ variant: 'body2' }}
+                  />
+                </ListItem>
+              )}
             </List>
             {detailContact.notes && (
               <>

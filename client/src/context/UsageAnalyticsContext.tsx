@@ -27,23 +27,50 @@ export const useUsageAnalytics = (): UsageAnalyticsContextType => {
 
 function useUsageTracker() {
   const { currentUser } = useAuth();
-  const { actualRole } = useUserProfile();
+  const { actualRole, userProfile, siteId } = useUserProfile();
   const location = useLocation();
   const pathEnteredAt = useRef<number>(Date.now());
   const previousPath = useRef<string>('');
   const shouldTrackLoginRef = useRef(false);
+  const hospitalIdRef = useRef<string | null>(null);
+
+  // Resolve site/facility id to hospital UUID so we can attribute usage to hospital on CRM
+  useEffect(() => {
+    const siteOrFacilityId = siteId ?? userProfile?.hospital_facility_id ?? null;
+    if (!siteOrFacilityId) {
+      hospitalIdRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('hospitals')
+        .select('id')
+        .or(`facility_id.eq.${siteOrFacilityId},id.eq.${siteOrFacilityId}`)
+        .limit(1)
+        .maybeSingle();
+      if (!cancelled && data && typeof (data as { id?: string }).id === 'string') {
+        hospitalIdRef.current = (data as { id: string }).id;
+      } else {
+        hospitalIdRef.current = null;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [siteId, userProfile?.hospital_facility_id]);
 
   const track = useCallback(
     async (eventType: UsageEventType, path: string, metadata: Record<string, unknown> = {}) => {
       if (!currentUser?.id || !actualRole) return;
       try {
-        await supabase.from('usage_events').insert({
+        const payload: Record<string, unknown> = {
           user_id: currentUser.id,
           role: actualRole,
           event_type: eventType,
           path: path || '/',
           metadata,
-        });
+        };
+        if (hospitalIdRef.current) payload.hospital_id = hospitalIdRef.current;
+        await supabase.from('usage_events').insert(payload);
       } catch {
         // Fire-and-forget; don't block UI or surface errors
       }

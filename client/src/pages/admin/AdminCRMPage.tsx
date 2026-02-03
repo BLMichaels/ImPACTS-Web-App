@@ -127,6 +127,8 @@ interface Contact {
   linkedOrganizationIds?: string[];
   linkedHospitalIds?: string[];
   customFields?: Record<string, string>;
+  /** Hospital UUID for type 'hospital' (for usage by site) */
+  hospitalId?: string;
 }
 
 function contactDisplayName(c: Contact): string {
@@ -421,6 +423,9 @@ const AdminCRMPage: React.FC = () => {
   const [addActivityDate, setAddActivityDate] = useState('');
   const [addReminderDate, setAddReminderDate] = useState('');
   const [addReminderTitle, setAddReminderTitle] = useState('');
+  const [contactUsage, setContactUsage] = useState<{ logins: number; pageViews: number } | null>(null);
+  const [contactUsageLoading, setContactUsageLoading] = useState(false);
+  const [contactUsagePeriod, setContactUsagePeriod] = useState<'7' | '30' | '90' | 'all'>('30');
 
   useEffect(() => {
     let mounted = true;
@@ -479,7 +484,8 @@ const AdminCRMPage: React.FC = () => {
               ownership: row.ownership != null ? String(row.ownership) : undefined,
               hospitalSystem: row.hospital_system != null ? String(row.hospital_system) : undefined,
               programs: Array.isArray(row.programs) ? (row.programs as unknown[]).map((x) => String(x)).filter(Boolean) : undefined,
-              customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined
+              customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined,
+              hospitalId: row.id != null ? String(row.id) : undefined
             });
           }
           hasMore = batch.length >= chunk;
@@ -627,6 +633,44 @@ const AdminCRMPage: React.FC = () => {
     })();
     return () => { cancelled = true; };
   }, [canSeeReminders, currentUser?.id]);
+
+  // Load usage for the selected contact – by user_id for person, by hospital_id for hospital; period = 7/30/90 days or all
+  useEffect(() => {
+    const c = detailContact;
+    if (!c) {
+      setContactUsage(null);
+      return;
+    }
+    const isPerson = isPersonType(c.type);
+    const hospitalId = c.type === 'hospital' ? c.hospitalId : null;
+    if (!isPerson && !hospitalId) {
+      setContactUsage(null);
+      return;
+    }
+    let cancelled = false;
+    setContactUsageLoading(true);
+    let q = supabase.from('usage_events').select('id, event_type');
+    if (contactUsagePeriod !== 'all') {
+      const days = parseInt(contactUsagePeriod, 10);
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      q = q.gte('created_at', since.toISOString());
+    }
+    const query = isPerson ? q.eq('user_id', c.id) : q.eq('hospital_id', hospitalId);
+    query.then(({ data, error }) => {
+      if (cancelled) return;
+      setContactUsageLoading(false);
+      if (error || !data) {
+        setContactUsage(null);
+        return;
+      }
+      const events = data as { event_type: string }[];
+      const logins = events.filter((e) => e.event_type === 'login').length;
+      const pageViews = events.filter((e) => e.event_type === 'page_view').length;
+      setContactUsage({ logins, pageViews });
+    });
+    return () => { cancelled = true; };
+  }, [detailContact?.id, detailContact?.type, detailContact?.hospitalId, contactUsagePeriod]);
 
   const persistNotesAndActivity = useCallback(async (c: Contact) => {
     const notesLog = c.notesLog ?? [];
@@ -1652,6 +1696,29 @@ const AdminCRMPage: React.FC = () => {
                   <ListItemText primary="My reminders" secondary={`${reminders.filter(r => r.contact_id === detailContact.id).length} upcoming for this contact.`} />
                 </ListItem>
               )}
+              {(isPersonType(detailContact.type) || (detailContact.type === 'hospital' && detailContact.hospitalId)) && (
+                <ListItem disablePadding sx={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <ListItemText primary="Usage" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
+                    <FormControl size="small" variant="outlined" sx={{ minWidth: 120 }}>
+                      <Select
+                        value={contactUsagePeriod}
+                        onChange={(e) => setContactUsagePeriod(e.target.value as '7' | '30' | '90' | 'all')}
+                        sx={{ height: 28, fontSize: '0.875rem' }}
+                      >
+                        <MenuItem value="7">Last 7 days</MenuItem>
+                        <MenuItem value="30">Last 30 days</MenuItem>
+                        <MenuItem value="90">Last 90 days</MenuItem>
+                        <MenuItem value="all">All time</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+                  <ListItemText
+                    secondary={contactUsageLoading ? 'Loading…' : contactUsage != null ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s)` : '—'}
+                    secondaryTypographyProps={{ variant: 'body2' }}
+                  />
+                </ListItem>
+              )}
               {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
                 const linked = contacts.filter(p => isPersonType(p.type) && (
                   (p.linkedOrganizationIds ?? []).includes(detailContact.id) ||
@@ -1817,6 +1884,28 @@ const AdminCRMPage: React.FC = () => {
                     {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
                       <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} /></ListItem>
                     ))}
+                    {(isPersonType(detailContact.type) || (detailContact.type === 'hospital' && detailContact.hospitalId)) && (
+                      <ListItem disablePadding sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider', flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', mb: 0.5 }}>
+                          <Typography variant="body2" fontWeight={500}>Usage</Typography>
+                          <FormControl size="small" variant="outlined" sx={{ minWidth: 120 }}>
+                            <Select
+                              value={contactUsagePeriod}
+                              onChange={(e) => setContactUsagePeriod(e.target.value as '7' | '30' | '90' | 'all')}
+                              sx={{ height: 32, fontSize: '0.875rem' }}
+                            >
+                              <MenuItem value="7">Last 7 days</MenuItem>
+                              <MenuItem value="30">Last 30 days</MenuItem>
+                              <MenuItem value="90">Last 90 days</MenuItem>
+                              <MenuItem value="all">All time</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Box>
+                        <Typography variant="body2" color="text.secondary">
+                          {contactUsageLoading ? 'Loading…' : contactUsage != null ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s)` : '—'}
+                        </Typography>
+                      </ListItem>
+                    )}
                   </List>
                   {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
                     const linked = contacts.filter(p => isPersonType(p.type) && (

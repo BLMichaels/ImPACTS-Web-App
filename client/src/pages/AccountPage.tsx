@@ -75,7 +75,8 @@ const AccountPage = () => {
     actualRole,
     viewAsRole, 
     setViewAsRole,
-    isViewingAs 
+    isViewingAs,
+    refreshProfile
   } = useUserProfile();
   const navigate = useNavigate();
   
@@ -609,11 +610,16 @@ const AccountPage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <SecurityIcon sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="h6">
-                      Your Role
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <SecurityIcon sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="h6">
+                        Your Role
+                      </Typography>
+                    </Box>
+                    <Button variant="outlined" size="small" onClick={async () => { await refreshProfile(); setAlert({ type: 'info', message: 'Profile refreshed. If your role is still wrong, ensure Supabase public.users has a row where id = your Auth User UID and role = admin.' }); setTimeout(() => setAlert(null), 6000); }}>
+                      Refresh my profile
+                    </Button>
                   </Box>
                   <Typography variant="body2" color="text.secondary" paragraph>
                     Your current role determines which features and data you can access.

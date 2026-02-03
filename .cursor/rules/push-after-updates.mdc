@@ -1,16 +1,17 @@
 ---
-description: After making code changes, always commit, push, and deploy so the live app is updated
+description: After making code changes, always commit, push, and deploy to impacts so the live app is updated
 alwaysApply: true
 ---
 
 # Deploy after edits
 
-**Always deploy after we make edits.** As part of finishing any code-change task:
+**We deploy only to the Vercel project "impacts".** Do not use or reference any Vercel project named "impacts-web-app".
 
-1. **Commit** the changed files with a clear, short message (e.g. `User Management: editable profile, drawer focus fix`).
+**Always deploy to impacts after we make updates**—without the user having to ask. As part of finishing any code-change task:
+
+1. **Commit** the changed files with a clear, short message (e.g. `CRM: team as contacts, search by name, state in form`).
 2. **Push** to `origin main`: `git push origin main`.
-3. **Deploy** so the live app is updated:
-   - If the project uses Vercel and is connected to GitHub, pushing to `main` triggers an automatic deploy. Confirm the deploy started or completed.
-   - Otherwise run: `npx vercel --prod --yes` from the project root (ensure you're logged in with `npx vercel login` if needed).
+3. **Deploy to impacts**: Run `npx vercel --prod --yes` from the project root. The repo is linked to the Vercel project **impacts** (`.vercel/project.json`). Do this so the live app at impacts is updated.
+   - If GitHub is connected to Vercel, pushing may trigger an auto-deploy; still run `npx vercel --prod --yes` to ensure the latest build is deployed to impacts, or confirm the auto-deploy completed for impacts.
 
 Do this at the end of the task unless the user says not to push or to hold off.
