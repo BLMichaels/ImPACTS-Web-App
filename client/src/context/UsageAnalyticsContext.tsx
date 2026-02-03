@@ -12,11 +12,17 @@ interface UsageAnalyticsContextType {
   trackClick: (target: string, path?: string) => void;
 }
 
+const noopAnalytics: UsageAnalyticsContextType = {
+  trackLogin: () => {},
+  trackPageView: () => {},
+  trackClick: () => {},
+};
+
 const UsageAnalyticsContext = createContext<UsageAnalyticsContextType | undefined>(undefined);
 
-export const useUsageAnalytics = () => {
+export const useUsageAnalytics = (): UsageAnalyticsContextType => {
   const context = useContext(UsageAnalyticsContext);
-  return context;
+  return context ?? noopAnalytics;
 };
 
 function useUsageTracker() {
