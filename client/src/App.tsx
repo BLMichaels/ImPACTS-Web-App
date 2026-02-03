@@ -6,6 +6,7 @@ import { createTheme } from '@mui/material/styles';
 // Context
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UserProfileProvider, useUserProfile } from './context/UserProfileContext';
+import { UsageAnalyticsProvider } from './context/UsageAnalyticsContext';
 import { UserRole } from './types/database';
 
 // Essential Components Only
@@ -169,6 +170,7 @@ function App() {
       <AuthProvider>
         <UserProfileProvider>
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <UsageAnalyticsProvider>
             <Suspense fallback={<LoadingSpinner />}>
               <Navbar />
               <ScrollToTop />
@@ -221,6 +223,7 @@ function App() {
                 <Footer />
               </Container>
             </Suspense>
+            </UsageAnalyticsProvider>
           </Router>
         </UserProfileProvider>
       </AuthProvider>

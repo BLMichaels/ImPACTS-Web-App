@@ -50,6 +50,7 @@ import {
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
+import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
@@ -132,6 +133,7 @@ const PARTICIPANT_OPTIONS = Array.from({ length: 26 }, (_, i) => i);
 
 const ActivitiesPage = () => {
   const { currentUser, loading } = useAuth();
+  const { trackClick } = useUsageAnalytics();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [simulationGaps, setSimulationGaps] = useState<any[]>([]);
@@ -343,6 +345,7 @@ const ActivitiesPage = () => {
   };
 
   const handleDialogOpen = () => {
+    trackClick?.('Add Activity');
     setOpen(true);
     // Prevent root from getting aria-hidden
     setTimeout(() => {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabase';
+import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import {
   Box,
   Typography,
@@ -111,6 +112,7 @@ type PageSize = number | 'all';
 
 const ManagerCRMPage: React.FC = () => {
   const theme = useTheme();
+  const { trackClick } = useUsageAnalytics();
   const [tabValue, setTabValue] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -296,6 +298,7 @@ const ManagerCRMPage: React.FC = () => {
   };
 
   const handleSaveContact = () => {
+    trackClick?.(editingContact ? 'Manager CRM - Save contact (edit)' : 'Manager CRM - Save contact (add)');
     const payload: Contact = {
       id: editingContact?.id ?? `contact_${Date.now()}`,
       type: formData.type,
@@ -319,6 +322,7 @@ const ManagerCRMPage: React.FC = () => {
   };
 
   const handleExport = () => {
+    trackClick?.('Manager CRM - Export');
     const headers = ['Type', 'Name', 'Organization', 'Email', 'Phone', 'Status', 'Assigned To', 'Last Contact'];
     const rows = (selectedIds.size ? filteredAndSortedContacts.filter(c => selectedIds.has(c.id)) : filteredAndSortedContacts)
       .map(c => [TYPE_LABELS[c.type], c.name, c.organization || '', c.email, c.phone || '', c.status, c.assignedTo || '', c.lastContact || '']);
@@ -379,7 +383,7 @@ const ManagerCRMPage: React.FC = () => {
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button startIcon={<DownloadIcon />} onClick={handleExport} size="medium">Export</Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('Manager CRM - Add contact'); setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -521,7 +525,7 @@ const ManagerCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add hospitals, mentors, and PECCs to manage your team.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('Manager CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -582,7 +586,7 @@ const ManagerCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('Manager CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>

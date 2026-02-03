@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { UserRole, PECC_TAB_KEYS } from '../../types/database';
 import AdminTeamTab from './AdminTeamTab';
 import {
@@ -257,6 +258,7 @@ const AdminCRMPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentUser } = useAuth();
   const { actualRole } = useUserProfile();
+  const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
 
   const [tabValue, setTabValue] = useState(() => (searchParams.get('tab') === 'team' ? TEAM_TAB_INDEX : 0));
@@ -897,6 +899,7 @@ const AdminCRMPage: React.FC = () => {
   };
 
   const handleSaveContact = async (fromFullScreen = false) => {
+    trackClick?.(editingContact ? 'CRM - Save contact (edit)' : 'CRM - Save contact (add)');
     const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
     const payload: Contact = {
       id: editingContact?.id ?? `contact_${Date.now()}`,
@@ -1018,6 +1021,7 @@ const AdminCRMPage: React.FC = () => {
   const allExportColumns = useMemo(() => [...EXPORT_COLUMNS, ...customFieldDefs.map(d => ({ id: d.id, label: d.label }))], [customFieldDefs]);
 
   const runExport = (scope: 'all' | 'selected', columnIds: string[]) => {
+    trackClick?.('CRM - Export');
     const contactsToExport = scope === 'selected'
       ? filteredAndSortedContacts.filter(c => selectedIds.has(c.id))
       : filteredAndSortedContacts;
@@ -1139,7 +1143,7 @@ const AdminCRMPage: React.FC = () => {
               Manage custom fields
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -1379,7 +1383,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -1464,7 +1468,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>

@@ -32,6 +32,7 @@ import { FileDownload as DownloadIcon, Upload as UploadIcon, Image as ImageIcon,
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
+import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -63,6 +64,7 @@ interface GapPlanAttachment {
 
 const GapPlanPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { trackClick } = useUsageAnalytics();
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<GapPlan[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('');
@@ -230,6 +232,7 @@ const GapPlanPage: React.FC = () => {
       setError('Please fill in all required fields');
       return;
     }
+    trackClick?.('Gap Plan - Update');
 
     // Convert display rank back to internal rank if it's a number
     const editDataToSave = {

@@ -54,6 +54,7 @@ import {
   PictureAsPdf as PdfIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface SimulationCase {
@@ -375,6 +376,7 @@ const SEVERITY_LEVELS = [
 
 const SimulationPage: React.FC = () => {
   const { currentUser, loading } = useAuth();
+  const { trackClick } = useUsageAnalytics();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -460,6 +462,7 @@ const SimulationPage: React.FC = () => {
   }, [gaps, currentUser]);
 
   const handleStartSimulation = (caseId: string) => {
+    trackClick?.('Simulation - Start');
     const selectedCase = SIMULATION_CASES.find(c => c.id === caseId);
     setSelectedCase(selectedCase || null);
     setSessionForm({
@@ -520,6 +523,7 @@ const SimulationPage: React.FC = () => {
   };
 
   const handleFinish = () => {
+    trackClick?.('Simulation - Finish');
     handleCloseDialog();
   };
 

@@ -1,0 +1,113 @@
+import React, { createContext, useContext, useCallback, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useAuth } from './AuthContext';
+import { useUserProfile } from './UserProfileContext';
+import { supabase } from '../supabase';
+
+export type UsageEventType = 'login' | 'page_view' | 'click';
+
+interface UsageAnalyticsContextType {
+  trackLogin: () => void;
+  trackPageView: (path: string, timeSpentSeconds?: number) => void;
+  trackClick: (target: string, path?: string) => void;
+}
+
+const UsageAnalyticsContext = createContext<UsageAnalyticsContextType | undefined>(undefined);
+
+export const useUsageAnalytics = () => {
+  const context = useContext(UsageAnalyticsContext);
+  return context;
+};
+
+function useUsageTracker() {
+  const { currentUser } = useAuth();
+  const { actualRole } = useUserProfile();
+  const location = useLocation();
+  const pathEnteredAt = useRef<number>(Date.now());
+  const previousPath = useRef<string>('');
+  const shouldTrackLoginRef = useRef(false);
+
+  const track = useCallback(
+    async (eventType: UsageEventType, path: string, metadata: Record<string, unknown> = {}) => {
+      if (!currentUser?.id || !actualRole) return;
+      try {
+        await supabase.from('usage_events').insert({
+          user_id: currentUser.id,
+          role: actualRole,
+          event_type: eventType,
+          path: path || '/',
+          metadata,
+        });
+      } catch {
+        // Fire-and-forget; don't block UI or surface errors
+      }
+    },
+    [currentUser?.id, actualRole]
+  );
+
+  const trackLogin = useCallback(() => {
+    if (!currentUser?.id || !actualRole) return;
+    track('login', window.location.pathname || '/', {}).catch(() => {});
+  }, [currentUser?.id, actualRole, track]);
+
+  const trackPageView = useCallback(
+    (path: string, timeSpentSeconds?: number) => {
+      if (!currentUser?.id || !actualRole) return;
+      const meta: Record<string, unknown> = {};
+      if (timeSpentSeconds != null && timeSpentSeconds >= 0) meta.time_spent_seconds = Math.round(timeSpentSeconds);
+      track('page_view', path || '/', meta).catch(() => {});
+    },
+    [currentUser?.id, actualRole, track]
+  );
+
+  const trackClick = useCallback(
+    (target: string, path?: string) => {
+      if (!currentUser?.id || !actualRole) return;
+      track('click', path || window.location.pathname || '/', { target }).catch(() => {});
+    },
+    [currentUser?.id, actualRole, track]
+  );
+
+  // Record login only on actual sign-in (SIGNED_IN), not on session restore (INITIAL_SESSION)
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') shouldTrackLoginRef.current = true;
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // When we have user and role and flagged sign-in, track login once
+  useEffect(() => {
+    if (!currentUser?.id || !actualRole || !shouldTrackLoginRef.current) return;
+    shouldTrackLoginRef.current = false;
+    trackLogin();
+  }, [currentUser?.id, actualRole, trackLogin]);
+
+  // On route change: send previous page with time spent, then send new page view (only when path actually changes)
+  useEffect(() => {
+    if (!currentUser?.id || !actualRole) return;
+    const now = Date.now();
+    const currentPath = location.pathname || '/';
+    if (previousPath.current !== currentPath) {
+      if (previousPath.current) {
+        const timeSpent = (now - pathEnteredAt.current) / 1000;
+        trackPageView(previousPath.current, timeSpent);
+      }
+      previousPath.current = currentPath;
+      pathEnteredAt.current = now;
+      trackPageView(currentPath);
+    }
+  }, [location.pathname, currentUser?.id, actualRole, trackPageView]);
+
+  return { trackLogin, trackPageView, trackClick };
+}
+
+export const UsageAnalyticsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { trackLogin, trackPageView, trackClick } = useUsageTracker();
+  const value = { trackLogin, trackPageView, trackClick };
+  return (
+    <UsageAnalyticsContext.Provider value={value}>
+      {children}
+    </UsageAnalyticsContext.Provider>
+  );
+};
