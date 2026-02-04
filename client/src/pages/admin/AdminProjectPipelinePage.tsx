@@ -449,10 +449,10 @@ const AdminProjectPipelinePage: React.FC = () => {
   };
 
   // Sorting helper
-  const sortItems = <T extends Record<string, unknown>>(items: T[], field: string, dir: 'asc' | 'desc'): T[] => {
+  const sortItems = <T,>(items: T[], field: string, dir: 'asc' | 'desc'): T[] => {
     return [...items].sort((a, b) => {
-      const aVal = a[field] ?? '';
-      const bVal = b[field] ?? '';
+      const aVal = (a as Record<string, unknown>)[field] ?? '';
+      const bVal = (b as Record<string, unknown>)[field] ?? '';
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         return dir === 'asc' ? aVal - bVal : bVal - aVal;
       }
