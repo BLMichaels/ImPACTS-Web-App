@@ -236,7 +236,23 @@ const StatusChip: React.FC<{ status: string }> = ({ status }) => {
 // Dev stage chip component
 const DevStageChip: React.FC<{ stage: string }> = ({ stage }) => {
   const colors = getDevStageColor(stage);
-  return stage ? <Chip size="small" label={stage} sx={{ ...colors, fontWeight: 500, maxWidth: 200, '& .MuiChip-label': { whiteSpace: 'normal', lineHeight: 1.2 } }} /> : <span>-</span>;
+  return stage ? (
+    <Chip 
+      size="small" 
+      label={stage} 
+      sx={{ 
+        ...colors, 
+        fontWeight: 500, 
+        height: 'auto',
+        '& .MuiChip-label': { 
+          whiteSpace: 'normal', 
+          lineHeight: 1.3,
+          py: 0.5,
+          display: 'block'
+        } 
+      }} 
+    />
+  ) : <span>-</span>;
 };
 
 const AdminProjectPipelinePage: React.FC = () => {
