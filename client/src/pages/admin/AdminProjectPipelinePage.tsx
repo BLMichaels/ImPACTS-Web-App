@@ -51,7 +51,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO, isValid } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../services/supabase';
+import { supabase } from '../../supabase';
 
 /** Safely format a date; returns null if the date is invalid */
 const safeFormatDate = (d: Date | null | undefined, fmt: string): string | null => {
