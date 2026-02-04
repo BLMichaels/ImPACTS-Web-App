@@ -129,6 +129,10 @@ interface Contact {
   customFields?: Record<string, string>;
   /** Hospital UUID for type 'hospital' (for usage by site) */
   hospitalId?: string;
+  /** User ID from users table (for contacts sourced from users) */
+  user_id?: string;
+  /** Whether this contact was created in CRM vs sourced from users table */
+  crmCreated?: boolean;
 }
 
 function contactDisplayName(c: Contact): string {
@@ -491,16 +495,22 @@ const AdminCRMPage: React.FC = () => {
           hasMore = batch.length >= chunk;
           offset += chunk;
         }
-        // Load CRM organizations (persisted so they show after refresh)
+        // Load CRM contacts (organizations, other, and manually-added people types)
         if (mounted) {
           const { data: orgsData, error: orgsError } = await supabase
             .from('crm_organizations')
-            .select('id, name, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type');
-          if (!orgsError && orgsData && orgsData.length > 0) {
+            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids');
+          if (orgsError) {
+            console.warn('CRM: could not load crm_organizations:', orgsError.message);
+          } else if (orgsData && orgsData.length > 0) {
             for (const row of orgsData as Record<string, unknown>[]) {
               const id = String(row.id ?? '');
-              const name = String(row.name ?? 'Unknown');
-              const contactType = row.contact_type === 'other' ? 'other' : 'organization';
+              const rawContactType = String(row.contact_type ?? 'organization');
+              const contactType: ContactType = CONTACT_TYPES.includes(rawContactType as ContactType) ? (rawContactType as ContactType) : 'organization';
+              const isPerson = isPersonType(contactType);
+              const name = isPerson 
+                ? [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || String(row.name ?? 'Unknown')
+                : String(row.name ?? 'Unknown');
               const created = row.created_at ? String(row.created_at).split('T')[0] : new Date().toISOString().split('T')[0];
               const rawNotesLog = row.notes_log;
               const rawActivityLog = row.activity_log;
@@ -514,7 +524,9 @@ const AdminCRMPage: React.FC = () => {
                 id,
                 type: contactType,
                 name,
-                organization: name,
+                firstName: isPerson ? String(row.first_name ?? '') : undefined,
+                lastName: isPerson ? String(row.last_name ?? '') : undefined,
+                organization: isPerson ? String(row.organization ?? '') : name,
                 email: String(row.email ?? ''),
                 phone: String(row.phone ?? ''),
                 status: String(row.status ?? 'Active'),
@@ -524,7 +536,10 @@ const AdminCRMPage: React.FC = () => {
                 notes: String(row.notes ?? ''),
                 notesLog,
                 activityLog,
-                customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined
+                customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined,
+                linkedOrganizationIds: Array.isArray(row.linked_organization_ids) ? (row.linked_organization_ids as string[]) : [],
+                linkedHospitalIds: Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [],
+                crmCreated: true  // Mark as CRM-created to differentiate from users table
               });
             }
           }
@@ -544,6 +559,8 @@ const AdminCRMPage: React.FC = () => {
           for (const u of userRows) {
             const role = (u.role && typeof u.role === 'string' ? u.role.toLowerCase() : '') as string;
             if (!crmRoles.includes(role)) continue;
+            // Skip if we already have this user from crm_organizations
+            if (list.some(c => c.email === u.email && c.crmCreated)) continue;
             const type = roleToContactType[role];
             const displayName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || '—';
             list.push({
@@ -558,7 +575,9 @@ const AdminCRMPage: React.FC = () => {
               status: u.is_active ? 'Active' : 'Inactive',
               region: '',
               createdAt: u.created_at ? u.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-              notes: ''
+              notes: '',
+              user_id: u.id,  // Mark as user-sourced
+              crmCreated: false
             });
           }
         }
@@ -989,14 +1008,15 @@ const AdminCRMPage: React.FC = () => {
       } else {
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
       }
-    } else if (formData.type === 'organization' || formData.type === 'other') {
+    } else if (formData.type !== 'hospital') {
+      // Save all non-hospital contacts to crm_organizations table
+      // This includes: organization, other, manager, mentor, pecc, staff
       setSaveInProgress(true);
       const currentInState = contacts.find(c => c.id === (editingContact?.id ?? payload.id));
       const notesLog = currentInState?.notesLog ?? editingContact?.notesLog ?? [];
       const activityLog = currentInState?.activityLog ?? editingContact?.activityLog ?? [];
-      const contactType = formData.type === 'other' ? 'other' : 'organization';
-      const payloadDb = {
-        name: formData.name.trim() || payload.name,
+      const payloadDb: Record<string, unknown> = {
+        name: (isPersonType(formData.type) ? `${formData.firstName || ''} ${formData.lastName || ''}`.trim() : formData.name?.trim()) || payload.name,
         email: formData.email?.trim() || null,
         phone: formData.phone?.trim() || null,
         region: formData.region?.trim() || null,
@@ -1006,19 +1026,34 @@ const AdminCRMPage: React.FC = () => {
         notes_log: notesLog,
         activity_log: activityLog,
         custom_fields: Object.keys(formData.customFields || {}).length ? formData.customFields : {},
-        contact_type: contactType
+        contact_type: formData.type,
+        first_name: isPersonType(formData.type) ? (formData.firstName?.trim() || null) : null,
+        last_name: isPersonType(formData.type) ? (formData.lastName?.trim() || null) : null,
+        organization: isPersonType(formData.type) ? (formData.organization?.trim() || null) : null,
+        linked_organization_ids: isPersonType(formData.type) ? (formData.linkedOrganizationIds ?? []) : [],
+        linked_hospital_ids: isPersonType(formData.type) ? (formData.linkedHospitalIds ?? []) : []
       };
-      if ((editingContact?.type === 'organization' || editingContact?.type === 'other') && editingContact.id) {
+      
+      // Check if this is a user-sourced contact (from users table) vs CRM-created
+      const isUserSourced = editingContact?.user_id && !editingContact?.crmCreated;
+      
+      if (editingContact && editingContact.id && !isUserSourced) {
+        // Update existing CRM contact
         const { error } = await supabase
           .from('crm_organizations')
           .update({ ...payloadDb, updated_at: new Date().toISOString() })
           .eq('id', editingContact.id);
         setSaveInProgress(false);
         if (error) {
-          console.error('Failed to update organization/other:', error);
+          console.error('Failed to update contact:', error);
         }
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+      } else if (isUserSourced && editingContact) {
+        // For user-sourced contacts, just update local state (user data managed elsewhere)
+        setSaveInProgress(false);
+        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
       } else {
+        // Insert new CRM contact
         const { data: inserted, error } = await supabase
           .from('crm_organizations')
           .insert(payloadDb)
@@ -1026,20 +1061,16 @@ const AdminCRMPage: React.FC = () => {
           .single();
         setSaveInProgress(false);
         if (error) {
-          console.error('Failed to insert organization/other:', error);
-          setContacts(prev => [...prev, payload]);
+          console.error('Failed to insert contact:', error);
+          setContacts(prev => [...prev, { ...payload, crmCreated: true }]);
         } else if (inserted && typeof (inserted as { id?: string }).id === 'string') {
           const id = (inserted as { id: string; created_at?: string }).id;
           const createdAt = (inserted as { created_at?: string }).created_at ? String((inserted as { created_at: string }).created_at).split('T')[0] : payload.createdAt;
-          setContacts(prev => [...prev, { ...payload, id, createdAt }]);
+          setContacts(prev => [...prev, { ...payload, id, createdAt, crmCreated: true }]);
         } else {
-          setContacts(prev => [...prev, payload]);
+          setContacts(prev => [...prev, { ...payload, crmCreated: true }]);
         }
       }
-    } else if (editingContact) {
-      setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
-    } else {
-      setContacts(prev => [...prev, payload]);
     }
     if (fromFullScreen) {
       setFullScreenEditMode(false);
@@ -1119,7 +1150,8 @@ const AdminCRMPage: React.FC = () => {
 
   const handleDeleteContact = async (id: string) => {
     const contact = contacts.find(c => c.id === id);
-    if (contact?.type === 'organization' || contact?.type === 'other') {
+    // Delete from crm_organizations if it's a CRM-created contact (not user-sourced)
+    if (contact?.crmCreated && contact.type !== 'hospital') {
       await supabase.from('crm_organizations').delete().eq('id', id);
     }
     setContacts(prev => prev.filter(c => c.id !== id));
@@ -1133,7 +1165,8 @@ const AdminCRMPage: React.FC = () => {
     if (!deleteTarget?.bulk) return;
     for (const id of deleteTarget.bulk) {
       const contact = contacts.find(c => c.id === id);
-      if (contact?.type === 'organization' || contact?.type === 'other') {
+      // Delete from crm_organizations if it's a CRM-created contact (not user-sourced)
+      if (contact?.crmCreated && contact.type !== 'hospital') {
         await supabase.from('crm_organizations').delete().eq('id', id);
       }
     }
@@ -1148,12 +1181,14 @@ const AdminCRMPage: React.FC = () => {
   const handleBulkStatusChange = async (status: string) => {
     const selected = contacts.filter(c => selectedIds.has(c.id));
     for (const c of selected) {
-      if (c.type === 'organization' || c.type === 'other') {
+      if (c.crmCreated && c.type !== 'hospital') {
+        // CRM-created contact (organization, other, or person types)
         await supabase.from('crm_organizations').update({ status, updated_at: new Date().toISOString() }).eq('id', c.id);
       } else if (c.type === 'hospital' && (c.facilityId ?? c.id)) {
         const key = String(c.facilityId ?? c.id);
         await supabase.from('hospitals').update({ crm_status: status }).or(`facility_id.eq.${key},id.eq.${key}`);
       }
+      // User-sourced contacts (from users table) status is read-only in CRM
     }
     setContacts(prev => prev.map(c => selectedIds.has(c.id) ? { ...c, status } : c));
     setBulkStatusAnchor(null);
