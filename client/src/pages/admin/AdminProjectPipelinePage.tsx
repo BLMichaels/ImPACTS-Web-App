@@ -743,7 +743,18 @@ const AdminProjectPipelinePage: React.FC = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box sx={{ py: 3, px: 2 }}>
+      <Box sx={{ 
+        py: 3, 
+        px: 3,
+        // Break out of parent Container to use full viewport width
+        width: '100vw',
+        position: 'relative',
+        left: '50%',
+        right: '50%',
+        marginLeft: '-50vw',
+        marginRight: '-50vw',
+        boxSizing: 'border-box'
+      }}>
         <Typography variant="h4" gutterBottom>Project Pipeline</Typography>
         <Typography color="textSecondary" sx={{ mb: 2 }}>
           Manage project pipeline sections. Use "All" tab to view all sections stacked.
