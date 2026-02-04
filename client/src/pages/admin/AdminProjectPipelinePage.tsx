@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -26,7 +26,14 @@ import {
   Divider,
   InputAdornment,
   Collapse,
-  Alert
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Paper,
+  CircularProgress,
+  Autocomplete
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -36,13 +43,15 @@ import {
   FilterList as FilterIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
-  Sort as SortIcon
+  Sort as SortIcon,
+  PersonAdd as PersonAddIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO, isValid } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../services/supabase';
 
 /** Safely format a date; returns null if the date is invalid */
 const safeFormatDate = (d: Date | null | undefined, fmt: string): string | null => {
@@ -97,8 +106,8 @@ const getDevStageColor = (stage: string) => {
   return found ? { bgcolor: found.color, color: found.textColor } : {};
 };
 
-// Team Members
-const TEAM_MEMBERS = [
+// Default team members (fallback)
+const DEFAULT_TEAM_MEMBERS = [
   'Allie Brenner', 'Amy Reiland', 'Anne Adema', 'Becca Mielke', 'Benjamin Michaels',
   'Cage Cochran', 'Cam Brandt', 'Daniel Ebbs', 'Elizabeth Sanseau', 'Erin Montgromery',
   'Kamal Abulebda', 'Lauren Simpson', 'Marc Auerbach', 'Maybelle Kou', 'Sally Snow', 'Sofia Athansopoulou'
@@ -124,6 +133,8 @@ const PIPELINE_STORAGE_KEY = 'admin_project_pipeline_simbox';
 const PIPELINE_SCHOLARSHIP_KEY = 'admin_project_pipeline_scholarship';
 const PIPELINE_RESEARCH_DISSEMINATION_KEY = 'admin_project_pipeline_research_dissemination';
 const PIPELINE_ABSTRACTS_KEY = 'admin_project_pipeline_abstracts';
+const PIPELINE_TEAM_MEMBERS_KEY = 'admin_project_pipeline_team_members';
+const PIPELINE_COAUTHORS_KEY = 'admin_project_pipeline_coauthors';
 
 // Interfaces
 export interface SimBoxCase {
@@ -187,6 +198,12 @@ export interface ResearchDisseminationIdea {
   reachOutToLeadAuthor: string;
   notes: string;
   category: string;
+}
+
+interface CRMContact {
+  id: string;
+  name: string;
+  email?: string;
 }
 
 const defaultSimBoxCase = (): SimBoxCase => ({
@@ -259,6 +276,15 @@ const AdminProjectPipelinePage: React.FC = () => {
   const { currentUser } = useAuth();
   const [tabValue, setTabValue] = useState(0);
 
+  // Team members lists (editable)
+  const [teamMembersList, setTeamMembersList] = useState<string[]>(DEFAULT_TEAM_MEMBERS);
+  const [coAuthorsList, setCoAuthorsList] = useState<string[]>(DEFAULT_TEAM_MEMBERS);
+
+  // CRM search state
+  const [crmSearchQuery, setCrmSearchQuery] = useState('');
+  const [crmSearchResults, setCrmSearchResults] = useState<CRMContact[]>([]);
+  const [crmSearchLoading, setCrmSearchLoading] = useState(false);
+
   // Data states
   const [simboxCases, setSimboxCases] = useState<SimBoxCase[]>([]);
   const [scholarshipItems, setScholarshipItems] = useState<ScholarshipPublication[]>([]);
@@ -311,6 +337,16 @@ const AdminProjectPipelinePage: React.FC = () => {
       setScholarshipItems(loadData(PIPELINE_SCHOLARSHIP_KEY));
       setResearchDisseminationItems(loadData(PIPELINE_RESEARCH_DISSEMINATION_KEY));
       setAbstractsItems(loadData(PIPELINE_ABSTRACTS_KEY));
+
+      // Load team members lists
+      const savedTeam = localStorage.getItem(`${PIPELINE_TEAM_MEMBERS_KEY}_${currentUser.id}`);
+      if (savedTeam) {
+        try { setTeamMembersList(JSON.parse(savedTeam)); } catch { /* use default */ }
+      }
+      const savedCoAuthors = localStorage.getItem(`${PIPELINE_COAUTHORS_KEY}_${currentUser.id}`);
+      if (savedCoAuthors) {
+        try { setCoAuthorsList(JSON.parse(savedCoAuthors)); } catch { /* use default */ }
+      }
     }
   }, [currentUser]);
 
@@ -333,6 +369,75 @@ const AdminProjectPipelinePage: React.FC = () => {
   const saveAbstracts = (items: AbstractsPresentation[]) => {
     setAbstractsItems(items);
     if (currentUser?.id) localStorage.setItem(`${PIPELINE_ABSTRACTS_KEY}_${currentUser.id}`, JSON.stringify(items));
+  };
+
+  const saveTeamMembersList = (list: string[]) => {
+    setTeamMembersList(list);
+    if (currentUser?.id) localStorage.setItem(`${PIPELINE_TEAM_MEMBERS_KEY}_${currentUser.id}`, JSON.stringify(list));
+  };
+
+  const saveCoAuthorsList = (list: string[]) => {
+    setCoAuthorsList(list);
+    if (currentUser?.id) localStorage.setItem(`${PIPELINE_COAUTHORS_KEY}_${currentUser.id}`, JSON.stringify(list));
+  };
+
+  // CRM search function
+  const searchCRM = useCallback(async (query: string) => {
+    if (!query || query.length < 2) {
+      setCrmSearchResults([]);
+      return;
+    }
+    setCrmSearchLoading(true);
+    try {
+      // Search users table
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, email, first_name, last_name')
+        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`)
+        .limit(20);
+
+      const results: CRMContact[] = (users || []).map((u: { id: string; email?: string; first_name?: string; last_name?: string }) => ({
+        id: u.id,
+        name: [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || 'Unknown',
+        email: u.email
+      }));
+      setCrmSearchResults(results);
+    } catch (err) {
+      console.error('CRM search error:', err);
+      setCrmSearchResults([]);
+    } finally {
+      setCrmSearchLoading(false);
+    }
+  }, []);
+
+  // Debounced CRM search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (crmSearchQuery) searchCRM(crmSearchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [crmSearchQuery, searchCRM]);
+
+  // Add to team members
+  const addToTeamMembers = (name: string) => {
+    if (!teamMembersList.includes(name)) {
+      saveTeamMembersList([...teamMembersList, name].sort());
+    }
+  };
+
+  const removeFromTeamMembers = (name: string) => {
+    saveTeamMembersList(teamMembersList.filter(n => n !== name));
+  };
+
+  // Add to co-authors
+  const addToCoAuthors = (name: string) => {
+    if (!coAuthorsList.includes(name)) {
+      saveCoAuthorsList([...coAuthorsList, name].sort());
+    }
+  };
+
+  const removeFromCoAuthors = (name: string) => {
+    saveCoAuthorsList(coAuthorsList.filter(n => n !== name));
   };
 
   // Priority validation - check if order is unique per lead
@@ -529,9 +634,17 @@ const AdminProjectPipelinePage: React.FC = () => {
     </TableCell>
   );
 
+  // Tab order: Master Priorities List first, Team Members last
   const sectionLabels = [
-    'SimBox Cases', 'Scholarship/Publications', 'Research Dissemination Ideas',
-    'Abstracts/Presentations', 'Program', 'Administrative', 'Archive', 'All', 'Team Members'
+    'Master Priorities List',
+    'SimBox Cases', 
+    'Scholarship/Publications', 
+    'Research Dissemination Ideas',
+    'Abstracts/Presentations', 
+    'Program', 
+    'Administrative', 
+    'Archive',
+    'Team Members'
   ];
 
   const toggleSection = (key: string) => {
@@ -575,7 +688,7 @@ const AdminProjectPipelinePage: React.FC = () => {
             <InputLabel>Lead</InputLabel>
             <Select value={leadFilter} label="Lead" onChange={(e) => setLeadFilter(e.target.value)}>
               <MenuItem value="">All</MenuItem>
-              {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+              {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
             </Select>
           </FormControl>
         </Box>
@@ -757,6 +870,174 @@ const AdminProjectPipelinePage: React.FC = () => {
     </Box>
   );
 
+  // Team Members Management Component
+  const TeamMembersManagement = () => (
+    <Box>
+      <Typography variant="h6" gutterBottom>Manage Team Members &amp; Co-Authors</Typography>
+      <Typography color="textSecondary" sx={{ mb: 3 }}>
+        Search the CRM to add people to your Team Members or Interested/Co-Authors lists. These lists are used in the dropdowns when creating pipeline items.
+      </Typography>
+
+      {/* CRM Search */}
+      <Paper sx={{ p: 2, mb: 4 }}>
+        <Typography variant="subtitle1" fontWeight={600} gutterBottom>Search CRM</Typography>
+        <Autocomplete
+          freeSolo
+          options={crmSearchResults}
+          getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
+          loading={crmSearchLoading}
+          inputValue={crmSearchQuery}
+          onInputChange={(_, value) => setCrmSearchQuery(value)}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              size="small"
+              placeholder="Search by name or email..."
+              InputProps={{
+                ...params.InputProps,
+                startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+                endAdornment: (
+                  <>
+                    {crmSearchLoading ? <CircularProgress size={20} /> : null}
+                    {params.InputProps.endAdornment}
+                  </>
+                )
+              }}
+            />
+          )}
+          renderOption={(props, option) => (
+            <Box component="li" {...props} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+              <Box>
+                <Typography variant="body2">{option.name}</Typography>
+                {option.email && <Typography variant="caption" color="textSecondary">{option.email}</Typography>}
+              </Box>
+              <Box>
+                <Button 
+                  size="small" 
+                  onClick={(e) => { e.stopPropagation(); addToTeamMembers(option.name); }}
+                  disabled={teamMembersList.includes(option.name)}
+                >
+                  + Team
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={(e) => { e.stopPropagation(); addToCoAuthors(option.name); }}
+                  disabled={coAuthorsList.includes(option.name)}
+                >
+                  + Co-Author
+                </Button>
+              </Box>
+            </Box>
+          )}
+        />
+      </Paper>
+
+      <Grid container spacing={3}>
+        {/* Team Members List */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                Team Members ({teamMembersList.length})
+              </Typography>
+            </Box>
+            <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block' }}>
+              Used for: Project Sponsor, Project Lead, Team Members, Project Admin, Consulted, Informed
+            </Typography>
+            <List dense sx={{ maxHeight: 400, overflow: 'auto' }}>
+              {teamMembersList.map((name) => (
+                <ListItem key={name} sx={{ bgcolor: 'grey.50', mb: 0.5, borderRadius: 1 }}>
+                  <ListItemText primary={name} />
+                  <ListItemSecondaryAction>
+                    <IconButton edge="end" size="small" color="error" onClick={() => removeFromTeamMembers(name)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+            <Box sx={{ mt: 2 }}>
+              <TextField
+                size="small"
+                placeholder="Add manually..."
+                fullWidth
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    const input = e.target as HTMLInputElement;
+                    if (input.value.trim()) {
+                      addToTeamMembers(input.value.trim());
+                      input.value = '';
+                    }
+                  }
+                }}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton size="small">
+                        <PersonAddIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Co-Authors List */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                Interested/Co-Authors ({coAuthorsList.length})
+              </Typography>
+            </Box>
+            <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block' }}>
+              Used for: Research Dissemination - Interested/Co-Authors field
+            </Typography>
+            <List dense sx={{ maxHeight: 400, overflow: 'auto' }}>
+              {coAuthorsList.map((name) => (
+                <ListItem key={name} sx={{ bgcolor: 'grey.50', mb: 0.5, borderRadius: 1 }}>
+                  <ListItemText primary={name} />
+                  <ListItemSecondaryAction>
+                    <IconButton edge="end" size="small" color="error" onClick={() => removeFromCoAuthors(name)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+            <Box sx={{ mt: 2 }}>
+              <TextField
+                size="small"
+                placeholder="Add manually..."
+                fullWidth
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    const input = e.target as HTMLInputElement;
+                    if (input.value.trim()) {
+                      addToCoAuthors(input.value.trim());
+                      input.value = '';
+                    }
+                  }
+                }}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton size="small">
+                        <PersonAddIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Box>
+          </Paper>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ 
@@ -773,7 +1054,7 @@ const AdminProjectPipelinePage: React.FC = () => {
       }}>
         <Typography variant="h4" gutterBottom>Project Pipeline</Typography>
         <Typography color="textSecondary" sx={{ mb: 2 }}>
-          Manage project pipeline sections. Use "All" tab to view all sections stacked.
+          Manage project pipeline sections. Use &quot;Master Priorities List&quot; to view all sections stacked.
         </Typography>
 
         <RoleLegend />
@@ -788,82 +1069,10 @@ const AdminProjectPipelinePage: React.FC = () => {
           {sectionLabels.map((label, idx) => <Tab key={idx} label={label} />)}
         </Tabs>
 
-        <FilterBar />
-
-        {/* SimBox Cases Tab */}
-        {tabValue === 0 && <SimBoxTable data={sortedSimbox} />}
-
-        {/* Scholarship/Publications Tab */}
-        {tabValue === 1 && (
-          <GenericTable
-            title="Scholarship/Publications"
-            data={sortedScholarship}
-            onAdd={handleScholarshipAdd}
-            onEdit={handleScholarshipEdit as (row: ScholarshipPublication | AbstractsPresentation) => void}
-            onDelete={handleScholarshipDelete}
-          />
-        )}
-
-        {/* Research Dissemination Tab */}
-        {tabValue === 2 && <ResearchTable data={sortedResearch} />}
-
-        {/* Abstracts/Presentations Tab */}
-        {tabValue === 3 && (
-          <GenericTable
-            title="Abstracts/Presentations"
-            data={sortedAbstracts}
-            onAdd={handleAbstractsAdd}
-            onEdit={handleAbstractsEdit as (row: ScholarshipPublication | AbstractsPresentation) => void}
-            onDelete={handleAbstractsDelete}
-          />
-        )}
-
-        {/* Placeholder tabs */}
-        {(tabValue === 4 || tabValue === 5) && (
-          <Box sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="textSecondary">{sectionLabels[tabValue]} — Coming soon.</Typography>
-          </Box>
-        )}
-
-        {/* Archive Tab - shows completed items */}
-        {tabValue === 6 && (
+        {/* Master Priorities List (Tab 0) - was "All" */}
+        {tabValue === 0 && (
           <Box>
-            <Typography variant="h6" gutterBottom>Archive (Completed Items)</Typography>
-            {archivedItems.length === 0 ? (
-              <Alert severity="info">No completed items yet. Items marked "Complete" will appear here.</Alert>
-            ) : (
-              <TableContainer sx={{ overflowX: 'auto' }}>
-                <Table size="small" sx={{ minWidth: 800 }}>
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: 'grey.100' }}>
-                      <TableCell sx={{ fontWeight: 600 }}>Section</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Topic/Category</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Lead</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {archivedItems.map((entry, idx) => {
-                      const item = entry.item as SimBoxCase & ResearchDisseminationIdea;
-                      return (
-                        <TableRow key={idx} hover>
-                          <TableCell><Chip size="small" label={entry.type} /></TableCell>
-                          <TableCell>{item.categoryTopic || item.topic || '-'}</TableCell>
-                          <TableCell>{item.projectLead || item.leadSenior || '-'}</TableCell>
-                          <TableCell><StatusChip status={item.status} /></TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </Box>
-        )}
-
-        {/* All Tab - stacked view */}
-        {tabValue === 7 && (
-          <Box>
+            <FilterBar />
             {/* SimBox */}
             <Box sx={{ mb: 3, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
               <Box 
@@ -944,12 +1153,96 @@ const AdminProjectPipelinePage: React.FC = () => {
           </Box>
         )}
 
-        {/* Team Members Tab */}
-        {tabValue === 8 && (
+        {/* SimBox Cases Tab (Tab 1) */}
+        {tabValue === 1 && (
+          <>
+            <FilterBar />
+            <SimBoxTable data={sortedSimbox} />
+          </>
+        )}
+
+        {/* Scholarship/Publications Tab (Tab 2) */}
+        {tabValue === 2 && (
+          <>
+            <FilterBar />
+            <GenericTable
+              title="Scholarship/Publications"
+              data={sortedScholarship}
+              onAdd={handleScholarshipAdd}
+              onEdit={handleScholarshipEdit as (row: ScholarshipPublication | AbstractsPresentation) => void}
+              onDelete={handleScholarshipDelete}
+            />
+          </>
+        )}
+
+        {/* Research Dissemination Tab (Tab 3) */}
+        {tabValue === 3 && (
+          <>
+            <FilterBar />
+            <ResearchTable data={sortedResearch} />
+          </>
+        )}
+
+        {/* Abstracts/Presentations Tab (Tab 4) */}
+        {tabValue === 4 && (
+          <>
+            <FilterBar />
+            <GenericTable
+              title="Abstracts/Presentations"
+              data={sortedAbstracts}
+              onAdd={handleAbstractsAdd}
+              onEdit={handleAbstractsEdit as (row: ScholarshipPublication | AbstractsPresentation) => void}
+              onDelete={handleAbstractsDelete}
+            />
+          </>
+        )}
+
+        {/* Placeholder tabs (Program, Administrative) */}
+        {(tabValue === 5 || tabValue === 6) && (
           <Box sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="textSecondary">Team Members — Coming soon.</Typography>
+            <Typography color="textSecondary">{sectionLabels[tabValue]} — Coming soon.</Typography>
           </Box>
         )}
+
+        {/* Archive Tab (Tab 7) - shows completed items */}
+        {tabValue === 7 && (
+          <Box>
+            <FilterBar />
+            <Typography variant="h6" gutterBottom>Archive (Completed Items)</Typography>
+            {archivedItems.length === 0 ? (
+              <Alert severity="info">No completed items yet. Items marked &quot;Complete&quot; will appear here.</Alert>
+            ) : (
+              <TableContainer sx={{ overflowX: 'auto' }}>
+                <Table size="small" sx={{ minWidth: 800 }}>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.100' }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Section</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Topic/Category</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Lead</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {archivedItems.map((entry, idx) => {
+                      const item = entry.item as SimBoxCase & ResearchDisseminationIdea;
+                      return (
+                        <TableRow key={idx} hover>
+                          <TableCell><Chip size="small" label={entry.type} /></TableCell>
+                          <TableCell>{item.categoryTopic || item.topic || '-'}</TableCell>
+                          <TableCell>{item.projectLead || item.leadSenior || '-'}</TableCell>
+                          <TableCell><StatusChip status={item.status} /></TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Box>
+        )}
+
+        {/* Team Members Tab (Tab 8) */}
+        {tabValue === 8 && <TeamMembersManagement />}
 
         {/* SimBox Dialog */}
         <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
@@ -1000,7 +1293,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Sponsor (S)</InputLabel>
                   <Select value={form.projectSponsor} label="Project Sponsor (S)" onChange={(e) => setForm(f => ({ ...f, projectSponsor: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1009,7 +1302,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Lead (L)</InputLabel>
                   <Select value={form.projectLead} label="Project Lead (L)" onChange={(e) => setForm(f => ({ ...f, projectLead: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1017,7 +1310,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Team Member(s) (T)</InputLabel>
                   <Select multiple value={form.teamMembers} label="Team Member(s) (T)" onChange={(e) => setForm(f => ({ ...f, teamMembers: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1026,7 +1319,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Admin (A)</InputLabel>
                   <Select value={form.projectAdmin} label="Project Admin (A)" onChange={(e) => setForm(f => ({ ...f, projectAdmin: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1034,7 +1327,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Consulted (C)</InputLabel>
                   <Select multiple value={form.consulted} label="Consulted (C)" onChange={(e) => setForm(f => ({ ...f, consulted: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1042,7 +1335,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Informed (I)</InputLabel>
                   <Select multiple value={form.informed} label="Informed (I)" onChange={(e) => setForm(f => ({ ...f, informed: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1101,7 +1394,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Sponsor (S)</InputLabel>
                   <Select value={scholarshipForm.projectSponsor} label="Project Sponsor (S)" onChange={(e) => setScholarshipForm(f => ({ ...f, projectSponsor: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1110,7 +1403,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Lead (L)</InputLabel>
                   <Select value={scholarshipForm.projectLead} label="Project Lead (L)" onChange={(e) => setScholarshipForm(f => ({ ...f, projectLead: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1118,7 +1411,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Team Member(s) (T)</InputLabel>
                   <Select multiple value={scholarshipForm.teamMembers} label="Team Member(s) (T)" onChange={(e) => setScholarshipForm(f => ({ ...f, teamMembers: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1127,7 +1420,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Admin (A)</InputLabel>
                   <Select value={scholarshipForm.projectAdmin} label="Project Admin (A)" onChange={(e) => setScholarshipForm(f => ({ ...f, projectAdmin: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1135,7 +1428,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Consulted (C)</InputLabel>
                   <Select multiple value={scholarshipForm.consulted} label="Consulted (C)" onChange={(e) => setScholarshipForm(f => ({ ...f, consulted: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1143,7 +1436,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Informed (I)</InputLabel>
                   <Select multiple value={scholarshipForm.informed} label="Informed (I)" onChange={(e) => setScholarshipForm(f => ({ ...f, informed: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1199,13 +1492,13 @@ const AdminProjectPipelinePage: React.FC = () => {
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12}><Divider><Typography variant="caption" color="textSecondary">Team & Publication</Typography></Divider></Grid>
+              <Grid item xs={12}><Divider><Typography variant="caption" color="textSecondary">Team &amp; Publication</Typography></Divider></Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl size="small" fullWidth>
                   <InputLabel>Lead (Senior)</InputLabel>
                   <Select value={researchDisseminationForm.leadSenior} label="Lead (Senior)" onChange={(e) => setResearchDisseminationForm(f => ({ ...f, leadSenior: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1213,7 +1506,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Co-Authors</InputLabel>
                   <Select multiple value={researchDisseminationForm.interestedCoAuthors} label="Co-Authors" onChange={(e) => setResearchDisseminationForm(f => ({ ...f, interestedCoAuthors: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {coAuthorsList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1287,7 +1580,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Sponsor (S)</InputLabel>
                   <Select value={abstractsForm.projectSponsor} label="Project Sponsor (S)" onChange={(e) => setAbstractsForm(f => ({ ...f, projectSponsor: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1296,7 +1589,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Lead (L)</InputLabel>
                   <Select value={abstractsForm.projectLead} label="Project Lead (L)" onChange={(e) => setAbstractsForm(f => ({ ...f, projectLead: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1304,7 +1597,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Team Member(s) (T)</InputLabel>
                   <Select multiple value={abstractsForm.teamMembers} label="Team Member(s) (T)" onChange={(e) => setAbstractsForm(f => ({ ...f, teamMembers: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1313,7 +1606,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                   <InputLabel>Project Admin (A)</InputLabel>
                   <Select value={abstractsForm.projectAdmin} label="Project Admin (A)" onChange={(e) => setAbstractsForm(f => ({ ...f, projectAdmin: e.target.value }))}>
                     <MenuItem value="">—</MenuItem>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1321,7 +1614,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Consulted (C)</InputLabel>
                   <Select multiple value={abstractsForm.consulted} label="Consulted (C)" onChange={(e) => setAbstractsForm(f => ({ ...f, consulted: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -1329,7 +1622,7 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <FormControl size="small" fullWidth>
                   <InputLabel>Informed (I)</InputLabel>
                   <Select multiple value={abstractsForm.informed} label="Informed (I)" onChange={(e) => setAbstractsForm(f => ({ ...f, informed: e.target.value as string[] }))} renderValue={sel => sel.join(', ')}>
-                    {TEAM_MEMBERS.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                    {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
