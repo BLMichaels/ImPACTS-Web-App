@@ -31,7 +31,7 @@ import {
   Close as CloseIcon
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
-import { useUserProfile } from '../../contexts/UserProfileContext';
+import { useUserProfile } from '../../context/UserProfileContext';
 import { ProgramWithStats, UserRole, Program } from '../../types/database';
 import { ProgramCard, ProgramDetail } from '../../components/programs';
 

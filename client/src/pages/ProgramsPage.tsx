@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import { Search as SearchIcon, School as ProgramIcon } from '@mui/icons-material';
 import { supabase } from '../supabase';
-import { useUserProfile } from '../contexts/UserProfileContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { ProgramWithStats } from '../types/database';
 import { ProgramCard, ProgramDetail } from '../components/programs';
 
