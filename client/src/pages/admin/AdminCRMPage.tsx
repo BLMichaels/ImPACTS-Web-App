@@ -1076,6 +1076,7 @@ const AdminCRMPage: React.FC = () => {
       ...(Object.keys(formData.customFields || {}).length ? { customFields: formData.customFields } : {})
     };
     if (editingContact?.type === 'hospital' && (editingContact.facilityId || editingContact.id)) {
+      // EDITING an existing hospital
       setSaveInProgress(true);
       const key = String(editingContact.facilityId ?? editingContact.id);
       const currentInState = contacts.find(c => c.id === editingContact.id);
@@ -1098,6 +1099,45 @@ const AdminCRMPage: React.FC = () => {
       } else {
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
       }
+    } else if (formData.type === 'hospital' && !editingContact) {
+      // ADDING a new hospital
+      setSaveInProgress(true);
+      const newHospitalPayload = {
+        name: formData.name?.trim() || '',
+        company_name: formData.organization?.trim() || null,
+        region: formData.region?.trim() || null,
+        state: formData.state?.trim() || null,
+        crm_status: formData.status || 'Active',
+        hospital_system: formData.hospitalSystem?.trim() || null,
+        programs: formData.programs ?? [],
+        notes: formData.notes?.trim() || null,
+        notes_log: [],
+        activity_log: [],
+        custom_fields: Object.keys(formData.customFields || {}).length ? formData.customFields : {},
+        address: formData.address?.trim() || null,
+        city: formData.city?.trim() || null,
+        county: formData.county?.trim() || null,
+        zip: formData.zip?.trim() || null
+      };
+      const { data: newHospital, error } = await supabase
+        .from('hospitals')
+        .insert(newHospitalPayload)
+        .select()
+        .single();
+      setSaveInProgress(false);
+      if (error) {
+        console.error('Failed to add hospital:', error);
+        setSaveError(`Failed to add hospital: ${error.message || 'Database error'}. Please check your RLS policies.`);
+        return;
+      }
+      // Add to local state
+      const newContact: Contact = {
+        ...payload,
+        id: newHospital.id,
+        facilityId: newHospital.facility_id || newHospital.id
+      };
+      setContacts(prev => [...prev, newContact]);
+      setSaveError(null);
     } else if (formData.type !== 'hospital') {
       // Save all non-hospital contacts to crm_organizations table
       // This includes: organization, other, manager, mentor, pecc, staff
