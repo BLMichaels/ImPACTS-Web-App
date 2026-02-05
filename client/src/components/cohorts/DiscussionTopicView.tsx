@@ -430,7 +430,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
         onClose={() => setMenuAnchor(null)}
       >
         {menuAnchor?.reply?.created_by === userProfile?.id && (
-          <MenuItem onClick={() => handleEditReply(menuAnchor.reply!)}>
+          <MenuItem onClick={() => menuAnchor?.reply && handleEditReply(menuAnchor.reply)}>
             <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
             <ListItemText>Edit</ListItemText>
           </MenuItem>
