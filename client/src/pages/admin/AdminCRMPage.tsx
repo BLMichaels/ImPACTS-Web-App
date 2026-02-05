@@ -75,7 +75,8 @@ import {
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
   DragIndicator as DragIndicatorIcon,
-  PersonAdd as PersonAddIcon
+  PersonAdd as PersonAddIcon,
+  LocalHospital as LocalHospitalIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -424,6 +425,7 @@ const AdminCRMPage: React.FC = () => {
   const [newDefOptions, setNewDefOptions] = useState('');
   const [csvUploadError, setCsvUploadError] = useState<string | null>(null);
   const [saveInProgress, setSaveInProgress] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportScope, setExportScope] = useState<'all' | 'selected'>('all');
   const [exportColumnIds, setExportColumnIds] = useState<string[]>(() => EXPORT_COLUMNS.map(c => c.id));
@@ -1087,8 +1089,11 @@ const AdminCRMPage: React.FC = () => {
         setSaveInProgress(false);
         if (error) {
           console.error('Failed to update contact:', error);
+          setSaveError(`Failed to update contact: ${error.message || 'Database error'}. Please check your RLS policies.`);
+          return; // Don't close dialog
         }
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+        setSaveError(null);
       } else if (isUserSourced && editingContact) {
         // For user-sourced contacts, just update local state (user data managed elsewhere)
         setSaveInProgress(false);
@@ -1103,13 +1108,18 @@ const AdminCRMPage: React.FC = () => {
         setSaveInProgress(false);
         if (error) {
           console.error('Failed to insert contact:', error);
-          setContacts(prev => [...prev, { ...payload, crmCreated: true }]);
+          // Show error to user - DON'T add to local state since it wasn't saved
+          setSaveError(`Failed to save contact: ${error.message || 'Database error'}. Please check your RLS policies - run CRM_RLS_FIX.sql in Supabase.`);
+          return; // Don't close dialog or add to state
         } else if (inserted && typeof (inserted as { id?: string }).id === 'string') {
           const id = (inserted as { id: string; created_at?: string }).id;
           const createdAt = (inserted as { created_at?: string }).created_at ? String((inserted as { created_at: string }).created_at).split('T')[0] : payload.createdAt;
           setContacts(prev => [...prev, { ...payload, id, createdAt, crmCreated: true }]);
+          setSaveError(null);
         } else {
+          // Insert succeeded but no data returned - still add to state
           setContacts(prev => [...prev, { ...payload, crmCreated: true }]);
+          setSaveError(null);
         }
       }
     }
@@ -1269,7 +1279,7 @@ const AdminCRMPage: React.FC = () => {
               Manage custom fields
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); setSaveError(null); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -1509,7 +1519,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -1594,7 +1604,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>
@@ -1733,7 +1743,7 @@ const AdminCRMPage: React.FC = () => {
               <Typography variant="subtitle1" fontWeight={600}>Quick view</Typography>
               <IconButton size="small" onClick={() => setPanelOpen(false)}><CloseIcon /></IconButton>
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
               <Avatar sx={{ width: 48, height: 48, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.125rem' }}>
                 {(contactDisplayName(detailContact) || '?')[0].toUpperCase()}
               </Avatar>
@@ -1742,6 +1752,38 @@ const AdminCRMPage: React.FC = () => {
                 <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', mt: 0.5 }} />
               </Box>
             </Box>
+            {/* Linked organizations & hospitals - shown prominently below name for person types */}
+            {isPersonType(detailContact.type) && (() => {
+              const linkedOrgs = (detailContact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+              const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+              return (linkedOrgs.length > 0 || linkedHospitals.length > 0) ? (
+                <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Linked to</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {linkedOrgs.map((org) => (
+                      <Chip
+                        key={org.id}
+                        label={org.name}
+                        size="small"
+                        icon={<BusinessIcon />}
+                        onClick={() => { setDetailContact(org); }}
+                        sx={{ cursor: 'pointer' }}
+                      />
+                    ))}
+                    {linkedHospitals.map((hosp) => (
+                      <Chip
+                        key={hosp.id}
+                        label={hosp.name}
+                        size="small"
+                        icon={<LocalHospitalIcon />}
+                        onClick={() => { setDetailContact(hosp); }}
+                        sx={{ cursor: 'pointer' }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              ) : null;
+            })()}
             <List dense disablePadding sx={{ flex: 1, minHeight: 0 }}>
               {detailContact.type === 'hospital' && detailContact.facilityId != null && (
                 <ListItem disablePadding><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
@@ -1809,20 +1851,6 @@ const AdminCRMPage: React.FC = () => {
                 return linked.length > 0 ? (
                   <ListItem disablePadding>
                     <ListItemText primary="Contacts" secondary={`${linked.length} person(s) linked. Expand for full view.`} />
-                  </ListItem>
-                ) : null;
-              })()}
-              {/* Show linked organizations/hospitals for person types */}
-              {isPersonType(detailContact.type) && (() => {
-                const linkedOrgs = (detailContact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
-                const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
-                const totalLinked = linkedOrgs.length + linkedHospitals.length;
-                return totalLinked > 0 ? (
-                  <ListItem disablePadding>
-                    <ListItemText 
-                      primary="Linked to" 
-                      secondary={`${linkedOrgs.length > 0 ? linkedOrgs.map(o => o.name).join(', ') : ''}${linkedOrgs.length > 0 && linkedHospitals.length > 0 ? ' · ' : ''}${linkedHospitals.length > 0 ? linkedHospitals.map(h => h.name).join(', ') : ''}`} 
-                    />
                   </ListItem>
                 ) : null;
               })()}
@@ -1953,7 +1981,7 @@ const AdminCRMPage: React.FC = () => {
               </Grid>
             ) : (
               <>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Avatar sx={{ width: 64, height: 64, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.5rem' }}>
                   {(contactDisplayName(detailContact) || '?')[0].toUpperCase()}
                 </Avatar>
@@ -1962,6 +1990,38 @@ const AdminCRMPage: React.FC = () => {
                   <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', mt: 0.5 }} />
                 </Box>
               </Box>
+              {/* Linked organizations & hospitals - shown prominently below name for person types */}
+              {isPersonType(detailContact.type) && (() => {
+                const linkedOrgs = (detailContact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+                const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+                return (linkedOrgs.length > 0 || linkedHospitals.length > 0) ? (
+                  <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Linked organizations & hospitals</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {linkedOrgs.map((org) => (
+                        <Chip
+                          key={org.id}
+                          label={org.name}
+                          size="small"
+                          icon={<BusinessIcon />}
+                          onClick={() => { setDetailContact(org); }}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                      {linkedHospitals.map((hosp) => (
+                        <Chip
+                          key={hosp.id}
+                          label={hosp.name}
+                          size="small"
+                          icon={<LocalHospitalIcon />}
+                          onClick={() => { setDetailContact(hosp); }}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                ) : null;
+              })()}
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Details</Typography>
@@ -2030,28 +2090,6 @@ const AdminCRMPage: React.FC = () => {
                           {linked.map((p) => (
                             <ListItem key={p.id} disablePadding sx={{ py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => { setDetailContact(p); setFullScreenOpen(false); setPanelOpen(true); }}>
                               <ListItemText primary={contactDisplayName(p)} secondary={TYPE_LABELS[p.type]} />
-                            </ListItem>
-                          ))}
-                        </List>
-                      </Box>
-                    ) : null;
-                  })()}
-                  {/* Show linked organizations/hospitals for person types in full screen */}
-                  {isPersonType(detailContact.type) && (() => {
-                    const linkedOrgs = (detailContact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
-                    const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
-                    return (linkedOrgs.length > 0 || linkedHospitals.length > 0) ? (
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Linked organizations & hospitals</Typography>
-                        <List dense disablePadding>
-                          {linkedOrgs.map((org) => (
-                            <ListItem key={org.id} disablePadding sx={{ py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => { setDetailContact(org); }}>
-                              <ListItemText primary={org.name} secondary="Organization" />
-                            </ListItem>
-                          ))}
-                          {linkedHospitals.map((hosp) => (
-                            <ListItem key={hosp.id} disablePadding sx={{ py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => { setDetailContact(hosp); }}>
-                              <ListItemText primary={hosp.name} secondary="Hospital" />
                             </ListItem>
                           ))}
                         </List>
@@ -2221,6 +2259,11 @@ const AdminCRMPage: React.FC = () => {
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
             <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
           </Alert>
+          {saveError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSaveError(null)}>
+              {saveError}
+            </Alert>
+          )}
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}>
               <FormControl fullWidth size="small">
