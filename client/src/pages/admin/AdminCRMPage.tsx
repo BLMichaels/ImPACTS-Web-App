@@ -2978,14 +2978,23 @@ const AdminCRMPage: React.FC = () => {
                   const payload = { id: def.id, label: def.label, applicable_types: def.applicableTypes, field_type: def.fieldType, options: def.options ?? [], sort_order: 0, updated_at: new Date().toISOString() };
                   if (editingDefId) {
                     const { error } = await supabase.from('crm_custom_field_definitions').update(payload).eq('id', editingDefId);
-                    if (!error) {
-                      setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? def : d));
-                      setEditingDefId(null);
+                    if (error) {
+                      console.error('Failed to update custom field:', error);
+                      setCsvUploadError(`Failed to update field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
+                      return;
                     }
+                    setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? def : d));
+                    setEditingDefId(null);
                   } else {
                     const { error } = await supabase.from('crm_custom_field_definitions').insert(payload);
-                    if (!error) setCustomFieldDefs(prev => [...prev, def]);
+                    if (error) {
+                      console.error('Failed to add custom field:', error);
+                      setCsvUploadError(`Failed to add field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
+                      return;
+                    }
+                    setCustomFieldDefs(prev => [...prev, def]);
                   }
+                  setCsvUploadError(null);
                   setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions('');
                 }}
               >
@@ -2997,7 +3006,7 @@ const AdminCRMPage: React.FC = () => {
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Existing fields</Typography>
           <List dense>
             {customFieldDefs.map((def) => (
-              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
+              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { const { error } = await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); if (error) { console.error('Failed to delete custom field:', error); setCsvUploadError(`Failed to delete field: ${error.message}`); return; } setCsvUploadError(null); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
                 <ListItemText primary={def.label} secondary={`${CUSTOM_FIELD_TYPE_LABELS[def.fieldType]} · ${def.applicableTypes.map(t => TYPE_LABELS[t]).join(', ')}`} />
               </ListItem>
             ))}
