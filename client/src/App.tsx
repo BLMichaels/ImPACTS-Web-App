@@ -48,9 +48,14 @@ const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 const AdminSnapshotPage = lazy(() => import('./pages/admin/AdminSnapshotPage'));
 const AdminProjectPipelinePage = lazy(() => import('./pages/admin/AdminProjectPipelinePage'));
 const AdminCohortsPage = lazy(() => import('./pages/admin/AdminCohortsPage'));
+const AdminProgramsPage = lazy(() => import('./pages/admin/AdminProgramsPage'));
 
 // Cohorts Page (shared for PECC/Mentor)
 const CohortsPage = lazy(() => import('./pages/CohortsPage'));
+
+// Programs Pages
+const ProgramsPage = lazy(() => import('./pages/ProgramsPage'));
+const ManagerProgramsPage = lazy(() => import('./pages/manager/ManagerProgramsPage'));
 
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
@@ -198,6 +203,7 @@ function App() {
                   <Route path="/gap-plan" element={<ProtectedRoute><GapPlanPage /></ProtectedRoute>} />
                   <Route path="/education" element={<ProtectedRoute><EducationPage /></ProtectedRoute>} />
                   <Route path="/cohorts" element={<ProtectedRoute><CohortsPage /></ProtectedRoute>} />
+                  <Route path="/programs" element={<ProtectedRoute><ProgramsPage /></ProtectedRoute>} />
                   
                   {/* Mentor Routes */}
                   <Route path="/mentor/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorDashboardPage /></ProtectedRoute>} />
@@ -207,6 +213,7 @@ function App() {
                   <Route path="/mentor/wages" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorWagesExpensesPage /></ProtectedRoute>} />
                   <Route path="/mentor/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><SnapshotPage /></ProtectedRoute>} />
                   <Route path="/mentor/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><CohortsPage /></ProtectedRoute>} />
+                  <Route path="/mentor/programs" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><ProgramsPage /></ProtectedRoute>} />
                   
                   {/* Manager Routes */}
                   <Route path="/manager/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerDashboardPage /></ProtectedRoute>} />
@@ -214,6 +221,7 @@ function App() {
                   <Route path="/manager/crm" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCRMPage /></ProtectedRoute>} />
                   <Route path="/manager/wages" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerWagesExpensesPage /></ProtectedRoute>} />
                   <Route path="/manager/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCohortsPage /></ProtectedRoute>} />
+                  <Route path="/manager/programs" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerProgramsPage /></ProtectedRoute>} />
                   
                   {/* Admin Routes */}
                   <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboardPage /></ProtectedRoute>} />
@@ -223,6 +231,7 @@ function App() {
                   <Route path="/admin/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSnapshotPage /></ProtectedRoute>} />
                   <Route path="/admin/pipeline" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProjectPipelinePage /></ProtectedRoute>} />
                   <Route path="/admin/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCohortsPage /></ProtectedRoute>} />
+                  <Route path="/admin/programs" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProgramsPage /></ProtectedRoute>} />
                   
                   {/* Common Routes */}
                   <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />

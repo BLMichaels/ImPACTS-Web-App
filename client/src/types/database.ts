@@ -275,7 +275,12 @@ export const PERMISSIONS = {
   MANAGE_COHORTS: 'manage_cohorts',
   COHORT_INVITE: 'cohort_invite',
   COHORT_ANNOUNCE: 'cohort_announce',
-  COHORT_MODERATE: 'cohort_moderate'
+  COHORT_MODERATE: 'cohort_moderate',
+  
+  // Programs
+  VIEW_PROGRAMS: 'view_programs',
+  MANAGE_PROGRAMS: 'manage_programs',
+  PROGRAM_ANNOUNCE: 'program_announce'
 } as const;
 
 // Default permissions by role
@@ -308,7 +313,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     PERMISSIONS.MANAGE_COHORTS,
     PERMISSIONS.COHORT_INVITE,
     PERMISSIONS.COHORT_ANNOUNCE,
-    PERMISSIONS.COHORT_MODERATE
+    PERMISSIONS.COHORT_MODERATE,
+    PERMISSIONS.VIEW_PROGRAMS,
+    PERMISSIONS.MANAGE_PROGRAMS,
+    PERMISSIONS.PROGRAM_ANNOUNCE
   ],
   
   [UserRole.MENTOR]: [
@@ -329,7 +337,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     PERMISSIONS.VIEW_SNAPSHOT,
     PERMISSIONS.EXPORT_DATA,
     PERMISSIONS.VIEW_COHORTS,
-    PERMISSIONS.COHORT_INVITE  // Can invite PECCs (needs approval)
+    PERMISSIONS.COHORT_INVITE,  // Can invite PECCs (needs approval)
+    PERMISSIONS.VIEW_PROGRAMS
   ],
   
   [UserRole.PECC]: [
@@ -342,7 +351,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     PERMISSIONS.VIEW_MILESTONES,
     PERMISSIONS.VIEW_SIMULATIONS,
     PERMISSIONS.VIEW_SNAPSHOT,
-    PERMISSIONS.VIEW_COHORTS
+    PERMISSIONS.VIEW_COHORTS,
+    PERMISSIONS.VIEW_PROGRAMS
   ]
 };
 
@@ -609,4 +619,90 @@ export interface CohortWithStats extends Cohort {
   unread_discussions?: number;
   last_activity_at?: string;
   is_manager?: boolean;  // Whether current user manages this cohort
+}
+
+// ============================================
+// PROGRAMS
+// ============================================
+
+export enum ProgramMemberStatus {
+  ACTIVE = 'active',
+  PENDING = 'pending',
+  REMOVED = 'removed'
+}
+
+// Main program entity
+export interface Program {
+  id: string;
+  name: string;
+  description: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  created_by: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Program membership
+export interface ProgramMember {
+  id: string;
+  program_id: string;
+  user_id: string;
+  added_by: string | null;
+  status: ProgramMemberStatus;
+  added_at: string;
+  // Joined fields from users table
+  user?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    role: UserRole;
+  };
+}
+
+// Manager assignment to program
+export interface ProgramManager {
+  id: string;
+  program_id: string;
+  manager_id: string;
+  assigned_by: string | null;
+  assigned_at: string;
+  // Joined fields
+  manager?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    role: UserRole;
+  };
+}
+
+// Program announcements
+export interface ProgramAnnouncement {
+  id: string;
+  program_id: string;
+  title: string;
+  content: string;
+  created_by: string | null;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  author?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    role: UserRole;
+  };
+}
+
+// Extended program with computed fields for UI
+export interface ProgramWithStats extends Program {
+  member_count: number;
+  announcement_count: number;
+  cohort_count?: number;
+  last_activity_at?: string;
+  is_manager?: boolean;  // Whether current user manages this program
 }
