@@ -45,6 +45,14 @@ ADD COLUMN IF NOT EXISTS county TEXT;
 ALTER TABLE public.hospitals 
 ADD COLUMN IF NOT EXISTS facility_id TEXT;
 
+-- Email
+ALTER TABLE public.hospitals 
+ADD COLUMN IF NOT EXISTS email TEXT;
+
+-- Phone
+ALTER TABLE public.hospitals 
+ADD COLUMN IF NOT EXISTS phone TEXT;
+
 
 -- =====================================================
 -- 2. Create index for facility_id if it doesn't exist

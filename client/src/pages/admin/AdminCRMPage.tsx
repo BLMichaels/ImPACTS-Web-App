@@ -389,7 +389,8 @@ const AdminCRMPage: React.FC = () => {
     address2: '',
     city: '',
     county: '',
-    zip: ''
+    zip: '',
+    facilityId: ''
   });
 
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>(() => {
@@ -494,7 +495,7 @@ const AdminCRMPage: React.FC = () => {
               type: 'hospital',
               name,
               organization,
-              email: '',
+              email: String(row.email ?? ''),
               phone: String(row.phone ?? ''),
               status: (row.crm_status != null ? String(row.crm_status) : null) || 'Active',
               region,
@@ -1080,7 +1081,39 @@ const AdminCRMPage: React.FC = () => {
       setSaveInProgress(true);
       const key = String(editingContact.facilityId ?? editingContact.id);
       const currentInState = contacts.find(c => c.id === editingContact.id);
-      const updatePayload: { region: string | null; state?: string | null; crm_status?: string; custom_fields?: Record<string, string>; notes_log?: NotesLogEntry[]; activity_log?: ActivityLogEntry[]; hospital_system?: string | null; programs?: string[] } = { region: formData.region || null, state: formData.state?.trim() || null, crm_status: formData.status || 'Active' };
+      const updatePayload: { 
+        name?: string; 
+        facility_id?: string | null;
+        company_name?: string | null;
+        region: string | null; 
+        state?: string | null; 
+        crm_status?: string; 
+        custom_fields?: Record<string, string>; 
+        notes_log?: NotesLogEntry[]; 
+        activity_log?: ActivityLogEntry[]; 
+        hospital_system?: string | null; 
+        programs?: string[];
+        address?: string | null;
+        city?: string | null;
+        county?: string | null;
+        zip?: string | null;
+        email?: string | null;
+        phone?: string | null;
+      } = { 
+        region: formData.region || null, 
+        state: formData.state?.trim() || null, 
+        crm_status: formData.status || 'Active' 
+      };
+      // Add all editable fields
+      updatePayload.name = formData.name?.trim() || '';
+      updatePayload.facility_id = formData.facilityId?.trim() || null;
+      updatePayload.company_name = formData.organization?.trim() || null;
+      updatePayload.address = formData.address?.trim() || null;
+      updatePayload.city = formData.city?.trim() || null;
+      updatePayload.county = formData.county?.trim() || null;
+      updatePayload.zip = formData.zip?.trim() || null;
+      updatePayload.email = formData.email?.trim() || null;
+      updatePayload.phone = formData.phone?.trim() || null;
       if (formData.customFields && Object.keys(formData.customFields).length > 0) {
         updatePayload.custom_fields = formData.customFields;
       }
@@ -1093,16 +1126,23 @@ const AdminCRMPage: React.FC = () => {
         .update(updatePayload)
         .or(`facility_id.eq.${key},id.eq.${key}`);
       setSaveInProgress(false);
+      // Build updated contact with all changes including facilityId
+      const updatedContact: Partial<Contact> = {
+        ...payload,
+        facilityId: formData.facilityId?.trim() || editingContact.facilityId
+      };
       if (error) {
         console.error('Failed to update hospital:', error);
-        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...updatedContact } : c)));
       } else {
-        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...updatedContact } : c)));
+        // Also update detailContact if viewing this hospital
+        setDetailContact(prev => (prev?.id === payload.id ? { ...prev, ...updatedContact } as Contact : prev));
       }
     } else if (formData.type === 'hospital' && !editingContact) {
       // ADDING a new hospital
       setSaveInProgress(true);
-      const newHospitalPayload = {
+      const newHospitalPayload: Record<string, unknown> = {
         name: formData.name?.trim() || '',
         company_name: formData.organization?.trim() || null,
         region: formData.region?.trim() || null,
@@ -1117,8 +1157,14 @@ const AdminCRMPage: React.FC = () => {
         address: formData.address?.trim() || null,
         city: formData.city?.trim() || null,
         county: formData.county?.trim() || null,
-        zip: formData.zip?.trim() || null
+        zip: formData.zip?.trim() || null,
+        email: formData.email?.trim() || null,
+        phone: formData.phone?.trim() || null
       };
+      // Only add facility_id if user provided one (otherwise let DB generate it)
+      if (formData.facilityId?.trim()) {
+        newHospitalPayload.facility_id = formData.facilityId.trim();
+      }
       const { data: newHospital, error } = await supabase
         .from('hospitals')
         .insert(newHospitalPayload)
@@ -2055,7 +2101,7 @@ const AdminCRMPage: React.FC = () => {
             <PersonIcon fontSize="small" sx={{ mr: 1 }} /> Manage in Team tab
           </MenuItem>
         )}
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '' }); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
+        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '' }); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
@@ -2275,7 +2321,7 @@ const AdminCRMPage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '' });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '' });
                   setEditingContact(c);
                   setPanelOpen(false);
                   setFullScreenOpen(true);
@@ -2331,6 +2377,7 @@ const AdminCRMPage: React.FC = () => {
                 ) : (
                   <>
                     <Grid item xs={12}><TextField label="Hospital name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required /></Grid>
+                    <Grid item xs={12}><TextField label="Facility ID" value={formData.facilityId} onChange={(e) => setFormData(prev => ({ ...prev, facilityId: e.target.value }))} fullWidth size="small" placeholder="Unique identifier for this facility" /></Grid>
                     <Grid item xs={12}><TextField label="Company / Parent organization" value={formData.organization} onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))} fullWidth size="small" placeholder="e.g. health system or owner" /></Grid>
                     <Grid item xs={12}><TextField label="Hospital system" value={formData.hospitalSystem} onChange={(e) => setFormData(prev => ({ ...prev, hospitalSystem: e.target.value }))} fullWidth size="small" placeholder="Health system or network this hospital is part of" /></Grid>
                   </>
@@ -2640,7 +2687,7 @@ const AdminCRMPage: React.FC = () => {
                 <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                     const c = detailContact;
-                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '' });
+                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '' });
                     setEditingContact(c);
                     setFullScreenEditMode(true);
                   }}>
