@@ -2974,25 +2974,30 @@ const AdminCRMPage: React.FC = () => {
                 onClick={async () => {
                   if (!newDefLabel.trim() || newDefApplicableTypes.length === 0) return;
                   const opts = newDefOptions.split(/\r?\n/).map(l => l.trim()).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
-                  const def: CustomFieldDefinition = { id: editingDefId ?? `cf_${Date.now()}`, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined };
-                  const payload = { id: def.id, label: def.label, applicable_types: def.applicableTypes, field_type: def.fieldType, options: def.options ?? [], sort_order: 0, updated_at: new Date().toISOString() };
+                  
                   if (editingDefId) {
-                    const { error } = await supabase.from('crm_custom_field_definitions').update(payload).eq('id', editingDefId);
+                    // Update existing field
+                    const updatePayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], updated_at: new Date().toISOString() };
+                    const { error } = await supabase.from('crm_custom_field_definitions').update(updatePayload).eq('id', editingDefId);
                     if (error) {
                       console.error('Failed to update custom field:', error);
                       setCsvUploadError(`Failed to update field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
                       return;
                     }
-                    setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? def : d));
+                    const updatedDef: CustomFieldDefinition = { id: editingDefId, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined };
+                    setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? updatedDef : d));
                     setEditingDefId(null);
                   } else {
-                    const { error } = await supabase.from('crm_custom_field_definitions').insert(payload);
+                    // Insert new field - don't send id, let database generate UUID
+                    const insertPayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], sort_order: 0 };
+                    const { data, error } = await supabase.from('crm_custom_field_definitions').insert(insertPayload).select().single();
                     if (error) {
                       console.error('Failed to add custom field:', error);
                       setCsvUploadError(`Failed to add field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
                       return;
                     }
-                    setCustomFieldDefs(prev => [...prev, def]);
+                    const newDef: CustomFieldDefinition = { id: String(data.id), label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined };
+                    setCustomFieldDefs(prev => [...prev, newDef]);
                   }
                   setCsvUploadError(null);
                   setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions('');
