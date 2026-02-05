@@ -1110,12 +1110,21 @@ const AdminCRMPage: React.FC = () => {
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
         setSaveError(null);
       } else if (isUserSourced && editingContact) {
-        // For user-sourced contacts, we need to create a CRM record to store linked orgs/hospitals
-        // and other CRM-specific data that can't be stored in the users table
+        // For user-sourced contacts, we need to create a CRM record to store any CRM-specific data
+        // that can't be stored in the users table (which only has: email, first_name, last_name, phone, role)
+        // We create a CRM record if ANY of these fields have values:
         const hasCrmData = validLinkedOrgIds.length > 0 || 
                            validLinkedHospitalIds.length > 0 ||
                            (formData.notes?.trim()) ||
-                           Object.keys(formData.customFields || {}).length > 0;
+                           Object.keys(formData.customFields || {}).length > 0 ||
+                           (formData.region?.trim()) ||
+                           (formData.organization?.trim()) ||
+                           (formData.address?.trim()) ||
+                           (formData.address2?.trim()) ||
+                           (formData.city?.trim()) ||
+                           (formData.county?.trim()) ||
+                           (formData.zip?.trim()) ||
+                           (formData.state?.trim());
         
         if (hasCrmData) {
           // Create/update a CRM record for this user to store CRM-specific data
@@ -1126,6 +1135,14 @@ const AdminCRMPage: React.FC = () => {
             .eq('email', editingContact.email)
             .eq('contact_type', editingContact.type)
             .maybeSingle();
+          
+          // Also update phone in users table if it changed (phone is stored in users table)
+          if (formData.phone?.trim() !== editingContact.phone && editingContact.user_id) {
+            await supabase
+              .from('users')
+              .update({ phone: formData.phone?.trim() || null })
+              .eq('id', editingContact.user_id);
+          }
           
           if (existingCrm) {
             // Update existing CRM record
@@ -1168,7 +1185,15 @@ const AdminCRMPage: React.FC = () => {
             }
           }
         } else {
-          // No CRM-specific data, just update local state
+          // No CRM-specific data to save, but we might need to update the users table
+          // for fields that are stored there (phone)
+          if (formData.phone?.trim() !== editingContact.phone) {
+            // Update phone in users table
+            await supabase
+              .from('users')
+              .update({ phone: formData.phone?.trim() || null })
+              .eq('id', editingContact.user_id);
+          }
           setSaveInProgress(false);
           setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
         }
