@@ -1095,9 +1095,68 @@ const AdminCRMPage: React.FC = () => {
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
         setSaveError(null);
       } else if (isUserSourced && editingContact) {
-        // For user-sourced contacts, just update local state (user data managed elsewhere)
-        setSaveInProgress(false);
-        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+        // For user-sourced contacts, we need to create a CRM record to store linked orgs/hospitals
+        // and other CRM-specific data that can't be stored in the users table
+        const hasCrmData = (formData.linkedOrganizationIds ?? []).length > 0 || 
+                           (formData.linkedHospitalIds ?? []).length > 0 ||
+                           (formData.notes?.trim()) ||
+                           Object.keys(formData.customFields || {}).length > 0;
+        
+        if (hasCrmData) {
+          // Create/update a CRM record for this user to store CRM-specific data
+          // Use upsert with the user's email as the unique identifier
+          const { data: existingCrm } = await supabase
+            .from('crm_organizations')
+            .select('id')
+            .eq('email', editingContact.email)
+            .eq('contact_type', editingContact.type)
+            .maybeSingle();
+          
+          if (existingCrm) {
+            // Update existing CRM record
+            const { error } = await supabase
+              .from('crm_organizations')
+              .update({
+                ...payloadDb,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existingCrm.id);
+            setSaveInProgress(false);
+            if (error) {
+              console.error('Failed to update CRM data for user:', error);
+              setSaveError(`Failed to save linked organizations: ${error.message || 'Database error'}.`);
+              return;
+            }
+            // Update local state to reflect CRM record
+            setContacts(prev => prev.map(c => (c.id === editingContact.id ? { ...c, ...payload, id: existingCrm.id, crmCreated: true } : c)));
+            setSaveError(null);
+          } else {
+            // Create new CRM record for this user
+            const { data: inserted, error } = await supabase
+              .from('crm_organizations')
+              .insert(payloadDb)
+              .select('id, created_at')
+              .single();
+            setSaveInProgress(false);
+            if (error) {
+              console.error('Failed to create CRM record for user:', error);
+              setSaveError(`Failed to save linked organizations: ${error.message || 'Database error'}. Run CRM_RLS_FIX.sql in Supabase.`);
+              return;
+            }
+            if (inserted) {
+              // Remove the user-sourced entry and add the CRM entry
+              setContacts(prev => {
+                const filtered = prev.filter(c => c.id !== editingContact.id);
+                return [...filtered, { ...payload, id: (inserted as { id: string }).id, crmCreated: true }];
+              });
+              setSaveError(null);
+            }
+          }
+        } else {
+          // No CRM-specific data, just update local state
+          setSaveInProgress(false);
+          setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
+        }
       } else {
         // Insert new CRM contact
         const { data: inserted, error } = await supabase
