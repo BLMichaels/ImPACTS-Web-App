@@ -230,8 +230,9 @@ function App() {
                   <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSettingsPage /></ProtectedRoute>} />
                   <Route path="/admin/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSnapshotPage /></ProtectedRoute>} />
                   <Route path="/admin/pipeline" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProjectPipelinePage /></ProtectedRoute>} />
-                  <Route path="/admin/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCohortsPage /></ProtectedRoute>} />
-                  <Route path="/admin/programs" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProgramsPage /></ProtectedRoute>} />
+                  {/* Programs and Cohorts are now tabs in Settings - redirect old URLs */}
+                  <Route path="/admin/cohorts" element={<Navigate to="/admin/settings?tab=cohorts" replace />} />
+                  <Route path="/admin/programs" element={<Navigate to="/admin/settings?tab=programs" replace />} />
                   
                   {/* Common Routes */}
                   <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />

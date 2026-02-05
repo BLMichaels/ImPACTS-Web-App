@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -30,7 +31,8 @@ import {
   Snackbar,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  CircularProgress
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -42,6 +44,10 @@ import { supabase } from '../../supabase';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../../types/database';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '../../types/database';
 import ScormPackagesSection from '../../components/ScormPackagesSection';
+
+// Lazy load Programs and Cohorts pages to embed in settings
+const AdminProgramsContent = lazy(() => import('./AdminProgramsPage'));
+const AdminCohortsContent = lazy(() => import('./AdminCohortsPage'));
 
 // ---- Registration section constants ----
 const QUESTION_TYPES: { value: RegistrationQuestionType; label: string }[] = [
@@ -75,7 +81,39 @@ const ROLES: UserRole[] = [UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC];
 const getRoleColor = (role: string) => ({ manager: '#9c27b0', mentor: '#ff9800', pecc: '#2196f3' }[role] || '#757575');
 
 export default function AdminSettingsPage() {
-  const [tabIndex, setTabIndex] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Map tab query param to index
+  const tabParamToIndex: Record<string, number> = useMemo(() => ({
+    'registration': 0,
+    'permissions': 1,
+    'modules': 2,
+    'programs': 3,
+    'cohorts': 4
+  }), []);
+
+  const tabIndexToParam: Record<number, string> = useMemo(() => ({
+    0: 'registration',
+    1: 'permissions',
+    2: 'modules',
+    3: 'programs',
+    4: 'cohorts'
+  }), []);
+
+  // Initialize tab from URL or default to 0
+  const initialTab = tabParamToIndex[searchParams.get('tab') || ''] ?? 0;
+  const [tabIndex, setTabIndex] = useState(initialTab);
+
+  // Update URL when tab changes
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setTabIndex(newValue);
+    const tabParam = tabIndexToParam[newValue];
+    if (tabParam && tabParam !== 'registration') {
+      setSearchParams({ tab: tabParam });
+    } else {
+      setSearchParams({});
+    }
+  };
 
   // ---- Registration state ----
   const [questions, setQuestions] = useState<RegistrationQuestion[]>([]);
@@ -247,10 +285,12 @@ export default function AdminSettingsPage() {
         Registration form, role permissions, and other configuration.
       </Typography>
 
-      <Tabs value={tabIndex} onChange={(_, v) => setTabIndex(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+      <Tabs value={tabIndex} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tab label="Registration Questions" />
         <Tab label="Permissions" />
         <Tab label="Learning Modules" />
+        <Tab label="Programs" />
+        <Tab label="Cohorts" />
       </Tabs>
 
       {/* Registration Questions */}
@@ -368,6 +408,20 @@ export default function AdminSettingsPage() {
           </Typography>
           <ScormPackagesSection title="Learning Modules" />
         </Box>
+      )}
+
+      {/* Programs */}
+      {tabIndex === 3 && (
+        <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
+          <AdminProgramsContent />
+        </Suspense>
+      )}
+
+      {/* Cohorts */}
+      {tabIndex === 4 && (
+        <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
+          <AdminCohortsContent />
+        </Suspense>
       )}
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>

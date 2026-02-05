@@ -104,8 +104,6 @@ const Navbar: React.FC = () => {
         return [
           { path: '/admin/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
-          { path: '/admin/programs', label: 'Programs', icon: <ProgramsIcon /> },
-          { path: '/admin/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/admin/pipeline', label: 'Project Pipeline', icon: <PipelineIcon /> },
           { path: '/admin/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon /> }
