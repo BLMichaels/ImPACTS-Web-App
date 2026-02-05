@@ -1053,6 +1053,21 @@ const AdminCRMPage: React.FC = () => {
       const currentInState = contacts.find(c => c.id === (editingContact?.id ?? payload.id));
       const notesLog = currentInState?.notesLog ?? editingContact?.notesLog ?? [];
       const activityLog = currentInState?.activityLog ?? editingContact?.activityLog ?? [];
+      // UUID validation helper - only valid UUIDs can be stored in the linked_*_ids columns
+      const isValidUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      
+      // Filter linked IDs to only include valid UUIDs (CRM-created records)
+      // User-sourced contacts have numeric IDs that can't be stored as UUIDs
+      const validLinkedOrgIds = (formData.linkedOrganizationIds ?? []).filter(isValidUuid);
+      const validLinkedHospitalIds = (formData.linkedHospitalIds ?? []).filter(isValidUuid);
+      
+      // Warn if some linked items were filtered out
+      const skippedOrgCount = (formData.linkedOrganizationIds ?? []).length - validLinkedOrgIds.length;
+      const skippedHospitalCount = (formData.linkedHospitalIds ?? []).length - validLinkedHospitalIds.length;
+      if (skippedOrgCount > 0 || skippedHospitalCount > 0) {
+        console.warn(`Skipped ${skippedOrgCount} org(s) and ${skippedHospitalCount} hospital(s) with non-UUID IDs (user-sourced contacts must be saved to CRM first)`);
+      }
+      
       const payloadDb: Record<string, unknown> = {
         name: (isPersonType(formData.type) ? `${formData.firstName || ''} ${formData.lastName || ''}`.trim() : formData.name?.trim()) || payload.name,
         email: formData.email?.trim() || null,
@@ -1068,8 +1083,8 @@ const AdminCRMPage: React.FC = () => {
         first_name: isPersonType(formData.type) ? (formData.firstName?.trim() || null) : null,
         last_name: isPersonType(formData.type) ? (formData.lastName?.trim() || null) : null,
         organization: isPersonType(formData.type) ? (formData.organization?.trim() || null) : null,
-        linked_organization_ids: isPersonType(formData.type) ? (formData.linkedOrganizationIds ?? []) : [],
-        linked_hospital_ids: isPersonType(formData.type) ? (formData.linkedHospitalIds ?? []) : [],
+        linked_organization_ids: isPersonType(formData.type) ? validLinkedOrgIds : [],
+        linked_hospital_ids: isPersonType(formData.type) ? validLinkedHospitalIds : [],
         address: formData.address?.trim() || null,
         address2: formData.address2?.trim() || null,
         city: formData.city?.trim() || null,
@@ -1097,8 +1112,8 @@ const AdminCRMPage: React.FC = () => {
       } else if (isUserSourced && editingContact) {
         // For user-sourced contacts, we need to create a CRM record to store linked orgs/hospitals
         // and other CRM-specific data that can't be stored in the users table
-        const hasCrmData = (formData.linkedOrganizationIds ?? []).length > 0 || 
-                           (formData.linkedHospitalIds ?? []).length > 0 ||
+        const hasCrmData = validLinkedOrgIds.length > 0 || 
+                           validLinkedHospitalIds.length > 0 ||
                            (formData.notes?.trim()) ||
                            Object.keys(formData.customFields || {}).length > 0;
         
