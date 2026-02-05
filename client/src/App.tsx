@@ -39,6 +39,7 @@ const ManagerDashboardPage = lazy(() => import('./pages/manager/ManagerDashboard
 const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
 const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
 const ManagerWagesExpensesPage = lazy(() => import('./pages/manager/ManagerWagesExpensesPage'));
+const ManagerCohortsPage = lazy(() => import('./pages/manager/ManagerCohortsPage'));
 
 // Admin Pages (lazy loaded)
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
@@ -46,6 +47,10 @@ const AdminCRMPage = lazy(() => import('./pages/admin/AdminCRMPage'));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 const AdminSnapshotPage = lazy(() => import('./pages/admin/AdminSnapshotPage'));
 const AdminProjectPipelinePage = lazy(() => import('./pages/admin/AdminProjectPipelinePage'));
+const AdminCohortsPage = lazy(() => import('./pages/admin/AdminCohortsPage'));
+
+// Cohorts Page (shared for PECC/Mentor)
+const CohortsPage = lazy(() => import('./pages/CohortsPage'));
 
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
@@ -192,6 +197,7 @@ function App() {
                   <Route path="/prs" element={<Navigate to="/snapshot" replace />} />
                   <Route path="/gap-plan" element={<ProtectedRoute><GapPlanPage /></ProtectedRoute>} />
                   <Route path="/education" element={<ProtectedRoute><EducationPage /></ProtectedRoute>} />
+                  <Route path="/cohorts" element={<ProtectedRoute><CohortsPage /></ProtectedRoute>} />
                   
                   {/* Mentor Routes */}
                   <Route path="/mentor/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorDashboardPage /></ProtectedRoute>} />
@@ -200,12 +206,14 @@ function App() {
                   <Route path="/mentor/milestones" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSiteMilestonesPage /></ProtectedRoute>} />
                   <Route path="/mentor/wages" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorWagesExpensesPage /></ProtectedRoute>} />
                   <Route path="/mentor/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><SnapshotPage /></ProtectedRoute>} />
+                  <Route path="/mentor/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><CohortsPage /></ProtectedRoute>} />
                   
                   {/* Manager Routes */}
                   <Route path="/manager/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerDashboardPage /></ProtectedRoute>} />
                   <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />
                   <Route path="/manager/crm" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCRMPage /></ProtectedRoute>} />
                   <Route path="/manager/wages" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerWagesExpensesPage /></ProtectedRoute>} />
+                  <Route path="/manager/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCohortsPage /></ProtectedRoute>} />
                   
                   {/* Admin Routes */}
                   <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboardPage /></ProtectedRoute>} />
@@ -214,6 +222,7 @@ function App() {
                   <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSettingsPage /></ProtectedRoute>} />
                   <Route path="/admin/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSnapshotPage /></ProtectedRoute>} />
                   <Route path="/admin/pipeline" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProjectPipelinePage /></ProtectedRoute>} />
+                  <Route path="/admin/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCohortsPage /></ProtectedRoute>} />
                   
                   {/* Common Routes */}
                   <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />

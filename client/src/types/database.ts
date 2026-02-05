@@ -268,7 +268,14 @@ export const PERMISSIONS = {
   
   // Admin
   MANAGE_PERMISSIONS: 'manage_permissions',
-  SYSTEM_SETTINGS: 'system_settings'
+  SYSTEM_SETTINGS: 'system_settings',
+  
+  // Cohorts
+  VIEW_COHORTS: 'view_cohorts',
+  MANAGE_COHORTS: 'manage_cohorts',
+  COHORT_INVITE: 'cohort_invite',
+  COHORT_ANNOUNCE: 'cohort_announce',
+  COHORT_MODERATE: 'cohort_moderate'
 } as const;
 
 // Default permissions by role
@@ -296,7 +303,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     PERMISSIONS.VIEW_TEAM_WAGES,
     PERMISSIONS.MANAGE_WAGES,
     PERMISSIONS.VIEW_SNAPSHOT,
-    PERMISSIONS.EXPORT_DATA
+    PERMISSIONS.EXPORT_DATA,
+    PERMISSIONS.VIEW_COHORTS,
+    PERMISSIONS.MANAGE_COHORTS,
+    PERMISSIONS.COHORT_INVITE,
+    PERMISSIONS.COHORT_ANNOUNCE,
+    PERMISSIONS.COHORT_MODERATE
   ],
   
   [UserRole.MENTOR]: [
@@ -315,7 +327,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     PERMISSIONS.VIEW_SIMULATIONS,
     PERMISSIONS.VIEW_OWN_WAGES,
     PERMISSIONS.VIEW_SNAPSHOT,
-    PERMISSIONS.EXPORT_DATA
+    PERMISSIONS.EXPORT_DATA,
+    PERMISSIONS.VIEW_COHORTS,
+    PERMISSIONS.COHORT_INVITE  // Can invite PECCs (needs approval)
   ],
   
   [UserRole.PECC]: [
@@ -327,7 +341,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     PERMISSIONS.VIEW_GAP_PLANS,
     PERMISSIONS.VIEW_MILESTONES,
     PERMISSIONS.VIEW_SIMULATIONS,
-    PERMISSIONS.VIEW_SNAPSHOT
+    PERMISSIONS.VIEW_SNAPSHOT,
+    PERMISSIONS.VIEW_COHORTS
   ]
 };
 
@@ -419,4 +434,179 @@ export interface RegistrationQuestion {
   target_roles?: string[] | null;
   /** Show only when the referenced question's answer satisfies the operator/value. */
   display_condition?: RegistrationQuestionDisplayCondition | null;
+}
+
+// ============================================
+// COHORTS
+// ============================================
+
+export enum CohortMemberStatus {
+  ACTIVE = 'active',
+  PENDING_APPROVAL = 'pending_approval',
+  REMOVED = 'removed'
+}
+
+export enum CohortInvitationStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected'
+}
+
+// Main cohort entity
+export interface Cohort {
+  id: string;
+  name: string;
+  description: string | null;
+  program_id: string | null;
+  created_by: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Cohort membership
+export interface CohortMember {
+  id: string;
+  cohort_id: string;
+  user_id: string;
+  added_by: string | null;
+  status: CohortMemberStatus;
+  added_at: string;
+  // Joined fields from users table
+  user?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    role: UserRole;
+  };
+}
+
+// Manager assignment to cohort
+export interface CohortManager {
+  id: string;
+  cohort_id: string;
+  manager_id: string;
+  assigned_by: string | null;
+  assigned_at: string;
+  // Joined fields from users table
+  manager?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+  };
+}
+
+// Announcement in a cohort
+export interface CohortAnnouncement {
+  id: string;
+  cohort_id: string;
+  title: string;
+  content: string;
+  created_by: string | null;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  author?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+}
+
+// Discussion topic in a cohort
+export interface CohortDiscussionTopic {
+  id: string;
+  cohort_id: string;
+  title: string;
+  content: string | null;
+  created_by: string | null;
+  is_locked: boolean;
+  is_pinned: boolean;
+  reply_count: number;
+  last_reply_at: string | null;
+  last_reply_by: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  author?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    role: UserRole;
+  };
+  last_replier?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+}
+
+// Reply to a discussion topic
+export interface CohortDiscussionReply {
+  id: string;
+  topic_id: string;
+  content: string;
+  created_by: string | null;
+  edited_at: string | null;
+  created_at: string;
+  // Joined fields
+  author?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    role: UserRole;
+  };
+}
+
+// Invitation for mentor-initiated PECC invites
+export interface CohortInvitation {
+  id: string;
+  cohort_id: string;
+  user_id: string;
+  invited_by: string | null;
+  status: CohortInvitationStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  invited_at: string;
+  // Joined fields
+  cohort?: {
+    id: string;
+    name: string;
+  };
+  invitee?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    role: UserRole;
+  };
+  inviter?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+}
+
+// Read status tracking for unread indicators
+export interface CohortReadStatus {
+  id: string;
+  user_id: string;
+  cohort_id: string;
+  last_read_announcements: string | null;
+  last_read_discussions: string | null;
+  updated_at: string;
+}
+
+// Extended cohort with computed fields for UI
+export interface CohortWithStats extends Cohort {
+  member_count: number;
+  announcement_count: number;
+  topic_count: number;
+  unread_announcements?: number;
+  unread_discussions?: number;
+  last_activity_at?: string;
+  is_manager?: boolean;  // Whether current user manages this cohort
 }

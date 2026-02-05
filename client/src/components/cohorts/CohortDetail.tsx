@@ -1,0 +1,340 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box,
+  Typography,
+  Tabs,
+  Tab,
+  IconButton,
+  Button,
+  Chip,
+  Avatar,
+  Paper,
+  Tooltip,
+  Badge
+} from '@mui/material';
+import {
+  ArrowBack as BackIcon,
+  Edit as EditIcon,
+  Campaign as AnnouncementIcon,
+  Forum as DiscussionIcon,
+  Group as GroupIcon,
+  Settings as SettingsIcon
+} from '@mui/icons-material';
+import { 
+  Cohort, 
+  CohortAnnouncement, 
+  CohortDiscussionTopic, 
+  CohortMember,
+  UserRole 
+} from '../../types/database';
+import { useUserProfile } from '../../context/UserProfileContext';
+import { supabase } from '../../lib/supabase';
+import AnnouncementList from './AnnouncementList';
+import DiscussionTopicList from './DiscussionTopicList';
+import DiscussionTopicView from './DiscussionTopicView';
+import MemberList from './MemberList';
+
+interface CohortDetailProps {
+  cohort: Cohort;
+  onBack: () => void;
+  onEdit?: () => void;
+  canManage: boolean;
+  canAnnounce: boolean;
+  canInvite: boolean;
+}
+
+const CohortDetail: React.FC<CohortDetailProps> = ({
+  cohort,
+  onBack,
+  onEdit,
+  canManage,
+  canAnnounce,
+  canInvite
+}) => {
+  const { userProfile, userRole } = useUserProfile();
+  const [tabValue, setTabValue] = useState(0);
+  const [announcements, setAnnouncements] = useState<CohortAnnouncement[]>([]);
+  const [topics, setTopics] = useState<CohortDiscussionTopic[]>([]);
+  const [members, setMembers] = useState<CohortMember[]>([]);
+  const [selectedTopic, setSelectedTopic] = useState<CohortDiscussionTopic | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  const [unreadDiscussions, setUnreadDiscussions] = useState(0);
+
+  // Load cohort data
+  const loadData = useCallback(async () => {
+    if (!cohort.id) return;
+    setLoading(true);
+
+    try {
+      // Load announcements with author info
+      const { data: announcementsData } = await supabase
+        .from('cohort_announcements')
+        .select(`
+          *,
+          author:created_by(id, first_name, last_name)
+        `)
+        .eq('cohort_id', cohort.id)
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      // Load discussion topics with author and last replier info
+      const { data: topicsData } = await supabase
+        .from('cohort_discussion_topics')
+        .select(`
+          *,
+          author:created_by(id, first_name, last_name, role),
+          last_replier:last_reply_by(id, first_name, last_name)
+        `)
+        .eq('cohort_id', cohort.id)
+        .order('is_pinned', { ascending: false })
+        .order('last_reply_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
+
+      // Load members with user info
+      const { data: membersData } = await supabase
+        .from('cohort_members')
+        .select(`
+          *,
+          user:user_id(id, first_name, last_name, email, role)
+        `)
+        .eq('cohort_id', cohort.id)
+        .eq('status', 'active')
+        .order('added_at', { ascending: false });
+
+      // Load read status
+      if (userProfile?.id) {
+        const { data: readStatus } = await supabase
+          .from('cohort_read_status')
+          .select('*')
+          .eq('cohort_id', cohort.id)
+          .eq('user_id', userProfile.id)
+          .single();
+
+        if (readStatus) {
+          // Count unread announcements
+          const unreadAnns = (announcementsData || []).filter(
+            a => !readStatus.last_read_announcements || 
+                 new Date(a.created_at) > new Date(readStatus.last_read_announcements)
+          ).length;
+          setUnreadAnnouncements(unreadAnns);
+
+          // Count unread discussions
+          const unreadDiscs = (topicsData || []).filter(
+            t => {
+              const topicTime = t.last_reply_at || t.created_at;
+              return !readStatus.last_read_discussions || 
+                     new Date(topicTime) > new Date(readStatus.last_read_discussions);
+            }
+          ).length;
+          setUnreadDiscussions(unreadDiscs);
+        } else {
+          setUnreadAnnouncements(announcementsData?.length || 0);
+          setUnreadDiscussions(topicsData?.length || 0);
+        }
+      }
+
+      setAnnouncements(announcementsData || []);
+      setTopics(topicsData || []);
+      setMembers(membersData || []);
+    } catch (error) {
+      console.error('Error loading cohort data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [cohort.id, userProfile?.id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Mark announcements as read when viewing that tab
+  const handleTabChange = async (_: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+    
+    if (!userProfile?.id) return;
+
+    try {
+      if (newValue === 0 && unreadAnnouncements > 0) {
+        // Mark announcements as read
+        await supabase
+          .from('cohort_read_status')
+          .upsert({
+            user_id: userProfile.id,
+            cohort_id: cohort.id,
+            last_read_announcements: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id,cohort_id' });
+        setUnreadAnnouncements(0);
+      } else if (newValue === 1 && unreadDiscussions > 0) {
+        // Mark discussions as read
+        await supabase
+          .from('cohort_read_status')
+          .upsert({
+            user_id: userProfile.id,
+            cohort_id: cohort.id,
+            last_read_discussions: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id,cohort_id' });
+        setUnreadDiscussions(0);
+      }
+    } catch (error) {
+      console.error('Error updating read status:', error);
+    }
+  };
+
+  const handleAnnouncementCreated = (announcement: CohortAnnouncement) => {
+    setAnnouncements(prev => [announcement, ...prev]);
+  };
+
+  const handleAnnouncementDeleted = (announcementId: string) => {
+    setAnnouncements(prev => prev.filter(a => a.id !== announcementId));
+  };
+
+  const handleTopicCreated = (topic: CohortDiscussionTopic) => {
+    setTopics(prev => [topic, ...prev]);
+  };
+
+  const handleTopicClick = (topic: CohortDiscussionTopic) => {
+    setSelectedTopic(topic);
+  };
+
+  const handleMemberAdded = (member: CohortMember) => {
+    setMembers(prev => [member, ...prev]);
+  };
+
+  const handleMemberRemoved = (memberId: string) => {
+    setMembers(prev => prev.filter(m => m.id !== memberId));
+  };
+
+  // If viewing a specific topic
+  if (selectedTopic) {
+    return (
+      <DiscussionTopicView
+        topic={selectedTopic}
+        cohortId={cohort.id}
+        onBack={() => setSelectedTopic(null)}
+        canModerate={canManage}
+      />
+    );
+  }
+
+  return (
+    <Box>
+      {/* Header */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+          <IconButton onClick={onBack} sx={{ mt: -0.5 }}>
+            <BackIcon />
+          </IconButton>
+          
+          <Avatar 
+            sx={{ 
+              bgcolor: 'primary.main', 
+              width: 56, 
+              height: 56,
+              fontSize: '1.5rem'
+            }}
+          >
+            {cohort.name.charAt(0).toUpperCase()}
+          </Avatar>
+          
+          <Box sx={{ flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                {cohort.name}
+              </Typography>
+              {cohort.program_id && (
+                <Chip label={cohort.program_id} size="small" variant="outlined" />
+              )}
+              {!cohort.is_active && (
+                <Chip label="Inactive" size="small" color="error" />
+              )}
+            </Box>
+            {cohort.description && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                {cohort.description}
+              </Typography>
+            )}
+            <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
+              {members.length} member{members.length !== 1 ? 's' : ''}
+            </Typography>
+          </Box>
+
+          {canManage && onEdit && (
+            <Tooltip title="Edit Cohort">
+              <IconButton onClick={onEdit}>
+                <SettingsIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+      </Paper>
+
+      {/* Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={tabValue} onChange={handleTabChange}>
+          <Tab 
+            icon={
+              <Badge badgeContent={unreadAnnouncements} color="error" max={99}>
+                <AnnouncementIcon />
+              </Badge>
+            }
+            iconPosition="start"
+            label="Announcements" 
+          />
+          <Tab 
+            icon={
+              <Badge badgeContent={unreadDiscussions} color="error" max={99}>
+                <DiscussionIcon />
+              </Badge>
+            }
+            iconPosition="start"
+            label="Discussions" 
+          />
+          <Tab 
+            icon={<GroupIcon />}
+            iconPosition="start"
+            label="Members" 
+          />
+        </Tabs>
+      </Box>
+
+      {/* Tab Content */}
+      {tabValue === 0 && (
+        <AnnouncementList
+          cohortId={cohort.id}
+          announcements={announcements}
+          canPost={canAnnounce}
+          onAnnouncementCreated={handleAnnouncementCreated}
+          onAnnouncementDeleted={handleAnnouncementDeleted}
+          loading={loading}
+        />
+      )}
+
+      {tabValue === 1 && (
+        <DiscussionTopicList
+          cohortId={cohort.id}
+          topics={topics}
+          onTopicClick={handleTopicClick}
+          onTopicCreated={handleTopicCreated}
+          loading={loading}
+        />
+      )}
+
+      {tabValue === 2 && (
+        <MemberList
+          cohortId={cohort.id}
+          members={members}
+          canManage={canManage}
+          canInvite={canInvite}
+          onMemberAdded={handleMemberAdded}
+          onMemberRemoved={handleMemberRemoved}
+          loading={loading}
+        />
+      )}
+    </Box>
+  );
+};
+
+export default CohortDetail;

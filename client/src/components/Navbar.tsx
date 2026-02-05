@@ -35,7 +35,8 @@ import {
   AttachMoney as MoneyIcon,
   Security as SecurityIcon,
   Settings as SettingsIcon,
-  AccountTree as PipelineIcon
+  AccountTree as PipelineIcon,
+  Groups as CohortsIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -102,6 +103,7 @@ const Navbar: React.FC = () => {
         return [
           { path: '/admin/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
+          { path: '/admin/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/admin/pipeline', label: 'Project Pipeline', icon: <PipelineIcon /> },
           { path: '/admin/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon /> }
@@ -112,6 +114,7 @@ const Navbar: React.FC = () => {
           { path: '/manager/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
+          { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/manager/wages', label: 'Wages & Expenses', icon: <MoneyIcon /> }
         ];
 
@@ -121,6 +124,7 @@ const Navbar: React.FC = () => {
           { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
           { path: '/mentor/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> },
+          { path: '/mentor/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/mentor/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/mentor/wages', label: 'Wages', icon: <MoneyIcon /> }
         ];
@@ -136,10 +140,13 @@ const Navbar: React.FC = () => {
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
         const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/education': 'education', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
+        let filteredItems = peccItems;
         if (visibleTabs && visibleTabs.length > 0) {
-          return peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''));
+          filteredItems = peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''));
         }
-        return peccItems;
+        // Cohorts is always available (not site-specific)
+        filteredItems.push({ path: '/cohorts', label: 'Cohorts', icon: <CohortsIcon /> });
+        return filteredItems;
       }
     }
   };
