@@ -50,7 +50,8 @@ import {
   FormGroup,
   FormControlLabel,
   RadioGroup,
-  Radio
+  Radio,
+  CircularProgress
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -76,7 +77,8 @@ import {
   Notifications as NotificationsIcon,
   DragIndicator as DragIndicatorIcon,
   PersonAdd as PersonAddIcon,
-  LocalHospital as LocalHospitalIcon
+  LocalHospital as LocalHospitalIcon,
+  Upload as UploadIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -429,6 +431,16 @@ const AdminCRMPage: React.FC = () => {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportScope, setExportScope] = useState<'all' | 'selected'>('all');
   const [exportColumnIds, setExportColumnIds] = useState<string[]>(() => EXPORT_COLUMNS.map(c => c.id));
+
+  // Import state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importData, setImportData] = useState<Array<Record<string, string>>>([]);
+  const [importHeaders, setImportHeaders] = useState<string[]>([]);
+  const [importColumnMapping, setImportColumnMapping] = useState<Record<string, string>>({});
+  const [importContactType, setImportContactType] = useState<ContactType>('organization');
+  const [importInProgress, setImportInProgress] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<{ count: number } | null>(null);
 
   const [reminders, setReminders] = useState<CrmReminder[]>([]);
   const [remindersLoading, setRemindersLoading] = useState(false);
@@ -1317,6 +1329,214 @@ const AdminCRMPage: React.FC = () => {
     setExportDialogOpen(false);
   };
 
+  // CSV Import functions
+  const parseCSV = (text: string): { headers: string[]; rows: Array<Record<string, string>> } => {
+    const lines = text.split(/\r?\n/).filter(line => line.trim());
+    if (lines.length === 0) return { headers: [], rows: [] };
+    
+    // Parse CSV respecting quoted fields
+    const parseLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+    
+    const headers = parseLine(lines[0]);
+    const rows = lines.slice(1).map(line => {
+      const values = parseLine(line);
+      const row: Record<string, string> = {};
+      headers.forEach((h, i) => { row[h] = values[i] || ''; });
+      return row;
+    });
+    return { headers, rows };
+  };
+
+  const handleImportFileSelect = (file: File) => {
+    setImportError(null);
+    setImportSuccess(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const { headers, rows } = parseCSV(text);
+        if (headers.length === 0 || rows.length === 0) {
+          setImportError('CSV file is empty or invalid');
+          return;
+        }
+        setImportHeaders(headers);
+        setImportData(rows);
+        // Auto-map columns based on common names
+        const mapping: Record<string, string> = {};
+        const headerLower = headers.map(h => h.toLowerCase().replace(/[_\s-]+/g, ''));
+        const fieldMappings: Array<{ field: string; matches: string[] }> = [
+          { field: 'name', matches: ['name', 'organizationname', 'companyname', 'company', 'hospitalname'] },
+          { field: 'firstName', matches: ['firstname', 'first', 'fname'] },
+          { field: 'lastName', matches: ['lastname', 'last', 'lname', 'surname'] },
+          { field: 'email', matches: ['email', 'emailaddress', 'mail'] },
+          { field: 'phone', matches: ['phone', 'phonenumber', 'telephone', 'tel', 'mobile', 'cell'] },
+          { field: 'organization', matches: ['organization', 'company', 'employer', 'org'] },
+          { field: 'region', matches: ['region', 'area', 'territory'] },
+          { field: 'state', matches: ['state', 'province', 'st'] },
+          { field: 'status', matches: ['status', 'active'] },
+          { field: 'address', matches: ['address', 'streetaddress', 'address1', 'street'] },
+          { field: 'address2', matches: ['address2', 'addressline2', 'apt', 'suite', 'unit'] },
+          { field: 'city', matches: ['city', 'town'] },
+          { field: 'county', matches: ['county'] },
+          { field: 'zip', matches: ['zip', 'zipcode', 'postalcode', 'postal'] },
+          { field: 'notes', matches: ['notes', 'note', 'comments', 'description'] },
+        ];
+        fieldMappings.forEach(({ field, matches }) => {
+          const idx = headerLower.findIndex(h => matches.includes(h));
+          if (idx !== -1) mapping[field] = headers[idx];
+        });
+        setImportColumnMapping(mapping);
+      } catch {
+        setImportError('Failed to parse CSV file');
+      }
+    };
+    reader.onerror = () => setImportError('Failed to read file');
+    reader.readAsText(file);
+  };
+
+  const runImport = async () => {
+    if (importData.length === 0) return;
+    setImportInProgress(true);
+    setImportError(null);
+    setImportSuccess(null);
+    
+    const isPerson = isPersonType(importContactType);
+    let successCount = 0;
+    const errors: string[] = [];
+    
+    for (let i = 0; i < importData.length; i++) {
+      const row = importData[i];
+      const getValue = (field: string) => {
+        const csvColumn = importColumnMapping[field];
+        return csvColumn ? (row[csvColumn]?.trim() || null) : null;
+      };
+      
+      // Build the payload
+      const name = isPerson 
+        ? [getValue('firstName'), getValue('lastName')].filter(Boolean).join(' ').trim() || getValue('name')
+        : getValue('name');
+      
+      if (!name) {
+        errors.push(`Row ${i + 2}: Missing name`);
+        continue;
+      }
+      
+      const payload: Record<string, unknown> = {
+        name,
+        email: getValue('email'),
+        phone: getValue('phone'),
+        region: getValue('region'),
+        state: getValue('state'),
+        status: getValue('status') || 'Active',
+        notes: getValue('notes'),
+        contact_type: importContactType,
+        first_name: isPerson ? getValue('firstName') : null,
+        last_name: isPerson ? getValue('lastName') : null,
+        organization: isPerson ? getValue('organization') : null,
+        address: getValue('address'),
+        address2: getValue('address2'),
+        city: getValue('city'),
+        county: getValue('county'),
+        zip: getValue('zip'),
+      };
+      
+      const { error } = await supabase.from('crm_organizations').insert(payload);
+      if (error) {
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      } else {
+        successCount++;
+      }
+    }
+    
+    setImportInProgress(false);
+    
+    if (successCount > 0) {
+      setImportSuccess({ count: successCount });
+      // Reload contacts
+      const { data: orgsData } = await supabase
+        .from('crm_organizations')
+        .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip');
+      if (orgsData) {
+        const newContacts: Contact[] = [];
+        for (const row of orgsData as Record<string, unknown>[]) {
+          const id = String(row.id ?? '');
+          const rawContactType = String(row.contact_type ?? 'organization');
+          const contactType: ContactType = CONTACT_TYPES.includes(rawContactType as ContactType) ? (rawContactType as ContactType) : 'organization';
+          const isP = isPersonType(contactType);
+          const cName = isP 
+            ? [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || String(row.name ?? 'Unknown')
+            : String(row.name ?? 'Unknown');
+          const created = row.created_at ? String(row.created_at).split('T')[0] : new Date().toISOString().split('T')[0];
+          const rawNotesLog = row.notes_log;
+          const rawActivityLog = row.activity_log;
+          const notesLog: NotesLogEntry[] = Array.isArray(rawNotesLog)
+            ? (rawNotesLog as unknown[]).filter((e): e is NotesLogEntry => typeof e === 'object' && e != null && 'date' in e && 'text' in e).map(e => ({ date: String((e as NotesLogEntry).date), text: String((e as NotesLogEntry).text) }))
+            : [];
+          const activityLog: ActivityLogEntry[] = Array.isArray(rawActivityLog)
+            ? (rawActivityLog as unknown[]).filter((e): e is ActivityLogEntry => typeof e === 'object' && e != null && 'type' in e && 'date' in e && 'text' in e).map(e => ({ type: (e as ActivityLogEntry).type as ActivityLogType, date: String((e as ActivityLogEntry).date), text: String((e as ActivityLogEntry).text) }))
+            : [];
+          newContacts.push({
+            id,
+            type: contactType,
+            name: cName,
+            firstName: isP ? String(row.first_name ?? '') : undefined,
+            lastName: isP ? String(row.last_name ?? '') : undefined,
+            organization: isP ? String(row.organization ?? '') : cName,
+            email: String(row.email ?? ''),
+            phone: String(row.phone ?? ''),
+            status: String(row.status ?? 'Active'),
+            region: String(row.region ?? ''),
+            state: row.state != null ? String(row.state) : undefined,
+            createdAt: created,
+            notes: String(row.notes ?? ''),
+            notesLog,
+            activityLog,
+            customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined,
+            linkedOrganizationIds: Array.isArray(row.linked_organization_ids) ? (row.linked_organization_ids as string[]) : [],
+            linkedHospitalIds: Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [],
+            address: row.address != null ? String(row.address) : undefined,
+            address2: row.address2 != null ? String(row.address2) : undefined,
+            city: row.city != null ? String(row.city) : undefined,
+            county: row.county != null ? String(row.county) : undefined,
+            zip: row.zip != null ? String(row.zip) : undefined,
+            crmCreated: true
+          });
+        }
+        // Merge with existing non-CRM contacts (hospitals, users)
+        setContacts(prev => {
+          const nonCrm = prev.filter(c => !c.crmCreated);
+          return [...nonCrm, ...newContacts];
+        });
+      }
+    }
+    
+    if (errors.length > 0) {
+      setImportError(`${errors.length} row(s) failed: ${errors.slice(0, 3).join('; ')}${errors.length > 3 ? '...' : ''}`);
+    }
+  };
+
   const clearFilters = () => {
     setSearchQuery('');
     setStatusFilter([]);
@@ -1408,6 +1628,11 @@ const AdminCRMPage: React.FC = () => {
               </Button>
             </Tooltip>
           )}
+          <Tooltip title="Import contacts from a CSV file">
+            <Button startIcon={<UploadIcon />} onClick={() => { setImportDialogOpen(true); setImportData([]); setImportHeaders([]); setImportColumnMapping({}); setImportError(null); setImportSuccess(null); }} size="medium">
+              Import
+            </Button>
+          </Tooltip>
           <Tooltip title="Choose columns and export all filtered or selected contacts">
             <Button startIcon={<DownloadIcon />} onClick={() => setExportDialogOpen(true)} size="medium">
               Export
@@ -2745,6 +2970,139 @@ const AdminCRMPage: React.FC = () => {
           <Button variant="contained" startIcon={<DownloadIcon />} onClick={() => runExport(exportScope, exportColumnIds)} disabled={exportColumnIds.length === 0 || (exportScope === 'selected' && selectedIds.size === 0)}>
             Export
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Import – upload CSV file */}
+      <Dialog open={importDialogOpen} onClose={() => !importInProgress && setImportDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Import contacts from CSV</DialogTitle>
+        <DialogContent>
+          {importData.length === 0 ? (
+            <>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Upload a CSV file with contact data. The first row should contain column headers.
+                Supported fields: Name, First Name, Last Name, Email, Phone, Organization, Region, State, Status, Address, City, County, Zip, Notes.
+              </Alert>
+              <Box sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 2, p: 4, textAlign: 'center' }}>
+                <UploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                <Typography variant="body1" sx={{ mb: 2 }}>Drag and drop a CSV file here, or click to select</Typography>
+                <Button variant="contained" component="label">
+                  Choose CSV File
+                  <input
+                    type="file"
+                    accept=".csv,.txt"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleImportFileSelect(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </Button>
+              </Box>
+              {importError && <Alert severity="error" sx={{ mt: 2 }}>{importError}</Alert>}
+            </>
+          ) : (
+            <>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Found {importData.length} row(s) with {importHeaders.length} columns. Map columns below and click Import.
+              </Alert>
+              
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Contact Type</Typography>
+              <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                <Select value={importContactType} onChange={(e) => setImportContactType(e.target.value as ContactType)}>
+                  {Object.entries(TYPE_LABELS).map(([val, label]) => (
+                    <MenuItem key={val} value={val}>{label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Column Mapping</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                Map CSV columns to contact fields. Auto-detected mappings shown below.
+              </Typography>
+              
+              <Grid container spacing={1} sx={{ mb: 2 }}>
+                {[
+                  { key: 'name', label: 'Name', required: !isPersonType(importContactType) },
+                  { key: 'firstName', label: 'First Name', required: isPersonType(importContactType) },
+                  { key: 'lastName', label: 'Last Name', required: isPersonType(importContactType) },
+                  { key: 'email', label: 'Email' },
+                  { key: 'phone', label: 'Phone' },
+                  { key: 'organization', label: 'Organization' },
+                  { key: 'region', label: 'Region' },
+                  { key: 'state', label: 'State' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'address', label: 'Address' },
+                  { key: 'city', label: 'City' },
+                  { key: 'county', label: 'County' },
+                  { key: 'zip', label: 'Zip' },
+                  { key: 'notes', label: 'Notes' },
+                ].map(({ key, label, required }) => (
+                  <Grid item xs={6} sm={4} key={key}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>{label}{required ? ' *' : ''}</InputLabel>
+                      <Select
+                        value={importColumnMapping[key] || ''}
+                        onChange={(e) => setImportColumnMapping(prev => ({ ...prev, [key]: e.target.value }))}
+                        label={`${label}${required ? ' *' : ''}`}
+                      >
+                        <MenuItem value=""><em>— Not mapped —</em></MenuItem>
+                        {importHeaders.map(h => (
+                          <MenuItem key={h} value={h}>{h}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                ))}
+              </Grid>
+              
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Preview (first 5 rows)</Typography>
+              <Box sx={{ maxHeight: 200, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, mb: 2 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f5f5f5' }}>
+                      {importHeaders.slice(0, 8).map(h => (
+                        <th key={h} style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>{h}</th>
+                      ))}
+                      {importHeaders.length > 8 && <th style={{ padding: '4px 8px' }}>...</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importData.slice(0, 5).map((row, i) => (
+                      <tr key={i}>
+                        {importHeaders.slice(0, 8).map(h => (
+                          <td key={h} style={{ padding: '4px 8px', borderBottom: '1px solid #eee', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row[h]}</td>
+                        ))}
+                        {importHeaders.length > 8 && <td style={{ padding: '4px 8px' }}>...</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Box>
+              
+              {importError && <Alert severity="error" sx={{ mb: 2 }}>{importError}</Alert>}
+              {importSuccess && <Alert severity="success" sx={{ mb: 2 }}>Successfully imported {importSuccess.count} contact(s)!</Alert>}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImportDialogOpen(false)} disabled={importInProgress}>Cancel</Button>
+          {importData.length > 0 && (
+            <>
+              <Button onClick={() => { setImportData([]); setImportHeaders([]); setImportError(null); setImportSuccess(null); }}>
+                Choose Different File
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={importInProgress ? <CircularProgress size={16} /> : <UploadIcon />}
+                onClick={runImport}
+                disabled={importInProgress || importData.length === 0}
+              >
+                {importInProgress ? 'Importing...' : `Import ${importData.length} Contact(s)`}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
     </Box>
