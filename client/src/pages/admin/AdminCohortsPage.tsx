@@ -76,9 +76,9 @@ const AdminCohortsPage: React.FC = () => {
   // Assign managers dialog
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [assigningCohort, setAssigningCohort] = useState<Cohort | null>(null);
-  const [managers, setManagers] = useState<User[]>([]);
+  const [managers, setManagers] = useState<Array<{ id: string; first_name: string; last_name: string; email: string; role: UserRole }>>([]);
   const [assignedManagers, setAssignedManagers] = useState<CohortManager[]>([]);
-  const [selectedManager, setSelectedManager] = useState<User | null>(null);
+  const [selectedManager, setSelectedManager] = useState<{ id: string; first_name: string; last_name: string; email: string; role: UserRole } | null>(null);
   const [loadingManagers, setLoadingManagers] = useState(false);
 
   // Delete confirmation
