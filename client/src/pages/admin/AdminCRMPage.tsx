@@ -185,7 +185,7 @@ function filterOptionsBySearch<T extends { label: string }>(
 /** Tab index for Team (user management) - when selected, show AdminTeamTab instead of contacts. */
 const TEAM_TAB_INDEX = 8;
 
-const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
+const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs' | 'linkedTo'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
   { id: 'lastName', label: 'Last Name', sortable: true, defaultVisible: true },
   { id: 'name', label: 'Name', sortable: true, defaultVisible: false },
@@ -194,6 +194,7 @@ const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs'; label: string
   { id: 'organization', label: 'Organization', sortable: true, defaultVisible: true },
   { id: 'hospitalSystem', label: 'Hospital System', sortable: true, defaultVisible: false },
   { id: 'programs', label: 'Program(s)', sortable: false, defaultVisible: true },
+  { id: 'linkedTo', label: 'Linked To', sortable: false, defaultVisible: true },
   { id: 'email', label: 'Email', sortable: true, defaultVisible: true },
   { id: 'phone', label: 'Phone', sortable: false, defaultVisible: true },
   { id: 'region', label: 'Region', sortable: true, defaultVisible: true },
@@ -225,6 +226,8 @@ const EXPORT_COLUMNS: { id: string; label: string }[] = [
   { id: 'county', label: 'County' },
   { id: 'hospitalType', label: 'Hospital Type' },
   { id: 'ownership', label: 'Ownership' },
+  { id: 'linkedOrganizations', label: 'Linked Organizations' },
+  { id: 'linkedHospitals', label: 'Linked Hospitals' },
   { id: 'notes', label: 'Notes' }
 ];
 
@@ -709,7 +712,8 @@ const AdminCRMPage: React.FC = () => {
     if (c.type === 'hospital' && (c.facilityId ?? c.id)) {
       const key = String(c.facilityId ?? c.id);
       await supabase.from('hospitals').update({ notes_log: notesLog, activity_log: activityLog }).or(`facility_id.eq.${key},id.eq.${key}`);
-    } else if ((c.type === 'organization' || c.type === 'other') && c.id) {
+    } else if (c.type !== 'hospital' && c.crmCreated && c.id) {
+      // All CRM-created contacts (organization, other, manager, mentor, pecc, staff) go to crm_organizations
       await supabase.from('crm_organizations').update({ notes_log: notesLog, activity_log: activityLog, updated_at: new Date().toISOString() }).eq('id', c.id);
     }
   }, []);
@@ -880,6 +884,21 @@ const AdminCRMPage: React.FC = () => {
       case 'organization': return contact.organization || '—';
       case 'hospitalSystem': return contact.hospitalSystem ?? '—';
       case 'programs': return (contact.programs ?? []).length ? (contact.programs ?? []).join(', ') : '—';
+      case 'linkedTo': {
+        if (isPersonType(contact.type)) {
+          const linkedOrgs = (contact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)?.name).filter(Boolean);
+          const linkedHospitals = (contact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)?.name).filter(Boolean);
+          const all = [...linkedOrgs, ...linkedHospitals];
+          return all.length > 0 ? all.join(', ') : '—';
+        }
+        if (contact.type === 'organization' || contact.type === 'hospital') {
+          const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
+            (p.linkedOrganizationIds ?? []).includes(contact.id) || (p.linkedHospitalIds ?? []).includes(contact.id)
+          ));
+          return linkedPeople.length > 0 ? `${linkedPeople.length} contact(s)` : '—';
+        }
+        return '—';
+      }
       case 'email': return contact.email;
       case 'phone': return contact.phone || '—';
       case 'region': return contact.region || '—';
@@ -1129,6 +1148,12 @@ const AdminCRMPage: React.FC = () => {
       if (id === 'type') return TYPE_LABELS[c.type];
       if (id === 'name') return contactDisplayName(c);
       if (id === 'programs') return (c.programs ?? []).join('; ');
+      if (id === 'linkedOrganizations') {
+        return (c.linkedOrganizationIds ?? []).map(orgId => contacts.find(x => x.id === orgId)?.name ?? '').filter(Boolean).join('; ');
+      }
+      if (id === 'linkedHospitals') {
+        return (c.linkedHospitalIds ?? []).map(hospId => contacts.find(x => x.id === hospId)?.name ?? '').filter(Boolean).join('; ');
+      }
       const v = (c as unknown as Record<string, unknown>)[id];
       return v != null ? String(v) : '';
     };
@@ -1787,6 +1812,29 @@ const AdminCRMPage: React.FC = () => {
                   </ListItem>
                 ) : null;
               })()}
+              {/* Show linked organizations/hospitals for person types */}
+              {isPersonType(detailContact.type) && (() => {
+                const linkedOrgs = (detailContact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+                const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+                const totalLinked = linkedOrgs.length + linkedHospitals.length;
+                return totalLinked > 0 ? (
+                  <ListItem disablePadding>
+                    <ListItemText 
+                      primary="Linked to" 
+                      secondary={`${linkedOrgs.length > 0 ? linkedOrgs.map(o => o.name).join(', ') : ''}${linkedOrgs.length > 0 && linkedHospitals.length > 0 ? ' · ' : ''}${linkedHospitals.length > 0 ? linkedHospitals.map(h => h.name).join(', ') : ''}`} 
+                    />
+                  </ListItem>
+                ) : null;
+              })()}
+              {/* Show address if available */}
+              {(detailContact.address || detailContact.city || detailContact.state || detailContact.zip) && (
+                <ListItem disablePadding>
+                  <ListItemText 
+                    primary="Address" 
+                    secondary={[detailContact.address, detailContact.address2, [detailContact.city, detailContact.state, detailContact.zip].filter(Boolean).join(', ')].filter(Boolean).join(', ')} 
+                  />
+                </ListItem>
+              )}
             </List>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
               <Button fullWidth variant="contained" startIcon={<OpenInFullIcon />} onClick={openFullScreen}>
@@ -1982,6 +2030,28 @@ const AdminCRMPage: React.FC = () => {
                           {linked.map((p) => (
                             <ListItem key={p.id} disablePadding sx={{ py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => { setDetailContact(p); setFullScreenOpen(false); setPanelOpen(true); }}>
                               <ListItemText primary={contactDisplayName(p)} secondary={TYPE_LABELS[p.type]} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </Box>
+                    ) : null;
+                  })()}
+                  {/* Show linked organizations/hospitals for person types in full screen */}
+                  {isPersonType(detailContact.type) && (() => {
+                    const linkedOrgs = (detailContact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+                    const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+                    return (linkedOrgs.length > 0 || linkedHospitals.length > 0) ? (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Linked organizations & hospitals</Typography>
+                        <List dense disablePadding>
+                          {linkedOrgs.map((org) => (
+                            <ListItem key={org.id} disablePadding sx={{ py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => { setDetailContact(org); }}>
+                              <ListItemText primary={org.name} secondary="Organization" />
+                            </ListItem>
+                          ))}
+                          {linkedHospitals.map((hosp) => (
+                            <ListItem key={hosp.id} disablePadding sx={{ py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => { setDetailContact(hosp); }}>
+                              <ListItemText primary={hosp.name} secondary="Hospital" />
                             </ListItem>
                           ))}
                         </List>
