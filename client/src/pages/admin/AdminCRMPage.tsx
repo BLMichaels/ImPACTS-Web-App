@@ -889,7 +889,7 @@ const AdminCRMPage: React.FC = () => {
       case 'linkedTo': {
         if (isPersonType(contact.type)) {
           const linkedOrgs = (contact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)?.name).filter(Boolean);
-          const linkedHospitals = (contact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)?.name).filter(Boolean);
+          const linkedHospitals = (contact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.hospitalId === id || c.id === id)?.name).filter(Boolean);
           const all = [...linkedOrgs, ...linkedHospitals];
           return all.length > 0 ? all.join(', ') : '—';
         }
@@ -1236,7 +1236,7 @@ const AdminCRMPage: React.FC = () => {
         return (c.linkedOrganizationIds ?? []).map(orgId => contacts.find(x => x.id === orgId)?.name ?? '').filter(Boolean).join('; ');
       }
       if (id === 'linkedHospitals') {
-        return (c.linkedHospitalIds ?? []).map(hospId => contacts.find(x => x.id === hospId)?.name ?? '').filter(Boolean).join('; ');
+        return (c.linkedHospitalIds ?? []).map(hospId => contacts.find(x => x.hospitalId === hospId || x.id === hospId)?.name ?? '').filter(Boolean).join('; ');
       }
       const v = (c as unknown as Record<string, unknown>)[id];
       return v != null ? String(v) : '';
@@ -1829,7 +1829,7 @@ const AdminCRMPage: React.FC = () => {
             {/* Linked organizations & hospitals - shown prominently below name for person types */}
             {isPersonType(detailContact.type) && (() => {
               const linkedOrgs = (detailContact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
-              const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+              const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean) as Contact[];
               return (linkedOrgs.length > 0 || linkedHospitals.length > 0) ? (
                 <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Linked to</Typography>
@@ -1995,7 +1995,7 @@ const AdminCRMPage: React.FC = () => {
                       <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'organization').map(c => ({ id: c.id, label: c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedOrganizationIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedOrganizationIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked organizations" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
                     <Grid item xs={12}>
-                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital').map(c => ({ id: c.id, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
+                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({ id: c.hospitalId!, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({ id: c!.hospitalId || c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
                   </>
                 ) : (
@@ -2067,7 +2067,7 @@ const AdminCRMPage: React.FC = () => {
               {/* Linked organizations & hospitals - shown prominently below name for person types */}
               {isPersonType(detailContact.type) && (() => {
                 const linkedOrgs = (detailContact.linkedOrganizationIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
-                const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.id === id)).filter(Boolean) as Contact[];
+                const linkedHospitals = (detailContact.linkedHospitalIds ?? []).map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean) as Contact[];
                 return (linkedOrgs.length > 0 || linkedHospitals.length > 0) ? (
                   <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
                     <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Linked organizations & hospitals</Typography>
@@ -2376,13 +2376,13 @@ const AdminCRMPage: React.FC = () => {
                   <Autocomplete
                     multiple
                     size="small"
-                    options={contacts.filter(c => c.type === 'hospital').map(c => ({
-                      id: c.id,
+                    options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({
+                      id: c.hospitalId!,
                       label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name
                     }))}
                     filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
-                    value={formData.linkedHospitalIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({
-                      id: c!.id,
+                    value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({
+                      id: c!.hospitalId || c!.id,
                       label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name
                     }))}
                     getOptionLabel={(opt) => opt.label}
