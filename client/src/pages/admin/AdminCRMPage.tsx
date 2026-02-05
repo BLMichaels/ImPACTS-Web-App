@@ -715,8 +715,48 @@ const AdminCRMPage: React.FC = () => {
       const key = String(c.facilityId ?? c.id);
       await supabase.from('hospitals').update({ notes_log: notesLog, activity_log: activityLog }).or(`facility_id.eq.${key},id.eq.${key}`);
     } else if (c.type !== 'hospital' && c.crmCreated && c.id) {
-      // All CRM-created contacts (organization, other, manager, mentor, pecc, staff) go to crm_organizations
+      // CRM-created contacts - update directly
       await supabase.from('crm_organizations').update({ notes_log: notesLog, activity_log: activityLog, updated_at: new Date().toISOString() }).eq('id', c.id);
+    } else if (c.type !== 'hospital' && !c.crmCreated && c.user_id) {
+      // User-sourced contact - need to create/update CRM record to store notes/activity
+      const { data: existingCrm } = await supabase
+        .from('crm_organizations')
+        .select('id')
+        .eq('email', c.email)
+        .eq('contact_type', c.type)
+        .maybeSingle();
+      
+      if (existingCrm) {
+        // Update existing CRM record
+        await supabase.from('crm_organizations')
+          .update({ notes_log: notesLog, activity_log: activityLog, updated_at: new Date().toISOString() })
+          .eq('id', existingCrm.id);
+        // Update local state to reflect CRM record
+        setContacts(prev => prev.map(x => x.id === c.id ? { ...x, id: existingCrm.id, crmCreated: true } : x));
+        setDetailContact(prev => prev?.id === c.id ? { ...prev, id: existingCrm.id, crmCreated: true } : prev);
+      } else {
+        // Create new CRM record for this user
+        const displayName = [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || c.name;
+        const { data: inserted } = await supabase.from('crm_organizations')
+          .insert({
+            name: displayName,
+            email: c.email || null,
+            phone: c.phone || null,
+            contact_type: c.type,
+            first_name: c.firstName || null,
+            last_name: c.lastName || null,
+            status: c.status || 'Active',
+            notes_log: notesLog,
+            activity_log: activityLog
+          })
+          .select('id')
+          .single();
+        if (inserted) {
+          // Update local state to use CRM record
+          setContacts(prev => prev.map(x => x.id === c.id ? { ...x, id: (inserted as { id: string }).id, crmCreated: true } : x));
+          setDetailContact(prev => prev?.id === c.id ? { ...prev, id: (inserted as { id: string }).id, crmCreated: true } : prev);
+        }
+      }
     }
   }, []);
 
