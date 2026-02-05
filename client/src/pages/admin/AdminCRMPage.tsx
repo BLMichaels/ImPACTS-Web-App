@@ -116,6 +116,7 @@ interface Contact {
   tags?: string[];
   facilityId?: string;
   address?: string;
+  address2?: string;
   city?: string;
   state?: string;
   zip?: string;
@@ -217,9 +218,10 @@ const EXPORT_COLUMNS: { id: string; label: string }[] = [
   { id: 'state', label: 'State' },
   { id: 'status', label: 'Status' },
   { id: 'createdAt', label: 'Added' },
-  { id: 'address', label: 'Address' },
+  { id: 'address', label: 'Address Line 1' },
+  { id: 'address2', label: 'Address Line 2' },
   { id: 'city', label: 'City' },
-  { id: 'zip', label: 'ZIP' },
+  { id: 'zip', label: 'Zip/Postal Code' },
   { id: 'county', label: 'County' },
   { id: 'hospitalType', label: 'Hospital Type' },
   { id: 'ownership', label: 'Ownership' },
@@ -376,7 +378,12 @@ const AdminCRMPage: React.FC = () => {
     programs: [] as string[],
     linkedOrganizationIds: [] as string[],
     linkedHospitalIds: [] as string[],
-    customFields: {} as Record<string, string>
+    customFields: {} as Record<string, string>,
+    address: '',
+    address2: '',
+    city: '',
+    county: '',
+    zip: ''
   });
 
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>(() => {
@@ -499,7 +506,7 @@ const AdminCRMPage: React.FC = () => {
         if (mounted) {
           const { data: orgsData, error: orgsError } = await supabase
             .from('crm_organizations')
-            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids');
+            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip');
           if (orgsError) {
             console.warn('CRM: could not load crm_organizations:', orgsError.message);
           } else if (orgsData && orgsData.length > 0) {
@@ -539,6 +546,11 @@ const AdminCRMPage: React.FC = () => {
                 customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined,
                 linkedOrganizationIds: Array.isArray(row.linked_organization_ids) ? (row.linked_organization_ids as string[]) : [],
                 linkedHospitalIds: Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [],
+                address: row.address != null ? String(row.address) : undefined,
+                address2: row.address2 != null ? String(row.address2) : undefined,
+                city: row.city != null ? String(row.city) : undefined,
+                county: row.county != null ? String(row.county) : undefined,
+                zip: row.zip != null ? String(row.zip) : undefined,
                 crmCreated: true  // Mark as CRM-created to differentiate from users table
               });
             }
@@ -983,6 +995,11 @@ const AdminCRMPage: React.FC = () => {
       linkedHospitalIds: isPersonType(formData.type) ? formData.linkedHospitalIds : undefined,
       createdAt: editingContact?.createdAt ?? new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
+      address: formData.address || undefined,
+      address2: formData.address2 || undefined,
+      city: formData.city || undefined,
+      county: formData.county || undefined,
+      zip: formData.zip || undefined,
       ...(Object.keys(formData.customFields || {}).length ? { customFields: formData.customFields } : {})
     };
     if (editingContact?.type === 'hospital' && (editingContact.facilityId || editingContact.id)) {
@@ -1031,7 +1048,12 @@ const AdminCRMPage: React.FC = () => {
         last_name: isPersonType(formData.type) ? (formData.lastName?.trim() || null) : null,
         organization: isPersonType(formData.type) ? (formData.organization?.trim() || null) : null,
         linked_organization_ids: isPersonType(formData.type) ? (formData.linkedOrganizationIds ?? []) : [],
-        linked_hospital_ids: isPersonType(formData.type) ? (formData.linkedHospitalIds ?? []) : []
+        linked_hospital_ids: isPersonType(formData.type) ? (formData.linkedHospitalIds ?? []) : [],
+        address: formData.address?.trim() || null,
+        address2: formData.address2?.trim() || null,
+        city: formData.city?.trim() || null,
+        county: formData.county?.trim() || null,
+        zip: formData.zip?.trim() || null
       };
       
       // Check if this is a user-sourced contact (from users table) vs CRM-created
@@ -1080,7 +1102,7 @@ const AdminCRMPage: React.FC = () => {
       setDialogOpen(false);
       setEditingContact(null);
     }
-    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} });
+    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' });
   };
 
   const openDetail = (c: Contact) => {
@@ -1222,7 +1244,7 @@ const AdminCRMPage: React.FC = () => {
               Manage custom fields
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -1462,7 +1484,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -1547,7 +1569,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {} }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '' }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>
@@ -1594,7 +1616,7 @@ const AdminCRMPage: React.FC = () => {
             <PersonIcon fontSize="small" sx={{ mr: 1 }} /> Manage in Team tab
           </MenuItem>
         )}
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], customFields: detailContact.customFields ?? {} }); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
+        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '' }); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
@@ -1773,7 +1795,7 @@ const AdminCRMPage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {} });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '' });
                   setEditingContact(c);
                   setPanelOpen(false);
                   setFullScreenOpen(true);
@@ -1841,6 +1863,13 @@ const AdminCRMPage: React.FC = () => {
                 <Grid item xs={6}>
                   <Autocomplete freeSolo size="small" options={states} value={formData.state || null} inputValue={formData.state} onInputChange={(_, v) => setFormData(prev => ({ ...prev, state: v }))} onChange={(_, v) => setFormData(prev => ({ ...prev, state: v == null ? '' : String(v) }))} renderInput={(params) => <TextField {...params} label="State" placeholder="e.g. NY, TN, OH" />} />
                 </Grid>
+                {/* Address fields */}
+                <Grid item xs={12}><Divider sx={{ my: 1 }} /><Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Address</Typography></Grid>
+                <Grid item xs={12}><TextField label="Address Line 1" value={formData.address} onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))} fullWidth size="small" placeholder="Street address" /></Grid>
+                <Grid item xs={12}><TextField label="Address Line 2" value={formData.address2} onChange={(e) => setFormData(prev => ({ ...prev, address2: e.target.value }))} fullWidth size="small" placeholder="Apt, Suite, Unit, etc." /></Grid>
+                <Grid item xs={6}><TextField label="City" value={formData.city} onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))} fullWidth size="small" /></Grid>
+                <Grid item xs={6}><TextField label="County" value={formData.county} onChange={(e) => setFormData(prev => ({ ...prev, county: e.target.value }))} fullWidth size="small" /></Grid>
+                <Grid item xs={6}><TextField label="Zip/Postal Code" value={formData.zip} onChange={(e) => setFormData(prev => ({ ...prev, zip: e.target.value }))} fullWidth size="small" /></Grid>
                 <Grid item xs={6}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Status</InputLabel>
@@ -2099,7 +2128,7 @@ const AdminCRMPage: React.FC = () => {
                 <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                     const c = detailContact;
-                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {} });
+                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '' });
                     setEditingContact(c);
                     setFullScreenEditMode(true);
                   }}>
@@ -2219,6 +2248,13 @@ const AdminCRMPage: React.FC = () => {
                 renderInput={(params) => <TextField {...params} label="State" placeholder="e.g. NY, TN, OH" />}
               />
             </Grid>
+            {/* Address fields */}
+            <Grid item xs={12}><Divider sx={{ my: 1 }} /><Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Address</Typography></Grid>
+            <Grid item xs={12}><TextField label="Address Line 1" value={formData.address} onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))} fullWidth size="small" placeholder="Street address" /></Grid>
+            <Grid item xs={12}><TextField label="Address Line 2" value={formData.address2} onChange={(e) => setFormData(prev => ({ ...prev, address2: e.target.value }))} fullWidth size="small" placeholder="Apt, Suite, Unit, etc." /></Grid>
+            <Grid item xs={6}><TextField label="City" value={formData.city} onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))} fullWidth size="small" /></Grid>
+            <Grid item xs={6}><TextField label="County" value={formData.county} onChange={(e) => setFormData(prev => ({ ...prev, county: e.target.value }))} fullWidth size="small" /></Grid>
+            <Grid item xs={6}><TextField label="Zip/Postal Code" value={formData.zip} onChange={(e) => setFormData(prev => ({ ...prev, zip: e.target.value }))} fullWidth size="small" /></Grid>
             <Grid item xs={6}>
               <FormControl fullWidth size="small">
                 <InputLabel>Status</InputLabel>

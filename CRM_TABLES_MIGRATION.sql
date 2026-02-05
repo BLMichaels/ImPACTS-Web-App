@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS public.crm_organizations (
   contact_type TEXT DEFAULT 'organization',  -- 'organization', 'other', 'manager', 'mentor', 'pecc', 'staff'
   linked_organization_ids UUID[] DEFAULT ARRAY[]::UUID[],  -- organizations this person is linked to
   linked_hospital_ids UUID[] DEFAULT ARRAY[]::UUID[],      -- hospitals this person is linked to
+  address TEXT,     -- Address Line 1
+  address2 TEXT,    -- Address Line 2 (apt, suite, etc.)
+  city TEXT,
+  county TEXT,
+  zip TEXT,         -- Zip/Postal Code
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -130,6 +135,60 @@ END $$;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.crm_organizations TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.crm_custom_field_definitions TO authenticated;
+
+
+-- =====================================================
+-- 6. Add address columns to crm_organizations if missing
+-- =====================================================
+-- Run this if the table already exists without address columns
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'crm_organizations' 
+    AND column_name = 'address'
+  ) THEN
+    ALTER TABLE public.crm_organizations ADD COLUMN address TEXT;
+  END IF;
+  
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'crm_organizations' 
+    AND column_name = 'address2'
+  ) THEN
+    ALTER TABLE public.crm_organizations ADD COLUMN address2 TEXT;
+  END IF;
+  
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'crm_organizations' 
+    AND column_name = 'city'
+  ) THEN
+    ALTER TABLE public.crm_organizations ADD COLUMN city TEXT;
+  END IF;
+  
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'crm_organizations' 
+    AND column_name = 'county'
+  ) THEN
+    ALTER TABLE public.crm_organizations ADD COLUMN county TEXT;
+  END IF;
+  
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'crm_organizations' 
+    AND column_name = 'zip'
+  ) THEN
+    ALTER TABLE public.crm_organizations ADD COLUMN zip TEXT;
+  END IF;
+END $$;
 
 
 -- =====================================================
