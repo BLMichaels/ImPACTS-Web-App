@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { CohortMember, User, UserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../supabase';
 
 interface InviteMemberDialogProps {
   open: boolean;

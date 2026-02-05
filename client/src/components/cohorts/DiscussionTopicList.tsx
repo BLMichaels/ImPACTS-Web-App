@@ -29,7 +29,7 @@ import {
 } from '@mui/icons-material';
 import { CohortDiscussionTopic, UserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../supabase';
 import { formatDistanceToNow } from 'date-fns';
 
 interface DiscussionTopicListProps {

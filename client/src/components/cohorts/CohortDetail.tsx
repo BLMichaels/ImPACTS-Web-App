@@ -28,7 +28,7 @@ import {
   UserRole 
 } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../supabase';
 import AnnouncementList from './AnnouncementList';
 import DiscussionTopicList from './DiscussionTopicList';
 import DiscussionTopicView from './DiscussionTopicView';

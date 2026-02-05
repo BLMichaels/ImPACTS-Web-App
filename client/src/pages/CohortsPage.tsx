@@ -16,7 +16,7 @@ import {
 } from '@mui/icons-material';
 import { Cohort, CohortWithStats, UserRole } from '../types/database';
 import { useUserProfile } from '../context/UserProfileContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../supabase';
 import { CohortCard, CohortDetail } from '../components/cohorts';
 
 const CohortsPage: React.FC = () => {
