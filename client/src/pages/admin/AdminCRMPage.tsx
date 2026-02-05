@@ -2981,7 +2981,31 @@ const AdminCRMPage: React.FC = () => {
             <>
               <Alert severity="info" sx={{ mb: 2 }}>
                 Upload a CSV file with contact data. The first row should contain column headers.
-                Supported fields: Name, First Name, Last Name, Email, Phone, Organization, Region, State, Status, Address, City, County, Zip, Notes.
+                <Button
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  sx={{ ml: 1 }}
+                  onClick={() => {
+                    const templateHeaders = ['First Name', 'Last Name', 'Email', 'Phone', 'Organization', 'Region', 'State', 'Address', 'City', 'County', 'Zip', 'Notes'];
+                    const exampleRows = [
+                      ['John', 'Smith', 'john.smith@example.com', '555-123-4567', 'Acme Healthcare', 'Midwest', 'Indiana', '123 Main St', 'Indianapolis', 'Marion', '46201', 'Initial contact'],
+                      ['Jane', 'Doe', 'jane.doe@example.com', '555-987-6543', 'City Hospital', 'Northeast', 'Ohio', '456 Oak Ave', 'Columbus', 'Franklin', '43215', ''],
+                      ['', '', '', '', '', '', '', '', '', '', '', ''],
+                    ];
+                    const csvContent = [
+                      templateHeaders.join(','),
+                      ...exampleRows.map(row => row.map(cell => `"${cell}"`).join(','))
+                    ].join('\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'crm-import-template.csv';
+                    link.click();
+                    URL.revokeObjectURL(link.href);
+                  }}
+                >
+                  Download Template
+                </Button>
               </Alert>
               <Box sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 2, p: 4, textAlign: 'center' }}>
                 <UploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
