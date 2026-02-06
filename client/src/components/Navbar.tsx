@@ -137,17 +137,15 @@ const Navbar: React.FC = () => {
           { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
-          { path: '/education', label: 'Education', icon: <SchoolIcon /> },
           { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> },
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
-        const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/education': 'education', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
+        const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
         let filteredItems = peccItems;
         if (visibleTabs && visibleTabs.length > 0) {
           filteredItems = peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''));
         }
-        // Programs and Cohorts are always available (not site-specific)
-        filteredItems.push({ path: '/programs', label: 'Programs', icon: <ProgramsIcon /> });
+        // Cohorts is always available (not site-specific)
         filteredItems.push({ path: '/cohorts', label: 'Cohorts', icon: <CohortsIcon /> });
         return filteredItems;
       }

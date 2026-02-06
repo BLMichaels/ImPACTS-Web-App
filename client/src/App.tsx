@@ -201,7 +201,7 @@ function App() {
                   <Route path="/activities" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
                   <Route path="/prs" element={<Navigate to="/snapshot" replace />} />
                   <Route path="/gap-plan" element={<ProtectedRoute><GapPlanPage /></ProtectedRoute>} />
-                  <Route path="/education" element={<ProtectedRoute><EducationPage /></ProtectedRoute>} />
+                  <Route path="/education" element={<Navigate to="/gap-plan" replace />} />
                   <Route path="/cohorts" element={<ProtectedRoute><CohortsPage /></ProtectedRoute>} />
                   <Route path="/programs" element={<ProtectedRoute><ProgramsPage /></ProtectedRoute>} />
                   

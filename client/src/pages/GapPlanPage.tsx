@@ -26,9 +26,12 @@ import {
   Chip,
   SelectChangeEvent,
   Alert,
-  IconButton
+  IconButton,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
-import { FileDownload as DownloadIcon, Upload as UploadIcon, Image as ImageIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
+import { FileDownload as DownloadIcon, Upload as UploadIcon, Image as ImageIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, School as SchoolIcon } from '@mui/icons-material';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
@@ -36,6 +39,7 @@ import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
+import EducationPage from './EducationPage';
 
 interface GapPlan {
   id: string;
@@ -904,6 +908,24 @@ const GapPlanPage: React.FC = () => {
             </Table>
           </TableContainer>
         )}
+      </Box>
+
+      {/* Education Section - Collapsible */}
+      <Box sx={{ mt: 4 }}>
+        <Accordion defaultExpanded={false} sx={{ boxShadow: 2 }}>
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
+            sx={{ bgcolor: 'primary.main', color: 'white', '& .MuiAccordionSummary-expandIconWrapper': { color: 'white' } }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <SchoolIcon />
+              <Typography variant="h6">Education Resources</Typography>
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails sx={{ p: 0 }}>
+            <EducationPage />
+          </AccordionDetails>
+        </Accordion>
       </Box>
 
       {/* Edit Dialog */}
