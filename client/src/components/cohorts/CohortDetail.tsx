@@ -92,7 +92,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         .order('created_at', { ascending: false });
 
       // Load members with user info (skip for PECC - they don't see the Members list)
-      let membersData: unknown[] | null = null;
+      let membersData: CohortMember[] | null = null;
       if (userProfile?.role !== UserRole.PECC) {
         const { data: m } = await supabase
           .from('cohort_members')
@@ -103,7 +103,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
           .eq('cohort_id', cohort.id)
           .eq('status', 'active')
           .order('added_at', { ascending: false });
-        membersData = m;
+        membersData = m as CohortMember[] | null;
       }
 
       // Load read status
