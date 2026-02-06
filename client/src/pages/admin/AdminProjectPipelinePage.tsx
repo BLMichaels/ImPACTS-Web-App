@@ -1276,9 +1276,39 @@ const AdminProjectPipelinePage: React.FC = () => {
               <Grid item xs={12} sm={6}>
                 <FormControl size="small" fullWidth>
                   <InputLabel>Development Status</InputLabel>
-                  <Select value={form.projectDevelopmentStatus} label="Development Status" onChange={(e) => setForm(f => ({ ...f, projectDevelopmentStatus: e.target.value }))}>
+                  <Select 
+                    value={form.projectDevelopmentStatus} 
+                    label="Development Status" 
+                    onChange={(e) => setForm(f => ({ ...f, projectDevelopmentStatus: e.target.value }))}
+                    renderValue={(selected) => {
+                      if (!selected) return '—';
+                      const stage = DEVELOPMENT_STAGES.find(s => s.value === selected);
+                      return stage ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: stage.color, mr: 1, flexShrink: 0 }} />
+                          <Typography variant="body2" noWrap>{selected}</Typography>
+                        </Box>
+                      ) : selected;
+                    }}
+                  >
                     <MenuItem value="">—</MenuItem>
-                    {DEVELOPMENT_STAGES.map(s => <MenuItem key={s.value} value={s.value}>{s.value}</MenuItem>)}
+                    {DEVELOPMENT_STAGES.map(s => (
+                      <MenuItem 
+                        key={s.value} 
+                        value={s.value}
+                        sx={{ 
+                          bgcolor: s.color, 
+                          color: s.textColor, 
+                          my: 0.25,
+                          mx: 0.5,
+                          borderRadius: 1,
+                          '&:hover': { bgcolor: s.color, filter: 'brightness(0.9)' },
+                          '&.Mui-selected': { bgcolor: s.color, '&:hover': { bgcolor: s.color, filter: 'brightness(0.85)' } }
+                        }}
+                      >
+                        {s.value}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
               </Grid>
