@@ -1187,6 +1187,7 @@ const AdminCRMPage: React.FC = () => {
         activity_log?: ActivityLogEntry[]; 
         hospital_system?: string | null; 
         programs?: string[];
+        cohorts?: string[];
         address?: string | null;
         city?: string | null;
         county?: string | null;
