@@ -33,7 +33,9 @@ import {
   ListItemSecondaryAction,
   Paper,
   CircularProgress,
-  Autocomplete
+  Autocomplete,
+  Menu,
+  Tooltip
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -296,6 +298,11 @@ const AdminProjectPipelinePage: React.FC = () => {
   const [editingCase, setEditingCase] = useState<SimBoxCase | null>(null);
   const [form, setForm] = useState<SimBoxCase>(defaultSimBoxCase());
 
+  // Inline editing states for quick status/dev stage changes
+  const [inlineMenuAnchor, setInlineMenuAnchor] = useState<null | HTMLElement>(null);
+  const [inlineEditingRow, setInlineEditingRow] = useState<string | null>(null);
+  const [inlineEditingField, setInlineEditingField] = useState<'status' | 'devStatus' | null>(null);
+
   const [scholarshipDialogOpen, setScholarshipDialogOpen] = useState(false);
   const [editingScholarship, setEditingScholarship] = useState<ScholarshipPublication | null>(null);
   const [scholarshipForm, setScholarshipForm] = useState<ScholarshipPublication>(defaultScholarship());
@@ -484,6 +491,33 @@ const AdminProjectPipelinePage: React.FC = () => {
 
   const handleDelete = (id: string) => {
     if (window.confirm('Delete this SimBox case?')) saveSimboxCases(simboxCases.filter(c => c.id !== id));
+  };
+
+  // Inline editing handlers for quick status/dev stage changes
+  const handleInlineEditClick = (event: React.MouseEvent<HTMLElement>, rowId: string, field: 'status' | 'devStatus') => {
+    setInlineMenuAnchor(event.currentTarget);
+    setInlineEditingRow(rowId);
+    setInlineEditingField(field);
+  };
+
+  const handleInlineEditClose = () => {
+    setInlineMenuAnchor(null);
+    setInlineEditingRow(null);
+    setInlineEditingField(null);
+  };
+
+  const handleInlineStatusChange = (newValue: string) => {
+    if (inlineEditingRow) {
+      saveSimboxCases(simboxCases.map(c => c.id === inlineEditingRow ? { ...c, status: newValue } : c));
+    }
+    handleInlineEditClose();
+  };
+
+  const handleInlineDevStatusChange = (newValue: string) => {
+    if (inlineEditingRow) {
+      saveSimboxCases(simboxCases.map(c => c.id === inlineEditingRow ? { ...c, projectDevelopmentStatus: newValue } : c));
+    }
+    handleInlineEditClose();
   };
 
   // Scholarship handlers
@@ -728,12 +762,24 @@ const AdminProjectPipelinePage: React.FC = () => {
               <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}>No items found.</TableCell></TableRow>
             ) : data.map(row => (
               <TableRow key={row.id} hover>
-                <TableCell><StatusChip status={row.status} /></TableCell>
+                <TableCell>
+                  <Tooltip title="Click to change status" arrow>
+                    <Box sx={{ cursor: 'pointer', display: 'inline-block' }} onClick={(e) => handleInlineEditClick(e, row.id, 'status')}>
+                      <StatusChip status={row.status} />
+                    </Box>
+                  </Tooltip>
+                </TableCell>
                 <TableCell>{row.order}</TableCell>
                 <TableCell>{row.categoryTopic || '-'}</TableCell>
                 <TableCell sx={{ maxWidth: 150 }}>{row.notes || '-'}</TableCell>
                 <TableCell>{row.dueDate ? format(parseISO(row.dueDate), 'MM/dd/yyyy') : '-'}</TableCell>
-                <TableCell><DevStageChip stage={row.projectDevelopmentStatus} /></TableCell>
+                <TableCell>
+                  <Tooltip title="Click to change development status" arrow>
+                    <Box sx={{ cursor: 'pointer', display: 'inline-block' }} onClick={(e) => handleInlineEditClick(e, row.id, 'devStatus')}>
+                      <DevStageChip stage={row.projectDevelopmentStatus} />
+                    </Box>
+                  </Tooltip>
+                </TableCell>
                 <TableCell>{row.projectSponsor || '-'}</TableCell>
                 <TableCell>{row.projectLead || '-'}</TableCell>
                 <TableCell>{row.teamMembers?.join(', ') || '-'}</TableCell>
@@ -1674,6 +1720,61 @@ const AdminProjectPipelinePage: React.FC = () => {
             <Button variant="contained" onClick={handleAbstractsSave}>Save</Button>
           </DialogActions>
         </Dialog>
+
+        {/* Inline Status Edit Menu */}
+        <Menu
+          anchorEl={inlineMenuAnchor}
+          open={Boolean(inlineMenuAnchor) && inlineEditingField === 'status'}
+          onClose={handleInlineEditClose}
+          PaperProps={{ sx: { maxHeight: 300 } }}
+        >
+          {STATUS_OPTIONS.map(opt => (
+            <MenuItem 
+              key={opt.value} 
+              onClick={() => handleInlineStatusChange(opt.value)}
+              sx={{ 
+                bgcolor: opt.color, 
+                color: opt.textColor, 
+                my: 0.25,
+                mx: 0.5,
+                borderRadius: 1,
+                '&:hover': { bgcolor: opt.color, filter: 'brightness(0.9)' }
+              }}
+            >
+              {opt.value}
+            </MenuItem>
+          ))}
+        </Menu>
+
+        {/* Inline Development Status Edit Menu */}
+        <Menu
+          anchorEl={inlineMenuAnchor}
+          open={Boolean(inlineMenuAnchor) && inlineEditingField === 'devStatus'}
+          onClose={handleInlineEditClose}
+          PaperProps={{ sx: { maxHeight: 400, maxWidth: 500 } }}
+        >
+          <MenuItem onClick={() => handleInlineDevStatusChange('')}>
+            <em>— Clear —</em>
+          </MenuItem>
+          {DEVELOPMENT_STAGES.map(s => (
+            <MenuItem 
+              key={s.value} 
+              onClick={() => handleInlineDevStatusChange(s.value)}
+              sx={{ 
+                bgcolor: s.color, 
+                color: s.textColor, 
+                my: 0.25,
+                mx: 0.5,
+                borderRadius: 1,
+                whiteSpace: 'normal',
+                lineHeight: 1.3,
+                '&:hover': { bgcolor: s.color, filter: 'brightness(0.9)' }
+              }}
+            >
+              {s.value}
+            </MenuItem>
+          ))}
+        </Menu>
       </Box>
     </LocalizationProvider>
   );
