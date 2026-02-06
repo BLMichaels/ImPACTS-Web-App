@@ -5,16 +5,15 @@ import {
   Tabs,
   Tab,
   IconButton,
-  Button,
   Chip,
   Avatar,
   Paper,
   Tooltip,
-  Badge
+  Badge,
+  Divider
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
-  Edit as EditIcon,
   Campaign as AnnouncementIcon,
   Forum as DiscussionIcon,
   Group as GroupIcon,
@@ -52,6 +51,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   canInvite
 }) => {
   const { userProfile, userRole } = useUserProfile();
+  const isPECC = userRole === UserRole.PECC;
   const [tabValue, setTabValue] = useState(0);
   const [announcements, setAnnouncements] = useState<CohortAnnouncement[]>([]);
   const [topics, setTopics] = useState<CohortDiscussionTopic[]>([]);
@@ -91,16 +91,20 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         .order('last_reply_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
-      // Load members with user info
-      const { data: membersData } = await supabase
-        .from('cohort_members')
-        .select(`
-          *,
-          user:user_id(id, first_name, last_name, email, role)
-        `)
-        .eq('cohort_id', cohort.id)
-        .eq('status', 'active')
-        .order('added_at', { ascending: false });
+      // Load members with user info (skip for PECC - they don't see the Members list)
+      let membersData: unknown[] | null = null;
+      if (userProfile?.role !== UserRole.PECC) {
+        const { data: m } = await supabase
+          .from('cohort_members')
+          .select(`
+            *,
+            user:user_id(id, first_name, last_name, email, role)
+          `)
+          .eq('cohort_id', cohort.id)
+          .eq('status', 'active')
+          .order('added_at', { ascending: false });
+        membersData = m;
+      }
 
       // Load read status
       if (userProfile?.id) {
@@ -142,7 +146,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [cohort.id, userProfile?.id]);
+  }, [cohort.id, userProfile?.id, userProfile?.role]);
 
   useEffect(() => {
     loadData();
@@ -256,9 +260,11 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                 {cohort.description}
               </Typography>
             )}
-            <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
-              {members.length} member{members.length !== 1 ? 's' : ''}
-            </Typography>
+            {!isPECC && (
+              <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
+                {members.length} member{members.length !== 1 ? 's' : ''}
+              </Typography>
+            )}
           </Box>
 
           {canManage && onEdit && (
@@ -271,67 +277,97 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         </Box>
       </Paper>
 
-      {/* Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={tabValue} onChange={handleTabChange}>
-          <Tab 
-            icon={
-              <Badge badgeContent={unreadAnnouncements} color="error" max={99}>
-                <AnnouncementIcon />
-              </Badge>
-            }
-            iconPosition="start"
-            label="Announcements" 
+      {/* PECC: stacked Announcements + Discussions (no tabs, no Members) */}
+      {isPECC ? (
+        <Box>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <AnnouncementIcon fontSize="small" /> Announcements
+          </Typography>
+          <AnnouncementList
+            cohortId={cohort.id}
+            announcements={announcements}
+            canPost={canAnnounce}
+            onAnnouncementCreated={handleAnnouncementCreated}
+            onAnnouncementDeleted={handleAnnouncementDeleted}
+            loading={loading}
           />
-          <Tab 
-            icon={
-              <Badge badgeContent={unreadDiscussions} color="error" max={99}>
-                <DiscussionIcon />
-              </Badge>
-            }
-            iconPosition="start"
-            label="Discussions" 
+          <Divider sx={{ my: 4 }} />
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <DiscussionIcon fontSize="small" /> Discussions
+          </Typography>
+          <DiscussionTopicList
+            cohortId={cohort.id}
+            topics={topics}
+            onTopicClick={handleTopicClick}
+            onTopicCreated={handleTopicCreated}
+            loading={loading}
           />
-          <Tab 
-            icon={<GroupIcon />}
-            iconPosition="start"
-            label="Members" 
-          />
-        </Tabs>
-      </Box>
+        </Box>
+      ) : (
+        <>
+          {/* Tabs for Mentors, Managers, Admins */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+            <Tabs value={tabValue} onChange={handleTabChange}>
+              <Tab 
+                icon={
+                  <Badge badgeContent={unreadAnnouncements} color="error" max={99}>
+                    <AnnouncementIcon />
+                  </Badge>
+                }
+                iconPosition="start"
+                label="Announcements" 
+              />
+              <Tab 
+                icon={
+                  <Badge badgeContent={unreadDiscussions} color="error" max={99}>
+                    <DiscussionIcon />
+                  </Badge>
+                }
+                iconPosition="start"
+                label="Discussions" 
+              />
+              <Tab 
+                icon={<GroupIcon />}
+                iconPosition="start"
+                label="Members" 
+              />
+            </Tabs>
+          </Box>
 
-      {/* Tab Content */}
-      {tabValue === 0 && (
-        <AnnouncementList
-          cohortId={cohort.id}
-          announcements={announcements}
-          canPost={canAnnounce}
-          onAnnouncementCreated={handleAnnouncementCreated}
-          onAnnouncementDeleted={handleAnnouncementDeleted}
-          loading={loading}
-        />
-      )}
+          {/* Tab Content */}
+          {tabValue === 0 && (
+            <AnnouncementList
+              cohortId={cohort.id}
+              announcements={announcements}
+              canPost={canAnnounce}
+              onAnnouncementCreated={handleAnnouncementCreated}
+              onAnnouncementDeleted={handleAnnouncementDeleted}
+              loading={loading}
+            />
+          )}
 
-      {tabValue === 1 && (
-        <DiscussionTopicList
-          cohortId={cohort.id}
-          topics={topics}
-          onTopicClick={handleTopicClick}
-          onTopicCreated={handleTopicCreated}
-          loading={loading}
-        />
-      )}
+          {tabValue === 1 && (
+            <DiscussionTopicList
+              cohortId={cohort.id}
+              topics={topics}
+              onTopicClick={handleTopicClick}
+              onTopicCreated={handleTopicCreated}
+              loading={loading}
+            />
+          )}
 
-      {tabValue === 2 && (
-        <MemberList
-          cohortId={cohort.id}
-          members={members}
-          canManage={canManage}
-          canInvite={canInvite}
-          onMemberAdded={handleMemberAdded}
-          onMemberRemoved={handleMemberRemoved}
-          loading={loading}
-        />
+          {tabValue === 2 && (
+            <MemberList
+              cohortId={cohort.id}
+              members={members}
+              canManage={canManage}
+              canInvite={canInvite}
+              onMemberAdded={handleMemberAdded}
+              onMemberRemoved={handleMemberRemoved}
+              loading={loading}
+            />
+          )}
+        </>
       )}
     </Box>
   );
