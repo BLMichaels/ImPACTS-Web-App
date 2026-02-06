@@ -124,10 +124,13 @@ export default function ScormPackagesSection(props: { title?: string }) {
     (async () => {
       if (!siteId) { setSitePrograms([]); return; }
       try {
+        // Only include id.eq if value looks like a UUID
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(siteId);
+        const filterClause = isUuid ? `facility_id.eq.${siteId},id.eq.${siteId}` : `facility_id.eq.${siteId}`;
         const { data } = await supabase
           .from('hospitals')
           .select('programs')
-          .or(`facility_id.eq.${siteId},id.eq.${siteId}`)
+          .or(filterClause)
           .limit(1)
           .maybeSingle();
         if (cancelled) return;

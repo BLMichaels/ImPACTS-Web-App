@@ -726,7 +726,9 @@ const AdminCRMPage: React.FC = () => {
     const activityLog = c.activityLog ?? [];
     if (c.type === 'hospital' && (c.facilityId ?? c.id)) {
       const key = String(c.facilityId ?? c.id);
-      await supabase.from('hospitals').update({ notes_log: notesLog, activity_log: activityLog }).or(`facility_id.eq.${key},id.eq.${key}`);
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+      const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
+      await supabase.from('hospitals').update({ notes_log: notesLog, activity_log: activityLog }).or(filterClause);
     } else if (c.type !== 'hospital' && c.crmCreated && c.id) {
       // CRM-created contacts - update directly
       await supabase.from('crm_organizations').update({ notes_log: notesLog, activity_log: activityLog, updated_at: new Date().toISOString() }).eq('id', c.id);
@@ -1121,10 +1123,13 @@ const AdminCRMPage: React.FC = () => {
       updatePayload.activity_log = currentInState?.activityLog ?? editingContact.activityLog ?? [];
       updatePayload.hospital_system = formData.hospitalSystem?.trim() || null;
       updatePayload.programs = formData.programs ?? [];
+      // Only include id.eq if key looks like a UUID (to avoid "invalid input syntax for type uuid" errors)
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+      const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
       const { error } = await supabase
         .from('hospitals')
         .update(updatePayload)
-        .or(`facility_id.eq.${key},id.eq.${key}`);
+        .or(filterClause);
       setSaveInProgress(false);
       // Build updated contact with all changes including facilityId
       const updatedContact: Partial<Contact> = {
@@ -1688,7 +1693,9 @@ const AdminCRMPage: React.FC = () => {
         await supabase.from('crm_organizations').update({ status, updated_at: new Date().toISOString() }).eq('id', c.id);
       } else if (c.type === 'hospital' && (c.facilityId ?? c.id)) {
         const key = String(c.facilityId ?? c.id);
-        await supabase.from('hospitals').update({ crm_status: status }).or(`facility_id.eq.${key},id.eq.${key}`);
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+        const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
+        await supabase.from('hospitals').update({ crm_status: status }).or(filterClause);
       }
       // User-sourced contacts (from users table) status is read-only in CRM
     }

@@ -43,10 +43,13 @@ function useUsageTracker() {
     }
     let cancelled = false;
     (async () => {
+      // Only include id.eq if value looks like a UUID
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(siteOrFacilityId);
+      const filterClause = isUuid ? `facility_id.eq.${siteOrFacilityId},id.eq.${siteOrFacilityId}` : `facility_id.eq.${siteOrFacilityId}`;
       const { data } = await supabase
         .from('hospitals')
         .select('id')
-        .or(`facility_id.eq.${siteOrFacilityId},id.eq.${siteOrFacilityId}`)
+        .or(filterClause)
         .limit(1)
         .maybeSingle();
       if (!cancelled && data && typeof (data as { id?: string }).id === 'string') {
