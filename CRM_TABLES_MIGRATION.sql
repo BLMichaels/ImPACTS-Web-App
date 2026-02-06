@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS public.crm_organizations (
   notes_log JSONB DEFAULT '[]'::jsonb,
   activity_log JSONB DEFAULT '[]'::jsonb,
   custom_fields JSONB DEFAULT '{}'::jsonb,
+  programs TEXT[] DEFAULT ARRAY[]::TEXT[],   -- programs this contact belongs to
+  cohorts TEXT[] DEFAULT ARRAY[]::TEXT[],    -- cohorts this contact belongs to
   contact_type TEXT DEFAULT 'organization',  -- 'organization', 'other', 'manager', 'mentor', 'pecc', 'staff'
   linked_organization_ids UUID[] DEFAULT ARRAY[]::UUID[],  -- organizations this person is linked to
   linked_hospital_ids UUID[] DEFAULT ARRAY[]::UUID[],      -- hospitals this person is linked to
@@ -32,6 +34,13 @@ CREATE TABLE IF NOT EXISTS public.crm_organizations (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add programs and cohorts columns if table already exists
+ALTER TABLE public.crm_organizations 
+ADD COLUMN IF NOT EXISTS programs TEXT[] DEFAULT ARRAY[]::TEXT[];
+
+ALTER TABLE public.crm_organizations 
+ADD COLUMN IF NOT EXISTS cohorts TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_crm_organizations_status ON public.crm_organizations(status);

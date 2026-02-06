@@ -21,6 +21,10 @@ ADD COLUMN IF NOT EXISTS company_name TEXT;
 ALTER TABLE public.hospitals 
 ADD COLUMN IF NOT EXISTS programs TEXT[] DEFAULT '{}';
 
+-- Cohorts array
+ALTER TABLE public.hospitals 
+ADD COLUMN IF NOT EXISTS cohorts TEXT[] DEFAULT '{}';
+
 -- Notes (simple text)
 ALTER TABLE public.hospitals 
 ADD COLUMN IF NOT EXISTS notes TEXT;
