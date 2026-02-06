@@ -495,7 +495,11 @@ const AdminProjectPipelinePage: React.FC = () => {
 
   // Inline editing handlers for quick status/dev stage changes
   const handleInlineEditClick = (event: React.MouseEvent<HTMLElement>, rowId: string, field: 'status' | 'devStatus') => {
-    setInlineMenuAnchor(event.currentTarget);
+    event.stopPropagation();
+    event.preventDefault();
+    // Use the target element directly to ensure proper anchor positioning
+    const target = event.currentTarget as HTMLElement;
+    setInlineMenuAnchor(target);
     setInlineEditingRow(rowId);
     setInlineEditingField(field);
   };
@@ -764,9 +768,17 @@ const AdminProjectPipelinePage: React.FC = () => {
               <TableRow key={row.id} hover>
                 <TableCell>
                   <Tooltip title="Click to change status" arrow>
-                    <Box sx={{ cursor: 'pointer', display: 'inline-block' }} onClick={(e) => handleInlineEditClick(e, row.id, 'status')}>
-                      <StatusChip status={row.status} />
-                    </Box>
+                    <Chip 
+                      size="small" 
+                      label={row.status} 
+                      onClick={(e) => handleInlineEditClick(e, row.id, 'status')}
+                      sx={{ 
+                        ...getStatusColor(row.status), 
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        '&:hover': { filter: 'brightness(0.9)' }
+                      }} 
+                    />
                   </Tooltip>
                 </TableCell>
                 <TableCell>{row.order}</TableCell>
@@ -775,9 +787,19 @@ const AdminProjectPipelinePage: React.FC = () => {
                 <TableCell>{row.dueDate ? format(parseISO(row.dueDate), 'MM/dd/yyyy') : '-'}</TableCell>
                 <TableCell>
                   <Tooltip title="Click to change development status" arrow>
-                    <Box sx={{ cursor: 'pointer', display: 'inline-block' }} onClick={(e) => handleInlineEditClick(e, row.id, 'devStatus')}>
-                      <DevStageChip stage={row.projectDevelopmentStatus} />
-                    </Box>
+                    <Chip 
+                      size="small" 
+                      label={row.projectDevelopmentStatus || '-'} 
+                      onClick={(e) => handleInlineEditClick(e, row.id, 'devStatus')}
+                      sx={{ 
+                        ...getDevStageColor(row.projectDevelopmentStatus), 
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        height: 'auto',
+                        '& .MuiChip-label': { whiteSpace: 'normal', lineHeight: 1.3, py: 0.5, display: 'block' },
+                        '&:hover': { filter: 'brightness(0.9)' }
+                      }} 
+                    />
                   </Tooltip>
                 </TableCell>
                 <TableCell>{row.projectSponsor || '-'}</TableCell>
@@ -1726,6 +1748,8 @@ const AdminProjectPipelinePage: React.FC = () => {
           anchorEl={inlineMenuAnchor}
           open={Boolean(inlineMenuAnchor) && inlineEditingField === 'status'}
           onClose={handleInlineEditClose}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
           PaperProps={{ sx: { maxHeight: 300 } }}
         >
           {STATUS_OPTIONS.map(opt => (
@@ -1751,6 +1775,8 @@ const AdminProjectPipelinePage: React.FC = () => {
           anchorEl={inlineMenuAnchor}
           open={Boolean(inlineMenuAnchor) && inlineEditingField === 'devStatus'}
           onClose={handleInlineEditClose}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
           PaperProps={{ sx: { maxHeight: 400, maxWidth: 500 } }}
         >
           <MenuItem onClick={() => handleInlineDevStatusChange('')}>
