@@ -244,7 +244,41 @@ type CustomFieldDefinition = {
   applicableTypes: ContactType[];
   fieldType: CustomFieldType;
   options?: string[];
+  allowMultiple?: boolean; // If true, allows multiple dated entries (like a log)
 };
+
+// Type for multiple entry custom field values
+type CustomFieldMultiEntry = {
+  date: string;
+  value: string;
+};
+
+// Helper functions for multi-entry custom fields
+const parseMultiEntryValue = (val: string | undefined): CustomFieldMultiEntry[] => {
+  if (!val) return [];
+  try {
+    const parsed = JSON.parse(val);
+    if (Array.isArray(parsed)) return parsed.filter(e => e && typeof e.date === 'string' && typeof e.value === 'string');
+  } catch {
+    // If not valid JSON, treat as a single legacy entry
+    if (val.trim()) return [{ date: '', value: val }];
+  }
+  return [];
+};
+
+const serializeMultiEntryValue = (entries: CustomFieldMultiEntry[]): string => {
+  return JSON.stringify(entries.filter(e => e.value.trim()));
+};
+
+const formatEntryDate = (dateStr: string): string => {
+  if (!dateStr) return 'No date';
+  try {
+    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+};
+
 const CUSTOM_FIELD_TYPE_LABELS: Record<CustomFieldType, string> = {
   checkbox: 'Checkbox',
   radio: 'Radio',
@@ -426,9 +460,12 @@ const AdminCRMPage: React.FC = () => {
   const [newDefApplicableTypes, setNewDefApplicableTypes] = useState<ContactType[]>(['hospital']);
   const [newDefFieldType, setNewDefFieldType] = useState<CustomFieldType>('short_answer');
   const [newDefOptions, setNewDefOptions] = useState('');
+  const [newDefAllowMultiple, setNewDefAllowMultiple] = useState(false);
   const [csvUploadError, setCsvUploadError] = useState<string | null>(null);
   const [saveInProgress, setSaveInProgress] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // State for new multi-entry field values (defId -> {date, value})
+  const [multiEntryNewValues, setMultiEntryNewValues] = useState<Record<string, { date: string; value: string }>>({});
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportScope, setExportScope] = useState<'all' | 'selected'>('all');
   const [exportColumnIds, setExportColumnIds] = useState<string[]>(() => EXPORT_COLUMNS.map(c => c.id));
@@ -637,7 +674,7 @@ const AdminCRMPage: React.FC = () => {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data, error } = await supabase.from('crm_custom_field_definitions').select('id, label, applicable_types, field_type, options, sort_order').order('sort_order', { ascending: true });
+      const { data, error } = await supabase.from('crm_custom_field_definitions').select('id, label, applicable_types, field_type, options, sort_order, allow_multiple').order('sort_order', { ascending: true });
       if (!mounted) return;
       if (!error && data && data.length > 0) {
         const mapped: CustomFieldDefinition[] = (data as Record<string, unknown>[]).map((row) => ({
@@ -645,7 +682,8 @@ const AdminCRMPage: React.FC = () => {
           label: String(row.label),
           applicableTypes: (Array.isArray(row.applicable_types) ? row.applicable_types as string[] : ['hospital']).filter(t => CONTACT_TYPES.includes(t as ContactType)) as ContactType[],
           fieldType: (['checkbox', 'radio', 'date', 'numeric', 'short_answer', 'paragraph', 'dropdown', 'dropdown_csv'].includes(String(row.field_type)) ? row.field_type : 'short_answer') as CustomFieldType,
-          options: Array.isArray(row.options) ? (row.options as string[]).filter(Boolean) : undefined
+          options: Array.isArray(row.options) ? (row.options as string[]).filter(Boolean) : undefined,
+          allowMultiple: Boolean(row.allow_multiple)
         }));
         setCustomFieldDefs(mapped);
       }
@@ -2258,7 +2296,29 @@ const AdminCRMPage: React.FC = () => {
               {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type)).length > 0 && (
                 <>
                   {customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
-                    <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} /></ListItem>
+                    <ListItem key={d.id} disablePadding>
+                      {d.allowMultiple ? (
+                        <ListItemText 
+                          primary={d.label} 
+                          secondary={
+                            <Box component="span" sx={{ display: 'block' }}>
+                              {parseMultiEntryValue(detailContact.customFields![d.id]).length === 0 ? '—' : 
+                                parseMultiEntryValue(detailContact.customFields![d.id]).slice(0, 5).map((entry, idx) => (
+                                  <Typography key={idx} variant="body2" component="span" sx={{ display: 'block' }}>
+                                    {formatEntryDate(entry.date)}: {entry.value}
+                                  </Typography>
+                                ))
+                              }
+                              {parseMultiEntryValue(detailContact.customFields![d.id]).length > 5 && (
+                                <Typography variant="caption" color="text.secondary">+{parseMultiEntryValue(detailContact.customFields![d.id]).length - 5} more entries</Typography>
+                              )}
+                            </Box>
+                          } 
+                        />
+                      ) : (
+                        <ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} />
+                      )}
+                    </ListItem>
                   ))}
                 </>
               )}
@@ -2421,13 +2481,58 @@ const AdminCRMPage: React.FC = () => {
                     <Grid item xs={12}><Divider sx={{ mt: 1 }} /><Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>Custom fields</Typography></Grid>
                     {customFieldDefs.filter(d => d.applicableTypes.includes(formData.type)).map((def) => (
                       <Grid item xs={12} key={def.id}>
-                        {def.fieldType === 'checkbox' && <FormControlLabel control={<Checkbox size="small" checked={((formData.customFields || {})[def.id] ?? '') === 'true'} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.checked ? 'true' : 'false' } }))} />} label={def.label} />}
-                        {def.fieldType === 'radio' && <FormControl fullWidth size="small"><Typography variant="body2" sx={{ mb: 0.5 }}>{def.label}</Typography><RadioGroup row value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))}>{(def.options ?? []).map((opt) => <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />)}</RadioGroup></FormControl>}
-                        {def.fieldType === 'date' && <TextField label={def.label} type="date" value={((formData.customFields || {})[def.id] ?? '').slice(0, 10)} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" InputLabelProps={{ shrink: true }} />}
-                        {def.fieldType === 'numeric' && <TextField label={def.label} type="number" value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" inputProps={{ inputMode: 'numeric' }} />}
-                        {def.fieldType === 'short_answer' && <TextField label={def.label} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />}
-                        {def.fieldType === 'paragraph' && <TextField label={def.label} multiline rows={3} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />}
-                        {(def.fieldType === 'dropdown' || def.fieldType === 'dropdown_csv') && <FormControl fullWidth size="small"><InputLabel>{def.label}</InputLabel><Select value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} label={def.label}><MenuItem value=""><em>—</em></MenuItem>{(def.options ?? []).map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}</Select></FormControl>}
+                        {def.allowMultiple ? (
+                          /* Multi-entry field (log mode) */
+                          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
+                            <Typography variant="body2" fontWeight={500} sx={{ mb: 1 }}>{def.label} <Chip size="small" label="Multiple entries" variant="outlined" sx={{ ml: 1 }} /></Typography>
+                            {/* Existing entries */}
+                            {parseMultiEntryValue((formData.customFields || {})[def.id]).length > 0 && (
+                              <Box sx={{ mb: 1.5 }}>
+                                {parseMultiEntryValue((formData.customFields || {})[def.id]).map((entry, idx) => (
+                                  <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, p: 0.5, bgcolor: 'action.hover', borderRadius: 0.5 }}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>{formatEntryDate(entry.date)}</Typography>
+                                    <Typography variant="body2" sx={{ flex: 1 }}>{entry.value}</Typography>
+                                    <IconButton size="small" onClick={() => {
+                                      const entries = parseMultiEntryValue((formData.customFields || {})[def.id]).filter((_, i) => i !== idx);
+                                      setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: serializeMultiEntryValue(entries) } }));
+                                    }}><DeleteIcon fontSize="small" /></IconButton>
+                                  </Box>
+                                ))}
+                              </Box>
+                            )}
+                            {/* Add new entry */}
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                              <TextField type="date" size="small" label="Date" value={multiEntryNewValues[def.id]?.date ?? new Date().toISOString().slice(0, 10)} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { ...prev[def.id], date: e.target.value, value: prev[def.id]?.value ?? '' } }))} InputLabelProps={{ shrink: true }} sx={{ width: 150 }} />
+                              {def.fieldType === 'short_answer' && <TextField size="small" label="Value" value={multiEntryNewValues[def.id]?.value ?? ''} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: prev[def.id]?.date ?? new Date().toISOString().slice(0, 10), value: e.target.value } }))} sx={{ flex: 1 }} />}
+                              {def.fieldType === 'paragraph' && <TextField size="small" label="Value" multiline rows={2} value={multiEntryNewValues[def.id]?.value ?? ''} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: prev[def.id]?.date ?? new Date().toISOString().slice(0, 10), value: e.target.value } }))} sx={{ flex: 1 }} />}
+                              {def.fieldType === 'numeric' && <TextField size="small" type="number" label="Value" value={multiEntryNewValues[def.id]?.value ?? ''} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: prev[def.id]?.date ?? new Date().toISOString().slice(0, 10), value: e.target.value } }))} sx={{ flex: 1 }} />}
+                              {(def.fieldType === 'dropdown' || def.fieldType === 'dropdown_csv') && <FormControl size="small" sx={{ flex: 1 }}><InputLabel>Value</InputLabel><Select value={multiEntryNewValues[def.id]?.value ?? ''} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: prev[def.id]?.date ?? new Date().toISOString().slice(0, 10), value: e.target.value as string } }))} label="Value">{(def.options ?? []).map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}</Select></FormControl>}
+                              {def.fieldType === 'radio' && <FormControl size="small" sx={{ flex: 1 }}><RadioGroup row value={multiEntryNewValues[def.id]?.value ?? ''} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: prev[def.id]?.date ?? new Date().toISOString().slice(0, 10), value: e.target.value } }))}>{(def.options ?? []).map((opt) => <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />)}</RadioGroup></FormControl>}
+                              {def.fieldType === 'checkbox' && <FormControlLabel control={<Checkbox size="small" checked={(multiEntryNewValues[def.id]?.value ?? '') === 'true'} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: prev[def.id]?.date ?? new Date().toISOString().slice(0, 10), value: e.target.checked ? 'true' : 'false' } }))} />} label="Checked" />}
+                              {def.fieldType === 'date' && <TextField size="small" type="date" label="Value" value={multiEntryNewValues[def.id]?.value ?? ''} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: prev[def.id]?.date ?? new Date().toISOString().slice(0, 10), value: e.target.value } }))} InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} />}
+                              <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => {
+                                const newEntry = multiEntryNewValues[def.id];
+                                if (!newEntry?.value?.trim()) return;
+                                const entries = parseMultiEntryValue((formData.customFields || {})[def.id]);
+                                entries.push({ date: newEntry.date || new Date().toISOString().slice(0, 10), value: newEntry.value });
+                                entries.sort((a, b) => b.date.localeCompare(a.date)); // Sort newest first
+                                setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: serializeMultiEntryValue(entries) } }));
+                                setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: new Date().toISOString().slice(0, 10), value: '' } }));
+                              }}>Add</Button>
+                            </Box>
+                          </Box>
+                        ) : (
+                          /* Single-value field (standard mode) */
+                          <>
+                            {def.fieldType === 'checkbox' && <FormControlLabel control={<Checkbox size="small" checked={((formData.customFields || {})[def.id] ?? '') === 'true'} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.checked ? 'true' : 'false' } }))} />} label={def.label} />}
+                            {def.fieldType === 'radio' && <FormControl fullWidth size="small"><Typography variant="body2" sx={{ mb: 0.5 }}>{def.label}</Typography><RadioGroup row value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))}>{(def.options ?? []).map((opt) => <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />)}</RadioGroup></FormControl>}
+                            {def.fieldType === 'date' && <TextField label={def.label} type="date" value={((formData.customFields || {})[def.id] ?? '').slice(0, 10)} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" InputLabelProps={{ shrink: true }} />}
+                            {def.fieldType === 'numeric' && <TextField label={def.label} type="number" value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" inputProps={{ inputMode: 'numeric' }} />}
+                            {def.fieldType === 'short_answer' && <TextField label={def.label} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />}
+                            {def.fieldType === 'paragraph' && <TextField label={def.label} multiline rows={3} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />}
+                            {(def.fieldType === 'dropdown' || def.fieldType === 'dropdown_csv') && <FormControl fullWidth size="small"><InputLabel>{def.label}</InputLabel><Select value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} label={def.label}><MenuItem value=""><em>—</em></MenuItem>{(def.options ?? []).map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}</Select></FormControl>}
+                          </>
+                        )}
                       </Grid>
                     ))}
                   </>
@@ -2512,7 +2617,29 @@ const AdminCRMPage: React.FC = () => {
                       <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Program(s)" secondary={(detailContact.programs ?? []).join(', ')} /></ListItem>
                     )}
                     {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
-                      <ListItem key={d.id} disablePadding><ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} /></ListItem>
+                      <ListItem key={d.id} disablePadding>
+                        {d.allowMultiple ? (
+                          <ListItemText 
+                            primary={d.label} 
+                            secondary={
+                              <Box component="span" sx={{ display: 'block' }}>
+                                {parseMultiEntryValue(detailContact.customFields![d.id]).length === 0 ? '—' : 
+                                  parseMultiEntryValue(detailContact.customFields![d.id]).slice(0, 3).map((entry, idx) => (
+                                    <Typography key={idx} variant="body2" component="span" sx={{ display: 'block' }}>
+                                      {formatEntryDate(entry.date)}: {entry.value}
+                                    </Typography>
+                                  ))
+                                }
+                                {parseMultiEntryValue(detailContact.customFields![d.id]).length > 3 && (
+                                  <Typography variant="caption" color="text.secondary">+{parseMultiEntryValue(detailContact.customFields![d.id]).length - 3} more</Typography>
+                                )}
+                              </Box>
+                            } 
+                          />
+                        ) : (
+                          <ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} />
+                        )}
+                      </ListItem>
                     ))}
                     {(isPersonType(detailContact.type) || (detailContact.type === 'hospital' && detailContact.hospitalId)) && (
                       <ListItem disablePadding sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -2859,46 +2986,85 @@ const AdminCRMPage: React.FC = () => {
                 </Grid>
                 {customFieldDefs.filter(d => d.applicableTypes.includes(formData.type)).map((def) => (
                   <Grid item xs={12} key={def.id}>
-                    {def.fieldType === 'checkbox' && (
-                      <FormControlLabel
-                        control={<Checkbox size="small" checked={((formData.customFields || {})[def.id] ?? '') === 'true'} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.checked ? 'true' : 'false' } }))} />}
-                        label={def.label}
-                      />
-                    )}
-                    {def.fieldType === 'radio' && (
-                      <FormControl fullWidth size="small">
-                        <Typography variant="body2" sx={{ mb: 0.5 }}>{def.label}</Typography>
-                        <RadioGroup row value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))}>
-                          {(def.options ?? []).map((opt) => (
-                            <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />
-                          ))}
-                          {(!def.options || def.options.length === 0) && <Typography variant="caption" color="text.secondary">Add options in Manage custom fields</Typography>}
-                        </RadioGroup>
-                      </FormControl>
-                    )}
-                    {def.fieldType === 'date' && (
-                      <TextField label={def.label} type="date" value={((formData.customFields || {})[def.id] ?? '').slice(0, 10)} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" InputLabelProps={{ shrink: true }} />
-                    )}
-                    {def.fieldType === 'numeric' && (
-                      <TextField label={def.label} type="number" value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" inputProps={{ inputMode: 'numeric' }} />
-                    )}
-                    {def.fieldType === 'short_answer' && (
-                      <TextField label={def.label} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />
-                    )}
-                    {def.fieldType === 'paragraph' && (
-                      <TextField label={def.label} multiline rows={3} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />
-                    )}
-                    {(def.fieldType === 'dropdown' || def.fieldType === 'dropdown_csv') && (
-                      <FormControl fullWidth size="small">
-                        <InputLabel>{def.label}</InputLabel>
-                        <Select value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} label={def.label}>
-                          <MenuItem value=""><em>—</em></MenuItem>
-                          {(def.options ?? []).map((opt) => (
-                            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                          ))}
-                          {(!def.options || def.options.length === 0) && <MenuItem value="" disabled>Add options in Manage custom fields</MenuItem>}
-                        </Select>
-                      </FormControl>
+                    {def.allowMultiple ? (
+                      /* Multi-entry field (log mode) */
+                      <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
+                        <Typography variant="body2" fontWeight={500} sx={{ mb: 1 }}>{def.label} <Chip size="small" label="Multiple entries" variant="outlined" sx={{ ml: 1 }} /></Typography>
+                        {/* Existing entries */}
+                        {parseMultiEntryValue((formData.customFields || {})[def.id]).length > 0 && (
+                          <Box sx={{ mb: 1.5, maxHeight: 150, overflow: 'auto' }}>
+                            {parseMultiEntryValue((formData.customFields || {})[def.id]).map((entry, idx) => (
+                              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, p: 0.5, bgcolor: 'action.hover', borderRadius: 0.5 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 70, fontSize: '0.7rem' }}>{formatEntryDate(entry.date)}</Typography>
+                                <Typography variant="body2" sx={{ flex: 1, fontSize: '0.8rem' }}>{entry.value}</Typography>
+                                <IconButton size="small" onClick={() => {
+                                  const entries = parseMultiEntryValue((formData.customFields || {})[def.id]).filter((_, i) => i !== idx);
+                                  setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: serializeMultiEntryValue(entries) } }));
+                                }}><DeleteIcon sx={{ fontSize: 16 }} /></IconButton>
+                              </Box>
+                            ))}
+                          </Box>
+                        )}
+                        {/* Add new entry */}
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                          <TextField type="date" size="small" label="Date" value={multiEntryNewValues[def.id]?.date ?? new Date().toISOString().slice(0, 10)} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { ...prev[def.id], date: e.target.value, value: prev[def.id]?.value ?? '' } }))} InputLabelProps={{ shrink: true }} sx={{ width: 130 }} />
+                          <TextField size="small" label="Value" value={multiEntryNewValues[def.id]?.value ?? ''} onChange={(e) => setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: prev[def.id]?.date ?? new Date().toISOString().slice(0, 10), value: e.target.value } }))} sx={{ flex: 1, minWidth: 120 }} />
+                          <Button size="small" variant="outlined" onClick={() => {
+                            const newEntry = multiEntryNewValues[def.id];
+                            if (!newEntry?.value?.trim()) return;
+                            const entries = parseMultiEntryValue((formData.customFields || {})[def.id]);
+                            entries.push({ date: newEntry.date || new Date().toISOString().slice(0, 10), value: newEntry.value });
+                            entries.sort((a, b) => b.date.localeCompare(a.date));
+                            setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: serializeMultiEntryValue(entries) } }));
+                            setMultiEntryNewValues(prev => ({ ...prev, [def.id]: { date: new Date().toISOString().slice(0, 10), value: '' } }));
+                          }}>Add</Button>
+                        </Box>
+                      </Box>
+                    ) : (
+                      /* Single-value field (standard mode) */
+                      <>
+                        {def.fieldType === 'checkbox' && (
+                          <FormControlLabel
+                            control={<Checkbox size="small" checked={((formData.customFields || {})[def.id] ?? '') === 'true'} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.checked ? 'true' : 'false' } }))} />}
+                            label={def.label}
+                          />
+                        )}
+                        {def.fieldType === 'radio' && (
+                          <FormControl fullWidth size="small">
+                            <Typography variant="body2" sx={{ mb: 0.5 }}>{def.label}</Typography>
+                            <RadioGroup row value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))}>
+                              {(def.options ?? []).map((opt) => (
+                                <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />
+                              ))}
+                              {(!def.options || def.options.length === 0) && <Typography variant="caption" color="text.secondary">Add options in Manage custom fields</Typography>}
+                            </RadioGroup>
+                          </FormControl>
+                        )}
+                        {def.fieldType === 'date' && (
+                          <TextField label={def.label} type="date" value={((formData.customFields || {})[def.id] ?? '').slice(0, 10)} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+                        )}
+                        {def.fieldType === 'numeric' && (
+                          <TextField label={def.label} type="number" value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" inputProps={{ inputMode: 'numeric' }} />
+                        )}
+                        {def.fieldType === 'short_answer' && (
+                          <TextField label={def.label} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />
+                        )}
+                        {def.fieldType === 'paragraph' && (
+                          <TextField label={def.label} multiline rows={3} value={(formData.customFields || {})[def.id] ?? ''} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} fullWidth size="small" />
+                        )}
+                        {(def.fieldType === 'dropdown' || def.fieldType === 'dropdown_csv') && (
+                          <FormControl fullWidth size="small">
+                            <InputLabel>{def.label}</InputLabel>
+                            <Select value={((formData.customFields || {})[def.id] ?? '')} onChange={(e) => setFormData(prev => ({ ...prev, customFields: { ...(prev.customFields || {}), [def.id]: e.target.value } }))} label={def.label}>
+                              <MenuItem value=""><em>—</em></MenuItem>
+                              {(def.options ?? []).map((opt) => (
+                                <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                              ))}
+                              {(!def.options || def.options.length === 0) && <MenuItem value="" disabled>Add options in Manage custom fields</MenuItem>}
+                            </Select>
+                          </FormControl>
+                        )}
+                      </>
                     )}
                   </Grid>
                 ))}
@@ -2913,7 +3079,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Manage custom fields (Admins only) */}
-      <Dialog open={customFieldsDialogOpen} onClose={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setCsvUploadError(null); }} maxWidth="sm" fullWidth>
+      <Dialog open={customFieldsDialogOpen} onClose={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false); setCsvUploadError(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>Manage custom fields</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -2944,6 +3110,19 @@ const AdminCRMPage: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={<Checkbox size="small" checked={newDefAllowMultiple} onChange={(e) => setNewDefAllowMultiple(e.target.checked)} />}
+                label={
+                  <Box>
+                    <Typography variant="body2">Allow multiple entries (log mode)</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Enable for fields like phone calls, visits, etc. where you want to record multiple dated entries
+                    </Typography>
+                  </Box>
+                }
+              />
             </Grid>
             {OPTIONS_FIELD_TYPES.includes(newDefFieldType) && (
               <Grid item xs={12}>
@@ -2984,30 +3163,30 @@ const AdminCRMPage: React.FC = () => {
                   
                   if (editingDefId) {
                     // Update existing field
-                    const updatePayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], updated_at: new Date().toISOString() };
+                    const updatePayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, updated_at: new Date().toISOString() };
                     const { error } = await supabase.from('crm_custom_field_definitions').update(updatePayload).eq('id', editingDefId);
                     if (error) {
                       console.error('Failed to update custom field:', error);
                       setCsvUploadError(`Failed to update field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
                       return;
                     }
-                    const updatedDef: CustomFieldDefinition = { id: editingDefId, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined };
+                    const updatedDef: CustomFieldDefinition = { id: editingDefId, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple };
                     setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? updatedDef : d));
                     setEditingDefId(null);
                   } else {
                     // Insert new field - don't send id, let database generate UUID
-                    const insertPayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], sort_order: 0 };
+                    const insertPayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, sort_order: 0 };
                     const { data, error } = await supabase.from('crm_custom_field_definitions').insert(insertPayload).select().single();
                     if (error) {
                       console.error('Failed to add custom field:', error);
                       setCsvUploadError(`Failed to add field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
                       return;
                     }
-                    const newDef: CustomFieldDefinition = { id: String(data.id), label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined };
+                    const newDef: CustomFieldDefinition = { id: String(data.id), label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple };
                     setCustomFieldDefs(prev => [...prev, newDef]);
                   }
                   setCsvUploadError(null);
-                  setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions('');
+                  setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false);
                 }}
               >
                 {editingDefId ? 'Update field' : 'Add field'}
@@ -3018,8 +3197,8 @@ const AdminCRMPage: React.FC = () => {
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Existing fields</Typography>
           <List dense>
             {customFieldDefs.map((def) => (
-              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { const { error } = await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); if (error) { console.error('Failed to delete custom field:', error); setCsvUploadError(`Failed to delete field: ${error.message}`); return; } setCsvUploadError(null); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
-                <ListItemText primary={def.label} secondary={`${CUSTOM_FIELD_TYPE_LABELS[def.fieldType]} · ${def.applicableTypes.map(t => TYPE_LABELS[t]).join(', ')}`} />
+              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); setNewDefAllowMultiple(def.allowMultiple ?? false); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { const { error } = await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); if (error) { console.error('Failed to delete custom field:', error); setCsvUploadError(`Failed to delete field: ${error.message}`); return; } setCsvUploadError(null); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
+                <ListItemText primary={def.label} secondary={`${CUSTOM_FIELD_TYPE_LABELS[def.fieldType]}${def.allowMultiple ? ' (multiple entries)' : ''} · ${def.applicableTypes.map(t => TYPE_LABELS[t]).join(', ')}`} />
               </ListItem>
             ))}
             {customFieldDefs.length === 0 && <ListItem><ListItemText primary="No custom fields yet. Use the form above to add one." /></ListItem>}

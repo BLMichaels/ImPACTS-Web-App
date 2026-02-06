@@ -63,10 +63,15 @@ CREATE TABLE IF NOT EXISTS public.crm_custom_field_definitions (
   applicable_types TEXT[] DEFAULT ARRAY['hospital']::TEXT[],  -- which contact types this field applies to
   field_type TEXT NOT NULL DEFAULT 'text',  -- 'text', 'number', 'date', 'select', 'multiselect', 'boolean'
   options TEXT[] DEFAULT ARRAY[]::TEXT[],  -- for select/multiselect fields
+  allow_multiple BOOLEAN DEFAULT false,  -- if true, allows multiple dated entries (like a log of phone calls)
   sort_order INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add allow_multiple column if table already exists
+ALTER TABLE public.crm_custom_field_definitions 
+ADD COLUMN IF NOT EXISTS allow_multiple BOOLEAN DEFAULT false;
 
 -- Create index for sorting
 CREATE INDEX IF NOT EXISTS idx_crm_custom_field_definitions_sort ON public.crm_custom_field_definitions(sort_order);

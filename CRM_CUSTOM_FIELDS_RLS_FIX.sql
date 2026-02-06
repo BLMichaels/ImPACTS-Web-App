@@ -28,9 +28,14 @@ CREATE TABLE IF NOT EXISTS public.crm_custom_field_definitions (
   field_type TEXT NOT NULL DEFAULT 'short_answer',
   options TEXT[] DEFAULT ARRAY[]::TEXT[],
   sort_order INTEGER DEFAULT 0,
+  allow_multiple BOOLEAN DEFAULT false,  -- If true, allows multiple dated entries (like a log)
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add allow_multiple column if table already exists
+ALTER TABLE public.crm_custom_field_definitions 
+ADD COLUMN IF NOT EXISTS allow_multiple BOOLEAN DEFAULT false;
 
 -- Create index for sorting
 CREATE INDEX IF NOT EXISTS idx_crm_custom_field_definitions_sort 
