@@ -48,6 +48,7 @@ import ScormPackagesSection from '../../components/ScormPackagesSection';
 // Lazy load Programs and Cohorts pages to embed in settings
 const AdminProgramsContent = lazy(() => import('./AdminProgramsPage'));
 const AdminCohortsContent = lazy(() => import('./AdminCohortsPage'));
+const GranularPermissionsManager = lazy(() => import('../../components/admin/GranularPermissionsManager'));
 
 // ---- Registration section constants ----
 const QUESTION_TYPES: { value: RegistrationQuestionType; label: string }[] = [
@@ -87,17 +88,19 @@ export default function AdminSettingsPage() {
   const tabParamToIndex: Record<string, number> = useMemo(() => ({
     'registration': 0,
     'permissions': 1,
-    'modules': 2,
-    'programs': 3,
-    'cohorts': 4
+    'granular-permissions': 2,
+    'modules': 3,
+    'programs': 4,
+    'cohorts': 5
   }), []);
 
   const tabIndexToParam: Record<number, string> = useMemo(() => ({
     0: 'registration',
     1: 'permissions',
-    2: 'modules',
-    3: 'programs',
-    4: 'cohorts'
+    2: 'granular-permissions',
+    3: 'modules',
+    4: 'programs',
+    5: 'cohorts'
   }), []);
 
   // Initialize tab from URL or default to 0
@@ -287,7 +290,8 @@ export default function AdminSettingsPage() {
 
       <Tabs value={tabIndex} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tab label="Registration Questions" />
-        <Tab label="Permissions" />
+        <Tab label="Role Permissions" />
+        <Tab label="Granular Permissions" />
         <Tab label="Learning Modules" />
         <Tab label="Programs" />
         <Tab label="Cohorts" />
@@ -399,8 +403,15 @@ export default function AdminSettingsPage() {
         </Box>
       )}
 
-      {/* Learning Modules (SCORM) */}
+      {/* Granular Permissions */}
       {tabIndex === 2 && (
+        <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
+          <GranularPermissionsManager mode="admin" />
+        </Suspense>
+      )}
+
+      {/* Learning Modules (SCORM) */}
+      {tabIndex === 3 && (
         <Box>
           <Typography variant="h6" gutterBottom>Learning Modules</Typography>
           <Typography color="textSecondary" sx={{ mb: 2 }}>
@@ -411,14 +422,14 @@ export default function AdminSettingsPage() {
       )}
 
       {/* Programs */}
-      {tabIndex === 3 && (
+      {tabIndex === 4 && (
         <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
           <AdminProgramsContent />
         </Suspense>
       )}
 
       {/* Cohorts */}
-      {tabIndex === 4 && (
+      {tabIndex === 5 && (
         <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
           <AdminCohortsContent />
         </Suspense>

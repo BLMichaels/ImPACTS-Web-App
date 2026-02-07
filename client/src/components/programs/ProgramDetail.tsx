@@ -39,6 +39,7 @@ import {
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { useTabVisibility } from '../../hooks/usePermissions';
 import { 
   Program, 
   ProgramMember, 
@@ -88,6 +89,10 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
   const [isManager, setIsManager] = useState(false);
+  
+  // Check tab visibility permissions
+  const showAnnouncementsTab = useTabVisibility('announcements', undefined, programId);
+  const showMembersTab = useTabVisibility('members', undefined, programId);
   
   // Add Member Dialog
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -304,54 +309,72 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
       </Box>
 
       {/* Tabs */}
-      <Paper sx={{ mb: 3 }}>
-        <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)}>
-          <Tab 
-            icon={<AnnouncementIcon />} 
-            iconPosition="start" 
-            label="Announcements" 
-          />
-          <Tab 
-            icon={<MembersIcon />} 
-            iconPosition="start" 
-            label={`Members (${members.length})`} 
-          />
-        </Tabs>
-      </Paper>
-
-      {/* Announcements Tab */}
-      <TabPanel value={tabValue} index={0}>
-        <ProgramAnnouncementList 
-          programId={programId} 
-          canAnnounce={canAnnounce}
-        />
-      </TabPanel>
-
-      {/* Members Tab */}
-      <TabPanel value={tabValue} index={1}>
-        <Paper sx={{ p: 3 }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h6">Members</Typography>
-            {canManageProgram && (
-              <Button 
-                startIcon={<AddMemberIcon />} 
-                variant="contained"
-                onClick={() => {
-                  loadAvailableUsers();
-                  setAddMemberOpen(true);
-                }}
-              >
-                Add Members
-              </Button>
+      {(showAnnouncementsTab || showMembersTab) && (
+        <Paper sx={{ mb: 3 }}>
+          <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)}>
+            {showAnnouncementsTab && (
+              <Tab 
+                icon={<AnnouncementIcon />} 
+                iconPosition="start" 
+                label="Announcements" 
+              />
             )}
-          </Box>
+            {showMembersTab && (
+              <Tab 
+                icon={<MembersIcon />} 
+                iconPosition="start" 
+                label={`Members (${members.length})`} 
+              />
+            )}
+          </Tabs>
+        </Paper>
+      )}
 
-          {members.length === 0 ? (
-            <Typography color="text.secondary" textAlign="center" py={4}>
-              No members in this program yet
-            </Typography>
-          ) : (
-            <List>
+      {/* Tab Content */}
+      {(() => {
+        const visibleTabs = [
+          showAnnouncementsTab ? 'announcements' : null,
+          showMembersTab ? 'members' : null
+        ].filter(Boolean);
+        
+        const activeTab = visibleTabs[tabValue];
+        
+        if (activeTab === 'announcements') {
+          return (
+            <TabPanel value={tabValue} index={0}>
+              <ProgramAnnouncementList 
+                programId={programId} 
+                canAnnounce={canAnnounce}
+              />
+            </TabPanel>
+          );
+        }
+        if (activeTab === 'members') {
+          return (
+            <TabPanel value={tabValue} index={showAnnouncementsTab ? 1 : 0}>
+              <Paper sx={{ p: 3 }}>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                  <Typography variant="h6">Members</Typography>
+                  {canManageProgram && (
+                    <Button 
+                      startIcon={<AddMemberIcon />} 
+                      variant="contained"
+                      onClick={() => {
+                        loadAvailableUsers();
+                        setAddMemberOpen(true);
+                      }}
+                    >
+                      Add Members
+                    </Button>
+                  )}
+                </Box>
+
+                {members.length === 0 ? (
+                  <Typography color="text.secondary" textAlign="center" py={4}>
+                    No members in this program yet
+                  </Typography>
+                ) : (
+                  <List>
               {members.map((member, index) => (
                 <React.Fragment key={member.id}>
                   {index > 0 && <Divider />}
@@ -389,10 +412,14 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
                   </ListItem>
                 </React.Fragment>
               ))}
-            </List>
-          )}
-        </Paper>
-      </TabPanel>
+                  </List>
+                )}
+              </Paper>
+            </TabPanel>
+          );
+        }
+        return null;
+      })()}
 
       {/* Member Menu */}
       <Menu

@@ -84,6 +84,7 @@ export interface User {
   // Role-specific foreign keys
   manager_id: string | null;  // For mentors - who manages them
   mentor_id: string | null;   // For PECCs - who mentors them
+  manager_id_for_pecc?: string | null;  // For PECCs - direct manager assignment (bypasses mentor)
 }
 
 // Hospitals/Organizations table
@@ -619,6 +620,60 @@ export interface CohortWithStats extends Cohort {
   unread_discussions?: number;
   last_activity_at?: string;
   is_manager?: boolean;  // Whether current user manages this cohort
+}
+
+// ============================================
+// GRANULAR PERMISSIONS
+// ============================================
+
+// User-specific permission override
+export interface UserPermission {
+  id: string;
+  user_id: string;
+  permission_key: string;
+  is_enabled: boolean;
+  granted_by: string | null;
+  granted_at: string;
+  updated_at: string;
+}
+
+// Cohort-specific permission (applies to user or role)
+export interface CohortPermission {
+  id: string;
+  cohort_id: string;
+  user_id: string | null;
+  role: UserRole | null;
+  permission_key: string;
+  is_enabled: boolean;
+  granted_by: string | null;
+  granted_at: string;
+  updated_at: string;
+}
+
+// Program-specific permission (applies to user or role)
+export interface ProgramPermission {
+  id: string;
+  program_id: string;
+  user_id: string | null;
+  role: UserRole | null;
+  permission_key: string;
+  is_enabled: boolean;
+  granted_by: string | null;
+  granted_at: string;
+  updated_at: string;
+}
+
+// Tab/view visibility control
+export interface ViewTab {
+  id: string;
+  user_id: string | null;
+  cohort_id: string | null;
+  program_id: string | null;
+  tab_key: string;
+  is_visible: boolean;
+  granted_by: string | null;
+  granted_at: string;
+  updated_at: string;
 }
 
 // ============================================

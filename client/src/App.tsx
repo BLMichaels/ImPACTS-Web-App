@@ -56,6 +56,7 @@ const CohortsPage = lazy(() => import('./pages/CohortsPage'));
 // Programs Pages
 const ProgramsPage = lazy(() => import('./pages/ProgramsPage'));
 const ManagerProgramsPage = lazy(() => import('./pages/manager/ManagerProgramsPage'));
+const ManagerPermissionsPage = lazy(() => import('./pages/manager/ManagerPermissionsPage'));
 
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
@@ -222,6 +223,7 @@ function App() {
                   <Route path="/manager/wages" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerWagesExpensesPage /></ProtectedRoute>} />
                   <Route path="/manager/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCohortsPage /></ProtectedRoute>} />
                   <Route path="/manager/programs" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerProgramsPage /></ProtectedRoute>} />
+                  <Route path="/manager/permissions" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerPermissionsPage /></ProtectedRoute>} />
                   
                   {/* Admin Routes */}
                   <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboardPage /></ProtectedRoute>} />

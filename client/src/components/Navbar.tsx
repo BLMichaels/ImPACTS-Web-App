@@ -116,6 +116,7 @@ const Navbar: React.FC = () => {
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/manager/programs', label: 'Programs', icon: <ProgramsIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
+          { path: '/manager/permissions', label: 'Team Permissions', icon: <SettingsIcon /> },
           { path: '/manager/wages', label: 'Wages & Expenses', icon: <MoneyIcon /> }
         ];
 

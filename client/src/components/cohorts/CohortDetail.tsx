@@ -28,6 +28,7 @@ import {
 } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
+import { useTabVisibility } from '../../hooks/usePermissions';
 import AnnouncementList from './AnnouncementList';
 import DiscussionTopicList from './DiscussionTopicList';
 import DiscussionTopicView from './DiscussionTopicView';
@@ -53,6 +54,11 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   const { userProfile, userRole } = useUserProfile();
   const isPECC = userRole === UserRole.PECC;
   const [tabValue, setTabValue] = useState(0);
+  
+  // Check tab visibility permissions
+  const showAnnouncementsTab = useTabVisibility('announcements', cohort.id);
+  const showDiscussionsTab = useTabVisibility('discussions', cohort.id);
+  const showMembersTab = useTabVisibility('members', cohort.id);
   const [announcements, setAnnouncements] = useState<CohortAnnouncement[]>([]);
   const [topics, setTopics] = useState<CohortDiscussionTopic[]>([]);
   const [members, setMembers] = useState<CohortMember[]>([]);
@@ -306,67 +312,91 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
       ) : (
         <>
           {/* Tabs for Mentors, Managers, Admins */}
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-            <Tabs value={tabValue} onChange={handleTabChange}>
-              <Tab 
-                icon={
-                  <Badge badgeContent={unreadAnnouncements} color="error" max={99}>
-                    <AnnouncementIcon />
-                  </Badge>
-                }
-                iconPosition="start"
-                label="Announcements" 
-              />
-              <Tab 
-                icon={
-                  <Badge badgeContent={unreadDiscussions} color="error" max={99}>
-                    <DiscussionIcon />
-                  </Badge>
-                }
-                iconPosition="start"
-                label="Discussions" 
-              />
-              <Tab 
-                icon={<GroupIcon />}
-                iconPosition="start"
-                label="Members" 
-              />
-            </Tabs>
-          </Box>
+          {(showAnnouncementsTab || showDiscussionsTab || showMembersTab) && (
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+              <Tabs value={tabValue} onChange={handleTabChange}>
+                {showAnnouncementsTab && (
+                  <Tab 
+                    icon={
+                      <Badge badgeContent={unreadAnnouncements} color="error" max={99}>
+                        <AnnouncementIcon />
+                      </Badge>
+                    }
+                    iconPosition="start"
+                    label="Announcements" 
+                  />
+                )}
+                {showDiscussionsTab && (
+                  <Tab 
+                    icon={
+                      <Badge badgeContent={unreadDiscussions} color="error" max={99}>
+                        <DiscussionIcon />
+                      </Badge>
+                    }
+                    iconPosition="start"
+                    label="Discussions" 
+                  />
+                )}
+                {showMembersTab && (
+                  <Tab 
+                    icon={<GroupIcon />}
+                    iconPosition="start"
+                    label="Members" 
+                  />
+                )}
+              </Tabs>
+            </Box>
+          )}
 
           {/* Tab Content */}
-          {tabValue === 0 && (
-            <AnnouncementList
-              cohortId={cohort.id}
-              announcements={announcements}
-              canPost={canAnnounce}
-              onAnnouncementCreated={handleAnnouncementCreated}
-              onAnnouncementDeleted={handleAnnouncementDeleted}
-              loading={loading}
-            />
-          )}
-
-          {tabValue === 1 && (
-            <DiscussionTopicList
-              cohortId={cohort.id}
-              topics={topics}
-              onTopicClick={handleTopicClick}
-              onTopicCreated={handleTopicCreated}
-              loading={loading}
-            />
-          )}
-
-          {tabValue === 2 && (
-            <MemberList
-              cohortId={cohort.id}
-              members={members}
-              canManage={canManage}
-              canInvite={canInvite}
-              onMemberAdded={handleMemberAdded}
-              onMemberRemoved={handleMemberRemoved}
-              loading={loading}
-            />
-          )}
+          {(() => {
+            // Calculate which tab index corresponds to which content
+            const visibleTabs = [
+              showAnnouncementsTab ? 'announcements' : null,
+              showDiscussionsTab ? 'discussions' : null,
+              showMembersTab ? 'members' : null
+            ].filter(Boolean);
+            
+            const activeTab = visibleTabs[tabValue];
+            
+            if (activeTab === 'announcements') {
+              return (
+                <AnnouncementList
+                  cohortId={cohort.id}
+                  announcements={announcements}
+                  canPost={canAnnounce}
+                  onAnnouncementCreated={handleAnnouncementCreated}
+                  onAnnouncementDeleted={handleAnnouncementDeleted}
+                  loading={loading}
+                />
+              );
+            }
+            if (activeTab === 'discussions') {
+              return (
+                <DiscussionTopicList
+                  cohortId={cohort.id}
+                  topics={topics}
+                  onTopicClick={handleTopicClick}
+                  onTopicCreated={handleTopicCreated}
+                  loading={loading}
+                />
+              );
+            }
+            if (activeTab === 'members') {
+              return (
+                <MemberList
+                  cohortId={cohort.id}
+                  members={members}
+                  canManage={canManage}
+                  canInvite={canInvite}
+                  onMemberAdded={handleMemberAdded}
+                  onMemberRemoved={handleMemberRemoved}
+                  loading={loading}
+                />
+              );
+            }
+            return null;
+          })()}
         </>
       )}
     </Box>

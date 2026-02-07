@@ -60,8 +60,10 @@ interface User {
   createdAt: string;
   manager_id?: string | null;
   mentor_id?: string | null;
+  manager_id_for_pecc?: string | null;  // Direct manager assignment for PECCs
   managerName?: string;
   mentorName?: string;
+  managerNameForPECC?: string;  // Display name for direct manager
 }
 
 /** Team (user) management content for Admin CRM Team tab. */
@@ -85,7 +87,8 @@ const AdminTeamTab: React.FC = () => {
     is_admin: false,
     status: 'active' as 'active' | 'pending' | 'inactive',
     assignedManagerId: '' as string,
-    assignedMentorId: '' as string
+    assignedMentorId: '' as string,
+    assignedManagerIdForPECC: '' as string  // Direct manager assignment for PECCs
   });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -98,7 +101,8 @@ const AdminTeamTab: React.FC = () => {
     is_admin: false,
     sendInvite: true,
     assignedManagerId: '' as string,
-    assignedMentorId: '' as string
+    assignedMentorId: '' as string,
+    assignedManagerIdForPECC: '' as string  // Direct manager assignment for PECCs
   });
   const [loadingUsers, setLoadingUsers] = useState(true);
 
@@ -107,7 +111,7 @@ const AdminTeamTab: React.FC = () => {
       setLoadingUsers(true);
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, first_name, last_name, phone, role, is_admin, is_active, last_login, created_at, manager_id, mentor_id');
+        .select('id, email, first_name, last_name, phone, role, is_admin, is_active, last_login, created_at, manager_id, mentor_id, manager_id_for_pecc');
       if (error) {
         setUsers([]);
       } else {
@@ -124,6 +128,7 @@ const AdminTeamTab: React.FC = () => {
           created_at: string;
           manager_id: string | null;
           mentor_id: string | null;
+          manager_id_for_pecc: string | null;
         }) => ({
           id: r.id,
           firstName: r.first_name || '',
@@ -136,7 +141,8 @@ const AdminTeamTab: React.FC = () => {
           lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,
           createdAt: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : '',
           manager_id: r.manager_id,
-          mentor_id: r.mentor_id
+          mentor_id: r.mentor_id,
+          manager_id_for_pecc: r.manager_id_for_pecc
         }));
         mapped.forEach((u) => {
           if (u.manager_id) {
@@ -146,6 +152,10 @@ const AdminTeamTab: React.FC = () => {
           if (u.mentor_id) {
             const ment = mapped.find((x) => x.id === u.mentor_id);
             if (ment) u.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
+          }
+          if (u.manager_id_for_pecc) {
+            const m = mapped.find((x) => x.id === u.manager_id_for_pecc);
+            if (m) u.managerNameForPECC = `${m.firstName} ${m.lastName}`.trim() || m.email;
           }
         });
         setUsers(mapped);
@@ -195,7 +205,8 @@ const AdminTeamTab: React.FC = () => {
       lastLogin: null,
       createdAt: new Date().toISOString().split('T')[0],
       manager_id: formData.role === 'mentor' && formData.assignedManagerId ? formData.assignedManagerId : null,
-      mentor_id: formData.role === 'pecc' && formData.assignedMentorId ? formData.assignedMentorId : null
+      mentor_id: formData.role === 'pecc' && formData.assignedMentorId ? formData.assignedMentorId : null,
+      manager_id_for_pecc: formData.role === 'pecc' && formData.assignedManagerIdForPECC ? formData.assignedManagerIdForPECC : null
     };
     if (formData.role === 'mentor' && formData.assignedManagerId) {
       const m = users.find((u) => u.id === formData.assignedManagerId);
@@ -204,6 +215,10 @@ const AdminTeamTab: React.FC = () => {
     if (formData.role === 'pecc' && formData.assignedMentorId) {
       const ment = users.find((u) => u.id === formData.assignedMentorId);
       if (ment) newUser.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
+    }
+    if (formData.role === 'pecc' && formData.assignedManagerIdForPECC) {
+      const m = users.find((u) => u.id === formData.assignedManagerIdForPECC);
+      if (m) newUser.managerNameForPECC = `${m.firstName} ${m.lastName}`.trim() || m.email;
     }
     setUsers([...users, newUser]);
     setDialogOpen(false);
@@ -216,7 +231,8 @@ const AdminTeamTab: React.FC = () => {
       is_admin: false,
       sendInvite: true,
       assignedManagerId: '',
-      assignedMentorId: ''
+      assignedMentorId: '',
+      assignedManagerIdForPECC: ''
     });
   };
 
@@ -240,7 +256,8 @@ const AdminTeamTab: React.FC = () => {
         is_admin: selectedUser.is_admin ?? false,
         status: selectedUser.status,
         assignedManagerId: selectedUser.role === 'mentor' && selectedUser.manager_id ? selectedUser.manager_id : '',
-        assignedMentorId: selectedUser.role === 'pecc' && selectedUser.mentor_id ? selectedUser.mentor_id : ''
+        assignedMentorId: selectedUser.role === 'pecc' && selectedUser.mentor_id ? selectedUser.mentor_id : '',
+        assignedManagerIdForPECC: selectedUser.role === 'pecc' && selectedUser.manager_id_for_pecc ? selectedUser.manager_id_for_pecc : ''
       });
       setProfileEditMode(editMode);
       setProfileError(null);
@@ -260,7 +277,8 @@ const AdminTeamTab: React.FC = () => {
       is_admin: profileForm.is_admin === true,
       is_active: profileForm.status === 'active',
       manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
-      mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null
+      mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
+      manager_id_for_pecc: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? profileForm.assignedManagerIdForPECC : null
     };
     const { error } = await supabase
       .from('users')
@@ -283,7 +301,8 @@ const AdminTeamTab: React.FC = () => {
         is_admin: profileForm.is_admin,
         status: profileForm.status,
         manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
-        mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null
+        mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
+        manager_id_for_pecc: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? profileForm.assignedManagerIdForPECC : null
       };
       if (profileForm.role === 'mentor' && profileForm.assignedManagerId) {
         const m = prev.find(x => x.id === profileForm.assignedManagerId);
@@ -469,7 +488,7 @@ const AdminTeamTab: React.FC = () => {
                     <InputLabel>Role</InputLabel>
                     <Select value={profileForm.role} label="Role" onChange={(e) => {
                       const role = e.target.value as User['role'];
-                      setProfileForm(p => ({ ...p, role, assignedManagerId: role !== 'mentor' ? '' : p.assignedManagerId, assignedMentorId: role !== 'pecc' ? '' : p.assignedMentorId }));
+                      setProfileForm(p => ({ ...p, role, assignedManagerId: role !== 'mentor' ? '' : p.assignedManagerId, assignedMentorId: role !== 'pecc' ? '' : p.assignedMentorId, assignedManagerIdForPECC: role !== 'pecc' ? '' : p.assignedManagerIdForPECC }));
                     }}>
                       <MenuItem value="admin">Admin</MenuItem>
                       <MenuItem value="manager">Manager</MenuItem>
@@ -496,15 +515,29 @@ const AdminTeamTab: React.FC = () => {
                   </Grid>
                 )}
                 {profileForm.role === 'pecc' && (
-                  <Grid item xs={12}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Mentor</InputLabel>
-                      <Select value={profileForm.assignedMentorId} onChange={(e) => setProfileForm(p => ({ ...p, assignedMentorId: e.target.value }))} label="Mentor">
-                        <MenuItem value=""><em>None</em></MenuItem>
-                        {mentors.filter(m => m.id !== selectedUser.id).map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Grid>
+                  <>
+                    <Grid item xs={12}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Mentor (optional)</InputLabel>
+                        <Select value={profileForm.assignedMentorId} onChange={(e) => setProfileForm(p => ({ ...p, assignedMentorId: e.target.value }))} label="Mentor (optional)">
+                          <MenuItem value=""><em>None</em></MenuItem>
+                          {mentors.filter(m => m.id !== selectedUser.id).map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Direct Manager (optional, bypasses mentor)</InputLabel>
+                        <Select value={profileForm.assignedManagerIdForPECC} onChange={(e) => setProfileForm(p => ({ ...p, assignedManagerIdForPECC: e.target.value }))} label="Direct Manager (optional, bypasses mentor)">
+                          <MenuItem value=""><em>None</em></MenuItem>
+                          {managers.filter(m => m.id !== selectedUser.id).map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                        If set, this PECC will be directly managed by the selected manager, bypassing the mentor tier.
+                      </Typography>
+                    </Grid>
+                  </>
                 )}
                 <Grid item xs={12}>
                   <FormControl fullWidth size="small">
@@ -543,6 +576,7 @@ const AdminTeamTab: React.FC = () => {
                   <ListItem disablePadding><ListItemText primary="Joined" secondary={selectedUser.createdAt} /></ListItem>
                   {selectedUser.managerName && <ListItem disablePadding><ListItemText primary="Manager" secondary={selectedUser.managerName} /></ListItem>}
                   {selectedUser.mentorName && <ListItem disablePadding><ListItemText primary="Mentor" secondary={selectedUser.mentorName} /></ListItem>}
+                  {selectedUser.managerNameForPECC && <ListItem disablePadding><ListItemText primary="Direct Manager" secondary={selectedUser.managerNameForPECC} /></ListItem>}
                 </List>
                 <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)} sx={{ mt: 2 }}>Edit user</Button>
               </>
@@ -565,7 +599,7 @@ const AdminTeamTab: React.FC = () => {
                 <InputLabel>Role</InputLabel>
                 <Select value={formData.role} label="Role" onChange={(e) => {
                   const role = e.target.value as User['role'];
-                  setFormData((prev) => ({ ...prev, role, assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId, assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId }));
+                  setFormData((prev) => ({ ...prev, role, assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId, assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId, assignedManagerIdForPECC: role !== 'pecc' ? '' : prev.assignedManagerIdForPECC }));
                 }}>
                   <MenuItem value="admin">Admin</MenuItem>
                   <MenuItem value="manager">Manager</MenuItem>
@@ -592,15 +626,29 @@ const AdminTeamTab: React.FC = () => {
               </Grid>
             )}
             {formData.role === 'pecc' && (
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Assign to Mentor</InputLabel>
-                  <Select value={formData.assignedMentorId} onChange={(e) => setFormData((prev) => ({ ...prev, assignedMentorId: e.target.value }))} label="Assign to Mentor">
-                    <MenuItem value=""><em>None</em></MenuItem>
-                    {mentors.map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
-                  </Select>
-                </FormControl>
-              </Grid>
+              <>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Assign to Mentor (optional)</InputLabel>
+                    <Select value={formData.assignedMentorId} onChange={(e) => setFormData((prev) => ({ ...prev, assignedMentorId: e.target.value }))} label="Assign to Mentor (optional)">
+                      <MenuItem value=""><em>None</em></MenuItem>
+                      {mentors.map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Assign Direct Manager (optional, bypasses mentor)</InputLabel>
+                    <Select value={formData.assignedManagerIdForPECC} onChange={(e) => setFormData((prev) => ({ ...prev, assignedManagerIdForPECC: e.target.value }))} label="Assign Direct Manager (optional, bypasses mentor)">
+                      <MenuItem value=""><em>None</em></MenuItem>
+                      {managers.map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    If set, this PECC will be directly managed by the selected manager, bypassing the mentor tier.
+                  </Typography>
+                </Grid>
+              </>
             )}
             <Grid item xs={12}>
               <FormControlLabel control={<Switch checked={formData.sendInvite} onChange={(e) => setFormData(prev => ({ ...prev, sendInvite: e.target.checked }))} />} label="Send invitation email immediately" />
