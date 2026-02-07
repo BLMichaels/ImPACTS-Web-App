@@ -79,22 +79,41 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     setLoading(true);
     try {
       // Load users (filtered by mode)
-      let usersQuery = supabase.from('users').select('id, email, first_name, last_name, role, manager_id, mentor_id, manager_id_for_pecc');
+      let usersQuery = supabase.from('users').select('id, email, first_name, last_name, phone, role, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc');
       if (mode === 'manager' && userProfile?.id) {
         // Managers can only see their direct reports
         usersQuery = usersQuery.or(`manager_id.eq.${userProfile.id},manager_id_for_pecc.eq.${userProfile.id}`);
       }
       const { data: usersData } = await usersQuery;
       if (usersData) {
-        setUsers(usersData.map(u => ({
+        setUsers(usersData.map((u: {
+          id: string;
+          email: string;
+          first_name: string;
+          last_name: string;
+          phone: string | null;
+          role: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          last_login: string | null;
+          manager_id: string | null;
+          mentor_id: string | null;
+          manager_id_for_pecc: string | null;
+        }) => ({
           id: u.id,
           email: u.email,
           first_name: u.first_name,
           last_name: u.last_name,
+          phone: u.phone || null,
           role: u.role as UserRole,
-          manager_id: u.manager_id,
-          mentor_id: u.mentor_id,
-          manager_id_for_pecc: u.manager_id_for_pecc
+          is_active: u.is_active ?? true,
+          created_at: u.created_at || new Date().toISOString(),
+          updated_at: u.updated_at || new Date().toISOString(),
+          last_login: u.last_login || null,
+          manager_id: u.manager_id || null,
+          mentor_id: u.mentor_id || null,
+          manager_id_for_pecc: u.manager_id_for_pecc || null
         })));
       }
       
