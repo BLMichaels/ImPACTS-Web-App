@@ -118,7 +118,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       }
       
       // Load cohorts (filtered by mode)
-      let cohortsQuery = supabase.from('cohorts').select('id, name, description, is_active').eq('is_active', true);
+      let cohortsQuery = supabase.from('cohorts').select('id, name, description, program_id, created_by, is_active, created_at, updated_at').eq('is_active', true);
       if (mode === 'manager' && userProfile?.id) {
         // Get cohorts managed by this manager
         const { data: managedCohorts } = await supabase
@@ -132,10 +132,30 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         }
       }
       const { data: cohortsData } = await cohortsQuery;
-      if (cohortsData) setCohorts(cohortsData);
+      if (cohortsData) {
+        setCohorts(cohortsData.map((c: {
+          id: string;
+          name: string;
+          description: string | null;
+          program_id: string | null;
+          created_by: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        }) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description || null,
+          program_id: c.program_id || null,
+          created_by: c.created_by || null,
+          is_active: c.is_active,
+          created_at: c.created_at,
+          updated_at: c.updated_at
+        })));
+      }
       
       // Load programs (filtered by mode)
-      let programsQuery = supabase.from('programs').select('id, name, description, is_active').eq('is_active', true);
+      let programsQuery = supabase.from('programs').select('id, name, description, start_date, end_date, created_by, is_active, created_at, updated_at').eq('is_active', true);
       if (mode === 'manager' && userProfile?.id) {
         // Get programs managed by this manager
         const { data: managedPrograms } = await supabase
@@ -149,7 +169,29 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         }
       }
       const { data: programsData } = await programsQuery;
-      if (programsData) setPrograms(programsData);
+      if (programsData) {
+        setPrograms(programsData.map((p: {
+          id: string;
+          name: string;
+          description: string | null;
+          start_date: string | null;
+          end_date: string | null;
+          created_by: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        }) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description || null,
+          start_date: p.start_date || null,
+          end_date: p.end_date || null,
+          created_by: p.created_by || null,
+          is_active: p.is_active,
+          created_at: p.created_at,
+          updated_at: p.updated_at
+        })));
+      }
       
       // Load existing permissions
       await loadPermissions();
