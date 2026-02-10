@@ -1039,8 +1039,14 @@ const AdminCRMPage: React.FC = () => {
           return all.length > 0 ? all.join(', ') : '—';
         }
         if (contact.type === 'organization' || contact.type === 'hospital') {
+          // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
+          const hospitalIds = contact.type === 'hospital' 
+            ? [contact.id, contact.facilityId, contact.hospitalId].filter(Boolean) as string[]
+            : [contact.id];
+          
           const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
-            (p.linkedOrganizationIds ?? []).includes(contact.id) || (p.linkedHospitalIds ?? []).includes(contact.id)
+            (p.linkedOrganizationIds ?? []).includes(contact.id) || 
+            hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
           ));
           if (linkedPeople.length > 0) {
             const names = linkedPeople.map(p => contactDisplayName(p)).filter(Boolean);
@@ -2381,8 +2387,14 @@ const AdminCRMPage: React.FC = () => {
               )}
               {/* Show linked people for organizations/hospitals in quick view */}
               {!isPersonType(detailContact.type) && (() => {
+                // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
+                const hospitalIds = detailContact.type === 'hospital' 
+                  ? [detailContact.id, detailContact.facilityId, detailContact.hospitalId].filter(Boolean) as string[]
+                  : [detailContact.id];
+                
                 const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
-                  (p.linkedOrganizationIds ?? []).includes(detailContact.id) || (p.linkedHospitalIds ?? []).includes(detailContact.id)
+                  (p.linkedOrganizationIds ?? []).includes(detailContact.id) || 
+                  hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
                 ));
                 return linkedPeople.length > 0 ? (
                   <ListItem disablePadding>
@@ -2473,9 +2485,14 @@ const AdminCRMPage: React.FC = () => {
                 </ListItem>
               )}
               {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
+                // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
+                const hospitalIds = detailContact.type === 'hospital' 
+                  ? [detailContact.id, detailContact.facilityId, detailContact.hospitalId].filter(Boolean) as string[]
+                  : [detailContact.id];
+                
                 const linked = contacts.filter(p => isPersonType(p.type) && (
                   (p.linkedOrganizationIds ?? []).includes(detailContact.id) ||
-                  (p.linkedHospitalIds ?? []).includes(detailContact.id)
+                  hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
                 ));
                 return linked.length > 0 ? (
                   <ListItem disablePadding>
@@ -2769,8 +2786,14 @@ const AdminCRMPage: React.FC = () => {
                     )}
                     {/* Show linked people for organizations/hospitals */}
                     {!isPersonType(detailContact.type) && (() => {
+                      // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
+                      const hospitalIds = detailContact.type === 'hospital' 
+                        ? [detailContact.id, detailContact.facilityId, detailContact.hospitalId].filter(Boolean) as string[]
+                        : [detailContact.id];
+                      
                       const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
-                        (p.linkedOrganizationIds ?? []).includes(detailContact.id) || (p.linkedHospitalIds ?? []).includes(detailContact.id)
+                        (p.linkedOrganizationIds ?? []).includes(detailContact.id) || 
+                        hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
                       ));
                       return linkedPeople.length > 0 ? (
                         <ListItem disablePadding>
@@ -2843,8 +2866,14 @@ const AdminCRMPage: React.FC = () => {
                     )}
                   </List>
                   {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
+                    // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
+                    const hospitalIds = detailContact.type === 'hospital' 
+                      ? [detailContact.id, detailContact.facilityId, detailContact.hospitalId].filter(Boolean) as string[]
+                      : [detailContact.id];
+                    
                     const linked = contacts.filter(p => isPersonType(p.type) && (
-                      (p.linkedOrganizationIds ?? []).includes(detailContact.id) || (p.linkedHospitalIds ?? []).includes(detailContact.id)
+                      (p.linkedOrganizationIds ?? []).includes(detailContact.id) || 
+                      hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
                     ));
                     return linked.length > 0 ? (
                       <Box sx={{ mt: 2 }}>
