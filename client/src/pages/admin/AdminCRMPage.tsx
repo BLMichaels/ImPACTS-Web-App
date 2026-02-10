@@ -1012,7 +1012,14 @@ const AdminCRMPage: React.FC = () => {
   }, []);
 
   const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))].sort() as string[], [contacts]);
-  const states = useMemo(() => [...new Set(contacts.map(c => c.state).filter(Boolean))].sort() as string[], [contacts]);
+  const states = useMemo(() => {
+    const contactStates = [...new Set(contacts.map(c => c.state).filter(Boolean))];
+    // Always include "Canada" as an option
+    if (!contactStates.includes('Canada')) {
+      contactStates.push('Canada');
+    }
+    return contactStates.sort() as string[];
+  }, [contacts]);
   const hospitalTypes = useMemo(() => [...new Set(contacts.map(c => c.hospitalType).filter(Boolean))].sort() as string[], [contacts]);
   // State for available programs and cohorts from database
   const [availablePrograms, setAvailablePrograms] = useState<Array<{ id: string; name: string }>>([]);
