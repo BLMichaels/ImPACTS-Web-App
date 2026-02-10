@@ -97,9 +97,93 @@ const AdminDashboardPage: React.FC = () => {
   return (
     <Box sx={{ py: 3 }}>
       <Typography variant="h4" gutterBottom>Admin Dashboard</Typography>
-      <Typography color="textSecondary" gutterBottom>
-        System Overview - Welcome, {userProfile?.first_name || 'Admin'}
+      <Typography color="textSecondary" gutterBottom sx={{ mb: 2 }}>
+        Welcome back, {userProfile?.first_name || 'Admin'}! Manage the entire ImPACTS system, users, and configurations.
       </Typography>
+      <Typography variant="body1" color="textSecondary" sx={{ mb: 4 }}>
+        Oversee all users, hospitals, programs, cohorts, and system settings. Monitor system-wide activity and ensure smooth operation of the platform.
+      </Typography>
+
+      {/* How This Dashboard Works Section */}
+      <Card sx={{ p: 2, mb: 4 }}>
+        <CardContent>
+          <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 2 }}>
+            How This Dashboard Works
+          </Typography>
+          
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
+            As an Administrator, you have full access to manage the ImPACTS platform. Here's what you can do:
+          </Typography>
+          
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  👥 CRM & Team Management
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Manage all contacts, organizations, hospitals, and user accounts. Create invitations, assign roles, and maintain comprehensive relationship data.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  ⚙️ Settings & Configuration
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Configure programs, cohorts, registration questions, email templates, and system-wide settings. Customize the platform to meet your organization's needs.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  🔐 Permissions & Access Control
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Set granular permissions for users, cohorts, and programs. Control tab visibility, feature access, and manage role-based permissions across the platform.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  📊 Project Pipeline
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Track SimBox cases and project development status. Monitor progress, filter by status, and manage project workflows.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  📈 Analytics & Reporting
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  View system-wide statistics, user activity, and platform usage metrics. Monitor overall platform health and engagement.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  🎓 Resources Management
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Upload and manage educational resources, SCORM packages, and materials available to users across the platform.
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       {/* User Stats */}
       <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>Users Overview</Typography>

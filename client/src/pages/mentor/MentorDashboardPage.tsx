@@ -177,9 +177,93 @@ const MentorDashboardPage: React.FC = () => {
       <Typography variant="h4" gutterBottom>
         Welcome, {userProfile?.first_name || 'Mentor'}!
       </Typography>
-      <Typography color="textSecondary" gutterBottom>
+      <Typography color="textSecondary" gutterBottom sx={{ mb: 2 }}>
         Here's an overview of your mentorship activities
       </Typography>
+      <Typography variant="body1" color="textSecondary" sx={{ mb: 4 }}>
+        Support your assigned hospitals and PECCs in their pediatric readiness journey. Guide them through milestones, track progress, and help them achieve their goals.
+      </Typography>
+
+      {/* How This Dashboard Works Section */}
+      <Card sx={{ p: 2, mb: 4 }}>
+        <CardContent>
+          <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 2 }}>
+            How This Dashboard Works
+          </Typography>
+          
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
+            As a Mentor, you guide hospitals and PECCs through their pediatric readiness journey. Here's what you can do:
+          </Typography>
+          
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  🏥 Hospital Management
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  View and manage your assigned hospitals. Monitor PECC progress, review milestones, and provide guidance to help hospitals advance through readiness stages.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  👥 PECC Support
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Work directly with PECCs at your assigned hospitals. Review their activities, help with gap plans, and support their professional development.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  ✅ Milestone Tracking
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Update and track PECC milestones through the Establish, Implement, Lead, and Sustain stages. Help PECCs complete objectives and advance their journey.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  📝 Activity Logging
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Log your mentorship activities, site visits, training sessions, and simulations. Track your time and document the support you provide to hospitals.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  📊 Programs & Cohorts
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Participate in programs and cohorts. Post announcements, facilitate discussions, and collaborate with other mentors and PECCs.
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: 1 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  💰 Wages & Expenses
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Submit expense reports for reimbursement. Track your wages, travel expenses, and other costs related to your mentorship activities.
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mt: 2 }}>

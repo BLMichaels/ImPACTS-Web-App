@@ -248,7 +248,6 @@ interface ReadinessScore {
           </Typography>
         </Box>
 
-
         {/* How This Dashboard Works Section */}
         <Grid container spacing={isMobile ? 2 : 3} sx={{ mb: isMobile ? 3 : 4 }}>
           <Grid item xs={12}>
@@ -269,7 +268,7 @@ interface ReadinessScore {
                       📋 Checklist
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Track your progress through 4 stages: Establish, Implement, Lead, and Sustain. Each stage has specific objectives and tasks to complete.
+                      Track your progress through 4 stages: Establish, Implement, Lead, and Sustain. Complete milestones and objectives to advance through each stage of your PECC journey.
                     </Typography>
                   </Box>
                 </Grid>
@@ -277,10 +276,10 @@ interface ReadinessScore {
                 <Grid item xs={12} md={4}>
                   <Box sx={{ p: 1 }}>
                     <Typography variant="h6" gutterBottom color="primary">
-                      📊 Assessment
+                      📊 Snapshot
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Complete your facility's Pediatric Readiness Assessment and create gap reduction plans to address identified areas for improvement.
+                      Complete your facility's Pediatric Readiness Score (PRS) assessment and view comprehensive analytics, charts, and metrics tracking your progress across all areas.
                     </Typography>
                   </Box>
                 </Grid>
@@ -291,7 +290,7 @@ interface ReadinessScore {
                       📝 Activities
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Log your PECC activities, simulations, and training sessions. Track your time commitment and document your impact.
+                      Log your PECC activities, simulations, training sessions, and other work. Track your time commitment and document your impact on pediatric readiness.
                     </Typography>
                   </Box>
                 </Grid>
@@ -299,10 +298,10 @@ interface ReadinessScore {
                 <Grid item xs={12} md={4}>
                   <Box sx={{ p: 1 }}>
                     <Typography variant="h6" gutterBottom color="primary">
-                      📈 Snapshot
+                      🎯 Gap Plan
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      View analytics, charts, and metrics from your activities, milestones, assessment, and gap plans to track your overall progress.
+                      Create and manage gap reduction action plans based on your PRS assessment. Prioritize improvements and monitor progress toward pediatric readiness goals.
                     </Typography>
                   </Box>
                 </Grid>
@@ -310,17 +309,28 @@ interface ReadinessScore {
                 <Grid item xs={12} md={4}>
                   <Box sx={{ p: 1 }}>
                     <Typography variant="h6" gutterBottom color="primary">
-                      🎯 Gap Plans
+                      🎮 Simulation
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Manage and track your gap reduction action plans. Prioritize improvements and monitor progress toward pediatric readiness goals.
+                      Track simulation exercises, identify gaps in pediatric emergency care, and document simulation outcomes to improve your facility's readiness.
+                    </Typography>
+                  </Box>
+                </Grid>
+                
+                <Grid item xs={12} md={4}>
+                  <Box sx={{ p: 1 }}>
+                    <Typography variant="h6" gutterBottom color="primary">
+                      👥 Cohorts
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Connect with peers in your cohort, view announcements, participate in discussions, and collaborate with other PECCs on your pediatric readiness journey.
                     </Typography>
                   </Box>
                 </Grid>
               </Grid>
               
               <Typography variant="body1" color="text.secondary" sx={{ mt: 2, lineHeight: 1.4 }}>
-                <strong>Pro Tip:</strong> Start with the Checklist tab to understand your journey, then use the Assessment tab to identify gaps, and log your activities to track your progress. Your pediatric readiness mentor will guide you through each stage!
+                <strong>Pro Tip:</strong> Start with the Checklist to understand your journey stages, complete your PRS assessment in Snapshot to identify gaps, create Gap Plans to address them, and log Activities to track your progress. Your pediatric readiness mentor will guide you through each stage!
               </Typography>
             </CardContent>
           </Card>
