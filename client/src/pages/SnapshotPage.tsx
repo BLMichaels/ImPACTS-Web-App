@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Box, 
   Typography, 
@@ -6,7 +6,12 @@ import {
   Card, 
   CardContent, 
   LinearProgress,
-  Button
+  Button,
+  Chip,
+  Alert,
+  Container,
+  Divider,
+  Paper
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -15,6 +20,10 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WorkIcon from '@mui/icons-material/Work';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import SlideshowIcon from '@mui/icons-material/Slideshow';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import RemoveIcon from '@mui/icons-material/Remove';
+import { format } from 'date-fns';
 
 // Type definitions for PRS questions
 interface PRSQuestion {
@@ -27,6 +36,25 @@ interface PRSQuestion {
   points?: number;
 }
 
+// Domain mapping - questions belong to specific domains based on PRS structure
+const DOMAIN_QUESTION_MAPPING: Record<string, string[]> = {
+  'Administration & Coordination': ['22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38'],
+  'Staffing': ['39', '40', '41', '42', '43', '44a', '44b', '44c', '44d', '44e'],
+  'Quality Improvement': ['45', '46', '47', '48', '49', '50', '51'],
+  'Patient Safety': ['52', '53', '54', '55', '56', '57', '58', '59', '60', '61a', '61b', '61c', '61d', '61e', '62'],
+  'Policies & Procedures': ['63', '64', '65', '66', '67', '68', '69', '70', '71', '72', '73', '74', '75', '76', '77', '78', '79'],
+  'Equipment': ['80', '81', '82', '83', '84', '85', '86', '87', '88', '89', '90', '91', '92', '93', '94', '95', '96', '97', '98', '99', '100']
+};
+
+const DOMAIN_MAX_POINTS: Record<string, number> = {
+  'Administration & Coordination': 19,
+  'Staffing': 10,
+  'Quality Improvement': 7,
+  'Patient Safety': 14,
+  'Policies & Procedures': 17,
+  'Equipment': 33
+};
+
 const SnapshotPage = () => {
   const { currentUser } = useAuth();
   
@@ -37,6 +65,83 @@ const SnapshotPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [renderError, setRenderError] = useState(false);
+
+  // Calculate domain scores from PRS questions
+  const domainScores = useMemo(() => {
+    try {
+      const prsQuestions = localStorage.getItem('prsQuestions');
+      if (!prsQuestions) return null;
+      
+      const questions = JSON.parse(prsQuestions);
+      const domainData: Record<string, { earned: number; total: number; percentage: number }> = {};
+      
+      // Helper function to calculate points for a question
+      const calculateQuestionPoints = (question: PRSQuestion): { earned: number; total: number } => {
+        let earned = 0;
+        let total = 0;
+        
+        if (question.points) {
+          total = question.points;
+          
+          if (question.answer) {
+            let shouldEarnPoints = false;
+            
+            if (question.type === 'yesno') {
+              shouldEarnPoints = question.answer === 'yes';
+            } else if (question.type === 'radio') {
+              shouldEarnPoints = true;
+            } else if (question.type === 'checkbox') {
+              shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
+            } else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
+              shouldEarnPoints = question.answer !== '' && question.answer !== null;
+            } else {
+              shouldEarnPoints = true;
+            }
+            
+            if (shouldEarnPoints) {
+              earned = question.points;
+            }
+          }
+        }
+        
+        // Handle subquestions
+        if (question.subQuestions) {
+          question.subQuestions.forEach((subQ: PRSQuestion) => {
+            const subPoints = calculateQuestionPoints(subQ);
+            earned += subPoints.earned;
+            total += subPoints.total;
+          });
+        }
+        
+        return { earned, total };
+      };
+      
+      // Calculate scores for each domain
+      Object.entries(DOMAIN_QUESTION_MAPPING).forEach(([domain, questionIds]) => {
+        let domainEarned = 0;
+        let domainTotal = DOMAIN_MAX_POINTS[domain] || 0;
+        
+        questionIds.forEach(qId => {
+          const question = questions.find((q: PRSQuestion) => q.id === qId);
+          if (question) {
+            const points = calculateQuestionPoints(question);
+            domainEarned += points.earned;
+          }
+        });
+        
+        domainData[domain] = {
+          earned: domainEarned,
+          total: domainTotal,
+          percentage: domainTotal > 0 ? Math.round((domainEarned / domainTotal) * 100) : 0
+        };
+      });
+      
+      return domainData;
+    } catch (error) {
+      console.error('Error calculating domain scores:', error);
+      return null;
+    }
+  }, []);
 
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
@@ -850,16 +955,83 @@ const SnapshotPage = () => {
     );
   }
 
+  // Calculate current PRS score
+  const currentPRSScore = useMemo(() => {
     try {
+      const prsQuestions = localStorage.getItem('prsQuestions');
+      if (!prsQuestions) return null;
+      
+      const questions = JSON.parse(prsQuestions);
+      let totalPoints = 0;
+      let earnedPoints = 0;
+
+      const calculateQuestionPoints = (question: PRSQuestion): number => {
+        if (question.points) {
+          totalPoints += question.points;
+          
+          if (question.answer) {
+            let shouldEarnPoints = false;
+            
+            if (question.type === 'yesno') {
+              shouldEarnPoints = question.answer === 'yes';
+            } else if (question.type === 'radio') {
+              shouldEarnPoints = true;
+            } else if (question.type === 'checkbox') {
+              shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
+            } else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
+              shouldEarnPoints = question.answer !== '' && question.answer !== null;
+            } else {
+              shouldEarnPoints = true;
+            }
+            
+            if (shouldEarnPoints) {
+              earnedPoints += question.points;
+            }
+          }
+        }
+
+        if (question.subQuestions) {
+          question.subQuestions.forEach((subQ: any) => {
+            calculateQuestionPoints(subQ);
+          });
+        }
+
+        return earnedPoints;
+      };
+
+      questions.forEach((question: PRSQuestion) => {
+        calculateQuestionPoints(question);
+      });
+
+      if (totalPoints > 0) {
+        return Math.round((earnedPoints / totalPoints) * 100);
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }, []);
+
+  // Calculate trend
+  const scoreTrend = readinessScores.length >= 2 
+    ? readinessScores[readinessScores.length - 1].score - readinessScores[0].score
+    : 0;
+
+  try {
     return (
-      <Box sx={{ mt: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        {/* Header Section */}
+        <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
             <Box>
-              <Typography variant="h3" gutterBottom color="primary">
+              <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
                 Snapshot
               </Typography>
-              <Typography variant="h6" gutterBottom sx={{ mb: 4, color: 'text.secondary' }}>
-                Comprehensive overview of your pediatric readiness progress and performance metrics
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                Comprehensive overview of your pediatric readiness progress
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Track your PRS scores, domain performance, activities, milestones, and gap plans all in one place
               </Typography>
             </Box>
             <Button
@@ -868,68 +1040,174 @@ const SnapshotPage = () => {
               onClick={exportToComprehensivePDF}
               sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
             >
-              Export to PDF
+              Export PDF
             </Button>
           </Box>
+          
+          {/* Quick Stats Banner */}
+          {readinessScores.length > 0 && (
+            <Alert 
+              severity="info" 
+              sx={{ 
+                mb: 3,
+                '& .MuiAlert-message': { width: '100%' }
+              }}
+            >
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                    Latest Assessment Score: {readinessScores[readinessScores.length - 1]?.score || 'N/A'}
+                  </Typography>
+                  {readinessScores.length > 1 && (
+                    <Typography variant="body2">
+                      {scoreTrend > 0 ? (
+                        <Box component="span" sx={{ color: 'success.main', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                          <ArrowUpwardIcon fontSize="small" /> +{scoreTrend} points improvement
+                        </Box>
+                      ) : scoreTrend < 0 ? (
+                        <Box component="span" sx={{ color: 'error.main', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                          <ArrowDownwardIcon fontSize="small" /> {scoreTrend} points
+                        </Box>
+                      ) : (
+                        <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                          <RemoveIcon fontSize="small" /> No change
+                        </Box>
+                      )}
+                      {' '}since first assessment
+                    </Typography>
+                  )}
+                </Box>
+                {currentPRSScore !== null && (
+                  <Chip 
+                    label={`Current Live PRS: ${currentPRSScore}%`} 
+                    color="primary" 
+                    variant="outlined"
+                    sx={{ fontWeight: 'bold' }}
+                  />
+                )}
+              </Box>
+            </Alert>
+          )}
+        </Box>
 
-      {/* Key Performance Indicators (KPIs) - Most Critical Metrics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <TrendingUpIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-              <Typography variant="h4" color="primary">
-                {readinessScores.length > 0 ? readinessScores[readinessScores.length - 1]?.score || 'N/A' : 'N/A'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Current Readiness Score
-              </Typography>
-            </CardContent>
-          </Card>
+        {/* Key Performance Indicators (KPIs) - Enhanced with better visuals */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+              <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                <Box sx={{ 
+                  display: 'inline-flex', 
+                  p: 1.5, 
+                  borderRadius: '50%', 
+                  bgcolor: 'primary.light', 
+                  mb: 2 
+                }}>
+                  <TrendingUpIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+                </Box>
+                <Typography variant="h3" color="primary" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  {readinessScores.length > 0 
+                    ? readinessScores[readinessScores.length - 1]?.score || 'N/A' 
+                    : currentPRSScore !== null ? currentPRSScore : 'N/A'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                  Current Readiness Score
+                </Typography>
+                {readinessScores.length > 1 && (
+                  <Typography variant="caption" color={scoreTrend >= 0 ? 'success.main' : 'error.main'} sx={{ mt: 0.5, display: 'block' }}>
+                    {scoreTrend >= 0 ? '↑' : '↓'} {Math.abs(scoreTrend)} from first
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+              <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                <Box sx={{ 
+                  display: 'inline-flex', 
+                  p: 1.5, 
+                  borderRadius: '50%', 
+                  bgcolor: 'success.light', 
+                  mb: 2 
+                }}>
+                  <CheckCircleIcon sx={{ fontSize: 32, color: 'success.main' }} />
+                </Box>
+                <Typography variant="h3" color="success.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  {(() => {
+                    const completed = milestones.filter((m: any) => m.status === 'completed' || m.completed).length;
+                    const total = milestones.length;
+                    return total > 0 ? `${completed}/${total}` : '0';
+                  })()}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                  Checklist Progress
+                </Typography>
+                {milestones.length > 0 && (
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={(milestones.filter((m: any) => m.status === 'completed' || m.completed).length / milestones.length) * 100}
+                    sx={{ mt: 1, height: 6, borderRadius: 3 }}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+              <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                <Box sx={{ 
+                  display: 'inline-flex', 
+                  p: 1.5, 
+                  borderRadius: '50%', 
+                  bgcolor: 'warning.light', 
+                  mb: 2 
+                }}>
+                  <AssessmentIcon sx={{ fontSize: 32, color: 'warning.main' }} />
+                </Box>
+                <Typography variant="h3" color="warning.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  {gapPlans.length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                  Total Gap Plans
+                </Typography>
+                {gapPlans.length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    {gapPlans.filter((p: any) => p.status === 'Completed' || p.status === 'completed').length} completed
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+              <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                <Box sx={{ 
+                  display: 'inline-flex', 
+                  p: 1.5, 
+                  borderRadius: '50%', 
+                  bgcolor: 'info.light', 
+                  mb: 2 
+                }}>
+                  <WorkIcon sx={{ fontSize: 32, color: 'info.main' }} />
+                </Box>
+                <Typography variant="h3" color="info.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  {activities.length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                  Total Activities
+                </Typography>
+                {activities.length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    {activities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0).toFixed(1)} hours logged
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <CheckCircleIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
-              <Typography variant="h4" color="success.main">
-                {milestones.filter(m => m.status === 'completed').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Completed Checklist Items
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <AssessmentIcon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }} />
-              <Typography variant="h4" color="warning.main">
-                {gapPlans.filter(p => p.status === 'Completed').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Completed Gap Plans
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <WorkIcon sx={{ fontSize: 40, color: 'info.main', mb: 1 }} />
-              <Typography variant="h4" color="info.main">
-                {activities.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Activities
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
 
       {/* Overall Progress Overview - High-Level Progress Tracking */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -1136,157 +1414,106 @@ const SnapshotPage = () => {
 
       </Grid>
 
-      {/* Readiness Score Chart - Full Width Line Chart */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Readiness Score Progress Chart
-              </Typography>
-              
-              {/* Trend Metrics Section */}
-              {readinessScores.length > 0 && (
-                <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold' }}>
-                    Trend Analysis
+        {/* Readiness Score Progress Chart - Enhanced */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                    Readiness Score Progress Over Time
                   </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <Typography variant="h6" color="primary.main" sx={{ fontWeight: 'bold' }}>
-                          {readinessScores[readinessScores.length - 1]?.score || 0}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Latest Score
-                        </Typography>
-                      </Box>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                          {Math.round(readinessScores.reduce((sum, score) => sum + score.score, 0) / readinessScores.length)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Average Score
-                        </Typography>
-                      </Box>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <Typography variant="h6" color="success.main" sx={{ fontWeight: 'bold' }}>
-                          {Math.max(...readinessScores.map(s => s.score))}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Highest Score
-                        </Typography>
-                      </Box>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <Typography variant="h6" color="warning.main" sx={{ fontWeight: 'bold' }}>
-                          {(() => {
-                            try {
-                              const prsQuestions = localStorage.getItem('prsQuestions');
-                              if (prsQuestions) {
-                                const questions = JSON.parse(prsQuestions);
-                                
-                                // Use the same scoring logic as the PRS page
-                                let totalPoints = 0;
-                                let earnedPoints = 0;
-
-                                const calculateQuestionPoints = (question: PRSQuestion): number => {
-                                  if (question.points) {
-                                    totalPoints += question.points;
-                                    
-                                    // Check if the question has a valid answer that should earn points
-                                    if (question.answer) {
-                                      let shouldEarnPoints = false;
-                                      
-                                      // For yes/no questions, only 'yes' earns points
-                                      if (question.type === 'yesno') {
-                                        shouldEarnPoints = question.answer === 'yes';
-                                      }
-                                      // For radio questions, any selected option earns points
-                                      else if (question.type === 'radio') {
-                                        shouldEarnPoints = true;
-                                      }
-                                      // For checkbox questions, any selected options earn points
-                                      else if (question.type === 'checkbox') {
-                                        shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
-                                      }
-                                      // For text/numeric questions, any non-empty answer earns points
-                                      else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
-                                        shouldEarnPoints = question.answer !== '' && question.answer !== null;
-                                      }
-                                      // For other types, any answer earns points
-                                      else {
-                                        shouldEarnPoints = true;
-                                      }
-                                      
-                                      if (shouldEarnPoints) {
-                                        earnedPoints += question.points;
-                                      }
-                                    }
-                                  }
-
-                                  if (question.subQuestions) {
-                                    question.subQuestions.forEach((subQ: any) => {
-                                      calculateQuestionPoints(subQ);
-                                    });
-                                  }
-
-                                  return earnedPoints;
-                                };
-
-                                questions.forEach((question: PRSQuestion) => {
-                                  calculateQuestionPoints(question);
-                                });
-
-                                if (totalPoints > 0) {
-                                  const score = Math.round((earnedPoints / totalPoints) * 100);
-                                  return score;
-                                }
-                              }
-                              return 'N/A';
-                            } catch (error) {
-                              return 'N/A';
-                            }
-                          })()}%
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Current Live PRS
-                        </Typography>
-                      </Box>
-                    </Grid>
-                  </Grid>
-                  
-                  {/* Progress Trend Summary */}
-                  {readinessScores.length >= 2 && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
-                      <Grid container spacing={2} alignItems="center">
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="body2" color="primary.main" sx={{ fontWeight: 'bold' }}>
-                            Progress Trend: {(() => {
-                              const firstScore = readinessScores[0].score;
-                              const lastScore = readinessScores[readinessScores.length - 1].score;
-                              const improvement = lastScore - firstScore;
-                              if (improvement > 0) return `+${improvement.toFixed(1)} points improvement`;
-                              if (improvement < 0) return `${improvement.toFixed(1)} points decline`;
-                              return 'No change';
-                            })()}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="body2" color="primary.main" sx={{ fontWeight: 'bold' }}>
-                            Total Assessments: {readinessScores.length}
-                          </Typography>
-                        </Grid>
-                      </Grid>
-                    </Box>
+                  {readinessScores.length > 0 && (
+                    <Chip 
+                      label={`${readinessScores.length} Assessment${readinessScores.length !== 1 ? 's' : ''}`}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
                   )}
                 </Box>
-              )}
+              
+                {/* Trend Metrics Section - Enhanced */}
+                {readinessScores.length > 0 && (
+                  <Box sx={{ mb: 3, p: 3, bgcolor: 'grey.50', borderRadius: 2 }}>
+                    <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                      Key Metrics
+                    </Typography>
+                    <Grid container spacing={3}>
+                      <Grid item xs={6} sm={3}>
+                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'white' }}>
+                          <Typography variant="h4" color="primary.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                            {readinessScores[readinessScores.length - 1]?.score || 0}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                            Latest Score
+                          </Typography>
+                          {readinessScores.length > 1 && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                              {format(new Date(readinessScores[readinessScores.length - 1]?.date || new Date()), 'MMM d, yyyy')}
+                            </Typography>
+                          )}
+                        </Paper>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'white' }}>
+                          <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                            {Math.round(readinessScores.reduce((sum, score) => sum + score.score, 0) / readinessScores.length)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                            Average Score
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'white' }}>
+                          <Typography variant="h4" color="success.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                            {Math.max(...readinessScores.map(s => s.score))}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                            Highest Score
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'white' }}>
+                          <Typography variant="h4" color="warning.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                            {currentPRSScore !== null ? `${currentPRSScore}%` : 'N/A'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                            Current Live PRS
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    </Grid>
+                    
+                    {/* Progress Trend Summary */}
+                    {readinessScores.length >= 2 && (
+                      <Box sx={{ mt: 3, p: 2, bgcolor: scoreTrend >= 0 ? 'success.light' : 'error.light', borderRadius: 1 }}>
+                        <Grid container spacing={2} alignItems="center">
+                          <Grid item xs={12} sm={6}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {scoreTrend > 0 && <ArrowUpwardIcon sx={{ color: 'success.main' }} />}
+                              {scoreTrend < 0 && <ArrowDownwardIcon sx={{ color: 'error.main' }} />}
+                              {scoreTrend === 0 && <RemoveIcon sx={{ color: 'text.secondary' }} />}
+                              <Typography variant="body1" sx={{ fontWeight: 'bold', color: scoreTrend >= 0 ? 'success.dark' : 'error.dark' }}>
+                                Progress Trend: {scoreTrend > 0 ? `+${scoreTrend.toFixed(1)}` : scoreTrend < 0 ? scoreTrend.toFixed(1) : '0'} points 
+                                {scoreTrend > 0 ? ' improvement' : scoreTrend < 0 ? ' decline' : ' change'} since first assessment
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              Total Assessments: {readinessScores.length} • 
+                              First: {format(new Date(readinessScores[0]?.date || new Date()), 'MMM d, yyyy')} • 
+                              Latest: {format(new Date(readinessScores[readinessScores.length - 1]?.date || new Date()), 'MMM d, yyyy')}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    )}
+                  </Box>
+                )}
               
               <Box sx={{ mt: 2, height: 400, position: 'relative' }}>
                 {readinessScores.length > 0 ? (
@@ -2221,221 +2448,330 @@ const SnapshotPage = () => {
             </Grid>
           </Grid>
 
-          {/* Points by Domain */}
+        {/* Domain Performance Analysis */}
+        {domainScores && (
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Points by Domain
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                      Domain Performance Analysis
+                    </Typography>
+                    <Chip 
+                      label="Based on Current PRS Assessment" 
+                      color="primary" 
+                      size="small"
+                      variant="outlined"
+                    />
+                  </Box>
+                  
+                  <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+                    {/* Header Row */}
                     <Box sx={{ 
                       display: 'grid', 
-                      gridTemplateColumns: '2fr 1fr 1fr 1fr',
-                      gap: 2,
-                      '& > div': { 
-                        p: 2, 
-                        display: 'flex', 
-                        alignItems: 'center',
-                        fontWeight: 'bold'
-                      }
+                      gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr 1fr' },
+                      bgcolor: 'primary.main',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      '& > div': { p: 2 }
                     }}>
-                      {/* Header Row */}
-                      <Box sx={{ bgcolor: 'yellow', color: 'black', fontWeight: 'bold' }}>
-                        Domain of Pediatric Readiness
-                      </Box>
-                      <Box sx={{ bgcolor: 'yellow', color: 'black', fontWeight: 'bold', justifyContent: 'center' }}>
-                        Your Site's Points
-                      </Box>
-                      <Box sx={{ bgcolor: 'yellow', color: 'black', fontWeight: 'bold', justifyContent: 'center' }}>
-                        Total Possible Points
-                      </Box>
-                      <Box sx={{ bgcolor: 'yellow', color: 'black', fontWeight: 'bold', justifyContent: 'center' }}>
-                        Percent of Possible Points
-                      </Box>
-                      
-                      {/* Data Rows */}
-                      <Box sx={{ bgcolor: 'lightblue', color: 'black', fontWeight: 'bold' }}>
-                        Administration & Coordination
-                      </Box>
-                      <Box sx={{ justifyContent: 'center' }}>0</Box>
-                      <Box sx={{ justifyContent: 'center' }}>19</Box>
-                      <Box sx={{ justifyContent: 'center' }}>0.0%</Box>
-                      
-                      <Box sx={{ bgcolor: 'lightblue', color: 'black', fontWeight: 'bold' }}>
-                        Staffing
-                      </Box>
-                      <Box sx={{ justifyContent: 'center' }}>0</Box>
-                      <Box sx={{ justifyContent: 'center' }}>10</Box>
-                      <Box sx={{ justifyContent: 'center' }}>0.0%</Box>
-                      
-                      <Box sx={{ bgcolor: 'lightblue', color: 'black', fontWeight: 'bold' }}>
-                        Quality Improvement
-                      </Box>
-                      <Box sx={{ justifyContent: 'center' }}>0</Box>
-                      <Box sx={{ justifyContent: 'center' }}>7</Box>
-                      <Box sx={{ justifyContent: 'center' }}>0.0%</Box>
-                      
-                      <Box sx={{ bgcolor: 'lightblue', color: 'black', fontWeight: 'bold' }}>
-                        Patient Safety
-                      </Box>
-                      <Box sx={{ justifyContent: 'center' }}>0</Box>
-                      <Box sx={{ justifyContent: 'center' }}>14</Box>
-                      <Box sx={{ justifyContent: 'center' }}>0.0%</Box>
-                      
-                      <Box sx={{ bgcolor: 'lightblue', color: 'black', fontWeight: 'bold' }}>
-                        Policies & Procedures
-                      </Box>
-                      <Box sx={{ justifyContent: 'center' }}>0</Box>
-                      <Box sx={{ justifyContent: 'center' }}>17</Box>
-                      <Box sx={{ justifyContent: 'center' }}>0.0%</Box>
-                      
-                      <Box sx={{ bgcolor: 'lightblue', color: 'black', fontWeight: 'bold' }}>
-                        Equipment
-                      </Box>
-                      <Box sx={{ justifyContent: 'center' }}>0</Box>
-                      <Box sx={{ justifyContent: 'center' }}>33</Box>
-                      <Box sx={{ justifyContent: 'center' }}>0.0%</Box>
+                      <Box>Domain of Pediatric Readiness</Box>
+                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Your Points</Box>
+                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Total Possible</Box>
+                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Percentage</Box>
                     </Box>
-                  </Box>
+                    
+                    {/* Data Rows */}
+                    {Object.entries(domainScores).map(([domain, data], index) => {
+                      const getColorForPercentage = (pct: number) => {
+                        if (pct >= 80) return 'success.main';
+                        if (pct >= 60) return 'warning.main';
+                        return 'error.main';
+                      };
+                      
+                      return (
+                        <Box 
+                          key={domain}
+                          sx={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr 1fr' },
+                            borderBottom: index < Object.keys(domainScores).length - 1 ? '1px solid' : 'none',
+                            borderColor: 'divider',
+                            '&:hover': { bgcolor: 'action.hover' },
+                            '& > div': { p: 2, display: 'flex', alignItems: 'center' }
+                          }}
+                        >
+                          <Box sx={{ fontWeight: 600 }}>{domain}</Box>
+                          <Box sx={{ justifyContent: 'center', display: { xs: 'none', md: 'flex' } }}>
+                            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                              {data.earned.toFixed(1)}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ justifyContent: 'center', display: { xs: 'none', md: 'flex' } }}>
+                            <Typography variant="body2" color="text.secondary">
+                              {data.total}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ justifyContent: 'space-between', flexDirection: { xs: 'column', md: 'row' }, gap: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                              <LinearProgress 
+                                variant="determinate" 
+                                value={data.percentage} 
+                                sx={{ 
+                                  flex: 1, 
+                                  height: 8, 
+                                  borderRadius: 4,
+                                  bgcolor: 'grey.200',
+                                  '& .MuiLinearProgress-bar': {
+                                    bgcolor: getColorForPercentage(data.percentage)
+                                  }
+                                }}
+                              />
+                              <Typography 
+                                variant="body1" 
+                                sx={{ 
+                                  fontWeight: 'bold',
+                                  minWidth: '50px',
+                                  textAlign: 'right',
+                                  color: getColorForPercentage(data.percentage)
+                                }}
+                              >
+                                {data.percentage}%
+                              </Typography>
+                            </Box>
+                            {/* Mobile view */}
+                            <Box sx={{ display: { xs: 'flex', md: 'none' }, justifyContent: 'space-between', fontSize: '0.875rem', color: 'text.secondary' }}>
+                              <span>{data.earned.toFixed(1)} / {data.total} points</span>
+                            </Box>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </Paper>
+                  
+                  {!domainScores && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Complete your PRS assessment to see domain-specific performance breakdown.
+                    </Alert>
+                  )}
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
+        )}
 
-          {/* Percent of Possible Points per Domain Chart */}
+        {/* Domain Performance Bar Chart */}
+        {domainScores && (
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Percent of Possible Points per Domain of Pediatric Readiness
+                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                    Domain Performance Visualization
                   </Typography>
-                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', justifyContent: 'space-around', px: 4 }}>
-                    {/* Chart bars - currently empty as per the image */}
-                    <Box sx={{ 
-                      width: 60, 
-                      height: 0, 
-                      bgcolor: 'grey.300',
-                      borderRadius: '4px 4px 0 0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="caption" sx={{ mt: 1, transform: 'rotate(-45deg)', transformOrigin: 'center' }}>
-                        Administration & Coordination
-                      </Typography>
-                    </Box>
-                    <Box sx={{ 
-                      width: 60, 
-                      height: 0, 
-                      bgcolor: 'grey.300',
-                      borderRadius: '4px 4px 0 0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="caption" sx={{ mt: 1, transform: 'rotate(-45deg)', transformOrigin: 'center' }}>
-                        Staffing
-                      </Typography>
-                    </Box>
-                    <Box sx={{ 
-                      width: 60, 
-                      height: 0, 
-                      bgcolor: 'grey.300',
-                      borderRadius: '4px 4px 0 0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="caption" sx={{ mt: 1, transform: 'rotate(-45deg)', transformOrigin: 'center' }}>
-                        Quality Improvement
-                      </Typography>
-                    </Box>
-                    <Box sx={{ 
-                      width: 60, 
-                      height: 0, 
-                      bgcolor: 'grey.300',
-                      borderRadius: '4px 4px 0 0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="caption" sx={{ mt: '1px', transform: 'rotate(-45deg)', transformOrigin: 'center' }}>
-                        Patient Safety
-                      </Typography>
-                    </Box>
-                    <Box sx={{ 
-                      width: 60, 
-                      height: 0, 
-                      bgcolor: 'grey.300',
-                      borderRadius: '4px 4px 0 0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="caption" sx={{ mt: 1, transform: 'rotate(-45deg)', transformOrigin: 'center' }}>
-                        Policies & Procedures
-                      </Typography>
-                    </Box>
-                    <Box sx={{ 
-                      width: 60, 
-                      height: 0, 
-                      bgcolor: 'grey.300',
-                      borderRadius: '4px 4px 0 0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="caption" sx={{ mt: 1, transform: 'rotate(-45deg)', transformOrigin: 'center' }}>
-                        Equipment
-                      </Typography>
-                    </Box>
-                  </Box>
-                  {/* Y-axis labels */}
+                  
                   <Box sx={{ 
                     position: 'relative', 
-                    height: 300, 
-                    mt: -300, 
-                    ml: 2,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    pointerEvents: 'none'
+                    height: 400, 
+                    display: 'flex', 
+                    alignItems: 'flex-end', 
+                    justifyContent: 'space-around', 
+                    px: { xs: 2, md: 4 },
+                    py: 3,
+                    borderLeft: '2px solid',
+                    borderBottom: '2px solid',
+                    borderColor: 'divider',
+                    minHeight: 350
                   }}>
-                    {[100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0].map((percent) => (
-                      <Typography key={percent} variant="caption" color="text.secondary">
-                        {percent}.0%
-                      </Typography>
+                    {/* Y-axis labels */}
+                    <Box sx={{ 
+                      position: 'absolute', 
+                      left: -30, 
+                      top: 0, 
+                      bottom: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-end',
+                      pr: 1
+                    }}>
+                      {[100, 80, 60, 40, 20, 0].map((percent) => (
+                        <Typography key={percent} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                          {percent}%
+                        </Typography>
+                      ))}
+                    </Box>
+                    
+                    {/* Grid lines */}
+                    {[100, 80, 60, 40, 20, 0].map((percent) => (
+                      <Box
+                        key={percent}
+                        sx={{
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          bottom: `${(percent / 100) * 100}%`,
+                          height: '1px',
+                          bgcolor: 'divider',
+                          opacity: 0.3,
+                          zIndex: 0
+                        }}
+                      />
                     ))}
+                    
+                    {/* Chart bars */}
+                    {Object.entries(domainScores).map(([domain, data], index) => {
+                      const getColorForPercentage = (pct: number) => {
+                        if (pct >= 80) return '#4caf50';
+                        if (pct >= 60) return '#ff9800';
+                        return '#f44336';
+                      };
+                      
+                      const barHeight = `${data.percentage}%`;
+                      const maxLabelLength = Math.max(...Object.keys(domainScores).map(d => d.length));
+                      
+                      return (
+                        <Box 
+                          key={domain}
+                          sx={{ 
+                            position: 'relative',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            flex: 1,
+                            maxWidth: { xs: '80px', md: '120px' },
+                            zIndex: 1
+                          }}
+                        >
+                          {/* Bar */}
+                          <Box
+                            sx={{
+                              width: { xs: '40px', md: '60px' },
+                              height: barHeight,
+                              minHeight: data.percentage > 0 ? '20px' : '4px',
+                              bgcolor: getColorForPercentage(data.percentage),
+                              borderRadius: '4px 4px 0 0',
+                              position: 'relative',
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                opacity: 0.8,
+                                transform: 'scaleY(1.05)',
+                                transformOrigin: 'bottom'
+                              },
+                              mb: 1
+                            }}
+                          >
+                            {/* Value label on bar */}
+                            {data.percentage > 5 && (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  top: -20,
+                                  left: '50%',
+                                  transform: 'translateX(-50%)',
+                                  bgcolor: 'background.paper',
+                                  px: 0.5,
+                                  borderRadius: 1,
+                                  border: '1px solid',
+                                  borderColor: 'divider'
+                                }}
+                              >
+                                <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>
+                                  {data.percentage}%
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                          
+                          {/* Domain label */}
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              textAlign: 'center',
+                              fontSize: { xs: '0.65rem', md: '0.75rem' },
+                              lineHeight: 1.2,
+                              mt: 0.5,
+                              fontWeight: 500,
+                              color: 'text.primary',
+                              wordBreak: 'break-word',
+                              maxWidth: '100%'
+                            }}
+                          >
+                            {domain.split(' ').map((word, i) => (
+                              <Box key={i} component="span" sx={{ display: 'block' }}>
+                                {word}
+                              </Box>
+                            ))}
+                          </Typography>
+                          
+                          {/* Points label */}
+                          <Typography 
+                            variant="caption" 
+                            color="text.secondary"
+                            sx={{ 
+                              fontSize: '0.65rem',
+                              mt: 0.5,
+                              textAlign: 'center'
+                            }}
+                          >
+                            {data.earned.toFixed(1)}/{data.total}
+                          </Typography>
+                        </Box>
+                      );
+                    })}
                   </Box>
+                  
+                  {/* Legend */}
+                  <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mt: 3, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 16, height: 16, bgcolor: '#4caf50', borderRadius: 1 }} />
+                      <Typography variant="caption">Excellent (≥80%)</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 16, height: 16, bgcolor: '#ff9800', borderRadius: 1 }} />
+                      <Typography variant="caption">Good (60-79%)</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 16, height: 16, bgcolor: '#f44336', borderRadius: 1 }} />
+                      <Typography variant="caption">Needs Improvement (&lt;60%)</Typography>
+                    </Box>
+                  </Box>
+                  
+                  {!domainScores && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Complete your PRS assessment to see domain performance visualization.
+                    </Alert>
+                  )}
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
+        )}
 
 
-        </Box>
+        </Container>
       );
     } catch (error) {
       console.error('Error rendering SnapshotPage:', error);
       setRenderError(true);
       return (
-        <Box sx={{ mt: 4, textAlign: 'center' }}>
-          <Typography variant="h4" gutterBottom color="error">
-            Something went wrong
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            There was an error rendering the snapshot page. Please try refreshing.
-          </Typography>
-          <Button 
-            variant="contained" 
-            onClick={() => window.location.reload()}
-          >
-            Refresh Page
-          </Button>
-        </Box>
+        <Container maxWidth="xl" sx={{ py: 4 }}>
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h4" gutterBottom color="error">
+              Something went wrong
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+              There was an error rendering the snapshot page. Please try refreshing.
+            </Typography>
+            <Button 
+              variant="contained" 
+              onClick={() => window.location.reload()}
+            >
+              Refresh Page
+            </Button>
+          </Box>
+        </Container>
       );
     }
   };
