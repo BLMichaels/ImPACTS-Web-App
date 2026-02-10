@@ -1223,6 +1223,41 @@ const AdminCRMPage: React.FC = () => {
       setSaveInProgress(true);
       const key = String(editingContact.facilityId ?? editingContact.id);
       const currentInState = contacts.find(c => c.id === editingContact.id);
+      const newFacilityId = formData.facilityId?.trim() || null;
+      const oldFacilityId = editingContact.facilityId || null;
+      
+      // Check if facility_id is being changed and if the new value already exists
+      if (newFacilityId && newFacilityId !== oldFacilityId) {
+        const { data: existingHospital } = await supabase
+          .from('hospitals')
+          .select('id, facility_id')
+          .eq('facility_id', newFacilityId)
+          .limit(1)
+          .maybeSingle();
+        
+        if (existingHospital) {
+          // Check if it's the same hospital (by id) or a different one
+          const existingId = String(existingHospital.id ?? '');
+          // Get the current hospital's database ID by querying with the key
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+          const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
+          const { data: currentHospital } = await supabase
+            .from('hospitals')
+            .select('id')
+            .or(filterClause)
+            .limit(1)
+            .maybeSingle();
+          const currentHospitalId = currentHospital ? String(currentHospital.id) : null;
+          
+          // If it's a different hospital, show error
+          if (currentHospitalId && existingId !== currentHospitalId) {
+            setSaveInProgress(false);
+            setSaveError(`Facility ID "${newFacilityId}" is already assigned to another hospital. Please use a different Facility ID.`);
+            return;
+          }
+        }
+      }
+      
       const updatePayload: { 
         name?: string; 
         facility_id?: string | null;
@@ -1249,7 +1284,7 @@ const AdminCRMPage: React.FC = () => {
       };
       // Add all editable fields
       updatePayload.name = formData.name?.trim() || '';
-      updatePayload.facility_id = formData.facilityId?.trim() || null;
+      updatePayload.facility_id = newFacilityId;
       updatePayload.company_name = formData.organization?.trim() || null;
       updatePayload.address = formData.address?.trim() || null;
       updatePayload.city = formData.city?.trim() || null;
@@ -1276,15 +1311,25 @@ const AdminCRMPage: React.FC = () => {
       // Build updated contact with all changes including facilityId
       const updatedContact: Partial<Contact> = {
         ...payload,
-        facilityId: formData.facilityId?.trim() || editingContact.facilityId
+        facilityId: newFacilityId || editingContact.facilityId
       };
       if (error) {
         console.error('Failed to update hospital:', error);
+        if (error.code === '23505' || error.message.includes('unique') || error.message.includes('duplicate')) {
+          setSaveError(`Facility ID "${newFacilityId}" is already in use. Please use a different Facility ID.`);
+        } else {
+          setSaveError(`Failed to update hospital: ${error.message}`);
+        }
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...updatedContact } : c)));
       } else {
+        setSaveError(null);
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...updatedContact } : c)));
         // Also update detailContact if viewing this hospital
         setDetailContact(prev => (prev?.id === payload.id ? { ...prev, ...updatedContact } as Contact : prev));
+        setDialogOpen(false);
+        setFullScreenOpen(false);
+        setFullScreenEditMode(false);
+        setEditingContact(null);
       }
     } else if (formData.type === 'hospital' && !editingContact) {
       // ADDING a new hospital
@@ -2551,7 +2596,15 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Right-side quick-view panel */}
-      <Drawer anchor="right" open={panelOpen} onClose={() => setPanelOpen(false)} PaperProps={{ sx: { width: { xs: '100%', sm: 380 } } }}>
+      <Drawer 
+        anchor="right" 
+        open={panelOpen} 
+        onClose={() => setPanelOpen(false)} 
+        PaperProps={{ sx: { width: { xs: '100%', sm: 380 } } }}
+        ModalProps={{
+          keepMounted: false,
+        }}
+      >
         {detailContact && (
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
