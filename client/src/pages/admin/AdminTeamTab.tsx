@@ -48,6 +48,7 @@ import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
+import { UserRole } from '../../types/database';
 
 interface User {
   id: string;
@@ -204,9 +205,18 @@ const AdminTeamTab: React.FC = () => {
     try {
       // If sendInvite is true, create an invitation
       if (formData.sendInvite) {
+        // Convert string role to UserRole enum
+        const roleMap: Record<string, UserRole> = {
+          'pecc': UserRole.PECC,
+          'mentor': UserRole.MENTOR,
+          'manager': UserRole.MANAGER,
+          'admin': UserRole.ADMIN
+        };
+        const userRole = roleMap[formData.role] || UserRole.PECC;
+        
         const { code } = await createAndSendInvitation({
           email: formData.email,
-          role: formData.role,
+          role: userRole,
           invitedBy: userProfile.id,
           mentorId: formData.role === 'pecc' && formData.assignedMentorId ? formData.assignedMentorId : null,
           managerId: formData.role === 'mentor' && formData.assignedManagerId ? formData.assignedManagerId : null,
