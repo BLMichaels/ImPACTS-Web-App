@@ -141,6 +141,8 @@ interface Contact {
   user_id?: string;
   /** Whether this contact was created in CRM vs sourced from users table */
   crmCreated?: boolean;
+  /** Whether this person is an admin (for person-type contacts) */
+  is_admin?: boolean;
 }
 
 function contactDisplayName(c: Contact): string {
@@ -431,7 +433,8 @@ const AdminCRMPage: React.FC = () => {
     city: '',
     county: '',
     zip: '',
-    facilityId: ''
+    facilityId: '',
+    is_admin: false
   });
 
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>(() => {
@@ -569,7 +572,7 @@ const AdminCRMPage: React.FC = () => {
         if (mounted) {
           const { data: orgsData, error: orgsError } = await supabase
             .from('crm_organizations')
-            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, programs, cohorts, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip');
+            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, programs, cohorts, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip, is_admin');
           if (orgsError) {
             console.warn('CRM: could not load crm_organizations:', orgsError.message);
           } else if (orgsData && orgsData.length > 0) {
@@ -616,6 +619,7 @@ const AdminCRMPage: React.FC = () => {
                 city: row.city != null ? String(row.city) : undefined,
                 county: row.county != null ? String(row.county) : undefined,
                 zip: row.zip != null ? String(row.zip) : undefined,
+                is_admin: row.is_admin === true,
                 crmCreated: true  // Mark as CRM-created to differentiate from users table
               });
             }
@@ -1025,7 +1029,14 @@ const AdminCRMPage: React.FC = () => {
     switch (colId) {
       case 'firstName': return <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.firstName ?? '—') : (contact.type === 'organization' || contact.type === 'hospital' ? contact.name : '—')}</Typography>;
       case 'lastName': return <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.lastName ?? '—') : '—'}</Typography>;
-      case 'name': return <Typography fontWeight={500}>{contactDisplayName(contact)}</Typography>;
+      case 'name': return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography fontWeight={500}>{contactDisplayName(contact)}</Typography>
+          {isPersonType(contact.type) && contact.is_admin && (
+            <Chip label="Admin" size="small" color="primary" sx={{ height: 20, fontSize: '0.7rem' }} />
+          )}
+        </Box>
+      );
       case 'type': return <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[contact.type], color: 'white' }} />;
       case 'facilityId': return contact.facilityId ?? '—';
       case 'organization': return contact.organization || '—';
@@ -1174,6 +1185,7 @@ const AdminCRMPage: React.FC = () => {
       cohorts: (formData.cohorts ?? []).length ? formData.cohorts : undefined,
       linkedOrganizationIds: isPersonType(formData.type) ? formData.linkedOrganizationIds : undefined,
       linkedHospitalIds: isPersonType(formData.type) ? formData.linkedHospitalIds : undefined,
+      is_admin: isPersonType(formData.type) ? (formData.is_admin || false) : undefined,
       createdAt: editingContact?.createdAt ?? new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
       address: formData.address || undefined,
@@ -1342,7 +1354,8 @@ const AdminCRMPage: React.FC = () => {
         address2: formData.address2?.trim() || null,
         city: formData.city?.trim() || null,
         county: formData.county?.trim() || null,
-        zip: formData.zip?.trim() || null
+        zip: formData.zip?.trim() || null,
+        is_admin: isPersonType(formData.type) ? (formData.is_admin || false) : false
       };
       
       // Check if this is a user-sourced contact (from users table) vs CRM-created
@@ -1483,7 +1496,7 @@ const AdminCRMPage: React.FC = () => {
       setDialogOpen(false);
       setEditingContact(null);
     }
-    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '' });
+    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false });
   };
 
   const openDetail = (c: Contact) => {
@@ -2376,6 +2389,9 @@ const AdminCRMPage: React.FC = () => {
                 <ListItem disablePadding><ListItemText primary="Hospital system" secondary={detailContact.hospitalSystem} /></ListItem>
               )}
               <ListItem disablePadding><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
+              {isPersonType(detailContact.type) && detailContact.is_admin && (
+                <ListItem disablePadding><ListItemText primary="Admin Status" secondary={<Chip label="Admin" size="small" color="primary" sx={{ mt: 0.5 }} />} /></ListItem>
+              )}
               <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="State" secondary={detailContact.state ?? '—'} /></ListItem>
               <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
@@ -2602,6 +2618,17 @@ const AdminCRMPage: React.FC = () => {
                     <Grid item xs={12}>
                       <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({ id: c.hospitalId!, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({ id: c!.hospitalId || c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={formData.is_admin || false}
+                            onChange={(e) => setFormData(prev => ({ ...prev, is_admin: e.target.checked }))}
+                          />
+                        }
+                        label="Admin"
+                      />
+                    </Grid>
                   </>
                 ) : (
                   <>
@@ -2773,6 +2800,9 @@ const AdminCRMPage: React.FC = () => {
                       </>
                     )}
                     <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
+                    {isPersonType(detailContact.type) && detailContact.is_admin && (
+                      <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><PersonIcon fontSize="small" /></ListItemIcon><ListItemText primary="Admin Status" secondary={<Chip label="Admin" size="small" color="primary" />} /></ListItem>
+                    )}
                     <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><EmailIcon fontSize="small" /></ListItemIcon><ListItemText primary="Email" secondary={detailContact.email} /></ListItem>
                     <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><PhoneIcon fontSize="small" /></ListItemIcon><ListItemText primary="Phone" secondary={detailContact.phone || '—'} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
@@ -3028,7 +3058,7 @@ const AdminCRMPage: React.FC = () => {
                 <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                     const c = detailContact;
-                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '' });
+                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
                     setEditingContact(c);
                     setFullScreenEditMode(true);
                   }}>
