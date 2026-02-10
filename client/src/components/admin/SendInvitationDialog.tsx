@@ -41,7 +41,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
 }) => {
   const { userProfile } = useUserProfile();
   const [email, setEmail] = useState(contactEmail);
-  const [role, setRole] = useState<UserRole>('pecc');
+  const [role, setRole] = useState<UserRole>(UserRole.PECC);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
   const [mentorId, setMentorId] = useState<string | null>(null);
   const [managerId, setManagerId] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   useEffect(() => {
     if (open) {
       setEmail(contactEmail);
-      setRole('pecc');
+      setRole(UserRole.PECC);
       setHospitalId(null);
       setMentorId(null);
       setManagerId(null);
@@ -122,12 +122,12 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
     }
     
     // Validate role-specific requirements
-    if (role === 'pecc' && !mentorId && !managerIdForPECC) {
+    if (role === UserRole.PECC && !mentorId && !managerIdForPECC) {
       setError('PECC invitations require either a mentor or direct manager assignment');
       return;
     }
     
-    if (role === 'mentor' && !managerId) {
+    if (role === UserRole.MENTOR && !managerId) {
       setError('Mentor invitations require a manager assignment');
       return;
     }
@@ -141,9 +141,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         role,
         invitedBy: userProfile.id,
         hospitalId: hospitalId || null,
-        mentorId: role === 'pecc' ? (mentorId || null) : null,
-        managerId: role === 'mentor' ? (managerId || null) : null,
-        managerIdForPECC: role === 'pecc' ? (managerIdForPECC || null) : null
+        mentorId: role === UserRole.PECC ? (mentorId || null) : null,
+        managerId: role === UserRole.MENTOR ? (managerId || null) : null,
+        managerIdForPECC: role === UserRole.PECC ? (managerIdForPECC || null) : null
       });
       
       setInvitationCode(code);
@@ -217,14 +217,14 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                 label="Role"
                 disabled={loading}
               >
-                <MenuItem value="pecc">PECC</MenuItem>
-                <MenuItem value="mentor">Mentor</MenuItem>
-                <MenuItem value="manager">Manager</MenuItem>
-                <MenuItem value="admin">Admin</MenuItem>
+                <MenuItem value={UserRole.PECC}>PECC</MenuItem>
+                <MenuItem value={UserRole.MENTOR}>Mentor</MenuItem>
+                <MenuItem value={UserRole.MANAGER}>Manager</MenuItem>
+                <MenuItem value={UserRole.ADMIN}>Admin</MenuItem>
               </Select>
             </FormControl>
             
-            {role === 'pecc' && (
+            {role === UserRole.PECC && (
               <>
                 <Autocomplete
                   options={hospitals}
@@ -273,7 +273,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
               </>
             )}
             
-            {role === 'mentor' && (
+            {role === UserRole.MENTOR && (
               <Autocomplete
                 options={managers}
                 getOptionLabel={(option) => option.name}
