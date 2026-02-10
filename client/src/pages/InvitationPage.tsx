@@ -13,14 +13,18 @@ import {
 } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
+import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
+import { UserRole } from '../types/database';
 
 interface InvitationData {
   code: string;
   email: string;
-  role: string;
+  role: UserRole;
   hospitalName?: string;
   mentorName?: string;
+  managerName?: string;
   status: string;
+  expiresAt: string;
 }
 
 const InvitationPage: React.FC = () => {
@@ -53,29 +57,76 @@ const InvitationPage: React.FC = () => {
     }
 
     try {
-      // In production, this would fetch from Supabase
-      // For now, simulate validation
+      const invitationData = await getInvitationByCode(code);
       
-      // In production, fetch invitation from Supabase by code
-      // Placeholder: require valid-looking code; email filled by user
-      const mockInvitation: InvitationData = {
-        code: code,
-        email: '',
-        role: code.toUpperCase().startsWith('M') ? 'mentor' : 'pecc',
-        hospitalName: undefined,
-        mentorName: undefined,
-        status: 'pending'
-      };
-
-      if (code.length < 6) {
+      if (!invitationData) {
         setError('This invitation link is invalid or has expired.');
         setInvitation(null);
-      } else {
-        setInvitation(mockInvitation);
-        setFormData(prev => ({ ...prev, email: '' }));
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      setError('Failed to validate invitation. Please try again.');
+      
+      // Check if invitation has expired
+      const expiresAt = new Date(invitationData.expires_at);
+      if (expiresAt < new Date()) {
+        setError('This invitation has expired. Please contact your administrator for a new invitation.');
+        setInvitation(null);
+        setLoading(false);
+        return;
+      }
+      
+      // Fetch related data if available
+      let hospitalName: string | undefined;
+      let mentorName: string | undefined;
+      let managerName: string | undefined;
+      
+      if (invitationData.hospital_id) {
+        const { data: hospital } = await supabase
+          .from('hospitals')
+          .select('name')
+          .eq('id', invitationData.hospital_id)
+          .single();
+        if (hospital) hospitalName = hospital.name;
+      }
+      
+      if (invitationData.mentor_id) {
+        const { data: mentor } = await supabase
+          .from('users')
+          .select('first_name, last_name, email')
+          .eq('id', invitationData.mentor_id)
+          .single();
+        if (mentor) {
+          mentorName = [mentor.first_name, mentor.last_name].filter(Boolean).join(' ') || mentor.email;
+        }
+      }
+      
+      if (invitationData.manager_id) {
+        const { data: manager } = await supabase
+          .from('users')
+          .select('first_name, last_name, email')
+          .eq('id', invitationData.manager_id)
+          .single();
+        if (manager) {
+          managerName = [manager.first_name, manager.last_name].filter(Boolean).join(' ') || manager.email;
+        }
+      }
+      
+      const invitation: InvitationData = {
+        code: invitationData.code,
+        email: invitationData.email,
+        role: invitationData.role as UserRole,
+        hospitalName,
+        mentorName,
+        managerName,
+        status: invitationData.status,
+        expiresAt: invitationData.expires_at
+      };
+      
+      setInvitation(invitation);
+      setFormData(prev => ({ ...prev, email: invitationData.email }));
+    } catch (err: any) {
+      setError(err.message || 'Failed to validate invitation. Please try again.');
+      setInvitation(null);
     } finally {
       setLoading(false);
     }
@@ -95,6 +146,12 @@ const InvitationPage: React.FC = () => {
       setError('Email is required');
       return;
     }
+    
+    // Validate email matches invitation
+    if (invitation && invitation.email && formData.email.trim().toLowerCase() !== invitation.email.toLowerCase()) {
+      setError('Email does not match the invitation. Please use the email address the invitation was sent to.');
+      return;
+    }
 
     if (formData.password.length < 8) {
       setError('Password must be at least 8 characters');
@@ -109,18 +166,23 @@ const InvitationPage: React.FC = () => {
     setSubmitting(true);
 
     try {
+      if (!invitation || !code) {
+        throw new Error('Invalid invitation');
+      }
+      
       // Create account with Supabase
       const { data, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
+        email: formData.email.trim().toLowerCase(),
         password: formData.password,
         options: {
           data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
-            phone: formData.phone,
-            role: invitation?.role,
+            phone: formData.phone || null,
+            role: invitation.role,
             invitation_code: code
-          }
+          },
+          emailRedirectTo: `${window.location.origin}/login?confirmed=true`
         }
       });
 
@@ -129,11 +191,58 @@ const InvitationPage: React.FC = () => {
       }
 
       if (data.user) {
-        // Mark invitation as accepted (in production, this would update the database)
+        // Update user record with role and assignments
+        const updatePayload: any = {
+          first_name: formData.firstName.trim(),
+          last_name: formData.lastName.trim(),
+          phone: formData.phone.trim() || null,
+          role: invitation.role,
+          updated_at: new Date().toISOString()
+        };
         
-        // Navigate to appropriate dashboard
-        const dashboardPath = invitation?.role === 'mentor' ? '/mentor/dashboard' : '/dashboard';
-        navigate(dashboardPath);
+        // Add assignments based on invitation
+        const { data: invData } = await supabase
+          .from('invitations')
+          .select('mentor_id, manager_id')
+          .eq('code', code)
+          .single();
+        
+        if (invitation.role === 'pecc') {
+          // For PECC: if mentor_id exists, use it; if manager_id exists but no mentor_id, it's a direct manager assignment
+          if (invData?.mentor_id) {
+            updatePayload.mentor_id = invData.mentor_id;
+          } else if (invData?.manager_id) {
+            // Direct manager assignment (bypassing mentor)
+            updatePayload.manager_id_for_pecc = invData.manager_id;
+          }
+        } else if (invitation.role === 'mentor' && invData?.manager_id) {
+          updatePayload.manager_id = invData.manager_id;
+        }
+        
+        const { error: updateError } = await supabase
+          .from('users')
+          .update(updatePayload)
+          .eq('id', data.user.id);
+        
+        if (updateError) {
+          console.error('Failed to update user profile:', updateError);
+          // Continue anyway - profile can be updated later
+        }
+        
+        // Mark invitation as accepted
+        try {
+          await acceptInvitation(code, data.user.id);
+        } catch (acceptError) {
+          console.error('Failed to mark invitation as accepted:', acceptError);
+          // Continue anyway
+        }
+        
+        // Show success message and inform about email confirmation
+        setError(null);
+        alert('Account created successfully! Please check your email to confirm your account before logging in.');
+        
+        // Navigate to login
+        navigate('/login?message=Please check your email to confirm your account');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to create account. Please try again.');
@@ -189,7 +298,11 @@ const InvitationPage: React.FC = () => {
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
             <Chip 
               label={`Role: ${invitation.role.toUpperCase()}`} 
-              color={invitation.role === 'mentor' ? 'warning' : 'primary'}
+              color={
+                invitation.role === 'mentor' ? 'warning' : 
+                invitation.role === 'manager' ? 'secondary' : 
+                'primary'
+              }
             />
             {invitation.hospitalName && (
               <Chip label={`Hospital: ${invitation.hospitalName}`} variant="outlined" />
@@ -197,7 +310,16 @@ const InvitationPage: React.FC = () => {
             {invitation.mentorName && (
               <Chip label={`Mentor: ${invitation.mentorName}`} variant="outlined" />
             )}
+            {invitation.managerName && (
+              <Chip label={`Manager: ${invitation.managerName}`} variant="outlined" />
+            )}
           </Box>
+          <Alert severity="info" sx={{ mt: 2 }}>
+            {(() => {
+              const savedMessage = localStorage.getItem('email_confirmation_message');
+              return savedMessage || 'After completing registration, you will receive an email to confirm your account. Please check your inbox and click the confirmation link before logging in.';
+            })()}
+          </Alert>
         </Box>
 
         <Divider sx={{ my: 3 }} />
@@ -235,7 +357,8 @@ const InvitationPage: React.FC = () => {
             onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
             fullWidth
             required
-            disabled={submitting}
+            disabled={submitting || !!invitation?.email}
+            helperText={invitation?.email ? 'This email is pre-filled from your invitation' : undefined}
             sx={{ mb: 2 }}
           />
 

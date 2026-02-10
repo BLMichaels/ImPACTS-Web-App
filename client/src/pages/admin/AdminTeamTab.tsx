@@ -46,6 +46,8 @@ import {
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
+import { useUserProfile } from '../../context/UserProfileContext';
+import { createAndSendInvitation } from '../../utils/invitations';
 
 interface User {
   id: string;
@@ -69,6 +71,7 @@ interface User {
 /** Team (user) management content for Admin CRM Team tab. */
 const AdminTeamTab: React.FC = () => {
   const { resetPasswordForEmail } = useAuth();
+  const { userProfile } = useUserProfile();
   const [users, setUsers] = useState<User[]>([]);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' }>({ open: false, message: '' });
   const [searchQuery, setSearchQuery] = useState('');
@@ -192,48 +195,111 @@ const AdminTeamTab: React.FC = () => {
     return colors[status] || 'default';
   };
 
-  const handleCreateUser = () => {
-    const newUser: User = {
-      id: `user_${Date.now()}`,
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      email: formData.email,
-      phone: formData.phone,
-      role: formData.role,
-      is_admin: formData.is_admin,
-      status: 'pending',
-      lastLogin: null,
-      createdAt: new Date().toISOString().split('T')[0],
-      manager_id: formData.role === 'mentor' && formData.assignedManagerId ? formData.assignedManagerId : null,
-      mentor_id: formData.role === 'pecc' && formData.assignedMentorId ? formData.assignedMentorId : null,
-      manager_id_for_pecc: formData.role === 'pecc' && formData.assignedManagerIdForPECC ? formData.assignedManagerIdForPECC : null
-    };
-    if (formData.role === 'mentor' && formData.assignedManagerId) {
-      const m = users.find((u) => u.id === formData.assignedManagerId);
-      if (m) newUser.managerName = `${m.firstName} ${m.lastName}`.trim() || m.email;
+  const handleCreateUser = async () => {
+    if (!userProfile?.id) {
+      setSnackbar({ open: true, message: 'You must be logged in to create users', severity: 'error' });
+      return;
     }
-    if (formData.role === 'pecc' && formData.assignedMentorId) {
-      const ment = users.find((u) => u.id === formData.assignedMentorId);
-      if (ment) newUser.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
+    
+    try {
+      // If sendInvite is true, create an invitation
+      if (formData.sendInvite) {
+        const { code } = await createAndSendInvitation({
+          email: formData.email,
+          role: formData.role,
+          invitedBy: userProfile.id,
+          mentorId: formData.role === 'pecc' && formData.assignedMentorId ? formData.assignedMentorId : null,
+          managerId: formData.role === 'mentor' && formData.assignedManagerId ? formData.assignedManagerId : null,
+          managerIdForPECC: formData.role === 'pecc' && formData.assignedManagerIdForPECC ? formData.assignedManagerIdForPECC : null
+        });
+        
+        setSnackbar({ 
+          open: true, 
+          message: `Invitation sent to ${formData.email}. Invitation code: ${code}`, 
+          severity: 'success' 
+        });
+      } else {
+        // Create user directly (for admins who want to create accounts without invitation)
+        // This would require admin privileges and proper user creation logic
+        setSnackbar({ 
+          open: true, 
+          message: 'Direct user creation not yet implemented. Please use invitations.', 
+          severity: 'error' 
+        });
+        return;
+      }
+      
+      setDialogOpen(false);
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        role: 'pecc',
+        is_admin: false,
+        sendInvite: true,
+        assignedManagerId: '',
+        assignedMentorId: '',
+        assignedManagerIdForPECC: ''
+      });
+      
+      // Reload users to show the invitation status
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, email, first_name, last_name, phone, role, is_admin, is_active, last_login, created_at, manager_id, mentor_id, manager_id_for_pecc');
+      if (usersData) {
+        const mapped: User[] = (usersData || []).map((r: {
+          id: string;
+          first_name: string;
+          last_name: string;
+          email: string;
+          phone: string | null;
+          role: string;
+          is_admin?: boolean;
+          is_active: boolean;
+          last_login: string | null;
+          created_at: string;
+          manager_id: string | null;
+          mentor_id: string | null;
+          manager_id_for_pecc: string | null;
+        }) => ({
+          id: r.id,
+          firstName: r.first_name || '',
+          lastName: r.last_name || '',
+          email: r.email || '',
+          phone: r.phone || '',
+          role: r.role as User['role'],
+          is_admin: r.is_admin === true,
+          status: r.is_active ? 'active' : 'inactive',
+          lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,
+          createdAt: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : '',
+          manager_id: r.manager_id,
+          mentor_id: r.mentor_id,
+          manager_id_for_pecc: r.manager_id_for_pecc
+        }));
+        mapped.forEach((u) => {
+          if (u.manager_id) {
+            const m = mapped.find((x) => x.id === u.manager_id);
+            if (m) u.managerName = `${m.firstName} ${m.lastName}`.trim() || m.email;
+          }
+          if (u.mentor_id) {
+            const ment = mapped.find((x) => x.id === u.mentor_id);
+            if (ment) u.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
+          }
+          if (u.manager_id_for_pecc) {
+            const m = mapped.find((x) => x.id === u.manager_id_for_pecc);
+            if (m) u.managerNameForPECC = `${m.firstName} ${m.lastName}`.trim() || m.email;
+          }
+        });
+        setUsers(mapped);
+      }
+    } catch (error: any) {
+      setSnackbar({ 
+        open: true, 
+        message: `Failed to create invitation: ${error.message || 'Unknown error'}`, 
+        severity: 'error' 
+      });
     }
-    if (formData.role === 'pecc' && formData.assignedManagerIdForPECC) {
-      const m = users.find((u) => u.id === formData.assignedManagerIdForPECC);
-      if (m) newUser.managerNameForPECC = `${m.firstName} ${m.lastName}`.trim() || m.email;
-    }
-    setUsers([...users, newUser]);
-    setDialogOpen(false);
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      role: 'pecc',
-      is_admin: false,
-      sendInvite: true,
-      assignedManagerId: '',
-      assignedMentorId: '',
-      assignedManagerIdForPECC: ''
-    });
   };
 
   const managers = users.filter((u) => u.role === 'manager');

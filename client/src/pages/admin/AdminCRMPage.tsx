@@ -6,6 +6,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { UserRole, PECC_TAB_KEYS } from '../../types/database';
 import AdminTeamTab from './AdminTeamTab';
+import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
 import {
   Alert,
   Box,
@@ -66,6 +67,7 @@ import {
   Edit as EditIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
+  Send as SendIcon,
   Business as BusinessIcon,
   Person as PersonIcon,
   Close as CloseIcon,
@@ -353,6 +355,7 @@ const AdminCRMPage: React.FC = () => {
   const [panelOpen, setPanelOpen] = useState(false);
   const [fullScreenOpen, setFullScreenOpen] = useState(false);
   const [fullScreenEditMode, setFullScreenEditMode] = useState(false);
+  const [invitationDialogOpen, setInvitationDialogOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -1039,7 +1042,11 @@ const AdminCRMPage: React.FC = () => {
           const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
             (p.linkedOrganizationIds ?? []).includes(contact.id) || (p.linkedHospitalIds ?? []).includes(contact.id)
           ));
-          return linkedPeople.length > 0 ? `${linkedPeople.length} contact(s)` : '—';
+          if (linkedPeople.length > 0) {
+            const names = linkedPeople.map(p => contactDisplayName(p)).filter(Boolean);
+            return names.length > 0 ? names.join(', ') : `${linkedPeople.length} contact(s)`;
+          }
+          return '—';
         }
         return '—';
       }
@@ -2372,6 +2379,32 @@ const AdminCRMPage: React.FC = () => {
               {(detailContact.cohorts ?? []).length > 0 && (
                 <ListItem disablePadding><ListItemText primary="Cohort(s)" secondary={(detailContact.cohorts ?? []).join(', ')} /></ListItem>
               )}
+              {/* Show linked people for organizations/hospitals in quick view */}
+              {!isPersonType(detailContact.type) && (() => {
+                const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
+                  (p.linkedOrganizationIds ?? []).includes(detailContact.id) || (p.linkedHospitalIds ?? []).includes(detailContact.id)
+                ));
+                return linkedPeople.length > 0 ? (
+                  <ListItem disablePadding>
+                    <ListItemText 
+                      primary="Linked People" 
+                      secondary={
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                          {linkedPeople.map(p => (
+                            <Chip
+                              key={p.id}
+                              label={contactDisplayName(p)}
+                              size="small"
+                              onClick={() => { setDetailContact(p); }}
+                              sx={{ cursor: 'pointer' }}
+                            />
+                          ))}
+                        </Box>
+                      }
+                    />
+                  </ListItem>
+                ) : null;
+              })()}
               {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type)).length > 0 && (
                 <>
                   {customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
@@ -2476,11 +2509,44 @@ const AdminCRMPage: React.FC = () => {
                   Edit
                 </Button>
                 <Button size="small" variant="outlined" startIcon={<EmailIcon />} fullWidth>Email</Button>
+                {isPersonType(detailContact.type) && detailContact.email && (
+                  <Button 
+                    size="small" 
+                    variant="contained" 
+                    startIcon={<SendIcon />} 
+                    fullWidth
+                    sx={{ mt: 1 }}
+                    onClick={() => setInvitationDialogOpen(true)}
+                  >
+                    Send Invitation
+                  </Button>
+                )}
               </Box>
             </Box>
           </Box>
         )}
       </Drawer>
+      
+      {/* Send Invitation Dialog */}
+      {detailContact && (
+        <SendInvitationDialog
+          open={invitationDialogOpen}
+          onClose={() => setInvitationDialogOpen(false)}
+          contactEmail={detailContact.email}
+          contactName={contactDisplayName(detailContact)}
+          contactId={detailContact.id}
+          onSuccess={(code) => {
+            // Optionally add activity log entry
+            if (detailContact) {
+              addActivityEntry(detailContact, {
+                type: 'communication',
+                date: new Date().toISOString().slice(0, 10),
+                text: `Account invitation sent (code: ${code})`
+              });
+            }
+          }}
+        />
+      )}
 
       {/* Contact detail – full-screen popup (opened via Expand); can switch to edit mode in same view */}
       <Dialog fullScreen open={fullScreenOpen} onClose={() => { setFullScreenOpen(false); setFullScreenEditMode(false); setEditingContact(null); }}>
@@ -2701,6 +2767,33 @@ const AdminCRMPage: React.FC = () => {
                     {(detailContact.cohorts ?? []).length > 0 && (
                       <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><GroupsIcon fontSize="small" /></ListItemIcon><ListItemText primary="Cohort(s)" secondary={(detailContact.cohorts ?? []).join(', ')} /></ListItem>
                     )}
+                    {/* Show linked people for organizations/hospitals */}
+                    {!isPersonType(detailContact.type) && (() => {
+                      const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
+                        (p.linkedOrganizationIds ?? []).includes(detailContact.id) || (p.linkedHospitalIds ?? []).includes(detailContact.id)
+                      ));
+                      return linkedPeople.length > 0 ? (
+                        <ListItem disablePadding>
+                          <ListItemIcon sx={{ minWidth: 36 }}><PersonIcon fontSize="small" /></ListItemIcon>
+                          <ListItemText 
+                            primary="Linked People" 
+                            secondary={
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                                {linkedPeople.map(p => (
+                                  <Chip
+                                    key={p.id}
+                                    label={contactDisplayName(p)}
+                                    size="small"
+                                    onClick={() => { setDetailContact(p); }}
+                                    sx={{ cursor: 'pointer' }}
+                                  />
+                                ))}
+                              </Box>
+                            }
+                          />
+                        </ListItem>
+                      ) : null;
+                    })()}
                     {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
                       <ListItem key={d.id} disablePadding>
                         {d.allowMultiple ? (
@@ -3513,6 +3606,27 @@ const AdminCRMPage: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
+      
+      {/* Send Invitation Dialog */}
+      {detailContact && (
+        <SendInvitationDialog
+          open={invitationDialogOpen}
+          onClose={() => setInvitationDialogOpen(false)}
+          contactEmail={detailContact.email}
+          contactName={contactDisplayName(detailContact)}
+          contactId={detailContact.id}
+          onSuccess={(code) => {
+            // Optionally add activity log entry
+            if (detailContact) {
+              addActivityEntry(detailContact, {
+                type: 'communication',
+                date: new Date().toISOString().slice(0, 10),
+                text: `Account invitation sent (code: ${code})`
+              });
+            }
+          }}
+        />
+      )}
     </Box>
   );
 };

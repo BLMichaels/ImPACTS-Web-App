@@ -89,18 +89,20 @@ export default function AdminSettingsPage() {
     'registration': 0,
     'permissions': 1,
     'granular-permissions': 2,
-    'modules': 3,
-    'programs': 4,
-    'cohorts': 5
+    'email-settings': 3,
+    'modules': 4,
+    'programs': 5,
+    'cohorts': 6
   }), []);
 
   const tabIndexToParam: Record<number, string> = useMemo(() => ({
     0: 'registration',
     1: 'permissions',
     2: 'granular-permissions',
-    3: 'modules',
-    4: 'programs',
-    5: 'cohorts'
+    3: 'email-settings',
+    4: 'modules',
+    5: 'programs',
+    6: 'cohorts'
   }), []);
 
   // Initialize tab from URL or default to 0
@@ -122,6 +124,12 @@ export default function AdminSettingsPage() {
   const [questions, setQuestions] = useState<RegistrationQuestion[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(true);
   const [regError, setRegError] = useState('');
+  const [regRoleFilter, setRegRoleFilter] = useState<string>('all');
+  
+  // Email settings
+  const [emailConfirmationMessage, setEmailConfirmationMessage] = useState(
+    'After completing registration, you will receive an email to confirm your account. Please check your inbox and click the confirmation link before logging in.'
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formLabel, setFormLabel] = useState('');
@@ -172,6 +180,19 @@ export default function AdminSettingsPage() {
   };
 
   useEffect(() => { loadQuestions(); }, []);
+  
+  // Load email settings
+  useEffect(() => {
+    const saved = localStorage.getItem('email_confirmation_message');
+    if (saved) {
+      setEmailConfirmationMessage(saved);
+    }
+  }, []);
+  
+  const handleSaveEmailSettings = () => {
+    localStorage.setItem('email_confirmation_message', emailConfirmationMessage);
+    setSnackbar({ open: true, message: 'Email settings saved successfully', severity: 'success' });
+  };
   useEffect(() => {
     const init: PermissionState = {};
     ROLES.forEach(role => {
@@ -292,6 +313,7 @@ export default function AdminSettingsPage() {
         <Tab label="Registration Questions" />
         <Tab label="Role Permissions" />
         <Tab label="Granular Permissions" />
+        <Tab label="Email Settings" />
         <Tab label="Learning Modules" />
         <Tab label="Programs" />
         <Tab label="Cohorts" />
@@ -302,10 +324,26 @@ export default function AdminSettingsPage() {
         <Box>
           <Typography variant="h6" gutterBottom>Registration Questions</Typography>
           <Typography color="textSecondary" sx={{ mb: 2 }}>
-            Add, edit, or remove questions on the PECC registration form.
+            Add, edit, or remove questions on the registration form. Questions can be targeted to specific user roles (PECC, Mentor, Manager, Admin).
           </Typography>
           {regError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setRegError('')}>{regError}</Alert>}
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd} sx={{ mb: 2 }}>Add question</Button>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>Add question</Button>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Filter by role</InputLabel>
+              <Select
+                value={regRoleFilter}
+                onChange={(e) => setRegRoleFilter(e.target.value)}
+                label="Filter by role"
+              >
+                <MenuItem value="all">All roles</MenuItem>
+                <MenuItem value="pecc">PECC</MenuItem>
+                <MenuItem value="mentor">Mentor</MenuItem>
+                <MenuItem value="manager">Manager</MenuItem>
+                <MenuItem value="admin">Admin</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
           {questionsLoading ? (
             <Typography>Loading…</Typography>
           ) : (
@@ -316,6 +354,7 @@ export default function AdminSettingsPage() {
                     <TableCell>Order</TableCell>
                     <TableCell>Label</TableCell>
                     <TableCell>Type</TableCell>
+                    <TableCell>Target Roles</TableCell>
                     <TableCell>Required</TableCell>
                     <TableCell>Options</TableCell>
                     <TableCell>Status</TableCell>
@@ -323,11 +362,27 @@ export default function AdminSettingsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {questions.map(q => (
+                  {questions
+                    .filter(q => {
+                      if (regRoleFilter === 'all') return true;
+                      return q.target_roles?.includes(regRoleFilter) || (!q.target_roles && regRoleFilter === 'pecc');
+                    })
+                    .map(q => (
                     <TableRow key={q.id}>
                       <TableCell>{q.sort_order}</TableCell>
                       <TableCell>{q.label}</TableCell>
                       <TableCell>{QUESTION_TYPES.find(t => t.value === q.question_type)?.label ?? q.question_type}</TableCell>
+                      <TableCell>
+                        {q.target_roles && q.target_roles.length > 0 ? (
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            {q.target_roles.map(role => (
+                              <Chip key={role} label={role.toUpperCase()} size="small" variant="outlined" />
+                            ))}
+                          </Box>
+                        ) : (
+                          <Chip label="All" size="small" variant="outlined" color="default" />
+                        )}
+                      </TableCell>
                       <TableCell>{q.required ? 'Yes' : 'No'}</TableCell>
                       <TableCell>{(q.options || []).length ? (q.options as string[]).join(', ') : '—'}</TableCell>
                       <TableCell><Chip label={q.is_active ? 'Active' : 'Inactive'} size="small" color={q.is_active ? 'success' : 'default'} /></TableCell>
@@ -410,8 +465,55 @@ export default function AdminSettingsPage() {
         </Suspense>
       )}
 
-      {/* Learning Modules (SCORM) */}
+      {/* Email Settings */}
       {tabIndex === 3 && (
+        <Box>
+          <Typography variant="h6" gutterBottom>Email Settings</Typography>
+          <Typography color="textSecondary" sx={{ mb: 2 }}>
+            Customize email messages sent to users during account creation and invitation acceptance.
+          </Typography>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2" gutterBottom>
+              <strong>Note:</strong> Email templates are managed through Supabase Dashboard → Authentication → Email Templates.
+            </Typography>
+            <Typography variant="body2">
+              However, you can customize the notification message shown to users after they create an account below.
+            </Typography>
+          </Alert>
+          
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="subtitle1" gutterBottom>Account Confirmation Message</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              This message is shown to users after they complete registration via an invitation link. It informs them about the email confirmation step.
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              value={emailConfirmationMessage}
+              onChange={(e) => setEmailConfirmationMessage(e.target.value)}
+              placeholder="After completing registration, you will receive an email to confirm your account. Please check your inbox and click the confirmation link before logging in."
+              sx={{ mb: 2 }}
+            />
+            <Button variant="contained" onClick={handleSaveEmailSettings} startIcon={<SaveIcon />}>
+              Save Email Settings
+            </Button>
+          </Paper>
+          
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="subtitle1" gutterBottom>Invitation Email Preview</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              When you send an invitation, the user receives an email with a link to complete registration. The email template can be customized in Supabase Dashboard.
+            </Typography>
+            <Alert severity="warning">
+              To customize the actual email template, go to Supabase Dashboard → Authentication → Email Templates → Confirm signup.
+            </Alert>
+          </Paper>
+        </Box>
+      )}
+
+      {/* Learning Modules (SCORM) */}
+      {tabIndex === 4 && (
         <Box>
           <Typography variant="h6" gutterBottom>Learning Modules</Typography>
           <Typography color="textSecondary" sx={{ mb: 2 }}>
@@ -422,14 +524,14 @@ export default function AdminSettingsPage() {
       )}
 
       {/* Programs */}
-      {tabIndex === 4 && (
+      {tabIndex === 5 && (
         <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
           <AdminProgramsContent />
         </Suspense>
       )}
 
       {/* Cohorts */}
-      {tabIndex === 5 && (
+      {tabIndex === 6 && (
         <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
           <AdminCohortsContent />
         </Suspense>
@@ -451,9 +553,9 @@ export default function AdminSettingsPage() {
           )}
           <TextField fullWidth margin="normal" type="number" label="Sort order" value={formSortOrder} onChange={e => setFormSortOrder(Number(e.target.value) || 0)} inputProps={{ min: 0 }} />
 
-          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show for roles</Typography>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show for roles (select all that apply)</Typography>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {(['pecc', 'mentor', 'manager'] as const).map(role => (
+            {(['pecc', 'mentor', 'manager', 'admin'] as const).map(role => (
               <FormControlLabel
                 key={role}
                 control={<Checkbox checked={formTargetRoles.includes(role)} onChange={e => setFormTargetRoles(prev => e.target.checked ? [...prev, role] : prev.filter(r => r !== role))} />}
@@ -461,6 +563,9 @@ export default function AdminSettingsPage() {
               />
             ))}
           </Box>
+          {formTargetRoles.length === 0 && (
+            <Alert severity="warning" sx={{ mt: 1 }}>Please select at least one role. If none are selected, the question will be shown to all roles.</Alert>
+          )}
 
           <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show only when (optional)</Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
