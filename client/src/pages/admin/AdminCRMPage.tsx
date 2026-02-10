@@ -495,6 +495,9 @@ const AdminCRMPage: React.FC = () => {
   const [remindersLoading, setRemindersLoading] = useState(false);
   const [myRemindersOpen, setMyRemindersOpen] = useState(false);
   const [addNoteText, setAddNoteText] = useState('');
+  const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  const [editingNoteDate, setEditingNoteDate] = useState('');
   const [addActivityType, setAddActivityType] = useState<ActivityLogType>('communication');
   const [addActivityText, setAddActivityText] = useState('');
   const [addActivityDate, setAddActivityDate] = useState('');
@@ -857,6 +860,25 @@ const AdminCRMPage: React.FC = () => {
 
   const addNote = useCallback((c: Contact, entry: NotesLogEntry) => {
     const nextLog = [...(c.notesLog ?? []), entry].sort((a, b) => (b.date.localeCompare(a.date)));
+    const updated = { ...c, notesLog: nextLog };
+    setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
+    setDetailContact(prev => (prev?.id === c.id ? updated : prev));
+    persistNotesAndActivity(updated);
+  }, [persistNotesAndActivity]);
+
+  const updateNote = useCallback((c: Contact, index: number, entry: NotesLogEntry) => {
+    const nextLog = [...(c.notesLog ?? [])];
+    nextLog[index] = entry;
+    nextLog.sort((a, b) => (b.date.localeCompare(a.date)));
+    const updated = { ...c, notesLog: nextLog };
+    setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
+    setDetailContact(prev => (prev?.id === c.id ? updated : prev));
+    persistNotesAndActivity(updated);
+  }, [persistNotesAndActivity]);
+
+  const deleteNote = useCallback((c: Contact, index: number) => {
+    const nextLog = [...(c.notesLog ?? [])];
+    nextLog.splice(index, 1);
     const updated = { ...c, notesLog: nextLog };
     setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
     setDetailContact(prev => (prev?.id === c.id ? updated : prev));
@@ -1602,12 +1624,14 @@ const AdminCRMPage: React.FC = () => {
         const mapping: Record<string, string> = {};
         const headerLower = headers.map(h => h.toLowerCase().replace(/[_\s-]+/g, ''));
         const fieldMappings: Array<{ field: string; matches: string[] }> = [
+          { field: 'roleTier', matches: ['roletier', 'role', 'tier', 'contacttype', 'type'] },
           { field: 'name', matches: ['name', 'organizationname', 'companyname', 'company', 'hospitalname'] },
           { field: 'firstName', matches: ['firstname', 'first', 'fname'] },
           { field: 'lastName', matches: ['lastname', 'last', 'lname', 'surname'] },
           { field: 'email', matches: ['email', 'emailaddress', 'mail'] },
           { field: 'phone', matches: ['phone', 'phonenumber', 'telephone', 'tel', 'mobile', 'cell'] },
           { field: 'organization', matches: ['organization', 'company', 'employer', 'org'] },
+          { field: 'hospital', matches: ['hospital', 'facility'] },
           { field: 'region', matches: ['region', 'area', 'territory'] },
           { field: 'state', matches: ['state', 'province', 'st'] },
           { field: 'status', matches: ['status', 'active'] },
@@ -1616,6 +1640,8 @@ const AdminCRMPage: React.FC = () => {
           { field: 'city', matches: ['city', 'town'] },
           { field: 'county', matches: ['county'] },
           { field: 'zip', matches: ['zip', 'zipcode', 'postalcode', 'postal'] },
+          { field: 'programs', matches: ['programs', 'program', 'program(s)'] },
+          { field: 'cohorts', matches: ['cohorts', 'cohort', 'cohort(s)'] },
           { field: 'notes', matches: ['notes', 'note', 'comments', 'description'] },
         ];
         fieldMappings.forEach(({ field, matches }) => {
@@ -1637,9 +1663,33 @@ const AdminCRMPage: React.FC = () => {
     setImportError(null);
     setImportSuccess(null);
     
-    const isPerson = isPersonType(importContactType);
     let successCount = 0;
     const errors: string[] = [];
+    
+    // Helper to find hospital by name
+    const findHospitalByName = async (hospitalName: string): Promise<string | null> => {
+      if (!hospitalName) return null;
+      const { data } = await supabase
+        .from('hospitals')
+        .select('id')
+        .ilike('name', `%${hospitalName}%`)
+        .limit(1)
+        .maybeSingle();
+      return data && typeof (data as { id?: string }).id === 'string' ? (data as { id: string }).id : null;
+    };
+    
+    // Helper to find organization by name
+    const findOrganizationByName = async (orgName: string): Promise<string | null> => {
+      if (!orgName) return null;
+      const { data } = await supabase
+        .from('crm_organizations')
+        .select('id')
+        .eq('contact_type', 'organization')
+        .ilike('name', `%${orgName}%`)
+        .limit(1)
+        .maybeSingle();
+      return data && typeof (data as { id?: string }).id === 'string' ? (data as { id: string }).id : null;
+    };
     
     for (let i = 0; i < importData.length; i++) {
       const row = importData[i];
@@ -1647,6 +1697,26 @@ const AdminCRMPage: React.FC = () => {
         const csvColumn = importColumnMapping[field];
         return csvColumn ? (row[csvColumn]?.trim() || null) : null;
       };
+      
+      // Get role tier from CSV or use importContactType as fallback
+      const roleTierRaw = getValue('roleTier')?.toLowerCase() || importContactType;
+      const roleTierMap: Record<string, ContactType> = {
+        'organization': 'organization',
+        'hospital': 'hospital',
+        'manager': 'manager',
+        'mentor': 'mentor',
+        'pecc': 'pecc',
+        'staff': 'staff',
+        'other': 'other'
+      };
+      const contactType: ContactType = roleTierMap[roleTierRaw] || importContactType;
+      
+      // Skip Admin role tier (user will add admins manually)
+      if (roleTierRaw === 'admin') {
+        continue;
+      }
+      
+      const isPerson = isPersonType(contactType);
       
       // Build the payload
       const name = isPerson 
@@ -1658,30 +1728,175 @@ const AdminCRMPage: React.FC = () => {
         continue;
       }
       
-      const payload: Record<string, unknown> = {
-        name,
-        email: getValue('email'),
-        phone: getValue('phone'),
-        region: getValue('region'),
-        state: getValue('state'),
-        status: getValue('status') || 'Active',
-        notes: getValue('notes'),
-        contact_type: importContactType,
-        first_name: isPerson ? getValue('firstName') : null,
-        last_name: isPerson ? getValue('lastName') : null,
-        organization: isPerson ? getValue('organization') : null,
-        address: getValue('address'),
-        address2: getValue('address2'),
-        city: getValue('city'),
-        county: getValue('county'),
-        zip: getValue('zip'),
-      };
+      // Parse programs (semicolon or comma separated)
+      const programsRaw = getValue('programs') || '';
+      const programs = programsRaw.split(/[;,]/).map(p => p.trim()).filter(Boolean);
       
-      const { error } = await supabase.from('crm_organizations').insert(payload);
-      if (error) {
-        errors.push(`Row ${i + 2}: ${error.message}`);
+      // Parse cohorts (semicolon or comma separated)
+      const cohortsRaw = getValue('cohorts') || '';
+      const cohorts = cohortsRaw.split(/[;,]/).map(c => c.trim()).filter(Boolean);
+      
+      // Handle notes - if provided, add to notes_log
+      const notesText = getValue('notes');
+      const notesLog: NotesLogEntry[] = notesText ? [{
+        date: new Date().toISOString().slice(0, 10),
+        text: notesText
+      }] : [];
+      
+      // Handle organization and hospital separately
+      const orgName = getValue('organization');
+      const hospitalName = getValue('hospital');
+      
+      // If this row specifies an organization, create/update it first
+      if (orgName && contactType !== 'organization') {
+        let orgId = await findOrganizationByName(orgName);
+        if (!orgId) {
+          const { data: newOrg, error: orgError } = await supabase
+            .from('crm_organizations')
+            .insert({
+              name: orgName,
+              contact_type: 'organization',
+              status: 'Active',
+              region: getValue('region'),
+              state: getValue('state'),
+              address: getValue('address'),
+              city: getValue('city'),
+              county: getValue('county'),
+              zip: getValue('zip'),
+              programs: programs.length > 0 ? programs : null,
+              cohorts: cohorts.length > 0 ? cohorts : null,
+              notes_log: notesLog.length > 0 ? notesLog : null
+            })
+            .select('id')
+            .single();
+          if (!orgError && newOrg && typeof (newOrg as { id?: string }).id === 'string') {
+            orgId = (newOrg as { id: string }).id;
+            successCount++;
+          }
+        }
+      }
+      
+      // If this row specifies a hospital, create/update it
+      if (hospitalName && contactType !== 'hospital') {
+        let hospitalId = await findHospitalByName(hospitalName);
+        if (!hospitalId) {
+          const { data: newHospital, error: hospError } = await supabase
+            .from('hospitals')
+            .insert({
+              name: hospitalName,
+              company_name: orgName || null,
+              email: getValue('email'),
+              phone: getValue('phone'),
+              region: getValue('region'),
+              state: getValue('state'),
+              address: getValue('address'),
+              city: getValue('city'),
+              county: getValue('county'),
+              zip: getValue('zip'),
+              crm_status: getValue('status') || 'Active',
+              programs: programs.length > 0 ? programs : null,
+              cohorts: cohorts.length > 0 ? cohorts : null,
+              notes: notesText || null,
+              notes_log: notesLog.length > 0 ? notesLog : null
+            })
+            .select('id')
+            .single();
+          if (!hospError && newHospital && typeof (newHospital as { id?: string }).id === 'string') {
+            hospitalId = (newHospital as { id: string }).id;
+            successCount++;
+          }
+        } else if (hospitalId) {
+          // Update existing hospital with programs/cohorts/notes if provided
+          const updateData: Record<string, unknown> = {};
+          if (programs.length > 0) updateData.programs = programs;
+          if (cohorts.length > 0) updateData.cohorts = cohorts;
+          if (notesText) {
+            const { data: existingHospital } = await supabase
+              .from('hospitals')
+              .select('notes_log')
+              .eq('id', hospitalId)
+              .single();
+            const existingNotesLog = existingHospital?.notes_log as NotesLogEntry[] || [];
+            updateData.notes_log = [...existingNotesLog, ...notesLog];
+          }
+          if (Object.keys(updateData).length > 0) {
+            await supabase.from('hospitals').update(updateData).eq('id', hospitalId);
+          }
+        }
+      }
+      
+      // Create the main contact (person, organization, or hospital)
+      if (contactType === 'hospital') {
+        // Handle hospital row
+        const hospitalPayload: Record<string, unknown> = {
+          name,
+          email: getValue('email'),
+          phone: getValue('phone'),
+          region: getValue('region'),
+          state: getValue('state'),
+          crm_status: getValue('status') || 'Active',
+          address: getValue('address'),
+          city: getValue('city'),
+          county: getValue('county'),
+          zip: getValue('zip'),
+          programs: programs.length > 0 ? programs : null,
+          cohorts: cohorts.length > 0 ? cohorts : null,
+          notes: notesText || null,
+          notes_log: notesLog.length > 0 ? notesLog : null
+        };
+        
+        const { error: hospError } = await supabase.from('hospitals').insert(hospitalPayload);
+        if (hospError) {
+          errors.push(`Row ${i + 2}: ${hospError.message}`);
+        } else {
+          successCount++;
+        }
       } else {
-        successCount++;
+        // Handle organization or person row
+        const payload: Record<string, unknown> = {
+          name,
+          email: getValue('email'),
+          phone: getValue('phone'),
+          region: getValue('region'),
+          state: getValue('state'),
+          status: getValue('status') || 'Active',
+          contact_type: contactType,
+          first_name: isPerson ? getValue('firstName') : null,
+          last_name: isPerson ? getValue('lastName') : null,
+          organization: isPerson ? orgName : null,
+          address: getValue('address'),
+          address2: getValue('address2'),
+          city: getValue('city'),
+          county: getValue('county'),
+          zip: getValue('zip'),
+          programs: programs.length > 0 ? programs : null,
+          cohorts: cohorts.length > 0 ? cohorts : null,
+          notes: notesText || null,
+          notes_log: notesLog.length > 0 ? notesLog : null
+        };
+        
+        // Link to organization if specified
+        if (orgName && isPerson) {
+          const orgId = await findOrganizationByName(orgName);
+          if (orgId) {
+            payload.linked_organization_ids = [orgId];
+          }
+        }
+        
+        // Link to hospital if specified
+        if (hospitalName && isPerson) {
+          const hospId = await findHospitalByName(hospitalName);
+          if (hospId) {
+            payload.linked_hospital_ids = [hospId];
+          }
+        }
+        
+        const { error } = await supabase.from('crm_organizations').insert(payload);
+        if (error) {
+          errors.push(`Row ${i + 2}: ${error.message}`);
+        } else {
+          successCount++;
+        }
       }
     }
     
@@ -1692,7 +1907,7 @@ const AdminCRMPage: React.FC = () => {
       // Reload contacts
       const { data: orgsData } = await supabase
         .from('crm_organizations')
-        .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip');
+        .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip, programs, cohorts');
       if (orgsData) {
         const newContacts: Contact[] = [];
         for (const row of orgsData as Record<string, unknown>[]) {
@@ -1736,6 +1951,8 @@ const AdminCRMPage: React.FC = () => {
             city: row.city != null ? String(row.city) : undefined,
             county: row.county != null ? String(row.county) : undefined,
             zip: row.zip != null ? String(row.zip) : undefined,
+            programs: Array.isArray(row.programs) ? (row.programs as string[]) : [],
+            cohorts: Array.isArray(row.cohorts) ? (row.cohorts as string[]) : [],
             crmCreated: true
           });
         }
@@ -2928,9 +3145,94 @@ const AdminCRMPage: React.FC = () => {
                     ) : (
                       <List dense disablePadding>
                         {(detailContact.notesLog ?? []).map((e, i) => (
-                          <ListItem key={i} disablePadding sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary">{e.date}</Typography>
-                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{e.text}</Typography>
+                          <ListItem 
+                            key={i} 
+                            disablePadding 
+                            sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 0.5, position: 'relative', pr: 6 }}
+                          >
+                            {editingNoteIndex === i ? (
+                              <Box sx={{ width: '100%' }}>
+                                <TextField
+                                  size="small"
+                                  type="date"
+                                  value={editingNoteDate}
+                                  onChange={(e) => setEditingNoteDate(e.target.value)}
+                                  sx={{ mb: 1, width: '100%' }}
+                                  InputLabelProps={{ shrink: true }}
+                                  label="Date"
+                                />
+                                <TextField
+                                  size="small"
+                                  multiline
+                                  minRows={2}
+                                  value={editingNoteText}
+                                  onChange={(e) => setEditingNoteText(e.target.value)}
+                                  sx={{ mb: 1, width: '100%' }}
+                                  placeholder="Note text..."
+                                />
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                  <Button 
+                                    size="small" 
+                                    variant="contained" 
+                                    onClick={() => {
+                                      if (editingNoteText.trim() && editingNoteDate) {
+                                        updateNote(detailContact, i, { date: editingNoteDate, text: editingNoteText.trim() });
+                                        setEditingNoteIndex(null);
+                                        setEditingNoteText('');
+                                        setEditingNoteDate('');
+                                      }
+                                    }}
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button 
+                                    size="small" 
+                                    variant="outlined" 
+                                    onClick={() => {
+                                      setEditingNoteIndex(null);
+                                      setEditingNoteText('');
+                                      setEditingNoteDate('');
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </Box>
+                              </Box>
+                            ) : (
+                              <>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start' }}>
+                                  <Box sx={{ flex: 1 }}>
+                                    <Typography variant="caption" color="text.secondary">{e.date}</Typography>
+                                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{e.text}</Typography>
+                                  </Box>
+                                  <Box sx={{ display: 'flex', gap: 0.5, position: 'absolute', right: 0, top: 0 }}>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => {
+                                        setEditingNoteIndex(i);
+                                        setEditingNoteText(e.text);
+                                        setEditingNoteDate(e.date);
+                                      }}
+                                      sx={{ p: 0.5 }}
+                                    >
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() => {
+                                        if (window.confirm('Delete this note?')) {
+                                          deleteNote(detailContact, i);
+                                        }
+                                      }}
+                                      sx={{ p: 0.5 }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Box>
+                                </Box>
+                              </>
+                            )}
                           </ListItem>
                         ))}
                       </List>
@@ -3523,11 +3825,15 @@ const AdminCRMPage: React.FC = () => {
                   startIcon={<DownloadIcon />}
                   sx={{ ml: 1 }}
                   onClick={() => {
-                    const templateHeaders = ['First Name', 'Last Name', 'Email', 'Phone', 'Organization', 'Region', 'State', 'Address', 'City', 'County', 'Zip', 'Notes'];
+                    const templateHeaders = ['Role Tier', 'Name', 'First Name', 'Last Name', 'Email', 'Phone', 'Organization', 'Hospital', 'Region', 'State', 'Address', 'City', 'County', 'Zip', 'Program(s)', 'Cohort(s)', 'Notes'];
                     const exampleRows = [
-                      ['John', 'Smith', 'john.smith@example.com', '555-123-4567', 'Acme Healthcare', 'Midwest', 'Indiana', '123 Main St', 'Indianapolis', 'Marion', '46201', 'Initial contact'],
-                      ['Jane', 'Doe', 'jane.doe@example.com', '555-987-6543', 'City Hospital', 'Northeast', 'Ohio', '456 Oak Ave', 'Columbus', 'Franklin', '43215', ''],
-                      ['', '', '', '', '', '', '', '', '', '', '', ''],
+                      ['Organization', 'Acme Healthcare', '', '', 'contact@acme.com', '555-000-0000', '', '', 'Midwest', 'Indiana', '123 Main St', 'Indianapolis', 'Marion', '46201', 'Program A; Program B', '', 'Main organization'],
+                      ['Hospital', 'City Hospital', '', '', 'info@cityhospital.com', '555-111-1111', '', '', 'Northeast', 'Ohio', '456 Oak Ave', 'Columbus', 'Franklin', '43215', '', 'Cohort 1', 'Hospital notes'],
+                      ['Manager', '', 'John', 'Smith', 'john.smith@example.com', '555-123-4567', 'Acme Healthcare', 'City Hospital', 'Midwest', 'Indiana', '', '', '', '', 'Program A', 'Cohort 1', 'Manager notes'],
+                      ['Mentor', '', 'Jane', 'Doe', 'jane.doe@example.com', '555-987-6543', 'Acme Healthcare', '', 'Northeast', 'Ohio', '', '', '', '', 'Program B', '', 'Mentor notes'],
+                      ['PECC', '', 'Bob', 'Johnson', 'bob.j@example.com', '555-222-2222', 'Acme Healthcare', 'City Hospital', 'Midwest', 'Indiana', '', '', '', '', '', 'Cohort 1', 'PECC notes'],
+                      ['Staff', '', 'Alice', 'Williams', 'alice.w@example.com', '555-333-3333', 'Acme Healthcare', '', 'Northeast', 'Ohio', '', '', '', '', '', '', 'Staff notes'],
+                      ['Other', '', 'Charlie', 'Brown', 'charlie.b@example.com', '555-444-4444', '', '', 'Midwest', 'Indiana', '', '', '', '', '', '', 'Other contact'],
                     ];
                     const csvContent = [
                       templateHeaders.join(','),
@@ -3569,28 +3875,35 @@ const AdminCRMPage: React.FC = () => {
                 Found {importData.length} row(s) with {importHeaders.length} columns. Map columns below and click Import.
               </Alert>
               
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>Contact Type</Typography>
-              <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                <Select value={importContactType} onChange={(e) => setImportContactType(e.target.value as ContactType)}>
-                  {Object.entries(TYPE_LABELS).map(([val, label]) => (
-                    <MenuItem key={val} value={val}>{label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  The CSV should include a "Role Tier" column with values: Organization, Hospital, Manager, Mentor, PECC, Staff, or Other.
+                  Admin role tier will be skipped (admins should be added manually).
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Organizations and Hospitals can be specified as separate rows or referenced in person rows.
+                  Program(s) and Cohort(s) can be semicolon or comma separated.
+                </Typography>
+                <Typography variant="body2">
+                  Notes from the CSV will be added to the notes log with today's date.
+                </Typography>
+              </Alert>
               
               <Typography variant="subtitle2" sx={{ mb: 1 }}>Column Mapping</Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                Map CSV columns to contact fields. Auto-detected mappings shown below.
+                Map CSV columns to contact fields. Auto-detected mappings shown below. Role Tier column determines the contact type for each row.
               </Typography>
               
               <Grid container spacing={1} sx={{ mb: 2 }}>
                 {[
-                  { key: 'name', label: 'Name', required: !isPersonType(importContactType) },
-                  { key: 'firstName', label: 'First Name', required: isPersonType(importContactType) },
-                  { key: 'lastName', label: 'Last Name', required: isPersonType(importContactType) },
+                  { key: 'roleTier', label: 'Role Tier', required: true },
+                  { key: 'name', label: 'Name', required: false },
+                  { key: 'firstName', label: 'First Name', required: false },
+                  { key: 'lastName', label: 'Last Name', required: false },
                   { key: 'email', label: 'Email' },
                   { key: 'phone', label: 'Phone' },
                   { key: 'organization', label: 'Organization' },
+                  { key: 'hospital', label: 'Hospital' },
                   { key: 'region', label: 'Region' },
                   { key: 'state', label: 'State' },
                   { key: 'status', label: 'Status' },
@@ -3598,6 +3911,8 @@ const AdminCRMPage: React.FC = () => {
                   { key: 'city', label: 'City' },
                   { key: 'county', label: 'County' },
                   { key: 'zip', label: 'Zip' },
+                  { key: 'programs', label: 'Program(s) (semicolon-separated)' },
+                  { key: 'cohorts', label: 'Cohort(s) (semicolon-separated)' },
                   { key: 'notes', label: 'Notes' },
                 ].map(({ key, label, required }) => (
                   <Grid item xs={6} sm={4} key={key}>
