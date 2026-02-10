@@ -18,7 +18,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Link as MuiLink
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -27,32 +28,39 @@ import {
   Delete as DeleteIcon,
   Lock as LockIcon,
   LockOpen as UnlockIcon,
-  PushPin as PinIcon
+  PushPin as PinIcon,
+  AttachFile as AttachFileIcon,
+  GetApp as DownloadIcon
 } from '@mui/icons-material';
 import { CohortDiscussionTopic, CohortDiscussionReply, UserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, formatDistanceToNow } from 'date-fns';
+import RichTextEditor from './RichTextEditor';
 
 interface DiscussionTopicViewProps {
   topic: CohortDiscussionTopic;
   cohortId: string;
   onBack: () => void;
   canModerate: boolean;
+  onMarkAsRead?: () => void;
 }
 
 const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   topic: initialTopic,
   cohortId,
   onBack,
-  canModerate
+  canModerate,
+  onMarkAsRead
 }) => {
   const { userProfile } = useUserProfile();
   const [topic, setTopic] = useState(initialTopic);
   const [replies, setReplies] = useState<CohortDiscussionReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState('');
+  const [replyAttachments, setReplyAttachments] = useState<Array<{ name: string; url: string; type: string; size?: number }>>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; reply?: CohortDiscussionReply } | null>(null);
   const [editingReply, setEditingReply] = useState<CohortDiscussionReply | null>(null);
@@ -82,7 +90,83 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
 
   useEffect(() => {
     loadReplies();
-  }, [loadReplies]);
+    
+    // Mark discussion as read when viewing
+    if (onMarkAsRead) {
+      onMarkAsRead();
+    }
+  }, [loadReplies, onMarkAsRead]);
+
+  const handleFileUpload = async (file: File): Promise<string | null> => {
+    if (!userProfile?.id) return null;
+    
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userProfile.id}/${Date.now()}.${fileExt}`;
+      const filePath = `cohort-discussion-attachments/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('cohort-discussion-attachments')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('cohort-discussion-attachments')
+        .getPublicUrl(filePath);
+
+      const attachment = {
+        name: file.name,
+        url: publicUrl,
+        type: file.type,
+        size: file.size
+      };
+
+      setReplyAttachments(prev => [...prev, attachment]);
+      return publicUrl;
+    } catch (err) {
+      console.error('Error uploading file:', err);
+      return null;
+    }
+  };
+
+  const handleSaveDraftReply = async () => {
+    if (!replyContent.trim()) return;
+    
+    setSavingDraft(true);
+    try {
+      const { data: existing } = await supabase
+        .from('cohort_discussion_replies')
+        .select('id')
+        .eq('topic_id', topic.id)
+        .eq('created_by', userProfile?.id)
+        .is('content', null)
+        .limit(1)
+        .maybeSingle();
+
+      const draftData = {
+        topic_id: topic.id,
+        draft_content: replyContent.trim(),
+        attachments: replyAttachments.length > 0 ? replyAttachments : null,
+        created_by: userProfile?.id
+      };
+
+      if (existing) {
+        await supabase
+          .from('cohort_discussion_replies')
+          .update(draftData)
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('cohort_discussion_replies')
+          .insert(draftData);
+      }
+    } catch (err) {
+      console.error('Error saving draft:', err);
+    } finally {
+      setSavingDraft(false);
+    }
+  };
 
   const handleSubmitReply = async () => {
     if (!replyContent.trim() || topic.is_locked) return;
@@ -91,11 +175,22 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
     setError(null);
 
     try {
+      // Check if draft exists and delete it
+      const { data: existing } = await supabase
+        .from('cohort_discussion_replies')
+        .select('id')
+        .eq('topic_id', topic.id)
+        .eq('created_by', userProfile?.id)
+        .is('content', null)
+        .limit(1)
+        .maybeSingle();
+
       const { data, error: insertError } = await supabase
         .from('cohort_discussion_replies')
         .insert({
           topic_id: topic.id,
           content: replyContent.trim(),
+          attachments: replyAttachments.length > 0 ? replyAttachments : null,
           created_by: userProfile?.id
         })
         .select(`
@@ -105,9 +200,18 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
         .single();
 
       if (insertError) throw insertError;
+
+      // Delete draft if it exists
+      if (existing) {
+        await supabase
+          .from('cohort_discussion_replies')
+          .delete()
+          .eq('id', existing.id);
+      }
       
       setReplies(prev => [...prev, data]);
       setReplyContent('');
+      setReplyAttachments([]);
       
       // Update topic reply count locally
       setTopic(prev => ({
@@ -185,6 +289,32 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
       console.error('Error editing reply:', err);
     }
   };
+
+  // Load draft reply on mount
+  useEffect(() => {
+    const loadDraft = async () => {
+      if (!userProfile?.id || !topic.id) return;
+      try {
+        const { data } = await supabase
+          .from('cohort_discussion_replies')
+          .select('draft_content, attachments')
+          .eq('topic_id', topic.id)
+          .eq('created_by', userProfile.id)
+          .is('content', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (data?.draft_content) {
+          setReplyContent(data.draft_content);
+          setReplyAttachments((data.attachments as any) || []);
+        }
+      } catch (err) {
+        console.error('Error loading draft reply:', err);
+      }
+    };
+    loadDraft();
+  }, [topic.id, userProfile?.id]);
 
   const handleDeleteReply = (replyId: string) => {
     setDeletingReplyId(replyId);
@@ -280,9 +410,34 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
             </Box>
             
             {topic.content && (
-              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                {topic.content}
-              </Typography>
+              <Box 
+                sx={{ 
+                  '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1, margin: '8px 0' },
+                  '& a': { color: 'primary.main', textDecoration: 'underline' }
+                }}
+                dangerouslySetInnerHTML={{ __html: topic.content }}
+              />
+            )}
+            {topic.attachments && topic.attachments.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  Attachments:
+                </Typography>
+                {topic.attachments.map((att, idx) => (
+                  <Chip
+                    key={idx}
+                    icon={<AttachFileIcon />}
+                    label={att.name}
+                    size="small"
+                    component="a"
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    clickable
+                    sx={{ mr: 1, mb: 1 }}
+                  />
+                ))}
+              </Box>
             )}
           </Box>
 
@@ -310,15 +465,14 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
               {editingReply?.id === reply.id ? (
                 // Edit mode
                 <Box>
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={3}
+                  <RichTextEditor
                     value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    sx={{ mb: 2 }}
+                    onChange={setEditContent}
+                    placeholder="Edit your reply..."
+                    minHeight={150}
+                    showSaveDraft={false}
                   />
-                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 2 }}>
                     <Button onClick={() => setEditingReply(null)}>Cancel</Button>
                     <Button variant="contained" onClick={handleSaveEdit}>Save</Button>
                   </Box>
@@ -352,9 +506,31 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
                       </Typography>
                     </Box>
                     
-                    <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                      {reply.content}
-                    </Typography>
+                    <Box 
+                      sx={{ 
+                        '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1, margin: '8px 0' },
+                        '& a': { color: 'primary.main', textDecoration: 'underline' }
+                      }}
+                      dangerouslySetInnerHTML={{ __html: reply.content }}
+                    />
+                    {reply.attachments && reply.attachments.length > 0 && (
+                      <Box sx={{ mt: 1 }}>
+                        {reply.attachments.map((att, idx) => (
+                          <Chip
+                            key={idx}
+                            icon={<AttachFileIcon />}
+                            label={att.name}
+                            size="small"
+                            component="a"
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            clickable
+                            sx={{ mr: 1, mb: 1 }}
+                          />
+                        ))}
+                      </Box>
+                    )}
                   </Box>
 
                   {(canModerate || reply.created_by === userProfile?.id) && (
@@ -380,20 +556,43 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
               {error}
             </Alert>
           )}
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            placeholder="Write a reply..."
+          <RichTextEditor
             value={replyContent}
-            onChange={(e) => setReplyContent(e.target.value)}
-            sx={{ mb: 2 }}
+            onChange={setReplyContent}
+            onSaveDraft={handleSaveDraftReply}
+            onFileUpload={handleFileUpload}
+            placeholder="Write a reply..."
+            minHeight={150}
+            showSaveDraft={true}
           />
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          {replyAttachments.length > 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                Attachments:
+              </Typography>
+              {replyAttachments.map((att, idx) => (
+                <Chip
+                  key={idx}
+                  label={att.name}
+                  size="small"
+                  onDelete={() => setReplyAttachments(prev => prev.filter((_, i) => i !== idx))}
+                  sx={{ mr: 1, mb: 1 }}
+                />
+              ))}
+            </Box>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
+            <Button
+              variant="outlined"
+              onClick={handleSaveDraftReply}
+              disabled={savingDraft || !replyContent.trim()}
+            >
+              {savingDraft ? <CircularProgress size={24} /> : 'Save Draft'}
+            </Button>
             <Button
               variant="contained"
               onClick={handleSubmitReply}
-              disabled={submitting || !replyContent.trim()}
+              disabled={submitting || savingDraft || !replyContent.trim()}
             >
               {submitting ? <CircularProgress size={24} /> : 'Post Reply'}
             </Button>

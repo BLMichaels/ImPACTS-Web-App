@@ -43,6 +43,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { UserRole } from '../types/database';
+import { useCohortNotifications } from '../hooks/useCohortNotifications';
+import { Badge } from '@mui/material';
 
 interface NavItem {
   path: string;
@@ -56,6 +58,7 @@ const Navbar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const cohortNotifications = useCohortNotifications();
   
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -203,27 +206,36 @@ const Navbar: React.FC = () => {
         </Box>
         
         <List>
-          {navigationItems.map((item) => (
-            <ListItem 
-              key={item.path}
-              button
-              onClick={() => handleMobileNavigation(item.path)}
-              sx={{
-                borderRadius: 1,
-                mb: 0.5,
-                backgroundColor: location.pathname === item.path ? 'primary.light' : 'transparent',
-                '&:hover': { backgroundColor: 'primary.light' }
-              }}
-            >
-              <ListItemIcon sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}>
+          {navigationItems.map((item) => {
+            const isCohorts = item.path === '/cohorts' || item.path === '/mentor/cohorts';
+            const icon = isCohorts && cohortNotifications > 0 ? (
+              <Badge badgeContent={cohortNotifications} color="error" max={99}>
                 {item.icon}
-              </ListItemIcon>
-              <ListItemText 
-                primary={item.label}
-                sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}
-              />
-            </ListItem>
-          ))}
+              </Badge>
+            ) : item.icon;
+            
+            return (
+              <ListItem 
+                key={item.path}
+                button
+                onClick={() => handleMobileNavigation(item.path)}
+                sx={{
+                  borderRadius: 1,
+                  mb: 0.5,
+                  backgroundColor: location.pathname === item.path ? 'primary.light' : 'transparent',
+                  '&:hover': { backgroundColor: 'primary.light' }
+                }}
+              >
+                <ListItemIcon sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}>
+                  {icon}
+                </ListItemIcon>
+                <ListItemText 
+                  primary={item.label}
+                  sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}
+                />
+              </ListItem>
+            );
+          })}
         </List>
         
         <Divider sx={{ my: 2 }} />
@@ -353,27 +365,36 @@ const Navbar: React.FC = () => {
             flexGrow: 1,
             justifyContent: 'center'
           }}>
-            {navigationItems.map((item) => (
-              <Button
-                key={item.path}
-                color="inherit"
-                startIcon={isTablet ? null : item.icon}
-                onClick={() => navigate(item.path)}
-                sx={{
-                  backgroundColor: location.pathname === item.path ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.2)' },
-                  borderRadius: 1,
-                  px: isSmallDesktop ? 1 : 2,
-                  py: 1,
-                  minWidth: 'auto',
-                  fontSize: isSmallDesktop ? '0.875rem' : '0.9rem',
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0
-                }}
-              >
-                {item.label}
-              </Button>
-            ))}
+            {navigationItems.map((item) => {
+              const isCohorts = item.path === '/cohorts' || item.path === '/mentor/cohorts';
+              const icon = isCohorts && cohortNotifications > 0 ? (
+                <Badge badgeContent={cohortNotifications} color="error" max={99}>
+                  {item.icon}
+                </Badge>
+              ) : item.icon;
+              
+              return (
+                <Button
+                  key={item.path}
+                  color="inherit"
+                  startIcon={isTablet ? null : icon}
+                  onClick={() => navigate(item.path)}
+                  sx={{
+                    backgroundColor: location.pathname === item.path ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                    '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.2)' },
+                    borderRadius: 1,
+                    px: isSmallDesktop ? 1 : 2,
+                    py: 1,
+                    minWidth: 'auto',
+                    fontSize: isSmallDesktop ? '0.875rem' : '0.9rem',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0
+                  }}
+                >
+                  {item.label}
+                </Button>
+              );
+            })}
           </Box>
         )}
 

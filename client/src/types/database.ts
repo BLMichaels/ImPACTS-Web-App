@@ -533,6 +533,8 @@ export interface CohortDiscussionTopic {
   cohort_id: string;
   title: string;
   content: string | null;
+  draft_content?: string | null;
+  attachments?: Array<{ name: string; url: string; type: string; size?: number }>;
   created_by: string | null;
   is_locked: boolean;
   is_pinned: boolean;
@@ -560,6 +562,8 @@ export interface CohortDiscussionReply {
   id: string;
   topic_id: string;
   content: string;
+  draft_content?: string | null;
+  attachments?: Array<{ name: string; url: string; type: string; size?: number }>;
   created_by: string | null;
   edited_at: string | null;
   created_at: string;

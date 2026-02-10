@@ -205,8 +205,33 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
     setTopics(prev => [topic, ...prev]);
   };
 
+  const handleTopicDeleted = (topicId: string) => {
+    setTopics(prev => prev.filter(t => t.id !== topicId));
+    if (selectedTopic?.id === topicId) {
+      setSelectedTopic(null);
+    }
+  };
+
   const handleTopicClick = (topic: CohortDiscussionTopic) => {
     setSelectedTopic(topic);
+  };
+
+  const handleMarkDiscussionAsRead = async () => {
+    if (!userProfile?.id || unreadDiscussions === 0) return;
+    
+    try {
+      await supabase
+        .from('cohort_read_status')
+        .upsert({
+          user_id: userProfile.id,
+          cohort_id: cohort.id,
+          last_read_discussions: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id,cohort_id' });
+      setUnreadDiscussions(0);
+    } catch (error) {
+      console.error('Error marking discussion as read:', error);
+    }
   };
 
   const handleMemberAdded = (member: CohortMember) => {
@@ -225,6 +250,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         cohortId={cohort.id}
         onBack={() => setSelectedTopic(null)}
         canModerate={canManage}
+        onMarkAsRead={handleMarkDiscussionAsRead}
       />
     );
   }
@@ -306,7 +332,9 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             topics={topics}
             onTopicClick={handleTopicClick}
             onTopicCreated={handleTopicCreated}
+            onTopicDeleted={handleTopicDeleted}
             loading={loading}
+            canManage={canManage}
           />
         </Box>
       ) : (
@@ -378,7 +406,9 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                   topics={topics}
                   onTopicClick={handleTopicClick}
                   onTopicCreated={handleTopicCreated}
+                  onTopicDeleted={handleTopicDeleted}
                   loading={loading}
+                  canManage={canManage}
                 />
               );
             }
