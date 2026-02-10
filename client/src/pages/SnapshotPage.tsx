@@ -143,6 +143,63 @@ const SnapshotPage = () => {
     }
   }, []);
 
+  // Calculate current PRS score
+  const currentPRSScore = useMemo(() => {
+    try {
+      const prsQuestions = localStorage.getItem('prsQuestions');
+      if (!prsQuestions) return null;
+      
+      const questions = JSON.parse(prsQuestions);
+      let totalPoints = 0;
+      let earnedPoints = 0;
+
+      const calculateQuestionPoints = (question: PRSQuestion): number => {
+        if (question.points) {
+          totalPoints += question.points;
+          
+          if (question.answer) {
+            let shouldEarnPoints = false;
+            
+            if (question.type === 'yesno') {
+              shouldEarnPoints = question.answer === 'yes';
+            } else if (question.type === 'radio') {
+              shouldEarnPoints = true;
+            } else if (question.type === 'checkbox') {
+              shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
+            } else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
+              shouldEarnPoints = question.answer !== '' && question.answer !== null;
+            } else {
+              shouldEarnPoints = true;
+            }
+            
+            if (shouldEarnPoints) {
+              earnedPoints += question.points;
+            }
+          }
+        }
+
+        if (question.subQuestions) {
+          question.subQuestions.forEach((subQ: any) => {
+            calculateQuestionPoints(subQ);
+          });
+        }
+
+        return earnedPoints;
+      };
+
+      questions.forEach((question: PRSQuestion) => {
+        calculateQuestionPoints(question);
+      });
+
+      if (totalPoints > 0) {
+        return Math.round((earnedPoints / totalPoints) * 100);
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }, []);
+
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
     // In a production app, you'd use a library like jsPDF or html2pdf
@@ -954,63 +1011,6 @@ const SnapshotPage = () => {
       </Box>
     );
   }
-
-  // Calculate current PRS score
-  const currentPRSScore = useMemo(() => {
-    try {
-      const prsQuestions = localStorage.getItem('prsQuestions');
-      if (!prsQuestions) return null;
-      
-      const questions = JSON.parse(prsQuestions);
-      let totalPoints = 0;
-      let earnedPoints = 0;
-
-      const calculateQuestionPoints = (question: PRSQuestion): number => {
-        if (question.points) {
-          totalPoints += question.points;
-          
-          if (question.answer) {
-            let shouldEarnPoints = false;
-            
-            if (question.type === 'yesno') {
-              shouldEarnPoints = question.answer === 'yes';
-            } else if (question.type === 'radio') {
-              shouldEarnPoints = true;
-            } else if (question.type === 'checkbox') {
-              shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
-            } else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
-              shouldEarnPoints = question.answer !== '' && question.answer !== null;
-            } else {
-              shouldEarnPoints = true;
-            }
-            
-            if (shouldEarnPoints) {
-              earnedPoints += question.points;
-            }
-          }
-        }
-
-        if (question.subQuestions) {
-          question.subQuestions.forEach((subQ: any) => {
-            calculateQuestionPoints(subQ);
-          });
-        }
-
-        return earnedPoints;
-      };
-
-      questions.forEach((question: PRSQuestion) => {
-        calculateQuestionPoints(question);
-      });
-
-      if (totalPoints > 0) {
-        return Math.round((earnedPoints / totalPoints) * 100);
-      }
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }, []);
 
   // Calculate trend
   const scoreTrend = readinessScores.length >= 2 
