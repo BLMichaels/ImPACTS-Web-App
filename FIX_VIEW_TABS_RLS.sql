@@ -3,12 +3,20 @@
 -- Run this in your Supabase SQL Editor
 
 -- =====================================================
--- 1. Ensure RLS is enabled
+-- 1. Ensure manager_id_for_pecc column exists (required for policies)
+-- =====================================================
+ALTER TABLE public.users 
+ADD COLUMN IF NOT EXISTS manager_id_for_pecc UUID REFERENCES public.users(id);
+
+CREATE INDEX IF NOT EXISTS idx_users_manager_id_for_pecc ON public.users(manager_id_for_pecc);
+
+-- =====================================================
+-- 2. Ensure RLS is enabled
 -- =====================================================
 ALTER TABLE public.view_tabs ENABLE ROW LEVEL SECURITY;
 
 -- =====================================================
--- 2. Drop existing policies (if they exist) to recreate them cleanly
+-- 3. Drop existing policies (if they exist) to recreate them cleanly
 -- =====================================================
 DROP POLICY IF EXISTS "Users view own tabs" ON public.view_tabs;
 DROP POLICY IF EXISTS "Users view cohort program tabs" ON public.view_tabs;
@@ -17,7 +25,7 @@ DROP POLICY IF EXISTS "Managers manage team tabs" ON public.view_tabs;
 DROP POLICY IF EXISTS "Mentors manage mentee tabs" ON public.view_tabs;
 
 -- =====================================================
--- 3. Create comprehensive RLS policies
+-- 4. Create comprehensive RLS policies
 -- =====================================================
 
 -- Policy 1: Users can view their own tab settings
@@ -157,7 +165,7 @@ CREATE POLICY "Mentors manage mentee tabs" ON public.view_tabs
   );
 
 -- =====================================================
--- 4. Verify RLS is enabled
+-- 5. Verify RLS is enabled
 -- =====================================================
 -- Check if RLS is enabled (should return 't' for true)
 SELECT tablename, rowsecurity 
