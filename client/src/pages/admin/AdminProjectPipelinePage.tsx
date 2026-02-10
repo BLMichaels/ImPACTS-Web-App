@@ -629,7 +629,7 @@ const AdminProjectPipelinePage: React.FC = () => {
     return items.filter(item => {
       if (statusFilter && item.status !== statusFilter) return false;
       if (leadFilter && item.projectLead !== leadFilter && item.leadSenior !== leadFilter) return false;
-      if (devStatusFilter && (item as SimBoxCase).projectDevelopmentStatus !== devStatusFilter) return false;
+      if (devStatusFilter && 'projectDevelopmentStatus' in item && item.projectDevelopmentStatus !== devStatusFilter) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const searchable = [item.categoryTopic, item.topic, item.projectLead, item.leadSenior].filter(Boolean).join(' ').toLowerCase();
