@@ -23,9 +23,10 @@ CREATE INDEX IF NOT EXISTS idx_cohort_discussion_topics_attachments ON public.co
 CREATE INDEX IF NOT EXISTS idx_cohort_discussion_replies_attachments ON public.cohort_discussion_replies USING GIN (attachments);
 
 -- =====================================================
--- 4. Update RLS policies to allow managers to delete topics
+-- 4. Update RLS policies to allow admins and managers to delete topics
 -- =====================================================
--- Managers can delete topics in cohorts they manage
+-- Note: Admins already have full access via "cohort_discussion_topics_admin_all" policy
+-- This policy explicitly allows managers to delete topics in cohorts they manage
 DROP POLICY IF EXISTS "Managers delete discussion topics" ON public.cohort_discussion_topics;
 CREATE POLICY "Managers delete discussion topics" ON public.cohort_discussion_topics
   FOR DELETE USING (
@@ -34,6 +35,18 @@ CREATE POLICY "Managers delete discussion topics" ON public.cohort_discussion_to
       JOIN public.cohort_managers cm ON cm.cohort_id = t.cohort_id
       WHERE t.id = cohort_discussion_topics.id 
       AND cm.manager_id = auth.uid()
+    )
+  );
+
+-- Ensure admins can also delete (explicit policy, though they already have FOR ALL)
+-- This is redundant but makes it explicit
+DROP POLICY IF EXISTS "Admins delete discussion topics" ON public.cohort_discussion_topics;
+CREATE POLICY "Admins delete discussion topics" ON public.cohort_discussion_topics
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.users u 
+      WHERE u.id = auth.uid() 
+      AND (u.role = 'admin' OR u.is_admin = true)
     )
   );
 
