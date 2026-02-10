@@ -506,6 +506,11 @@ const AdminCRMPage: React.FC = () => {
   const [contactUsage, setContactUsage] = useState<{ logins: number; pageViews: number } | null>(null);
   const [contactUsageLoading, setContactUsageLoading] = useState(false);
   const [contactUsagePeriod, setContactUsagePeriod] = useState<'7' | '30' | '90' | 'all'>('30');
+  const [duplicatesDialogOpen, setDuplicatesDialogOpen] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeSource, setMergeSource] = useState<Contact | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<Contact | null>(null);
+  const [detectedDuplicates, setDetectedDuplicates] = useState<Array<{ contact: Contact; duplicates: Contact[] }>>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -2090,6 +2095,338 @@ const AdminCRMPage: React.FC = () => {
     setBulkStatusAnchor(null);
   };
 
+  // String similarity function (Levenshtein distance normalized)
+  const stringSimilarity = (str1: string, str2: string): number => {
+    const s1 = (str1 || '').toLowerCase().trim();
+    const s2 = (str2 || '').toLowerCase().trim();
+    if (s1 === s2) return 1;
+    if (!s1 || !s2) return 0;
+    
+    const len1 = s1.length;
+    const len2 = s2.length;
+    const matrix: number[][] = [];
+    
+    for (let i = 0; i <= len1; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= len2; j++) {
+      matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j - 1] + cost
+        );
+      }
+    }
+    
+    const distance = matrix[len1][len2];
+    const maxLen = Math.max(len1, len2);
+    return maxLen === 0 ? 1 : 1 - (distance / maxLen);
+  };
+
+  // Normalize phone numbers for comparison
+  const normalizePhone = (phone: string): string => {
+    return (phone || '').replace(/\D/g, '');
+  };
+
+  // Normalize email for comparison
+  const normalizeEmail = (email: string): string => {
+    return (email || '').toLowerCase().trim();
+  };
+
+  // Detect duplicates for a contact
+  const detectDuplicates = (contact: Contact): Contact[] => {
+    const duplicates: Contact[] = [];
+    const contactEmail = normalizeEmail(contact.email);
+    const contactPhone = normalizePhone(contact.phone);
+    const contactName = contact.name.toLowerCase().trim();
+    const contactFirstName = (contact.firstName || '').toLowerCase().trim();
+    const contactLastName = (contact.lastName || '').toLowerCase().trim();
+    const contactOrg = (contact.organization || '').toLowerCase().trim();
+    
+    for (const other of contacts) {
+      if (other.id === contact.id) continue;
+      if (other.type !== contact.type) continue; // Only match same type
+      
+      let matchScore = 0;
+      let matchReasons: string[] = [];
+      
+      // Exact email match (high confidence)
+      if (contactEmail && normalizeEmail(other.email) === contactEmail) {
+        matchScore += 10;
+        matchReasons.push('Email');
+      }
+      
+      // Exact phone match (high confidence)
+      if (contactPhone && normalizePhone(other.phone) === contactPhone && contactPhone.length >= 10) {
+        matchScore += 10;
+        matchReasons.push('Phone');
+      }
+      
+      // Name similarity (for person types)
+      if (isPersonType(contact.type)) {
+        const otherFirstName = (other.firstName || '').toLowerCase().trim();
+        const otherLastName = (other.lastName || '').toLowerCase().trim();
+        const otherName = other.name.toLowerCase().trim();
+        
+        // First and last name match
+        if (contactFirstName && contactLastName && otherFirstName && otherLastName) {
+          const firstNameMatch = stringSimilarity(contactFirstName, otherFirstName);
+          const lastNameMatch = stringSimilarity(contactLastName, otherLastName);
+          if (firstNameMatch > 0.8 && lastNameMatch > 0.8) {
+            matchScore += 8;
+            matchReasons.push('Name');
+          }
+        }
+        
+        // Full name similarity
+        const nameSim = stringSimilarity(contactName, otherName);
+        if (nameSim > 0.85) {
+          matchScore += 6;
+          if (!matchReasons.includes('Name')) matchReasons.push('Name');
+        }
+        
+        // Same organization + similar name
+        if (contactOrg && (other.organization || '').toLowerCase().trim() === contactOrg) {
+          if (nameSim > 0.7) {
+            matchScore += 4;
+            if (!matchReasons.includes('Organization')) matchReasons.push('Organization');
+          }
+        }
+      } else {
+        // For organizations/hospitals: name similarity
+        const nameSim = stringSimilarity(contactName, other.name.toLowerCase().trim());
+        if (nameSim > 0.85) {
+          matchScore += 8;
+          matchReasons.push('Name');
+        }
+        
+        // Same location + similar name
+        if (contact.state && other.state && contact.state === other.state) {
+          if (contact.city && other.city && contact.city.toLowerCase() === other.city.toLowerCase()) {
+            if (nameSim > 0.7) {
+              matchScore += 4;
+              if (!matchReasons.includes('Location')) matchReasons.push('Location');
+            }
+          }
+        }
+      }
+      
+      // If match score is high enough, consider it a duplicate
+      if (matchScore >= 8) {
+        duplicates.push({ ...other, tags: matchReasons } as Contact & { tags: string[] });
+      }
+    }
+    
+    return duplicates;
+  };
+
+  // Scan all contacts for duplicates
+  const scanForDuplicates = () => {
+    const duplicates: Array<{ contact: Contact; duplicates: Contact[] }> = [];
+    const processed = new Set<string>();
+    
+    for (const contact of contacts) {
+      if (processed.has(contact.id)) continue;
+      
+      const contactDuplicates = detectDuplicates(contact);
+      if (contactDuplicates.length > 0) {
+        duplicates.push({ contact, duplicates: contactDuplicates });
+        // Mark this contact and its duplicates as processed
+        processed.add(contact.id);
+        contactDuplicates.forEach(d => processed.add(d.id));
+      }
+    }
+    
+    setDetectedDuplicates(duplicates);
+    setDuplicatesDialogOpen(true);
+  };
+
+  // Merge two contacts
+  const mergeContacts = async (source: Contact, target: Contact) => {
+    if (!source || !target || source.id === target.id) return;
+    
+    setSaveInProgress(true);
+    
+    try {
+      // Merge data: prefer non-null values, with target taking precedence for conflicts
+      const mergedNotesLog = [
+        ...(target.notesLog || []),
+        ...(source.notesLog || [])
+      ].sort((a, b) => b.date.localeCompare(a.date));
+      
+      const mergedActivityLog = [
+        ...(target.activityLog || []),
+        ...(source.activityLog || [])
+      ].sort((a, b) => b.date.localeCompare(a.date));
+      
+      // Merge custom fields (target takes precedence)
+      const mergedCustomFields = {
+        ...(source.customFields || {}),
+        ...(target.customFields || {})
+      };
+      
+      // Merge programs and cohorts (unique values)
+      const mergedPrograms = Array.from(new Set([
+        ...(target.programs || []),
+        ...(source.programs || [])
+      ]));
+      
+      const mergedCohorts = Array.from(new Set([
+        ...(target.cohorts || []),
+        ...(source.cohorts || [])
+      ]));
+      
+      // Merge linked IDs (unique values)
+      const mergedLinkedOrgs = Array.from(new Set([
+        ...(target.linkedOrganizationIds || []),
+        ...(source.linkedOrganizationIds || [])
+      ]));
+      
+      const mergedLinkedHospitals = Array.from(new Set([
+        ...(target.linkedHospitalIds || []),
+        ...(source.linkedHospitalIds || [])
+      ]));
+      
+      // Combine notes (target first, then source)
+      const mergedNotes = [
+        target.notes || '',
+        source.notes || ''
+      ].filter(Boolean).join('\n\n---\n\n');
+      
+      // Determine which contact to keep (prefer the one with more data or newer)
+      const keepContact = target; // Keep target as primary
+      const deleteContact = source; // Delete source
+      
+      // Update the kept contact with merged data
+      if (keepContact.type === 'hospital' && (keepContact.facilityId || keepContact.id)) {
+        // Update hospital
+        const key = String(keepContact.facilityId ?? keepContact.id);
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+        const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
+        
+        const updatePayload: Record<string, unknown> = {
+          notes: mergedNotes || null,
+          notes_log: mergedNotesLog,
+          activity_log: mergedActivityLog,
+          custom_fields: mergedCustomFields,
+          programs: mergedPrograms,
+          cohorts: mergedCohorts
+        };
+        
+        // Merge other fields if target is missing them
+        if (!keepContact.email && deleteContact.email) updatePayload.email = deleteContact.email;
+        if (!keepContact.phone && deleteContact.phone) updatePayload.phone = deleteContact.phone;
+        if (!keepContact.address && deleteContact.address) updatePayload.address = deleteContact.address;
+        if (!keepContact.city && deleteContact.city) updatePayload.city = deleteContact.city;
+        if (!keepContact.state && deleteContact.state) updatePayload.state = deleteContact.state;
+        if (!keepContact.zip && deleteContact.zip) updatePayload.zip = deleteContact.zip;
+        if (!keepContact.county && deleteContact.county) updatePayload.county = deleteContact.county;
+        
+        await supabase.from('hospitals').update(updatePayload).or(filterClause);
+      } else if (keepContact.crmCreated && keepContact.type !== 'hospital') {
+        // Update CRM organization/person
+        const updatePayload: Record<string, unknown> = {
+          notes: mergedNotes || null,
+          notes_log: mergedNotesLog,
+          activity_log: mergedActivityLog,
+          custom_fields: mergedCustomFields,
+          programs: mergedPrograms,
+          cohorts: mergedCohorts,
+          linked_organization_ids: mergedLinkedOrgs,
+          linked_hospital_ids: mergedLinkedHospitals,
+          updated_at: new Date().toISOString()
+        };
+        
+        // Merge other fields if target is missing them
+        if (!keepContact.email && deleteContact.email) updatePayload.email = deleteContact.email;
+        if (!keepContact.phone && deleteContact.phone) updatePayload.phone = deleteContact.phone;
+        if (!keepContact.region && deleteContact.region) updatePayload.region = deleteContact.region;
+        if (!keepContact.state && deleteContact.state) updatePayload.state = deleteContact.state;
+        if (isPersonType(keepContact.type)) {
+          if (!keepContact.firstName && deleteContact.firstName) updatePayload.first_name = deleteContact.firstName;
+          if (!keepContact.lastName && deleteContact.lastName) updatePayload.last_name = deleteContact.lastName;
+          if (!keepContact.organization && deleteContact.organization) updatePayload.organization = deleteContact.organization;
+        }
+        
+        await supabase.from('crm_organizations').update(updatePayload).eq('id', keepContact.id);
+      }
+      
+      // Delete the source contact
+      if (deleteContact.crmCreated && deleteContact.type !== 'hospital') {
+        await supabase.from('crm_organizations').delete().eq('id', deleteContact.id);
+      } else if (deleteContact.type === 'hospital' && (deleteContact.facilityId || deleteContact.id)) {
+        const key = String(deleteContact.facilityId ?? deleteContact.id);
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+        const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
+        await supabase.from('hospitals').delete().or(filterClause);
+      }
+      
+      // Update local state
+      setContacts(prev => {
+        const updated = prev.map(c => {
+          if (c.id === keepContact.id) {
+            return {
+              ...keepContact,
+              notes: mergedNotes,
+              notesLog: mergedNotesLog,
+              activityLog: mergedActivityLog,
+              customFields: mergedCustomFields,
+              programs: mergedPrograms,
+              cohorts: mergedCohorts,
+              linkedOrganizationIds: mergedLinkedOrgs,
+              linkedHospitalIds: mergedLinkedHospitals,
+              email: keepContact.email || deleteContact.email,
+              phone: keepContact.phone || deleteContact.phone,
+              firstName: keepContact.firstName || deleteContact.firstName,
+              lastName: keepContact.lastName || deleteContact.lastName,
+              organization: keepContact.organization || deleteContact.organization,
+              region: keepContact.region || deleteContact.region,
+              state: keepContact.state || deleteContact.state,
+              address: keepContact.address || deleteContact.address,
+              city: keepContact.city || deleteContact.city,
+              zip: keepContact.zip || deleteContact.zip,
+              county: keepContact.county || deleteContact.county
+            };
+          }
+          return c;
+        }).filter(c => c.id !== deleteContact.id);
+        return updated;
+      });
+      
+      // Update detail contact if viewing merged contact
+      if (detailContact?.id === keepContact.id) {
+        const updated = contacts.find(c => c.id === keepContact.id);
+        if (updated) setDetailContact(updated);
+      } else if (detailContact?.id === deleteContact.id) {
+        const updated = contacts.find(c => c.id === keepContact.id);
+        if (updated) {
+          setDetailContact(updated);
+          setPanelOpen(true);
+        }
+      }
+      
+      // Close dialogs
+      setMergeDialogOpen(false);
+      setMergeSource(null);
+      setMergeTarget(null);
+      
+      // Refresh duplicates list
+      scanForDuplicates();
+      
+    } catch (error) {
+      console.error('Failed to merge contacts:', error);
+      setSaveError(`Failed to merge contacts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSaveInProgress(false);
+    }
+  };
+
   return (
     <Box sx={{ py: 3 }}>
       {/* Header */}
@@ -2108,6 +2445,11 @@ const AdminCRMPage: React.FC = () => {
               </Button>
             </Tooltip>
           )}
+          <Tooltip title="Scan for duplicate contacts">
+            <Button startIcon={<SearchIcon />} onClick={scanForDuplicates} size="medium" color={detectedDuplicates.length > 0 ? 'warning' : 'inherit'}>
+              Find Duplicates {detectedDuplicates.length > 0 ? `(${detectedDuplicates.length})` : ''}
+            </Button>
+          </Tooltip>
           <Tooltip title="Import contacts from a CSV file">
             <Button startIcon={<UploadIcon />} onClick={() => { setImportDialogOpen(true); setImportData([]); setImportHeaders([]); setImportColumnMapping({}); setImportError(null); setImportSuccess(null); }} size="medium">
               Import
@@ -4032,6 +4374,183 @@ const AdminCRMPage: React.FC = () => {
               </Button>
             </>
           )}
+        </DialogActions>
+      </Dialog>
+      
+      {/* Duplicates Detection Dialog */}
+      <Dialog open={duplicatesDialogOpen} onClose={() => setDuplicatesDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Duplicate Contacts Detected</DialogTitle>
+        <DialogContent>
+          {detectedDuplicates.length === 0 ? (
+            <Alert severity="success">No duplicates found!</Alert>
+          ) : (
+            <>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Found {detectedDuplicates.length} contact(s) with potential duplicates. Review and merge as needed.
+              </Alert>
+              <List>
+                {detectedDuplicates.map(({ contact, duplicates }, idx) => (
+                  <React.Fragment key={contact.id}>
+                    <ListItem>
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="subtitle1">{contactDisplayName(contact)}</Typography>
+                            <Chip label={TYPE_LABELS[contact.type]} size="small" />
+                            <Typography variant="body2" color="text.secondary">
+                              ({duplicates.length} duplicate{duplicates.length > 1 ? 's' : ''})
+                            </Typography>
+                          </Box>
+                        }
+                        secondary={
+                          <Box>
+                            {contact.email && <Typography variant="caption" display="block">{contact.email}</Typography>}
+                            {contact.phone && <Typography variant="caption" display="block">{contact.phone}</Typography>}
+                            {contact.organization && <Typography variant="caption" display="block">{contact.organization}</Typography>}
+                          </Box>
+                        }
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          if (duplicates.length > 0) {
+                            setMergeSource(duplicates[0]);
+                            setMergeTarget(contact);
+                            setMergeDialogOpen(true);
+                          }
+                        }}
+                      >
+                        Merge
+                      </Button>
+                    </ListItem>
+                    {duplicates.map((dup) => (
+                      <ListItem key={dup.id} sx={{ pl: 4 }}>
+                        <ListItemIcon>
+                          <PersonIcon fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              <Typography variant="body2">{contactDisplayName(dup)}</Typography>
+                              {(dup as Contact & { tags?: string[] }).tags && (
+                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                  {((dup as Contact & { tags?: string[] }).tags || []).map((tag) => (
+                                    <Chip key={tag} label={tag} size="small" color="primary" variant="outlined" />
+                                  ))}
+                                </Box>
+                              )}
+                            </Box>
+                          }
+                          secondary={
+                            <Box>
+                              {dup.email && <Typography variant="caption" display="block">{dup.email}</Typography>}
+                              {dup.phone && <Typography variant="caption" display="block">{dup.phone}</Typography>}
+                              {dup.organization && <Typography variant="caption" display="block">{dup.organization}</Typography>}
+                            </Box>
+                          }
+                        />
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => {
+                            setMergeSource(dup);
+                            setMergeTarget(contact);
+                            setMergeDialogOpen(true);
+                          }}
+                        >
+                          Merge into {contactDisplayName(contact)}
+                        </Button>
+                      </ListItem>
+                    ))}
+                    {idx < detectedDuplicates.length - 1 && <Divider sx={{ my: 1 }} />}
+                  </React.Fragment>
+                ))}
+              </List>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDuplicatesDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Merge Contacts Dialog */}
+      <Dialog open={mergeDialogOpen} onClose={() => !saveInProgress && setMergeDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Merge Contacts</DialogTitle>
+        <DialogContent>
+          {mergeSource && mergeTarget && (
+            <>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                This will merge "{contactDisplayName(mergeSource)}" into "{contactDisplayName(mergeTarget)}" and delete the source contact.
+                All notes, activities, and data will be combined. This action cannot be undone.
+              </Alert>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Source (will be deleted)</Typography>
+                  <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
+                    <Typography variant="body1" fontWeight={600}>{contactDisplayName(mergeSource)}</Typography>
+                    {mergeSource.email && <Typography variant="body2">{mergeSource.email}</Typography>}
+                    {mergeSource.phone && <Typography variant="body2">{mergeSource.phone}</Typography>}
+                    {mergeSource.organization && <Typography variant="body2">{mergeSource.organization}</Typography>}
+                    {(mergeSource.notesLog?.length ?? 0) > 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        {mergeSource.notesLog!.length} note(s)
+                      </Typography>
+                    )}
+                    {(mergeSource.activityLog?.length ?? 0) > 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        {mergeSource.activityLog!.length} activity(ies)
+                      </Typography>
+                    )}
+                  </Paper>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Target (will be kept)</Typography>
+                  <Paper variant="outlined" sx={{ p: 2, mt: 1, bgcolor: 'action.selected' }}>
+                    <Typography variant="body1" fontWeight={600}>{contactDisplayName(mergeTarget)}</Typography>
+                    {mergeTarget.email && <Typography variant="body2">{mergeTarget.email}</Typography>}
+                    {mergeTarget.phone && <Typography variant="body2">{mergeTarget.phone}</Typography>}
+                    {mergeTarget.organization && <Typography variant="body2">{mergeTarget.organization}</Typography>}
+                    {(mergeTarget.notesLog?.length ?? 0) > 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        {mergeTarget.notesLog!.length} note(s)
+                      </Typography>
+                    )}
+                    {(mergeTarget.activityLog?.length ?? 0) > 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        {mergeTarget.activityLog!.length} activity(ies)
+                      </Typography>
+                    )}
+                  </Paper>
+                </Grid>
+                <Grid item xs={12}>
+                  <Alert severity="info">
+                    Merged contact will have:
+                    <ul style={{ marginTop: 8, marginBottom: 0 }}>
+                      <li>Combined notes and activity logs</li>
+                      <li>Merged custom fields (target values take precedence)</li>
+                      <li>Combined programs and cohorts</li>
+                      <li>All linked organizations and hospitals</li>
+                      <li>Most complete data (non-null values preferred)</li>
+                    </ul>
+                  </Alert>
+                </Grid>
+              </Grid>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMergeDialogOpen(false)} disabled={saveInProgress}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => mergeSource && mergeTarget && mergeContacts(mergeSource, mergeTarget)}
+            disabled={saveInProgress || !mergeSource || !mergeTarget}
+            startIcon={saveInProgress ? <CircularProgress size={16} /> : <DeleteIcon />}
+          >
+            {saveInProgress ? 'Merging...' : 'Merge & Delete Source'}
+          </Button>
         </DialogActions>
       </Dialog>
       
