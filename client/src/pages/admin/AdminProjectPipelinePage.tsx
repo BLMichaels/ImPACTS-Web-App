@@ -319,6 +319,7 @@ const AdminProjectPipelinePage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [leadFilter, setLeadFilter] = useState<string>('');
+  const [devStatusFilter, setDevStatusFilter] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
 
   // All view collapse states
@@ -622,12 +623,13 @@ const AdminProjectPipelinePage: React.FC = () => {
   };
 
   // Filtering helper
-  const filterItems = <T extends { status?: string; projectLead?: string; leadSenior?: string; categoryTopic?: string; topic?: string }>(
+  const filterItems = <T extends { status?: string; projectLead?: string; leadSenior?: string; categoryTopic?: string; topic?: string; projectDevelopmentStatus?: string }>(
     items: T[]
   ): T[] => {
     return items.filter(item => {
       if (statusFilter && item.status !== statusFilter) return false;
       if (leadFilter && item.projectLead !== leadFilter && item.leadSenior !== leadFilter) return false;
+      if (devStatusFilter && (item as SimBoxCase).projectDevelopmentStatus !== devStatusFilter) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const searchable = [item.categoryTopic, item.topic, item.projectLead, item.leadSenior].filter(Boolean).join(' ').toLowerCase();
@@ -638,10 +640,10 @@ const AdminProjectPipelinePage: React.FC = () => {
   };
 
   // Filtered and sorted data
-  const sortedSimbox = useMemo(() => sortItems(filterItems(simboxCases), sortField, sortDir), [simboxCases, sortField, sortDir, searchQuery, statusFilter, leadFilter]);
-  const sortedScholarship = useMemo(() => sortItems(filterItems(scholarshipItems), sortField, sortDir), [scholarshipItems, sortField, sortDir, searchQuery, statusFilter, leadFilter]);
-  const sortedAbstracts = useMemo(() => sortItems(filterItems(abstractsItems), sortField, sortDir), [abstractsItems, sortField, sortDir, searchQuery, statusFilter, leadFilter]);
-  const sortedResearch = useMemo(() => sortItems(filterItems(researchDisseminationItems), 'topic', sortDir), [researchDisseminationItems, sortDir, searchQuery, statusFilter, leadFilter]);
+  const sortedSimbox = useMemo(() => sortItems(filterItems(simboxCases), sortField, sortDir), [simboxCases, sortField, sortDir, searchQuery, statusFilter, leadFilter, devStatusFilter]);
+  const sortedScholarship = useMemo(() => sortItems(filterItems(scholarshipItems), sortField, sortDir), [scholarshipItems, sortField, sortDir, searchQuery, statusFilter, leadFilter, devStatusFilter]);
+  const sortedAbstracts = useMemo(() => sortItems(filterItems(abstractsItems), sortField, sortDir), [abstractsItems, sortField, sortDir, searchQuery, statusFilter, leadFilter, devStatusFilter]);
+  const sortedResearch = useMemo(() => sortItems(filterItems(researchDisseminationItems), 'topic', sortDir), [researchDisseminationItems, sortDir, searchQuery, statusFilter, leadFilter, devStatusFilter]);
 
   // Archive: completed items from all tabs
   const archivedItems = useMemo(() => {
@@ -689,8 +691,8 @@ const AdminProjectPipelinePage: React.FC = () => {
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Filter bar component
-  const FilterBar = () => (
+  // Filter bar JSX - memoized to prevent re-creation on each render (fixes focus loss issue)
+  const filterBarJSX = useMemo(() => (
     <Box sx={{ mb: 2 }}>
       <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
@@ -709,8 +711,8 @@ const AdminProjectPipelinePage: React.FC = () => {
         >
           Filters
         </Button>
-        {(statusFilter || leadFilter) && (
-          <Button size="small" onClick={() => { setStatusFilter(''); setLeadFilter(''); }}>Clear Filters</Button>
+        {(statusFilter || leadFilter || devStatusFilter) && (
+          <Button size="small" onClick={() => { setStatusFilter(''); setLeadFilter(''); setDevStatusFilter(''); }}>Clear Filters</Button>
         )}
       </Box>
       <Collapse in={showFilters}>
@@ -729,10 +731,17 @@ const AdminProjectPipelinePage: React.FC = () => {
               {teamMembersList.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 250 }}>
+            <InputLabel>Development Status</InputLabel>
+            <Select value={devStatusFilter} label="Development Status" onChange={(e) => setDevStatusFilter(e.target.value)}>
+              <MenuItem value="">All</MenuItem>
+              {DEVELOPMENT_STAGES.map(s => <MenuItem key={s.value} value={s.value}>{s.value}</MenuItem>)}
+            </Select>
+          </FormControl>
         </Box>
       </Collapse>
     </Box>
-  );
+  ), [searchQuery, statusFilter, leadFilter, devStatusFilter, showFilters, teamMembersList]);
 
   // SimBox table component
   const SimBoxTable: React.FC<{ data: SimBoxCase[]; showAddButton?: boolean }> = ({ data, showAddButton = true }) => (
@@ -1140,7 +1149,7 @@ const AdminProjectPipelinePage: React.FC = () => {
         {/* Master Priorities List (Tab 0) - was "All" */}
         {tabValue === 0 && (
           <Box>
-            <FilterBar />
+            {filterBarJSX}
             {/* SimBox */}
             <Box sx={{ mb: 3, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
               <Box 
@@ -1224,7 +1233,7 @@ const AdminProjectPipelinePage: React.FC = () => {
         {/* SimBox Cases Tab (Tab 1) */}
         {tabValue === 1 && (
           <>
-            <FilterBar />
+            {filterBarJSX}
             <SimBoxTable data={sortedSimbox} />
           </>
         )}
@@ -1232,7 +1241,7 @@ const AdminProjectPipelinePage: React.FC = () => {
         {/* Scholarship/Publications Tab (Tab 2) */}
         {tabValue === 2 && (
           <>
-            <FilterBar />
+            {filterBarJSX}
             <GenericTable
               title="Scholarship/Publications"
               data={sortedScholarship}
@@ -1246,7 +1255,7 @@ const AdminProjectPipelinePage: React.FC = () => {
         {/* Research Dissemination Tab (Tab 3) */}
         {tabValue === 3 && (
           <>
-            <FilterBar />
+            {filterBarJSX}
             <ResearchTable data={sortedResearch} />
           </>
         )}
@@ -1254,7 +1263,7 @@ const AdminProjectPipelinePage: React.FC = () => {
         {/* Abstracts/Presentations Tab (Tab 4) */}
         {tabValue === 4 && (
           <>
-            <FilterBar />
+            {filterBarJSX}
             <GenericTable
               title="Abstracts/Presentations"
               data={sortedAbstracts}
@@ -1275,7 +1284,7 @@ const AdminProjectPipelinePage: React.FC = () => {
         {/* Archive Tab (Tab 7) - shows completed items */}
         {tabValue === 7 && (
           <Box>
-            <FilterBar />
+            {filterBarJSX}
             <Typography variant="h6" gutterBottom>Archive (Completed Items)</Typography>
             {archivedItems.length === 0 ? (
               <Alert severity="info">No completed items yet. Items marked &quot;Complete&quot; will appear here.</Alert>
