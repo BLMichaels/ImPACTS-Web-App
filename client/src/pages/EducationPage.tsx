@@ -252,7 +252,7 @@ const EducationPage: React.FC = () => {
                 Question {question.id}
               </Typography>
               <Typography variant="body1" sx={{ mb: 2 }}>
-                {question.text}
+                {educationContent[question.id]?.question || question.text}
               </Typography>
               
               {question.options && (

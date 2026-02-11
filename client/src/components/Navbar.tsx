@@ -141,7 +141,7 @@ const Navbar: React.FC = () => {
           { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
-          { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> },
+          { path: '/gap-plan', label: 'Gaps & Education', icon: <AssignmentIcon /> },
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
         const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
