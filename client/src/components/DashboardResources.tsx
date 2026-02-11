@@ -108,8 +108,9 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
   };
 
   const getCategories = () => {
-    const cats = resources.map((r) => r.category).filter(Boolean);
-    return ['All', ...Array.from(new Set(cats))];
+    const cats = resources.map((r) => r.category).filter(Boolean).filter(c => c.trim() !== '');
+    const uniqueCats = Array.from(new Set(cats));
+    return ['All', ...uniqueCats.sort()];
   };
 
   const getTags = () => Array.from(new Set(resources.flatMap((r) => r.tags || [])));
@@ -125,8 +126,9 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
       const matchSearch =
         r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (r.description?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-        (r.tags?.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase())) ?? false);
-      const matchCat = selectedCategory === 'All' || r.category === selectedCategory;
+        (r.tags?.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase())) ?? false) ||
+        (r.category?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+      const matchCat = selectedCategory === 'All' || (r.category && r.category.trim() === selectedCategory.trim());
       const matchTags = selectedTags.length === 0 || selectedTags.some((t) => r.tags?.includes(t));
       return matchSearch && matchCat && matchTags;
     });
@@ -150,6 +152,7 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
     setResources(next);
     persist(next);
     setForm({ title: '', url: '', description: '', tags: [], category: '' });
+    setNewCategory('');
     setAddDialogOpen(false);
   };
 
@@ -181,6 +184,7 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
     setResources(next);
     persist(next);
     setForm({ title: '', url: '', description: '', tags: [], category: '' });
+    setNewCategory('');
     setCurrentResource(null);
     setEditDialogOpen(false);
   };

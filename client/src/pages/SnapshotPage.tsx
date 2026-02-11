@@ -65,6 +65,16 @@ const SnapshotPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [renderError, setRenderError] = useState(false);
+  const [prsSectionVisible, setPrsSectionVisible] = useState(true);
+  
+  // Check if PRS section should be visible
+  useEffect(() => {
+    if (currentUser?.uid) {
+      const saved = localStorage.getItem(`pecc_prs_section_visible_${currentUser.uid}`);
+      // Default to true if not set
+      setPrsSectionVisible(saved === null ? true : saved === 'true');
+    }
+  }, [currentUser]);
 
   // Calculate domain scores from PRS questions
   const domainScores = useMemo(() => {
@@ -1044,8 +1054,8 @@ const SnapshotPage = () => {
             </Button>
           </Box>
           
-          {/* Quick Stats Banner */}
-          {readinessScores.length > 0 && (
+          {/* Quick Stats Banner - Only show if PRS section is visible */}
+          {prsSectionVisible && readinessScores.length > 0 && (
             <Alert 
               severity="info" 
               sx={{ 
@@ -1092,34 +1102,36 @@ const SnapshotPage = () => {
 
         {/* Key Performance Indicators (KPIs) - Enhanced with better visuals */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
-              <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Box sx={{ 
-                  display: 'inline-flex', 
-                  p: 1.5, 
-                  borderRadius: '50%', 
-                  bgcolor: 'primary.light', 
-                  mb: 2 
-                }}>
-                  <TrendingUpIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-                </Box>
-                <Typography variant="h3" color="primary" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  {readinessScores.length > 0 
-                    ? readinessScores[readinessScores.length - 1]?.score || 'N/A' 
-                    : currentPRSScore !== null ? currentPRSScore : 'N/A'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Current Readiness Score
-                </Typography>
-                {readinessScores.length > 1 && (
-                  <Typography variant="caption" color={scoreTrend >= 0 ? 'success.main' : 'error.main'} sx={{ mt: 0.5, display: 'block' }}>
-                    {scoreTrend >= 0 ? '↑' : '↓'} {Math.abs(scoreTrend)} from first
+          {prsSectionVisible && (
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+                <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                  <Box sx={{ 
+                    display: 'inline-flex', 
+                    p: 1.5, 
+                    borderRadius: '50%', 
+                    bgcolor: 'primary.light', 
+                    mb: 2 
+                  }}>
+                    <TrendingUpIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+                  </Box>
+                  <Typography variant="h3" color="primary" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                    {readinessScores.length > 0 
+                      ? readinessScores[readinessScores.length - 1]?.score || 'N/A' 
+                      : currentPRSScore !== null ? currentPRSScore : 'N/A'}
                   </Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                    Current Readiness Score
+                  </Typography>
+                  {readinessScores.length > 1 && (
+                    <Typography variant="caption" color={scoreTrend >= 0 ? 'success.main' : 'error.main'} sx={{ mt: 0.5, display: 'block' }}>
+                      {scoreTrend >= 0 ? '↑' : '↓'} {Math.abs(scoreTrend)} from first
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
           
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
@@ -1292,14 +1304,15 @@ const SnapshotPage = () => {
         </Grid>
       </Grid>
 
-      {/* Readiness Assessment Progress - Core Mission Metrics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Readiness Score Trend
-              </Typography>
+      {/* Readiness Assessment Progress - Core Mission Metrics - Only show if PRS section is visible */}
+      {prsSectionVisible && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Readiness Score Trend
+                </Typography>
               <Box sx={{ mt: 2 }}>
                 {readinessScores.length > 0 ? (
                   <>
@@ -1410,28 +1423,28 @@ const SnapshotPage = () => {
             </CardContent>
           </Card>
         </Grid>
-        
+        </Grid>
+      )}
 
-      </Grid>
-
-        {/* Readiness Score Progress Chart - Enhanced */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                    Readiness Score Progress Over Time
-                  </Typography>
-                  {readinessScores.length > 0 && (
-                    <Chip 
-                      label={`${readinessScores.length} Assessment${readinessScores.length !== 1 ? 's' : ''}`}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                    />
-                  )}
-                </Box>
+        {/* Readiness Score Progress Chart - Enhanced - Only show if PRS section is visible */}
+        {prsSectionVisible && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                      Readiness Score Progress Over Time
+                    </Typography>
+                    {readinessScores.length > 0 && (
+                      <Chip 
+                        label={`${readinessScores.length} Assessment${readinessScores.length !== 1 ? 's' : ''}`}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    )}
+                  </Box>
               
                 {/* Trend Metrics Section - Enhanced */}
                 {readinessScores.length > 0 && (
@@ -1772,14 +1785,15 @@ const SnapshotPage = () => {
         </Grid>
       </Grid>
 
-      {/* Readiness Score Progress Over Time - Detailed List View */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Readiness Score Progress Over Time
-              </Typography>
+      {/* Readiness Score Progress Over Time - Detailed List View - Only show if PRS section is visible */}
+      {prsSectionVisible && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Readiness Score Progress Over Time
+                </Typography>
               <Box sx={{ mt: 2 }}>
                 {readinessScores.length > 0 ? (
                   <>
@@ -1845,7 +1859,8 @@ const SnapshotPage = () => {
             </CardContent>
           </Card>
         </Grid>
-      </Grid>
+        </Grid>
+      )}
 
       {/* Checklist Progress by Stage - Detailed Progress Breakdown */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -2448,8 +2463,8 @@ const SnapshotPage = () => {
             </Grid>
           </Grid>
 
-        {/* Domain Performance Analysis */}
-        {domainScores && (
+        {/* Domain Performance Analysis - Only show if PRS section is visible */}
+        {prsSectionVisible && domainScores && (
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
               <Card>
@@ -2561,8 +2576,8 @@ const SnapshotPage = () => {
           </Grid>
         )}
 
-        {/* Domain Performance Bar Chart */}
-        {domainScores && (
+        {/* Domain Performance Bar Chart - Only show if PRS section is visible */}
+        {prsSectionVisible && domainScores && (
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
               <Card>

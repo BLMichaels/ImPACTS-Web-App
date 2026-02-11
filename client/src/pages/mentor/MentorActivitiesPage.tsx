@@ -48,8 +48,8 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 
-// Activity categories with labels
-const CATEGORIES = [
+// Default Mentor categories - will be overridden by localStorage if available
+const DEFAULT_CATEGORIES = [
   { value: 'PE', label: 'PE - PRISM Education & Training' },
   { value: 'TR', label: 'TR - Training with PECC' },
   { value: 'AD', label: 'AD - General Administration Tasks' },
@@ -123,6 +123,7 @@ const MentorActivitiesPage: React.FC = () => {
   // State
   const [activities, setActivities] = useState<MentorActivity[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [categories, setCategories] = useState<Array<{ value: string; label: string }>>(DEFAULT_CATEGORIES);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [viewingActivity, setViewingActivity] = useState<MentorActivity | null>(null);
@@ -166,6 +167,19 @@ const MentorActivitiesPage: React.FC = () => {
         setHospitals(JSON.parse(savedHospitals));
       } else {
         setHospitals([]);
+      }
+    }
+    
+    // Load activity categories from localStorage (managed in Admin Settings)
+    const savedCategories = localStorage.getItem('mentor_activity_categories');
+    if (savedCategories) {
+      try {
+        const parsed = JSON.parse(savedCategories);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCategories(parsed);
+        }
+      } catch (e) {
+        console.error('Error loading mentor activity categories:', e);
       }
     }
   }, [currentUser]);
@@ -349,9 +363,10 @@ const MentorActivitiesPage: React.FC = () => {
     
     saveActivities(newActivities);
     setError(null);
+    setEditingActivity(null);
     setDialogOpen(false);
     
-      // Reset form after a brief delay to ensure state updates
+    // Reset form after a brief delay to ensure state updates
     setTimeout(() => {
       setFormData({
         date: new Date(),
@@ -380,7 +395,7 @@ const MentorActivitiesPage: React.FC = () => {
 
   // Get category label
   const getCategoryLabel = (value: string) => {
-    return CATEGORIES.find(c => c.value === value)?.label || value;
+    return categories.find(c => c.value === value)?.label || value;
   };
 
   // Get hospital names
@@ -579,7 +594,7 @@ const MentorActivitiesPage: React.FC = () => {
                   input={<OutlinedInput label="Category" />}
                   renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
                 >
-                  {CATEGORIES.map((cat) => (
+                  {categories.map((cat) => (
                     <MenuItem key={cat.value} value={cat.value}>
                       <Checkbox checked={categoryFilter.includes(cat.value)} />
                       <ListItemText primary={cat.label} />
@@ -874,7 +889,24 @@ const MentorActivitiesPage: React.FC = () => {
           open={dialogOpen} 
           onClose={() => {
             setDialogOpen(false);
+            setEditingActivity(null);
             setError(null);
+            // Reset form when closing
+            setTimeout(() => {
+              setFormData({
+                date: new Date(),
+                activityName: '',
+                category: '',
+                hours: 0,
+                description: '',
+                hospitalIds: [],
+                readinessDomains: [],
+                simulationCase: '',
+                simParticipants: 1,
+                facilitatorFeedbackSubmitted: false,
+                participantFeedbackSubmitted: false
+              });
+            }, 100);
           }} 
           maxWidth="md" 
           fullWidth
@@ -920,7 +952,7 @@ const MentorActivitiesPage: React.FC = () => {
                     onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
                     label="Category"
                   >
-                    {CATEGORIES.map((cat) => (
+                    {categories.map((cat) => (
                       <MenuItem key={cat.value} value={cat.value}>
                         {cat.label}
                       </MenuItem>

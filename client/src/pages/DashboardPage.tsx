@@ -60,6 +60,16 @@ interface ReadinessScore {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
+    // Check if PRS section should be visible
+    const [prsSectionVisible, setPrsSectionVisible] = useState(true);
+    
+    useEffect(() => {
+      if (currentUser?.uid) {
+        const saved = localStorage.getItem(`pecc_prs_section_visible_${currentUser.uid}`);
+        // Default to true if not set
+        setPrsSectionVisible(saved === null ? true : saved === 'true');
+      }
+    }, [currentUser]);
     
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [readinessScoreDialogOpen, setReadinessScoreDialogOpen] = useState(false);
@@ -337,207 +347,221 @@ interface ReadinessScore {
         </Grid>
       </Grid>
 
-      {/* Pediatric Readiness Score Section */}
-      <Box sx={{ mb: 6 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h4" color="primary">
-            Pediatric Readiness Scores
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleAddReadinessScore}
-            sx={{ fontSize: '0.875rem' }}
-          >
-            Add Score
-          </Button>
-        </Box>
-        <Card>
-          <CardContent>
-            {readinessScores.length === 0 ? (
-              <Typography color="textSecondary" align="center" sx={{ py: 2 }}>
-                No readiness scores recorded yet. Click "Add Score" to add your first score.
-              </Typography>
-            ) : (
-              <Grid container spacing={2}>
-                {readinessScores.map((score) => (
-                  <Grid item xs={12} sm={6} md={4} key={score.id}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="h6" color="primary">
-                          {score.score}
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary">
-                          {format(parseISO(score.date), 'MMM d, yyyy')}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            )}
-          </CardContent>
-        </Card>
-      </Box>
-
-      {/* Hospital Department Contacts Section */}
-      <Box sx={{ mb: 6 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h4" color="primary">
-            Hospital Department Contacts
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant={isEditMode ? "contained" : "outlined"}
-              startIcon={<EditIcon />}
-              onClick={() => setIsEditMode(!isEditMode)}
-              sx={{ fontSize: '0.875rem' }}
-            >
-              {isEditMode ? 'Exit Edit' : 'Edit Mode'}
-            </Button>
+      {/* Pediatric Readiness Score Section - Conditionally rendered */}
+      {prsSectionVisible && (
+        <Box sx={{ mb: 6 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h4" color="primary">
+              Pediatric Readiness Scores
+            </Typography>
             <Button
               variant="contained"
               startIcon={<AddIcon />}
-              onClick={addNewContact}
+              onClick={handleAddReadinessScore}
               sx={{ fontSize: '0.875rem' }}
             >
-              Add Contact
+              Add Score
             </Button>
           </Box>
-        </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Click on column headers to sort departments. Click in any field to edit contact information.
-        </Typography>
-        <Card>
-          <CardContent>
-            <Box sx={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f5f5f5' }}>
-                    <th 
-                      style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                      onClick={() => handleSort('department')}
-                    >
-                      Department {sortConfig?.key === 'department' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th 
-                      style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                      onClick={() => handleSort('contactName')}
-                    >
-                      Contact Name {sortConfig?.key === 'contactName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th 
-                      style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                      onClick={() => handleSort('phone')}
-                    >
-                      Phone {sortConfig?.key === 'phone' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th 
-                      style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                      onClick={() => handleSort('email')}
-                    >
-                      Email {sortConfig?.key === 'email' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th 
-                      style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                      onClick={() => handleSort('notes')}
-                    >
-                      Notes {sortConfig?.key === 'notes' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    {isEditMode && (
-                      <th style={{ padding: '12px', textAlign: 'center', border: '1px solid #ddd', fontWeight: 'bold', width: '80px' }}>
-                        Actions
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {getSortedContacts().map((contact) => (
-                    <tr
-                      key={contact.id}
-                      style={{ 
-                        borderBottom: '1px solid #ddd',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <td style={{ padding: '12px', border: '1px solid #ddd', fontWeight: 'bold', backgroundColor: '#f9f9f9' }}>
-                        {isEditMode ? (
-                          <TextField
-                            fullWidth
-                            size="small"
-                            placeholder="Enter department name"
-                            variant="outlined"
-                            value={contact.department}
-                            onChange={(e) => handleContactUpdate(contact.id, 'department', e.target.value)}
-                            sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
-                          />
-                        ) : (
-                          contact.department
-                        )}
-                      </td>
-                      <td style={{ padding: '12px', border: '1px solid #ddd' }}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          placeholder="Enter name"
-                          variant="outlined"
-                          value={contact.contactName}
-                          onChange={(e) => handleContactUpdate(contact.id, 'contactName', e.target.value)}
-                          sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
-                        />
-                      </td>
-                      <td style={{ padding: '12px', border: '1px solid #ddd' }}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          placeholder="Enter phone"
-                          variant="outlined"
-                          value={contact.phone}
-                          onChange={(e) => handleContactUpdate(contact.id, 'phone', e.target.value)}
-                          sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
-                        />
-                      </td>
-                      <td style={{ padding: '12px', border: '1px solid #ddd' }}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          placeholder="Enter email"
-                          variant="outlined"
-                          value={contact.email}
-                          onChange={(e) => handleContactUpdate(contact.id, 'email', e.target.value)}
-                          sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
-                        />
-                      </td>
-                      <td style={{ padding: '12px', border: '1px solid #ddd' }}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          placeholder="Add notes"
-                          variant="outlined"
-                          value={contact.notes}
-                          onChange={(e) => handleContactUpdate(contact.id, 'notes', e.target.value)}
-                          sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
-                        />
-                      </td>
-                      {isEditMode && (
-                        <td style={{ padding: '12px', border: '1px solid #ddd', textAlign: 'center' }}>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => handleDeleteContact(contact)}
-                            sx={{ p: 0.5 }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </td>
-                      )}
-                    </tr>
+          <Card>
+            <CardContent>
+              {readinessScores.length === 0 ? (
+                <Typography color="textSecondary" align="center" sx={{ py: 2 }}>
+                  No readiness scores recorded yet. Click "Add Score" to add your first score.
+                </Typography>
+              ) : (
+                <Grid container spacing={2}>
+                  {readinessScores.map((score) => (
+                    <Grid item xs={12} sm={6} md={4} key={score.id}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="h6" color="primary">
+                            {score.score}
+                          </Typography>
+                          <Typography variant="body2" color="textSecondary">
+                            {format(parseISO(score.date), 'MMM d, yyyy')}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
                   ))}
-                </tbody>
-              </table>
+                </Grid>
+              )}
+            </CardContent>
+          </Card>
+        </Box>
+      )}
+
+      {/* Hospital Department Contacts Section - Accordion */}
+      <Box sx={{ mb: 6 }}>
+        <Accordion defaultExpanded>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 2 }}>
+              <Typography variant="h4" color="primary">
+                Hospital Department Contacts
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1 }} onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant={isEditMode ? "contained" : "outlined"}
+                  startIcon={<EditIcon />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditMode(!isEditMode);
+                  }}
+                  sx={{ fontSize: '0.875rem' }}
+                >
+                  {isEditMode ? 'Exit Edit' : 'Edit Mode'}
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    addNewContact();
+                  }}
+                  sx={{ fontSize: '0.875rem' }}
+                >
+                  Add Contact
+                </Button>
+              </Box>
             </Box>
-          </CardContent>
-        </Card>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Click on column headers to sort departments. Click in any field to edit contact information.
+            </Typography>
+            <Card>
+              <CardContent>
+                <Box sx={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f5f5f5' }}>
+                        <th 
+                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
+                          onClick={() => handleSort('department')}
+                        >
+                          Department {sortConfig?.key === 'department' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </th>
+                        <th 
+                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
+                          onClick={() => handleSort('contactName')}
+                        >
+                          Contact Name {sortConfig?.key === 'contactName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </th>
+                        <th 
+                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
+                          onClick={() => handleSort('phone')}
+                        >
+                          Phone {sortConfig?.key === 'phone' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </th>
+                        <th 
+                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
+                          onClick={() => handleSort('email')}
+                        >
+                          Email {sortConfig?.key === 'email' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </th>
+                        <th 
+                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
+                          onClick={() => handleSort('notes')}
+                        >
+                          Notes {sortConfig?.key === 'notes' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </th>
+                        {isEditMode && (
+                          <th style={{ padding: '12px', textAlign: 'center', border: '1px solid #ddd', fontWeight: 'bold', width: '80px' }}>
+                            Actions
+                          </th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getSortedContacts().map((contact) => (
+                        <tr
+                          key={contact.id}
+                          style={{ 
+                            borderBottom: '1px solid #ddd',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <td style={{ padding: '12px', border: '1px solid #ddd', fontWeight: 'bold', backgroundColor: '#f9f9f9' }}>
+                            {isEditMode ? (
+                              <TextField
+                                fullWidth
+                                size="small"
+                                placeholder="Enter department name"
+                                variant="outlined"
+                                value={contact.department}
+                                onChange={(e) => handleContactUpdate(contact.id, 'department', e.target.value)}
+                                sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
+                              />
+                            ) : (
+                              contact.department
+                            )}
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #ddd' }}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              placeholder="Enter name"
+                              variant="outlined"
+                              value={contact.contactName}
+                              onChange={(e) => handleContactUpdate(contact.id, 'contactName', e.target.value)}
+                              sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
+                            />
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #ddd' }}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              placeholder="Enter phone"
+                              variant="outlined"
+                              value={contact.phone}
+                              onChange={(e) => handleContactUpdate(contact.id, 'phone', e.target.value)}
+                              sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
+                            />
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #ddd' }}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              placeholder="Enter email"
+                              variant="outlined"
+                              value={contact.email}
+                              onChange={(e) => handleContactUpdate(contact.id, 'email', e.target.value)}
+                              sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
+                            />
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #ddd' }}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              placeholder="Add notes"
+                              variant="outlined"
+                              value={contact.notes}
+                              onChange={(e) => handleContactUpdate(contact.id, 'notes', e.target.value)}
+                              sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
+                            />
+                          </td>
+                          {isEditMode && (
+                            <td style={{ padding: '12px', border: '1px solid #ddd', textAlign: 'center' }}>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDeleteContact(contact)}
+                                sx={{ p: 0.5 }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Box>
+              </CardContent>
+            </Card>
+          </AccordionDetails>
+        </Accordion>
       </Box>
 
       <DashboardResources userId={currentUser?.uid} isMobile={isMobile} />

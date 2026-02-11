@@ -44,6 +44,7 @@ import { supabase } from '../../supabase';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../../types/database';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '../../types/database';
 import ScormPackagesSection from '../../components/ScormPackagesSection';
+import { useAuth } from '../../context/AuthContext';
 
 // Lazy load Programs and Cohorts pages to embed in settings
 const AdminProgramsContent = lazy(() => import('./AdminProgramsPage'));
@@ -82,6 +83,7 @@ const ROLES: UserRole[] = [UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC];
 const getRoleColor = (role: string) => ({ manager: '#9c27b0', mentor: '#ff9800', pecc: '#2196f3' }[role] || '#757575');
 
 export default function AdminSettingsPage() {
+  const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Map tab query param to index
@@ -92,7 +94,9 @@ export default function AdminSettingsPage() {
     'email-settings': 3,
     'modules': 4,
     'programs': 5,
-    'cohorts': 6
+    'cohorts': 6,
+    'activity-categories': 7,
+    'education': 8
   }), []);
 
   const tabIndexToParam: Record<number, string> = useMemo(() => ({
@@ -102,7 +106,9 @@ export default function AdminSettingsPage() {
     3: 'email-settings',
     4: 'modules',
     5: 'programs',
-    6: 'cohorts'
+    6: 'cohorts',
+    7: 'activity-categories',
+    8: 'education'
   }), []);
 
   // Initialize tab from URL or default to 0
@@ -130,6 +136,44 @@ export default function AdminSettingsPage() {
   const [emailConfirmationMessage, setEmailConfirmationMessage] = useState(
     'After completing registration, you will receive an email to confirm your account. Please check your inbox and click the confirmation link before logging in.'
   );
+  
+  // Activity Categories state
+  const [peccCategories, setPeccCategories] = useState<string[]>([]);
+  const [mentorCategories, setMentorCategories] = useState<Array<{ value: string; label: string }>>([]);
+  const [editingCategoryIndex, setEditingCategoryIndex] = useState<number | null>(null);
+  const [newCategoryValue, setNewCategoryValue] = useState('');
+  const [newCategoryLabel, setNewCategoryLabel] = useState('');
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [categoryType, setCategoryType] = useState<'pecc' | 'mentor'>('pecc');
+  
+  // PECC Dashboard Section Visibility state
+  const [peccUsers, setPeccUsers] = useState<Array<{ id: string; email: string; firstName: string; lastName: string; prsSectionVisible: boolean }>>([]);
+  const [loadingPeccUsers, setLoadingPeccUsers] = useState(false);
+  
+  // Education Questions state
+  interface EducationQuestion {
+    questionId: string;
+    question: string;
+    why: string;
+    background: string;
+    example: string;
+    sustainability: string;
+    resources: string[]; // Format: "Title (URL)" or just "URL"
+  }
+  const [educationQuestions, setEducationQuestions] = useState<EducationQuestion[]>([]);
+  const [educationDialogOpen, setEducationDialogOpen] = useState(false);
+  const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
+  const [educationForm, setEducationForm] = useState<EducationQuestion>({
+    questionId: '',
+    question: '',
+    why: '',
+    background: '',
+    example: '',
+    sustainability: '',
+    resources: []
+  });
+  const [newResource, setNewResource] = useState('');
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formLabel, setFormLabel] = useState('');
@@ -188,6 +232,209 @@ export default function AdminSettingsPage() {
       setEmailConfirmationMessage(saved);
     }
   }, []);
+  
+  // Load activity categories
+  useEffect(() => {
+    // Load PECC categories
+    const savedPeccCategories = localStorage.getItem('pecc_activity_categories');
+    if (savedPeccCategories) {
+      setPeccCategories(JSON.parse(savedPeccCategories));
+    } else {
+      // Default PECC categories
+      const defaultPecc = [
+        'General Administration Tasks',
+        'PECC role education and advancement',
+        'Meeting with Pediatric Readiness Mentor',
+        'Simulation Case Preparations',
+        'Simulation Facilitation',
+        'Simulation Debrief & Gap Analysis',
+        'Hospital-based Pediatric Educational Activities (NOT including simulation)',
+        'Ensuring all Pediatric Policies and Procedures are implemented and updated',
+        'Facilitating and participating in ED pediatric QI/PI activities',
+        'Collaborative work with PECC counterpart, EMS, or other EDs',
+        'Staffing competency evaluations',
+        'Promoting pediatric disaster preparedness',
+        'Promoting patient and family education in injury prevention',
+        'Ensuring equipment, medication, and supplies are available to all ED staff',
+        'Ensuring ED staff are prepared to care for all children, including those with special health needs'
+      ];
+      setPeccCategories(defaultPecc);
+      localStorage.setItem('pecc_activity_categories', JSON.stringify(defaultPecc));
+    }
+    
+    // Load Mentor categories
+    const savedMentorCategories = localStorage.getItem('mentor_activity_categories');
+    if (savedMentorCategories) {
+      setMentorCategories(JSON.parse(savedMentorCategories));
+    } else {
+      // Default Mentor categories
+      const defaultMentor = [
+        { value: 'PE', label: 'PE - PRISM Education & Training' },
+        { value: 'TR', label: 'TR - Training with PECC' },
+        { value: 'AD', label: 'AD - General Administration Tasks' },
+        { value: 'RA', label: 'RA - Readiness Assessment' },
+        { value: 'SC', label: 'SC - Simulation Case Facilitation' },
+        { value: 'DM', label: 'DM - Domain Implementation' }
+      ];
+      setMentorCategories(defaultMentor);
+      localStorage.setItem('mentor_activity_categories', JSON.stringify(defaultMentor));
+    }
+  }, []);
+  
+  // Load PECC users for PRS section toggle
+  useEffect(() => {
+    const loadPeccUsers = async () => {
+      setLoadingPeccUsers(true);
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, email, first_name, last_name')
+          .eq('role', 'pecc')
+          .order('email');
+        
+        if (error) throw error;
+        
+        if (data) {
+          const usersWithSettings = await Promise.all(
+            data.map(async (user) => {
+              // Check localStorage for PRS section visibility (default to true)
+              const prsVisible = localStorage.getItem(`pecc_prs_section_visible_${user.id}`);
+              return {
+                id: user.id,
+                email: user.email || '',
+                firstName: user.first_name || '',
+                lastName: user.last_name || '',
+                prsSectionVisible: prsVisible === null ? true : prsVisible === 'true'
+              };
+            })
+          );
+          setPeccUsers(usersWithSettings);
+        }
+      } catch (error) {
+        console.error('Error loading PECC users:', error);
+      } finally {
+        setLoadingPeccUsers(false);
+      }
+    };
+    
+    loadPeccUsers();
+  }, []);
+  
+  // Load Education Questions
+  useEffect(() => {
+    const saved = localStorage.getItem('education_questions');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setEducationQuestions(parsed);
+        } else {
+          // Default: load question 22
+          const defaultQuestion: EducationQuestion = {
+            questionId: '22',
+            question: 'Does your ED have a physician/APP coordinator—sometimes referred to as a pediatric emergency care coordinator (PECC) or pediatric champion—who is assigned the role of overseeing various administrative aspects of pediatric emergency care (e.g., oversees quality improvement, collaborates with nursing, ensures pediatric skills of staff, develops and periodically reviews policies)?',
+            why: 'A PECC ensures the ED maintains a consistent focus on pediatric-specific needs, promoting high quality and safe emergency care for children. PECCs drive system-wide improvements, protocol compliance, and advocacy for children at all care stages.',
+            background: 'A PECC, often a physician champion, acts as a central figure driving pediatric quality and systems integration. Research demonstrates that EDs with a PECC achieve significantly higher pediatric readiness scores, which correlate with reduced pediatric mortality and better patient outcomes. The PECC role is endorsed by national organizations and is considered the foundation of a robust pediatric emergency care structure. The PECC facilitates multidisciplinary collaboration, supports ongoing education, and sustains improvement by coordinating QI projects, reviewing standards, and serving as a pediatric advocate within the ED and hospital.',
+            example: 'The ED\'s physician PECC organizes pediatric simulation drills, reviews pediatric protocols regularly, and ensures ongoing pediatric staff training.',
+            sustainability: 'Establish regular meetings with ED leadership and pediatric staff to align goals and review progress. Champion ongoing training and competency assessments for all staff. Develop a system for periodic review and updates of policies and pediatric guidelines. Foster collaboration with regional pediatric centers and networks for shared resources and mentorship.',
+            resources: [
+              'EIIC PECC Toolkit (https://emscimprovement.center/domains/pecc/)',
+              'JAMA - PECC National Impact Study (https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2828228)',
+              'LA Peds Ready Facility Guide (https://partnersforfamilyhealth.org/wp-content/uploads/2023/03/EMSC_PedReadyFacilityGuide-3_2023-3.pdf)'
+            ]
+          };
+          setEducationQuestions([defaultQuestion]);
+          localStorage.setItem('education_questions', JSON.stringify([defaultQuestion]));
+        }
+      } catch (e) {
+        console.error('Error loading education questions:', e);
+      }
+    } else {
+      // Default: load question 22
+      const defaultQuestion: EducationQuestion = {
+        questionId: '22',
+        question: 'Does your ED have a physician/APP coordinator—sometimes referred to as a pediatric emergency care coordinator (PECC) or pediatric champion—who is assigned the role of overseeing various administrative aspects of pediatric emergency care (e.g., oversees quality improvement, collaborates with nursing, ensures pediatric skills of staff, develops and periodically reviews policies)?',
+        why: 'A PECC ensures the ED maintains a consistent focus on pediatric-specific needs, promoting high quality and safe emergency care for children. PECCs drive system-wide improvements, protocol compliance, and advocacy for children at all care stages.',
+        background: 'A PECC, often a physician champion, acts as a central figure driving pediatric quality and systems integration. Research demonstrates that EDs with a PECC achieve significantly higher pediatric readiness scores, which correlate with reduced pediatric mortality and better patient outcomes. The PECC role is endorsed by national organizations and is considered the foundation of a robust pediatric emergency care structure. The PECC facilitates multidisciplinary collaboration, supports ongoing education, and sustains improvement by coordinating QI projects, reviewing standards, and serving as a pediatric advocate within the ED and hospital.',
+        example: 'The ED\'s physician PECC organizes pediatric simulation drills, reviews pediatric protocols regularly, and ensures ongoing pediatric staff training.',
+        sustainability: 'Establish regular meetings with ED leadership and pediatric staff to align goals and review progress. Champion ongoing training and competency assessments for all staff. Develop a system for periodic review and updates of policies and pediatric guidelines. Foster collaboration with regional pediatric centers and networks for shared resources and mentorship.',
+        resources: [
+          'EIIC PECC Toolkit (https://emscimprovement.center/domains/pecc/)',
+          'JAMA - PECC National Impact Study (https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2828228)',
+          'LA Peds Ready Facility Guide (https://partnersforfamilyhealth.org/wp-content/uploads/2023/03/EMSC_PedReadyFacilityGuide-3_2023-3.pdf)'
+        ]
+      };
+      setEducationQuestions([defaultQuestion]);
+      localStorage.setItem('education_questions', JSON.stringify([defaultQuestion]));
+    }
+  }, []);
+  
+  const handleOpenEducationDialog = (question?: EducationQuestion) => {
+    if (question) {
+      setEditingEducationId(question.questionId);
+      setEducationForm({ ...question });
+    } else {
+      setEditingEducationId(null);
+      setEducationForm({
+        questionId: '',
+        question: '',
+        why: '',
+        background: '',
+        example: '',
+        sustainability: '',
+        resources: []
+      });
+    }
+    setNewResource('');
+    setEducationDialogOpen(true);
+  };
+  
+  const handleSaveEducationQuestion = () => {
+    if (!educationForm.questionId.trim() || !educationForm.question.trim()) {
+      setSnackbar({ open: true, message: 'Question ID and Question text are required', severity: 'error' });
+      return;
+    }
+    
+    const updated = editingEducationId
+      ? educationQuestions.map(q => q.questionId === editingEducationId ? educationForm : q)
+      : [...educationQuestions, educationForm];
+    
+    setEducationQuestions(updated);
+    localStorage.setItem('education_questions', JSON.stringify(updated));
+    setEducationDialogOpen(false);
+    setSnackbar({ open: true, message: 'Education question saved successfully', severity: 'success' });
+  };
+  
+  const handleDeleteEducationQuestion = (questionId: string) => {
+    if (!window.confirm(`Delete education content for Question ${questionId}?`)) return;
+    const updated = educationQuestions.filter(q => q.questionId !== questionId);
+    setEducationQuestions(updated);
+    localStorage.setItem('education_questions', JSON.stringify(updated));
+    setSnackbar({ open: true, message: 'Education question deleted', severity: 'success' });
+  };
+  
+  const handleAddResource = () => {
+    if (newResource.trim()) {
+      setEducationForm(prev => ({
+        ...prev,
+        resources: [...prev.resources, newResource.trim()]
+      }));
+      setNewResource('');
+    }
+  };
+  
+  const handleRemoveResource = (index: number) => {
+    setEducationForm(prev => ({
+      ...prev,
+      resources: prev.resources.filter((_, i) => i !== index)
+    }));
+  };
+  
+  const handleTogglePRSSection = async (userId: string, visible: boolean) => {
+    localStorage.setItem(`pecc_prs_section_visible_${userId}`, String(visible));
+    setPeccUsers(prev => prev.map(u => u.id === userId ? { ...u, prsSectionVisible: visible } : u));
+    setSnackbar({ open: true, message: 'PRS section visibility updated', severity: 'success' });
+  };
   
   const handleSaveEmailSettings = () => {
     localStorage.setItem('email_confirmation_message', emailConfirmationMessage);
@@ -311,12 +558,14 @@ export default function AdminSettingsPage() {
 
       <Tabs value={tabIndex} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tab label="Registration Questions" />
-        <Tab label="Role Permissions" />
+        <Tab label="Permissions" />
         <Tab label="Granular Permissions" />
         <Tab label="Email Settings" />
         <Tab label="Learning Modules" />
         <Tab label="Programs" />
         <Tab label="Cohorts" />
+        <Tab label="Activity Categories" />
+        <Tab label="Education" />
       </Tabs>
 
       {/* Registration Questions */}
@@ -415,6 +664,59 @@ export default function AdminSettingsPage() {
           </Box>
           {hasChanges && <Alert severity="warning" sx={{ mb: 2 }}>You have unsaved changes.</Alert>}
           <Alert severity="info" sx={{ mb: 2 }}>These settings affect Manager, Mentor, and PECC only.</Alert>
+          
+          {/* PECC Dashboard Section Visibility */}
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>PECC Dashboard Section Visibility</Typography>
+            <Typography color="textSecondary" sx={{ mb: 2 }}>
+              Control which PECC users see the "Pediatric Readiness Scores" section on their dashboard. When disabled, the section will be hidden from both the Dashboard and Snapshot pages.
+            </Typography>
+            {loadingPeccUsers ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>PECC User</TableCell>
+                      <TableCell align="center">Pediatric Readiness Scores Section</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {peccUsers.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={2} align="center">
+                          <Typography color="textSecondary">No PECC users found</Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      peccUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {user.firstName} {user.lastName}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              {user.email}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Switch
+                              checked={user.prsSectionVisible}
+                              onChange={(e) => handleTogglePRSSection(user.id, e.target.checked)}
+                              color="primary"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
           {Object.entries(PERMISSION_GROUPS).map(([groupName, groupPermissions]) => (
             <Accordion key={groupName} defaultExpanded>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}><Typography variant="subtitle1">{groupName}</Typography></AccordionSummary>
@@ -536,6 +838,438 @@ export default function AdminSettingsPage() {
           <AdminCohortsContent />
         </Suspense>
       )}
+
+      {/* Activity Categories */}
+      {tabIndex === 7 && (
+        <Box>
+          <Typography variant="h6" gutterBottom>Activity Categories</Typography>
+          <Typography color="textSecondary" sx={{ mb: 3 }}>
+            Manage activity categories for PECC and Mentor activity logging. Changes will be reflected immediately in the Activities pages.
+          </Typography>
+          
+          <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            <Button
+              variant={categoryType === 'pecc' ? 'contained' : 'outlined'}
+              onClick={() => setCategoryType('pecc')}
+            >
+              PECC Categories
+            </Button>
+            <Button
+              variant={categoryType === 'mentor' ? 'contained' : 'outlined'}
+              onClick={() => setCategoryType('mentor')}
+            >
+              Mentor Categories
+            </Button>
+          </Box>
+
+          {/* PECC Categories */}
+          {categoryType === 'pecc' && (
+            <Paper sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1">PECC Activity Categories</Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    setEditingCategoryIndex(null);
+                    setNewCategoryValue('');
+                    setCategoryDialogOpen(true);
+                  }}
+                >
+                  Add Category
+                </Button>
+              </Box>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Category Name</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {peccCategories.map((category, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{category}</TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setEditingCategoryIndex(index);
+                              setNewCategoryValue(category);
+                              setCategoryDialogOpen(true);
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              if (window.confirm(`Delete "${category}"?`)) {
+                                const updated = peccCategories.filter((_, i) => i !== index);
+                                setPeccCategories(updated);
+                                localStorage.setItem('pecc_activity_categories', JSON.stringify(updated));
+                                setSnackbar({ open: true, message: 'Category deleted', severity: 'success' });
+                              }
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          )}
+
+          {/* Mentor Categories */}
+          {categoryType === 'mentor' && (
+            <Paper sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1">Mentor Activity Categories</Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    setEditingCategoryIndex(null);
+                    setNewCategoryValue('');
+                    setNewCategoryLabel('');
+                    setCategoryDialogOpen(true);
+                  }}
+                >
+                  Add Category
+                </Button>
+              </Box>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Value</TableCell>
+                      <TableCell>Label</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {mentorCategories.map((category, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{category.value}</TableCell>
+                        <TableCell>{category.label}</TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setEditingCategoryIndex(index);
+                              setNewCategoryValue(category.value);
+                              setNewCategoryLabel(category.label);
+                              setCategoryDialogOpen(true);
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              if (window.confirm(`Delete "${category.label}"?`)) {
+                                const updated = mentorCategories.filter((_, i) => i !== index);
+                                setMentorCategories(updated);
+                                localStorage.setItem('mentor_activity_categories', JSON.stringify(updated));
+                                setSnackbar({ open: true, message: 'Category deleted', severity: 'success' });
+                              }
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          )}
+        </Box>
+      )}
+
+      {/* Education Questions */}
+      {tabIndex === 8 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Box>
+              <Typography variant="h6">Education Questions</Typography>
+              <Typography color="textSecondary">
+                Manage educational content for PRS questions. Each question can have a template with Question, Why, Background, Example, Sustainability Practices, and Additional Resources.
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenEducationDialog()}
+            >
+              Add Question
+            </Button>
+          </Box>
+          
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Question ID</TableCell>
+                  <TableCell>Question Preview</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {educationQuestions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} align="center">
+                      <Typography color="textSecondary">No education questions yet. Add your first question.</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  educationQuestions.map((eq) => (
+                    <TableRow key={eq.questionId}>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          Question {eq.questionId}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ 
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical'
+                        }}>
+                          {eq.question}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenEducationDialog(eq)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteEducationQuestion(eq.questionId)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+
+      {/* Education Question Edit Dialog */}
+      <Dialog open={educationDialogOpen} onClose={() => setEducationDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {editingEducationId ? `Edit Question ${editingEducationId}` : 'Add Education Question'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Question ID"
+              value={educationForm.questionId}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, questionId: e.target.value }))}
+              margin="normal"
+              required
+              helperText="The question number (e.g., 22, 23, etc.)"
+            />
+            <TextField
+              fullWidth
+              label="Question"
+              value={educationForm.question}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, question: e.target.value }))}
+              margin="normal"
+              required
+              multiline
+              rows={3}
+              helperText="The full question text"
+            />
+            <TextField
+              fullWidth
+              label="Why"
+              value={educationForm.why}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, why: e.target.value }))}
+              margin="normal"
+              required
+              multiline
+              rows={3}
+              helperText="Why this question is important"
+            />
+            <TextField
+              fullWidth
+              label="Background"
+              value={educationForm.background}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, background: e.target.value }))}
+              margin="normal"
+              required
+              multiline
+              rows={4}
+              helperText="Background information and context"
+            />
+            <TextField
+              fullWidth
+              label="Example"
+              value={educationForm.example}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, example: e.target.value }))}
+              margin="normal"
+              required
+              multiline
+              rows={2}
+              helperText="Example implementation or scenario"
+            />
+            <TextField
+              fullWidth
+              label="Sustainability Practices for PECC"
+              value={educationForm.sustainability}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, sustainability: e.target.value }))}
+              margin="normal"
+              required
+              multiline
+              rows={3}
+              helperText="Best practices for maintaining this aspect"
+            />
+            
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Additional Resources
+              </Typography>
+              <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block' }}>
+                Format: "Resource Title (https://url.com)" or just "https://url.com"
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder='e.g., "EIIC PECC Toolkit (https://emscimprovement.center/domains/pecc/)"'
+                  value={newResource}
+                  onChange={(e) => setNewResource(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddResource();
+                    }
+                  }}
+                />
+                <Button variant="outlined" onClick={handleAddResource}>
+                  Add
+                </Button>
+              </Box>
+              {educationForm.resources.map((resource, index) => (
+                <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Chip
+                    label={resource}
+                    onDelete={() => handleRemoveResource(index)}
+                    sx={{ flex: 1, justifyContent: 'flex-start' }}
+                  />
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEducationDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleSaveEducationQuestion} variant="contained">
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Category Edit Dialog */}
+      <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {editingCategoryIndex !== null ? 'Edit Category' : 'Add Category'}
+        </DialogTitle>
+        <DialogContent>
+          {categoryType === 'pecc' ? (
+            <TextField
+              fullWidth
+              label="Category Name"
+              value={newCategoryValue}
+              onChange={(e) => setNewCategoryValue(e.target.value)}
+              margin="normal"
+              required
+            />
+          ) : (
+            <>
+              <TextField
+                fullWidth
+                label="Value (Code)"
+                value={newCategoryValue}
+                onChange={(e) => setNewCategoryValue(e.target.value.toUpperCase())}
+                margin="normal"
+                required
+                helperText="Short code (e.g., PE, TR, SC)"
+              />
+              <TextField
+                fullWidth
+                label="Label (Display Name)"
+                value={newCategoryLabel}
+                onChange={(e) => setNewCategoryLabel(e.target.value)}
+                margin="normal"
+                required
+                helperText="Full display name (e.g., PE - PRISM Education & Training)"
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCategoryDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (categoryType === 'pecc') {
+                if (!newCategoryValue.trim()) {
+                  setSnackbar({ open: true, message: 'Category name is required', severity: 'error' });
+                  return;
+                }
+                let updated: string[];
+                if (editingCategoryIndex !== null) {
+                  updated = [...peccCategories];
+                  updated[editingCategoryIndex] = newCategoryValue.trim();
+                } else {
+                  updated = [...peccCategories, newCategoryValue.trim()];
+                }
+                setPeccCategories(updated);
+                localStorage.setItem('pecc_activity_categories', JSON.stringify(updated));
+                setSnackbar({ open: true, message: 'Category saved', severity: 'success' });
+              } else {
+                if (!newCategoryValue.trim() || !newCategoryLabel.trim()) {
+                  setSnackbar({ open: true, message: 'Both value and label are required', severity: 'error' });
+                  return;
+                }
+                let updated: Array<{ value: string; label: string }>;
+                if (editingCategoryIndex !== null) {
+                  updated = [...mentorCategories];
+                  updated[editingCategoryIndex] = { value: newCategoryValue.trim().toUpperCase(), label: newCategoryLabel.trim() };
+                } else {
+                  updated = [...mentorCategories, { value: newCategoryValue.trim().toUpperCase(), label: newCategoryLabel.trim() }];
+                }
+                setMentorCategories(updated);
+                localStorage.setItem('mentor_activity_categories', JSON.stringify(updated));
+                setSnackbar({ open: true, message: 'Category saved', severity: 'success' });
+              }
+              setCategoryDialogOpen(false);
+              setEditingCategoryIndex(null);
+              setNewCategoryValue('');
+              setNewCategoryLabel('');
+            }}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingId ? 'Edit question' : 'Add question'}</DialogTitle>

@@ -89,7 +89,8 @@ interface GapPlan {
   attachments: any[];
 }
 
-const ACTIVITY_CATEGORIES = [
+// Default PECC categories - will be overridden by localStorage if available
+const DEFAULT_ACTIVITY_CATEGORIES = [
   'General Administration Tasks',
   'PECC role education and advancement',
   'Meeting with Pediatric Readiness Mentor',
@@ -137,6 +138,7 @@ const ActivitiesPage = () => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [simulationGaps, setSimulationGaps] = useState<any[]>([]);
+  const [activityCategories, setActivityCategories] = useState<string[]>(DEFAULT_ACTIVITY_CATEGORIES);
   const [open, setOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -184,6 +186,19 @@ const ActivitiesPage = () => {
       const savedSimulationGaps = localStorage.getItem(`simulation_gaps_${currentUser.uid}`);
       if (savedSimulationGaps) {
         setSimulationGaps(JSON.parse(savedSimulationGaps));
+      }
+    }
+    
+    // Load activity categories from localStorage (managed in Admin Settings)
+    const savedCategories = localStorage.getItem('pecc_activity_categories');
+    if (savedCategories) {
+      try {
+        const parsed = JSON.parse(savedCategories);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setActivityCategories(parsed);
+        }
+      } catch (e) {
+        console.error('Error loading activity categories:', e);
       }
     }
   }, [currentUser]);
@@ -257,11 +272,25 @@ const ActivitiesPage = () => {
         return;
       }
 
+      const isSimulation = formData.category === 'Simulation Facilitation';
+      
       if (editingActivity) {
+        const updatedActivity: Activity = {
+          ...editingActivity,
+          date: formData.date,
+          activity: formData.activity,
+          category: formData.category,
+          hours: formData.hours,
+          simulation: isSimulation ? formData.simulation : undefined,
+          simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
+          participants: isSimulation ? formData.participants : undefined,
+          feedbackForms: isSimulation ? formData.feedbackForms : undefined,
+          associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
+          associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
+          notes: formData.notes || undefined
+        };
         const updatedActivities = activities.map(activity =>
-          activity.id === editingActivity.id
-            ? { ...editingActivity, ...formData }
-            : activity
+          activity.id === editingActivity.id ? updatedActivity : activity
         );
         saveActivities(updatedActivities);
       } else {
@@ -272,10 +301,10 @@ const ActivitiesPage = () => {
           activity: formData.activity,
           category: formData.category,
           hours: formData.hours,
-          simulation: formData.category === 'Simulation Facilitation' ? formData.simulation : undefined,
-          simulationOther: formData.category === 'Simulation Facilitation' && formData.simulation === 'Other' ? formData.simulationOther : undefined,
-          participants: formData.category === 'Simulation Facilitation' ? formData.participants : undefined,
-          feedbackForms: formData.category === 'Simulation Facilitation' ? formData.feedbackForms : undefined,
+          simulation: isSimulation ? formData.simulation : undefined,
+          simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
+          participants: isSimulation ? formData.participants : undefined,
+          feedbackForms: isSimulation ? formData.feedbackForms : undefined,
           associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
           associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
           notes: formData.notes || undefined,
@@ -284,6 +313,7 @@ const ActivitiesPage = () => {
         saveActivities([...activities, newActivity]);
       }
 
+      // Close dialog and reset form
       handleClose();
       setError(null);
     } catch (err) {
@@ -328,20 +358,23 @@ const ActivitiesPage = () => {
   const handleClose = () => {
     setOpen(false);
     setEditingActivity(null);
-    setFormData({
-      date: '',
-      activity: '',
-      category: '',
-      hours: 0,
-      simulation: '',
-      simulationOther: '',
-      participants: 0,
-      feedbackForms: [],
-      associatedGaps: [],
-      associatedSimulationGaps: [],
-      notes: ''
-    });
     setError(null);
+    // Reset form after dialog closes to ensure clean state
+    setTimeout(() => {
+      setFormData({
+        date: '',
+        activity: '',
+        category: '',
+        hours: 0,
+        simulation: '',
+        simulationOther: '',
+        participants: 0,
+        feedbackForms: [],
+        associatedGaps: [],
+        associatedSimulationGaps: [],
+        notes: ''
+      });
+    }, 100);
   };
 
   const handleDialogOpen = () => {
@@ -759,7 +792,7 @@ const ActivitiesPage = () => {
                 onChange={(e: SelectChangeEvent) => setFilterCategory(e.target.value)}
               >
                 <MenuItem value="">All Categories</MenuItem>
-                {ACTIVITY_CATEGORIES.map(category => (
+                {activityCategories.map(category => (
                   <MenuItem key={category} value={category}>
                     {category}
                   </MenuItem>
@@ -1084,7 +1117,7 @@ const ActivitiesPage = () => {
                   label="Category"
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 >
-                  {ACTIVITY_CATEGORIES.map(category => (
+                  {activityCategories.map(category => (
                     <MenuItem key={category} value={category}>
                       {category}
                     </MenuItem>
