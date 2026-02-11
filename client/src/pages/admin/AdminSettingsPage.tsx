@@ -45,6 +45,7 @@ import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuesti
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '../../types/database';
 import ScormPackagesSection from '../../components/ScormPackagesSection';
 import { useAuth } from '../../context/AuthContext';
+import EducationRichTextEditor from '../../components/admin/EducationRichTextEditor';
 
 // Lazy load Programs and Cohorts pages to embed in settings
 const AdminProgramsContent = lazy(() => import('./AdminProgramsPage'));
@@ -1002,50 +1003,42 @@ export default function AdminSettingsPage() {
               rows={3}
               helperText="The full question text"
             />
-            <TextField
-              fullWidth
-              label="Why"
-              value={educationForm.why}
-              onChange={(e) => setEducationForm(prev => ({ ...prev, why: e.target.value }))}
-              margin="normal"
-              required
-              multiline
-              rows={3}
-              helperText="Why this question is important"
-            />
-            <TextField
-              fullWidth
-              label="Background"
-              value={educationForm.background}
-              onChange={(e) => setEducationForm(prev => ({ ...prev, background: e.target.value }))}
-              margin="normal"
-              required
-              multiline
-              rows={4}
-              helperText="Background information and context"
-            />
-            <TextField
-              fullWidth
-              label="Example"
-              value={educationForm.example}
-              onChange={(e) => setEducationForm(prev => ({ ...prev, example: e.target.value }))}
-              margin="normal"
-              required
-              multiline
-              rows={2}
-              helperText="Example implementation or scenario"
-            />
-            <TextField
-              fullWidth
-              label="Sustainability Practices for PECC"
-              value={educationForm.sustainability}
-              onChange={(e) => setEducationForm(prev => ({ ...prev, sustainability: e.target.value }))}
-              margin="normal"
-              required
-              multiline
-              rows={3}
-              helperText="Best practices for maintaining this aspect"
-            />
+            <Box sx={{ mt: 2, mb: 1 }}>
+              <EducationRichTextEditor
+                value={educationForm.why}
+                onChange={(value) => setEducationForm(prev => ({ ...prev, why: value }))}
+                placeholder="Why this question is important..."
+                minHeight={100}
+                label="Why"
+              />
+            </Box>
+            <Box sx={{ mt: 2, mb: 1 }}>
+              <EducationRichTextEditor
+                value={educationForm.background}
+                onChange={(value) => setEducationForm(prev => ({ ...prev, background: value }))}
+                placeholder="Background information and context..."
+                minHeight={120}
+                label="Background"
+              />
+            </Box>
+            <Box sx={{ mt: 2, mb: 1 }}>
+              <EducationRichTextEditor
+                value={educationForm.example}
+                onChange={(value) => setEducationForm(prev => ({ ...prev, example: value }))}
+                placeholder="Example implementation or scenario..."
+                minHeight={80}
+                label="Example"
+              />
+            </Box>
+            <Box sx={{ mt: 2, mb: 1 }}>
+              <EducationRichTextEditor
+                value={educationForm.sustainability}
+                onChange={(value) => setEducationForm(prev => ({ ...prev, sustainability: value }))}
+                placeholder="Best practices for maintaining this aspect..."
+                minHeight={100}
+                label="Sustainability Practices for PECC"
+              />
+            </Box>
             
             <Box sx={{ mt: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
