@@ -1783,7 +1783,8 @@ const SnapshotPage = () => {
             </CardContent>
           </Card>
         </Grid>
-      </Grid>
+        </Grid>
+      )}
 
       {/* Readiness Score Progress Over Time - Detailed List View - Only show if PRS section is visible */}
       {prsSectionVisible && (
