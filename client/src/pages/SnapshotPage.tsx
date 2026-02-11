@@ -11,7 +11,16 @@ import {
   Alert,
   Container,
   Divider,
-  Paper
+  Paper,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  TextField,
+  SelectChangeEvent
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -23,6 +32,8 @@ import SlideshowIcon from '@mui/icons-material/Slideshow';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import RemoveIcon from '@mui/icons-material/Remove';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import { format } from 'date-fns';
 
 // Type definitions for PRS questions
@@ -55,6 +66,14 @@ const DOMAIN_MAX_POINTS: Record<string, number> = {
   'Equipment': 33
 };
 
+const PERIODS = [
+  { value: 'all', label: 'All Time' },
+  { value: '7', label: 'Last 7 Days' },
+  { value: '30', label: 'Last 30 Days' },
+  { value: '90', label: 'Last 90 Days' },
+  { value: 'custom', label: 'Custom Range' },
+];
+
 const SnapshotPage = () => {
   const { currentUser } = useAuth();
   
@@ -67,6 +86,11 @@ const SnapshotPage = () => {
   const [renderError, setRenderError] = useState(false);
   const [prsSectionVisible, setPrsSectionVisible] = useState(true);
   
+  // Date filter state
+  const [dateFilterPeriod, setDateFilterPeriod] = useState<string>('all');
+  const [customDateStart, setCustomDateStart] = useState<string>('');
+  const [customDateEnd, setCustomDateEnd] = useState<string>('');
+  
   // Check if PRS section should be visible
   useEffect(() => {
     if (currentUser?.uid) {
@@ -75,6 +99,57 @@ const SnapshotPage = () => {
       setPrsSectionVisible(saved === null ? true : saved === 'true');
     }
   }, [currentUser]);
+
+  // Helper function to filter data by date range
+  const getDateFilteredData = useMemo(() => {
+    const getFilterDate = () => {
+      if (dateFilterPeriod === 'all') return null;
+      if (dateFilterPeriod === 'custom' && customDateStart && customDateEnd) {
+        return {
+          start: new Date(customDateStart + 'T00:00:00.000Z'),
+          end: new Date(customDateEnd + 'T23:59:59.999Z')
+        };
+      }
+      if (['7', '30', '90'].includes(dateFilterPeriod)) {
+        const days = parseInt(dateFilterPeriod, 10);
+        const start = new Date();
+        start.setDate(start.getDate() - days);
+        return { start, end: new Date() };
+      }
+      return null;
+    };
+
+    const dateRange = getFilterDate();
+    if (!dateRange) {
+      return {
+        activities,
+        milestones,
+        gapPlans,
+        readinessScores
+      };
+    }
+
+    return {
+      activities: activities.filter(a => {
+        const activityDate = new Date(a.date);
+        return activityDate >= dateRange.start && activityDate <= dateRange.end;
+      }),
+      milestones: milestones.filter(m => {
+        const milestoneDate = m.date ? new Date(m.date) : new Date(m.createdAt || Date.now());
+        return milestoneDate >= dateRange.start && milestoneDate <= dateRange.end;
+      }),
+      gapPlans: gapPlans.filter(g => {
+        const gapDate = g.createdAt ? new Date(g.createdAt) : new Date(g.dueDate || Date.now());
+        return gapDate >= dateRange.start && gapDate <= dateRange.end;
+      }),
+      readinessScores: readinessScores.filter(r => {
+        const scoreDate = new Date(r.date);
+        return scoreDate >= dateRange.start && scoreDate <= dateRange.end;
+      })
+    };
+  }, [activities, milestones, gapPlans, readinessScores, dateFilterPeriod, customDateStart, customDateEnd]);
+
+  const filteredData = getDateFilteredData;
 
   // Calculate domain scores from PRS questions
   const domainScores = useMemo(() => {
@@ -1054,6 +1129,62 @@ const SnapshotPage = () => {
             </Button>
           </Box>
           
+          {/* Date Filter Section */}
+          <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <FilterListIcon color="action" />
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  Filter by Date Range:
+                </Typography>
+              </Box>
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Time Period</InputLabel>
+                <Select
+                  value={dateFilterPeriod}
+                  label="Time Period"
+                  onChange={(e: SelectChangeEvent) => setDateFilterPeriod(e.target.value)}
+                >
+                  {PERIODS.map((period) => (
+                    <MenuItem key={period.value} value={period.value}>
+                      {period.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {dateFilterPeriod === 'custom' && (
+                <>
+                  <TextField
+                    size="small"
+                    label="Start Date"
+                    type="date"
+                    value={customDateStart}
+                    onChange={(e) => setCustomDateStart(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ minWidth: 160 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="End Date"
+                    type="date"
+                    value={customDateEnd}
+                    onChange={(e) => setCustomDateEnd(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ minWidth: 160 }}
+                  />
+                </>
+              )}
+              {dateFilterPeriod !== 'all' && (
+                <Chip
+                  label={`Showing ${filteredData.activities.length} activities, ${filteredData.milestones.length} milestones, ${filteredData.gapPlans.length} gap plans`}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+              )}
+            </Box>
+          </Paper>
+          
           {/* Quick Stats Banner - Only show if PRS section is visible */}
           {prsSectionVisible && readinessScores.length > 0 && (
             <Alert 
@@ -1786,83 +1917,6 @@ const SnapshotPage = () => {
         </Grid>
       )}
 
-      {/* Readiness Score Progress Over Time - Detailed List View - Only show if PRS section is visible */}
-      {prsSectionVisible && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Readiness Score Progress Over Time
-                </Typography>
-              <Box sx={{ mt: 2 }}>
-                {readinessScores.length > 0 ? (
-                  <>
-                    <Box sx={{ mb: 3 }}>
-                      {readinessScores
-                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                        .map((score, index) => (
-                          <Box key={score.id} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                Assessment #{index + 1}
-                              </Typography>
-                              <Typography variant="h6" color="primary.main">
-                                {score.score}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {new Date(score.date).toLocaleDateString()}
-                              </Typography>
-                              {index > 0 && (
-                                <Typography 
-                                  variant="caption" 
-                                  color={score.score > readinessScores[index - 1].score ? 'success.main' : 'error.main'}
-                                  sx={{ fontWeight: 500 }}
-                                >
-                                  {score.score > readinessScores[index - 1].score ? '↗' : '↘'} 
-                                  {Math.abs(score.score - readinessScores[index - 1].score).toFixed(1)} pts
-                                </Typography>
-                              )}
-                            </Box>
-                            {score.notes && (
-                              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                                Notes: {score.notes}
-                              </Typography>
-                            )}
-                          </Box>
-                        ))}
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
-                      <Typography variant="body2" color="primary.main">
-                        Progress Trend: {(() => {
-                          if (readinessScores.length < 2) return 'Insufficient data';
-                          const firstScore = readinessScores[0].score;
-                          const lastScore = readinessScores[readinessScores.length - 1].score;
-                          const improvement = lastScore - firstScore;
-                          if (improvement > 0) return `+${improvement.toFixed(1)} points improvement`;
-                          if (improvement < 0) return `${improvement.toFixed(1)} points decline`;
-                          return 'No change';
-                        })()}
-                      </Typography>
-                      <Typography variant="body2" color="primary.main">
-                        Total Assessments: {readinessScores.length}
-                      </Typography>
-                    </Box>
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No readiness scores available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        </Grid>
-      )}
-
       {/* Checklist Progress by Stage - Detailed Progress Breakdown */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12}>
@@ -2208,48 +2262,7 @@ const SnapshotPage = () => {
 
       {/* Activity Analysis - Work Tracking and Insights */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Activity Categories
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {activities.length > 0 ? (
-                  <>
-                    {Array.from(new Set(activities.map(a => a.category))).map(category => {
-                      const count = activities.filter(a => a.category === category).length;
-                      const percentage = (count / activities.length) * 100;
-                      return (
-                        <Box key={category} sx={{ mb: 2 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                            <Typography variant="body2">
-                              {category.length > 30 ? category.substring(0, 30) + '...' : category}
-                            </Typography>
-                            <Typography variant="body2">
-                              {count} ({Math.round(percentage)}%)
-                            </Typography>
-                          </Box>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={percentage}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                        </Box>
-                      );
-                    })}
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No activities data available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -2347,53 +2360,6 @@ const SnapshotPage = () => {
           </Card>
         </Grid>
       </Grid>
-
-      {/* Checklist Progress by Stage */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Checklist Progress by Stage
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
-                    {milestones && milestones.length > 0 ? (
-                      <Grid container spacing={2}>
-                        {milestones.map((stage: any) => {
-                          const totalTasks = stage.tasks?.length || 0;
-                          const completedTasks = stage.tasks?.filter((task: any) => task.completed)?.length || 0;
-                          const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                          
-                          return (
-                            <Grid item xs={12} sm={6} md={3} key={stage.id}>
-                              <Typography variant="h6" color="primary.main" gutterBottom>
-                                {stage.title}
-                              </Typography>
-                              <Typography variant="h4" color="success.main">
-                                {progress}%
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {completedTasks} of {totalTasks} tasks
-                              </Typography>
-                              <LinearProgress 
-                                variant="determinate" 
-                                value={progress}
-                                sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                              />
-                            </Grid>
-                          );
-                        })}
-                      </Grid>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No checklist data available
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
 
           {/* Activity Category Distribution */}
           <Grid container spacing={3} sx={{ mb: 4 }}>
