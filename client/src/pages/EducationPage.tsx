@@ -106,20 +106,32 @@ const EducationPage: React.FC = () => {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const contentMap: Record<string, EducationContent> = {};
           parsed.forEach((eq: any) => {
-            contentMap[eq.questionId] = {
-              question: eq.question,
-              why: eq.why,
-              background: eq.background,
-              example: eq.example,
-              sustainability: eq.sustainability,
-              resources: eq.resources || []
-            };
+            // Ensure questionId is a string and validate that all required fields exist
+            const questionId = String(eq.questionId || '');
+            if (questionId && eq.question && eq.why && eq.background && eq.example && eq.sustainability) {
+              contentMap[questionId] = {
+                question: eq.question,
+                why: eq.why,
+                background: eq.background,
+                example: eq.example,
+                sustainability: eq.sustainability,
+                resources: eq.resources || []
+              };
+            }
           });
           setEducationContent(contentMap);
+          console.log('Loaded education content for questions:', Object.keys(contentMap));
+        } else {
+          // Empty array - clear any old data
+          setEducationContent({});
         }
       } catch (e) {
         console.error('Error loading education content:', e);
+        setEducationContent({});
       }
+    } else {
+      // No saved data - ensure empty state
+      setEducationContent({});
     }
   }, []);
 
@@ -322,8 +334,15 @@ const EducationPage: React.FC = () => {
       {ASSESSMENT_QUESTIONS
         .filter(question => {
           // Only show questions that have education content configured in Admin Settings
-          // Check if this question ID exists in the educationContent map
-          return educationContent.hasOwnProperty(question.id);
+          // Ensure both IDs are strings for proper matching
+          const questionId = String(question.id);
+          const hasContent = educationContent.hasOwnProperty(questionId) && 
+                            educationContent[questionId]?.question && 
+                            educationContent[questionId]?.why &&
+                            educationContent[questionId]?.background &&
+                            educationContent[questionId]?.example &&
+                            educationContent[questionId]?.sustainability;
+          return hasContent;
         })
         .map(renderQuestionCard)}
       

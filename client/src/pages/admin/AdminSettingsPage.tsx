@@ -286,18 +286,43 @@ export default function AdminSettingsPage() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setEducationQuestions(parsed);
+          // Filter out any incomplete entries and normalize questionIds to strings
+          const validQuestions = parsed
+            .filter((q: any) => {
+              const questionId = String(q.questionId || '').trim();
+              return questionId && 
+                     q.question && q.question.trim() &&
+                     q.why && q.why.trim() &&
+                     q.background && q.background.trim() &&
+                     q.example && q.example.trim() &&
+                     q.sustainability && q.sustainability.trim();
+            })
+            .map((q: any) => ({
+              ...q,
+              questionId: String(q.questionId).trim() // Ensure questionId is always a string
+            }));
+          
+          setEducationQuestions(validQuestions);
+          
+          // If we filtered out any invalid entries, save the cleaned version
+          if (validQuestions.length !== parsed.length) {
+            localStorage.setItem('education_questions', JSON.stringify(validQuestions));
+            console.log(`Cleaned education questions: removed ${parsed.length - validQuestions.length} invalid entries`);
+          }
         } else {
-          // No education questions configured - start with empty array
+          // Empty array - clear any old data
           setEducationQuestions([]);
+          localStorage.setItem('education_questions', JSON.stringify([]));
         }
       } catch (e) {
         console.error('Error loading education questions:', e);
         setEducationQuestions([]);
+        localStorage.setItem('education_questions', JSON.stringify([]));
       }
     } else {
-      // No education questions configured - start with empty array
+      // No saved data - ensure empty state
       setEducationQuestions([]);
+      localStorage.setItem('education_questions', JSON.stringify([]));
     }
   }, []);
   
@@ -322,14 +347,30 @@ export default function AdminSettingsPage() {
   };
   
   const handleSaveEducationQuestion = () => {
-    if (!educationForm.questionId.trim() || !educationForm.question.trim()) {
+    // Normalize questionId to string and trim
+    const normalizedQuestionId = String(educationForm.questionId).trim();
+    
+    if (!normalizedQuestionId || !educationForm.question.trim()) {
       setSnackbar({ open: true, message: 'Question ID and Question text are required', severity: 'error' });
       return;
     }
     
+    // Validate all required fields
+    if (!educationForm.why?.trim() || !educationForm.background?.trim() || 
+        !educationForm.example?.trim() || !educationForm.sustainability?.trim()) {
+      setSnackbar({ open: true, message: 'All fields (Why, Background, Example, Sustainability) are required', severity: 'error' });
+      return;
+    }
+    
+    // Create normalized form with string questionId
+    const normalizedForm = {
+      ...educationForm,
+      questionId: normalizedQuestionId
+    };
+    
     const updated = editingEducationId
-      ? educationQuestions.map(q => q.questionId === editingEducationId ? educationForm : q)
-      : [...educationQuestions, educationForm];
+      ? educationQuestions.map(q => String(q.questionId) === String(editingEducationId) ? normalizedForm : q)
+      : [...educationQuestions, normalizedForm];
     
     setEducationQuestions(updated);
     localStorage.setItem('education_questions', JSON.stringify(updated));
@@ -339,7 +380,8 @@ export default function AdminSettingsPage() {
   
   const handleDeleteEducationQuestion = (questionId: string) => {
     if (!window.confirm(`Delete education content for Question ${questionId}?`)) return;
-    const updated = educationQuestions.filter(q => q.questionId !== questionId);
+    const normalizedId = String(questionId);
+    const updated = educationQuestions.filter(q => String(q.questionId) !== normalizedId);
     setEducationQuestions(updated);
     localStorage.setItem('education_questions', JSON.stringify(updated));
     setSnackbar({ open: true, message: 'Education question deleted', severity: 'success' });
