@@ -146,9 +146,6 @@ export default function AdminSettingsPage() {
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [categoryType, setCategoryType] = useState<'pecc' | 'mentor'>('pecc');
   
-  // PECC Dashboard Section Visibility state
-  const [peccUsers, setPeccUsers] = useState<Array<{ id: string; email: string; firstName: string; lastName: string; prsSectionVisible: boolean }>>([]);
-  const [loadingPeccUsers, setLoadingPeccUsers] = useState(false);
   
   // Education Questions state
   interface EducationQuestion {
@@ -430,12 +427,6 @@ export default function AdminSettingsPage() {
     }));
   };
   
-  const handleTogglePRSSection = async (userId: string, visible: boolean) => {
-    localStorage.setItem(`pecc_prs_section_visible_${userId}`, String(visible));
-    setPeccUsers(prev => prev.map(u => u.id === userId ? { ...u, prsSectionVisible: visible } : u));
-    setSnackbar({ open: true, message: 'PRS section visibility updated', severity: 'success' });
-  };
-  
   const handleSaveEmailSettings = () => {
     localStorage.setItem('email_confirmation_message', emailConfirmationMessage);
     setSnackbar({ open: true, message: 'Email settings saved successfully', severity: 'success' });
@@ -664,59 +655,6 @@ export default function AdminSettingsPage() {
           </Box>
           {hasChanges && <Alert severity="warning" sx={{ mb: 2 }}>You have unsaved changes.</Alert>}
           <Alert severity="info" sx={{ mb: 2 }}>These settings affect Manager, Mentor, and PECC only.</Alert>
-          
-          {/* PECC Dashboard Section Visibility */}
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>PECC Dashboard Section Visibility</Typography>
-            <Typography color="textSecondary" sx={{ mb: 2 }}>
-              Control which PECC users see the "Pediatric Readiness Scores" section on their dashboard. When disabled, the section will be hidden from both the Dashboard and Snapshot pages.
-            </Typography>
-            {loadingPeccUsers ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>PECC User</TableCell>
-                      <TableCell align="center">Pediatric Readiness Scores Section</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {peccUsers.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={2} align="center">
-                          <Typography color="textSecondary">No PECC users found</Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      peccUsers.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell>
-                            <Typography variant="body2">
-                              {user.firstName} {user.lastName}
-                            </Typography>
-                            <Typography variant="caption" color="textSecondary">
-                              {user.email}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Switch
-                              checked={user.prsSectionVisible}
-                              onChange={(e) => handleTogglePRSSection(user.id, e.target.checked)}
-                              color="primary"
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </Paper>
           {Object.entries(PERMISSION_GROUPS).map(([groupName, groupPermissions]) => (
             <Accordion key={groupName} defaultExpanded>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}><Typography variant="subtitle1">{groupName}</Typography></AccordionSummary>

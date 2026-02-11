@@ -410,6 +410,11 @@ const AdminCRMPage: React.FC = () => {
   const [siteSettingsLoading, setSiteSettingsLoading] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState('');
   const [addMemberLoading, setAddMemberLoading] = useState(false);
+  
+  // PECC user settings: PRS section visibility (when viewing a PECC contact)
+  const [peccUserId, setPeccUserId] = useState<string | null>(null);
+  const [peccPRSSectionVisible, setPeccPRSSectionVisible] = useState(true);
+  const [peccSettingsLoading, setPeccSettingsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     type: 'other' as ContactType,
@@ -1009,6 +1014,56 @@ const AdminCRMPage: React.FC = () => {
   const removeSiteMember = useCallback(async (siteId: string, userId: string) => {
     await supabase.from('site_members').delete().eq('site_id', siteId).eq('user_id', userId);
     setSiteMembers(prev => prev.filter(m => m.user_id !== userId));
+  }, []);
+  
+  // Load PECC user settings when viewing a PECC contact
+  useEffect(() => {
+    let cancelled = false;
+    if (!fullScreenOpen || detailContact?.type !== 'pecc' || !detailContact.email) {
+      setPeccUserId(null);
+      setPeccPRSSectionVisible(true);
+      setPeccSettingsLoading(false);
+      return;
+    }
+    setPeccSettingsLoading(true);
+    (async () => {
+      try {
+        // Find user by email
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', detailContact.email)
+          .eq('role', 'pecc')
+          .maybeSingle();
+        
+        if (cancelled) return;
+        
+        if (user && user.id) {
+          const userId = user.id;
+          setPeccUserId(userId);
+          // Load PRS section visibility from localStorage (default to true)
+          const prsVisible = localStorage.getItem(`pecc_prs_section_visible_${userId}`);
+          setPeccPRSSectionVisible(prsVisible === null ? true : prsVisible === 'true');
+        } else {
+          setPeccUserId(null);
+          setPeccPRSSectionVisible(true);
+        }
+      } catch (err) {
+        console.error('Error loading PECC settings:', err);
+        if (!cancelled) {
+          setPeccUserId(null);
+          setPeccPRSSectionVisible(true);
+        }
+      } finally {
+        if (!cancelled) setPeccSettingsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fullScreenOpen, detailContact]);
+  
+  const handleTogglePeccPRSSection = useCallback(async (userId: string, visible: boolean) => {
+    localStorage.setItem(`pecc_prs_section_visible_${userId}`, String(visible));
+    setPeccPRSSectionVisible(visible);
   }, []);
 
   const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))].sort() as string[], [contacts]);
@@ -3708,6 +3763,52 @@ const AdminCRMPage: React.FC = () => {
                   </Grid>
                 )}
               </Grid>
+              
+              {/* PECC user settings: Dashboard section visibility — only for PECC contacts */}
+              {detailContact.type === 'pecc' && (
+                <Grid container spacing={3} sx={{ mt: 2 }}>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>PECC Dashboard Settings</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Control which sections this PECC user can see on their dashboard and snapshot pages.
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      {peccSettingsLoading ? (
+                        <Typography variant="body2" color="text.secondary">Loading…</Typography>
+                      ) : peccUserId ? (
+                        <FormGroup>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={peccPRSSectionVisible}
+                                onChange={(e) => handleTogglePeccPRSSection(peccUserId, e.target.checked)}
+                                color="primary"
+                              />
+                            }
+                            label={
+                              <Box>
+                                <Typography variant="body2" fontWeight={500}>
+                                  Pediatric Readiness Scores Section
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  When disabled, the PRS section will be hidden from both the Dashboard and Snapshot pages.
+                                </Typography>
+                              </Box>
+                            }
+                          />
+                        </FormGroup>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          User account not found. This setting is only available for PECC users with registered accounts.
+                        </Typography>
+                      )}
+                    </Paper>
+                  </Grid>
+                </Grid>
+              )}
+              
               {/* PECC page (site) settings: tab visibility + shared access — only for hospital contacts */}
               {detailContact.type === 'hospital' && (detailContact.facilityId != null || detailContact.id) && (
                 <Grid container spacing={3} sx={{ mt: 2 }}>
