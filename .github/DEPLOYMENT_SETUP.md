@@ -4,33 +4,25 @@ This repository is configured for automatic deployment to Vercel on every push t
 
 ## How It Works
 
-1. **GitHub Actions Workflow**: The `.github/workflows/vercel-deploy.yml` workflow automatically triggers on every push to `main`
-2. **Vercel Integration**: If Vercel is connected to this GitHub repository, it will also auto-deploy (this is the primary method)
+**Vercel GitHub Integration** (Primary Method):
+- Vercel is connected directly to this GitHub repository
+- Every push to `main` automatically triggers a deployment to the **impacts** project
+- No GitHub Actions or secrets required - Vercel handles everything automatically
 
-## Required GitHub Secrets
+## Verification
 
-For the GitHub Actions workflow to work, you need to add these secrets to your GitHub repository:
+To verify Vercel is connected:
+1. Go to Vercel Dashboard → Project Settings → Git
+2. Confirm the repository `BLMichaels/ImPACTS-Web-App` is connected
+3. Check that "Production Branch" is set to `main`
 
-1. Go to: `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
+## Deployment Process
 
-2. Add these secrets:
-   - `VERCEL_TOKEN`: Your Vercel authentication token
-     - Get it from: https://vercel.com/account/tokens
-   - `VERCEL_ORG_ID`: Your Vercel organization ID
-     - Find it in: Vercel Dashboard → Settings → General
-   - `VERCEL_PROJECT_ID`: Your Vercel project ID
-     - Find it in: Vercel Dashboard → Project Settings → General
-
-## Alternative: Vercel GitHub Integration (Recommended)
-
-The easiest way is to connect Vercel directly to your GitHub repository:
-
-1. Go to Vercel Dashboard
-2. Click "Add New Project"
-3. Import your GitHub repository: `BLMichaels/ImPACTS-Web-App`
-4. Vercel will automatically deploy on every push to `main`
-
-This method doesn't require GitHub Actions or secrets - Vercel handles everything automatically.
+Every time you push to `main`:
+- ✅ Vercel automatically detects the push
+- ✅ Builds the project using `vercel.json` configuration
+- ✅ Deploys to production (impacts project)
+- ✅ You'll see deployment status in the Vercel dashboard
 
 ## Verification
 
