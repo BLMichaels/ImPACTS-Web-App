@@ -18,7 +18,8 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  Alert
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
@@ -320,20 +321,22 @@ const EducationPage: React.FC = () => {
 
       {ASSESSMENT_QUESTIONS
         .filter(question => {
-          // Start with question 22, remove questions 1-21
-          const questionNumber = parseInt(question.id);
-          if (questionNumber >= 1 && questionNumber <= 21) {
-            return false;
-          }
-          
-          // Remove questions 79-82
-          if (questionNumber >= 79 && questionNumber <= 82) {
-            return false;
-          }
-          
-          return true;
+          // Only show questions that have education content configured in Admin Settings
+          // Check if this question ID exists in the educationContent map
+          return educationContent.hasOwnProperty(question.id);
         })
         .map(renderQuestionCard)}
+      
+      {Object.keys(educationContent).length === 0 && (
+        <Alert severity="info" sx={{ mt: 4 }}>
+          <Typography variant="body1" gutterBottom>
+            No education content available yet.
+          </Typography>
+          <Typography variant="body2">
+            Education content must be configured in Admin Settings → Education tab before it can be displayed here.
+          </Typography>
+        </Alert>
+      )}
 
       <ScormPackagesSection title="SCORM learning modules" />
 

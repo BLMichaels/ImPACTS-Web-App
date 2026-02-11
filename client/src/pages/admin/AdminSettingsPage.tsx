@@ -288,43 +288,16 @@ export default function AdminSettingsPage() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           setEducationQuestions(parsed);
         } else {
-          // Default: load question 22
-          const defaultQuestion: EducationQuestion = {
-            questionId: '22',
-            question: 'Does your ED have a physician/APP coordinator—sometimes referred to as a pediatric emergency care coordinator (PECC) or pediatric champion—who is assigned the role of overseeing various administrative aspects of pediatric emergency care (e.g., oversees quality improvement, collaborates with nursing, ensures pediatric skills of staff, develops and periodically reviews policies)?',
-            why: 'A PECC ensures the ED maintains a consistent focus on pediatric-specific needs, promoting high quality and safe emergency care for children. PECCs drive system-wide improvements, protocol compliance, and advocacy for children at all care stages.',
-            background: 'A PECC, often a physician champion, acts as a central figure driving pediatric quality and systems integration. Research demonstrates that EDs with a PECC achieve significantly higher pediatric readiness scores, which correlate with reduced pediatric mortality and better patient outcomes. The PECC role is endorsed by national organizations and is considered the foundation of a robust pediatric emergency care structure. The PECC facilitates multidisciplinary collaboration, supports ongoing education, and sustains improvement by coordinating QI projects, reviewing standards, and serving as a pediatric advocate within the ED and hospital.',
-            example: 'The ED\'s physician PECC organizes pediatric simulation drills, reviews pediatric protocols regularly, and ensures ongoing pediatric staff training.',
-            sustainability: 'Establish regular meetings with ED leadership and pediatric staff to align goals and review progress. Champion ongoing training and competency assessments for all staff. Develop a system for periodic review and updates of policies and pediatric guidelines. Foster collaboration with regional pediatric centers and networks for shared resources and mentorship.',
-            resources: [
-              'EIIC PECC Toolkit (https://emscimprovement.center/domains/pecc/)',
-              'JAMA - PECC National Impact Study (https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2828228)',
-              'LA Peds Ready Facility Guide (https://partnersforfamilyhealth.org/wp-content/uploads/2023/03/EMSC_PedReadyFacilityGuide-3_2023-3.pdf)'
-            ]
-          };
-          setEducationQuestions([defaultQuestion]);
-          localStorage.setItem('education_questions', JSON.stringify([defaultQuestion]));
+          // No education questions configured - start with empty array
+          setEducationQuestions([]);
         }
       } catch (e) {
         console.error('Error loading education questions:', e);
+        setEducationQuestions([]);
       }
     } else {
-      // Default: load question 22
-      const defaultQuestion: EducationQuestion = {
-        questionId: '22',
-        question: 'Does your ED have a physician/APP coordinator—sometimes referred to as a pediatric emergency care coordinator (PECC) or pediatric champion—who is assigned the role of overseeing various administrative aspects of pediatric emergency care (e.g., oversees quality improvement, collaborates with nursing, ensures pediatric skills of staff, develops and periodically reviews policies)?',
-        why: 'A PECC ensures the ED maintains a consistent focus on pediatric-specific needs, promoting high quality and safe emergency care for children. PECCs drive system-wide improvements, protocol compliance, and advocacy for children at all care stages.',
-        background: 'A PECC, often a physician champion, acts as a central figure driving pediatric quality and systems integration. Research demonstrates that EDs with a PECC achieve significantly higher pediatric readiness scores, which correlate with reduced pediatric mortality and better patient outcomes. The PECC role is endorsed by national organizations and is considered the foundation of a robust pediatric emergency care structure. The PECC facilitates multidisciplinary collaboration, supports ongoing education, and sustains improvement by coordinating QI projects, reviewing standards, and serving as a pediatric advocate within the ED and hospital.',
-        example: 'The ED\'s physician PECC organizes pediatric simulation drills, reviews pediatric protocols regularly, and ensures ongoing pediatric staff training.',
-        sustainability: 'Establish regular meetings with ED leadership and pediatric staff to align goals and review progress. Champion ongoing training and competency assessments for all staff. Develop a system for periodic review and updates of policies and pediatric guidelines. Foster collaboration with regional pediatric centers and networks for shared resources and mentorship.',
-        resources: [
-          'EIIC PECC Toolkit (https://emscimprovement.center/domains/pecc/)',
-          'JAMA - PECC National Impact Study (https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2828228)',
-          'LA Peds Ready Facility Guide (https://partnersforfamilyhealth.org/wp-content/uploads/2023/03/EMSC_PedReadyFacilityGuide-3_2023-3.pdf)'
-        ]
-      };
-      setEducationQuestions([defaultQuestion]);
-      localStorage.setItem('education_questions', JSON.stringify([defaultQuestion]));
+      // No education questions configured - start with empty array
+      setEducationQuestions([]);
     }
   }, []);
   
