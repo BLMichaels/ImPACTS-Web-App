@@ -3,6 +3,8 @@ import { Box, IconButton, Tooltip, Divider } from '@mui/material';
 import {
   FormatBold as FormatBoldIcon,
   FormatItalic as FormatItalicIcon,
+  FormatUnderlined as FormatUnderlinedIcon,
+  FormatListBulleted as FormatListBulletedIcon,
   Link as LinkIcon,
   Image as ImageIcon,
   AttachFile as AttachFileIcon,
@@ -30,15 +32,19 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isInternalChangeRef = useRef(false);
 
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value;
+    // Only update if the change came from outside (prop change, not user input)
+    if (editorRef.current && !isInternalChangeRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value || '';
     }
+    isInternalChangeRef.current = false;
   }, [value]);
 
   const handleInput = () => {
     if (editorRef.current) {
+      isInternalChangeRef.current = true; // Mark as internal change
       onChange(editorRef.current.innerHTML);
     }
   };
@@ -51,6 +57,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const handleBold = () => execCommand('bold');
   const handleItalic = () => execCommand('italic');
+  const handleUnderline = () => execCommand('underline');
   
   const handleLink = () => {
     const url = prompt('Enter URL:');
@@ -58,6 +65,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       execCommand('createLink', url);
     }
   };
+
+  const handleBulletList = () => execCommand('insertUnorderedList');
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -108,9 +117,19 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             <FormatItalicIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        <Tooltip title="Underline">
+          <IconButton size="small" onClick={handleUnderline}>
+            <FormatUnderlinedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <Tooltip title="Insert Link">
           <IconButton size="small" onClick={handleLink}>
             <LinkIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Bullet List">
+          <IconButton size="small" onClick={handleBulletList}>
+            <FormatListBulletedIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         {onFileUpload && (
@@ -161,12 +180,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
-        dangerouslySetInnerHTML={{ __html: value }}
+        dir="ltr"
         style={{
           minHeight: `${minHeight}px`,
           padding: '12px',
           outline: 'none',
-          overflowY: 'auto'
+          overflowY: 'auto',
+          direction: 'ltr',
+          textAlign: 'left'
         }}
         data-placeholder={placeholder}
         sx={{
@@ -183,6 +204,13 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           },
           '& a': {
             color: 'primary.main',
+            textDecoration: 'underline'
+          },
+          '& ul, & ol': {
+            marginLeft: '20px',
+            paddingLeft: '20px'
+          },
+          '& u': {
             textDecoration: 'underline'
           }
         }}

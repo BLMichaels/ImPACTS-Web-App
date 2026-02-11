@@ -23,7 +23,12 @@ import {
   Menu,
   MenuItem,
   ListItemIcon,
-  ListItemText as MuiListItemText
+  ListItemText as MuiListItemText,
+  InputAdornment,
+  FormControl,
+  InputLabel,
+  Select,
+  Chip as MuiChip
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -33,7 +38,10 @@ import {
   ChatBubbleOutline as ReplyIcon,
   MoreVert as MoreIcon,
   Delete as DeleteIcon,
-  AttachFile as AttachFileIcon
+  AttachFile as AttachFileIcon,
+  Search as SearchIcon,
+  FilterList as FilterListIcon,
+  Sort as SortIcon
 } from '@mui/icons-material';
 import { CohortDiscussionTopic, UserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -72,6 +80,12 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; topic: CohortDiscussionTopic } | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingTopicId, setDeletingTopicId] = useState<string | null>(null);
+  
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'most_replies' | 'recent_activity'>('recent_activity');
+  const [filterPinned, setFilterPinned] = useState<boolean | null>(null);
+  const [filterLocked, setFilterLocked] = useState<boolean | null>(null);
 
   // Load draft on mount
   useEffect(() => {
@@ -298,6 +312,57 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
     }
   };
 
+  // Filter and sort topics
+  const filteredAndSortedTopics = React.useMemo(() => {
+    let filtered = [...topics];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(topic => 
+        topic.title.toLowerCase().includes(query) ||
+        topic.content?.toLowerCase().includes(query) ||
+        topic.author?.first_name?.toLowerCase().includes(query) ||
+        topic.author?.last_name?.toLowerCase().includes(query)
+      );
+    }
+
+    // Pinned filter
+    if (filterPinned !== null) {
+      filtered = filtered.filter(topic => topic.is_pinned === filterPinned);
+    }
+
+    // Locked filter
+    if (filterLocked !== null) {
+      filtered = filtered.filter(topic => topic.is_locked === filterLocked);
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'newest':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'oldest':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'most_replies':
+          return b.reply_count - a.reply_count;
+        case 'recent_activity':
+          const aTime = a.last_reply_at ? new Date(a.last_reply_at).getTime() : new Date(a.created_at).getTime();
+          const bTime = b.last_reply_at ? new Date(b.last_reply_at).getTime() : new Date(b.created_at).getTime();
+          return bTime - aTime;
+        default:
+          return 0;
+      }
+    });
+
+    // Always show pinned topics first
+    return filtered.sort((a, b) => {
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
+      return 0;
+    });
+  }, [topics, searchQuery, sortBy, filterPinned, filterLocked]);
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -308,15 +373,87 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
 
   return (
     <Box>
-      {/* Header with create button */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleOpenDialog}
-        >
-          New Topic
-        </Button>
+      {/* Header with search, filters, and create button */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, mb: 2 }}>
+          {/* Search */}
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search discussions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ maxWidth: { md: 400 } }}
+          />
+          
+          {/* Sort */}
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel>Sort By</InputLabel>
+            <Select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              label="Sort By"
+            >
+              <MenuItem value="recent_activity">Recent Activity</MenuItem>
+              <MenuItem value="newest">Newest First</MenuItem>
+              <MenuItem value="oldest">Oldest First</MenuItem>
+              <MenuItem value="most_replies">Most Replies</MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Filters */}
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <MuiChip
+              label={filterPinned === true ? 'Pinned Only' : filterPinned === false ? 'Not Pinned' : 'All'}
+              onClick={() => {
+                if (filterPinned === null) setFilterPinned(true);
+                else if (filterPinned === true) setFilterPinned(false);
+                else setFilterPinned(null);
+              }}
+              color={filterPinned !== null ? 'primary' : 'default'}
+              variant={filterPinned !== null ? 'filled' : 'outlined'}
+              size="small"
+              icon={<PinIcon />}
+            />
+            <MuiChip
+              label={filterLocked === true ? 'Locked Only' : filterLocked === false ? 'Unlocked' : 'All'}
+              onClick={() => {
+                if (filterLocked === null) setFilterLocked(true);
+                else if (filterLocked === true) setFilterLocked(false);
+                else setFilterLocked(null);
+              }}
+              color={filterLocked !== null ? 'primary' : 'default'}
+              variant={filterLocked !== null ? 'filled' : 'outlined'}
+              size="small"
+              icon={<LockIcon />}
+            />
+          </Box>
+
+          <Box sx={{ flex: 1 }} />
+          
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleOpenDialog}
+            sx={{ minWidth: { xs: '100%', md: 'auto' } }}
+          >
+            New Topic
+          </Button>
+        </Box>
+
+        {/* Results count */}
+        {(searchQuery || filterPinned !== null || filterLocked !== null) && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Showing {filteredAndSortedTopics.length} of {topics.length} discussion{topics.length !== 1 ? 's' : ''}
+          </Typography>
+        )}
       </Box>
 
       {/* Topics list */}
@@ -330,10 +467,20 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
             Start a new topic to begin the conversation
           </Typography>
         </Paper>
+      ) : filteredAndSortedTopics.length === 0 ? (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <ForumIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+          <Typography variant="h6" color="text.secondary">
+            No discussions match your filters
+          </Typography>
+          <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
+            Try adjusting your search or filters
+          </Typography>
+        </Paper>
       ) : (
         <Paper>
           <List disablePadding>
-            {topics.map((topic, index) => (
+            {filteredAndSortedTopics.map((topic, index) => (
               <React.Fragment key={topic.id}>
                 {index > 0 && <Divider />}
                 <ListItem 
@@ -352,71 +499,105 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
                     )
                   }
                 >
-                  <ListItemButton onClick={() => onTopicClick(topic)}>
+                  <ListItemButton 
+                    onClick={() => onTopicClick(topic)}
+                    sx={{
+                      py: 2,
+                      borderLeft: topic.is_pinned ? '3px solid' : 'none',
+                      borderColor: topic.is_pinned ? 'primary.main' : 'transparent',
+                      bgcolor: topic.is_pinned ? 'action.hover' : 'transparent',
+                      '&:hover': {
+                        bgcolor: 'action.hover'
+                      }
+                    }}
+                  >
                     <ListItemAvatar>
-                      <Avatar sx={{ bgcolor: getRoleBadgeColor(topic.author?.role) + '.main' }}>
+                      <Avatar sx={{ 
+                        bgcolor: getRoleBadgeColor(topic.author?.role) + '.main',
+                        width: 48,
+                        height: 48,
+                        fontWeight: 600
+                      }}>
                         {topic.author?.first_name?.charAt(0) || '?'}
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
                       primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
                           {topic.is_pinned && (
-                            <PinIcon fontSize="small" color="primary" />
+                            <Chip 
+                              icon={<PinIcon />} 
+                              label="Pinned" 
+                              size="small" 
+                              color="primary" 
+                              variant="filled"
+                              sx={{ height: 22, fontSize: '0.7rem' }}
+                            />
                           )}
                           {topic.is_locked && (
-                            <LockIcon fontSize="small" color="action" />
+                            <Chip 
+                              icon={<LockIcon />} 
+                              label="Locked" 
+                              size="small" 
+                              color="default" 
+                              variant="outlined"
+                              sx={{ height: 22, fontSize: '0.7rem' }}
+                            />
                           )}
                           <Typography 
                             variant="subtitle1" 
                             sx={{ 
-                              fontWeight: 500,
-                              wordBreak: 'break-word'
+                              fontWeight: topic.is_pinned ? 600 : 500,
+                              wordBreak: 'break-word',
+                              flex: 1,
+                              minWidth: 0
                             }}
                           >
                             {topic.title}
                           </Typography>
-                          <Chip
-                            label={getRoleLabel(topic.author?.role)}
-                            size="small"
-                            color={getRoleBadgeColor(topic.author?.role) as any}
-                            variant="outlined"
-                            sx={{ height: 20, fontSize: '0.7rem' }}
-                          />
-                          {topic.attachments && topic.attachments.length > 0 && (
-                            <Chip
-                              icon={<AttachFileIcon fontSize="small" />}
-                              label={topic.attachments.length}
-                              size="small"
-                              variant="outlined"
-                              sx={{ height: 20, fontSize: '0.7rem' }}
-                            />
-                          )}
                         </Box>
                       }
                       secondary={
                         <Box sx={{ mt: 0.5 }}>
-                          <Typography variant="body2" color="text.secondary" component="span">
-                            Started by {topic.author?.first_name} {topic.author?.last_name}
-                            {' • '}
-                            {getTimeAgo(topic.created_at)}
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
+                            <Chip
+                              label={getRoleLabel(topic.author?.role)}
+                              size="small"
+                              color={getRoleBadgeColor(topic.author?.role) as any}
+                              variant="outlined"
+                              sx={{ height: 20, fontSize: '0.7rem' }}
+                            />
+                            <Typography variant="body2" color="text.secondary" component="span">
+                              {topic.author?.first_name} {topic.author?.last_name}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" component="span">
+                              • {getTimeAgo(topic.created_at)}
+                            </Typography>
+                            {topic.attachments && topic.attachments.length > 0 && (
+                              <Chip
+                                icon={<AttachFileIcon fontSize="small" />}
+                                label={`${topic.attachments.length} file${topic.attachments.length > 1 ? 's' : ''}`}
+                                size="small"
+                                variant="outlined"
+                                sx={{ height: 20, fontSize: '0.7rem' }}
+                              />
+                            )}
+                          </Box>
                           {topic.reply_count > 0 && (
                             <Box 
                               sx={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
-                                gap: 0.5, 
-                                mt: 0.5,
+                                gap: 0.5,
                                 color: 'text.secondary'
                               }}
                             >
                               <ReplyIcon fontSize="small" />
                               <Typography variant="body2">
                                 {topic.reply_count} repl{topic.reply_count === 1 ? 'y' : 'ies'}
-                                {topic.last_replier && (
+                                {topic.last_replier && topic.last_reply_at && (
                                   <>
-                                    {' • Last reply by '}
+                                    {' • Last by '}
                                     {topic.last_replier.first_name} {topic.last_replier.last_name}
                                     {' '}
                                     {getTimeAgo(topic.last_reply_at)}

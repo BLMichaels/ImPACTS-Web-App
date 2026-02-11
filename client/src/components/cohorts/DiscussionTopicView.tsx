@@ -65,8 +65,12 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; reply?: CohortDiscussionReply } | null>(null);
   const [editingReply, setEditingReply] = useState<CohortDiscussionReply | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [editingTopic, setEditingTopic] = useState(false);
+  const [editTopicTitle, setEditTopicTitle] = useState('');
+  const [editTopicContent, setEditTopicContent] = useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
+  const [deleteTopicConfirmOpen, setDeleteTopicConfirmOpen] = useState(false);
 
   const loadReplies = useCallback(async () => {
     try {
@@ -290,6 +294,65 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
     }
   };
 
+  const handleEditTopic = () => {
+    setEditingTopic(true);
+    setEditTopicTitle(topic.title);
+    setEditTopicContent(topic.content || '');
+    setMenuAnchor(null);
+  };
+
+  const handleSaveTopicEdit = async () => {
+    if (!editTopicTitle.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('cohort_discussion_topics')
+        .update({
+          title: editTopicTitle.trim(),
+          content: editTopicContent.trim() || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', topic.id);
+
+      if (error) throw error;
+      
+      setTopic(prev => ({
+        ...prev,
+        title: editTopicTitle.trim(),
+        content: editTopicContent.trim() || null,
+        updated_at: new Date().toISOString()
+      }));
+      setEditingTopic(false);
+      setEditTopicTitle('');
+      setEditTopicContent('');
+    } catch (err) {
+      console.error('Error editing topic:', err);
+    }
+  };
+
+  const handleDeleteTopic = () => {
+    setDeleteTopicConfirmOpen(true);
+    setMenuAnchor(null);
+  };
+
+  const confirmDeleteTopic = async () => {
+    try {
+      const { error } = await supabase
+        .from('cohort_discussion_topics')
+        .delete()
+        .eq('id', topic.id);
+
+      if (error) throw error;
+      
+      // Navigate back after deletion
+      onBack();
+    } catch (err) {
+      console.error('Error deleting topic:', err);
+    } finally {
+      setDeleteTopicConfirmOpen(false);
+    }
+  };
+
   // Load draft reply on mount
   useEffect(() => {
     const loadDraft = async () => {
@@ -364,59 +427,118 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   return (
     <Box>
       {/* Topic Header */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-          <IconButton onClick={onBack} sx={{ mt: -0.5 }}>
+      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1, sm: 2 } }}>
+          <IconButton onClick={onBack} sx={{ mt: -0.5, display: { xs: 'none', sm: 'flex' } }}>
             <BackIcon />
           </IconButton>
+          <Button
+            startIcon={<BackIcon />}
+            onClick={onBack}
+            sx={{ mt: -0.5, display: { xs: 'flex', sm: 'none' }, minWidth: 'auto' }}
+          >
+            Back
+          </Button>
           
           <Box sx={{ flex: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-              {topic.is_pinned && (
-                <Chip icon={<PinIcon />} label="Pinned" size="small" color="primary" variant="outlined" />
-              )}
-              {topic.is_locked && (
-                <Chip icon={<LockIcon />} label="Locked" size="small" color="default" variant="outlined" />
-              )}
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                {topic.title}
-              </Typography>
-            </Box>
-            
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <Avatar 
-                sx={{ 
-                  width: 24, 
-                  height: 24, 
-                  fontSize: '0.75rem',
-                  bgcolor: getRoleBadgeColor(topic.author?.role) + '.main'
-                }}
-              >
-                {topic.author?.first_name?.charAt(0) || '?'}
-              </Avatar>
-              <Typography variant="body2" color="text.secondary">
-                {topic.author?.first_name} {topic.author?.last_name}
-              </Typography>
-              <Chip
-                label={getRoleLabel(topic.author?.role)}
-                size="small"
-                color={getRoleBadgeColor(topic.author?.role) as any}
-                variant="outlined"
-                sx={{ height: 20, fontSize: '0.7rem' }}
-              />
-              <Typography variant="body2" color="text.secondary">
-                • {format(new Date(topic.created_at), 'MMM d, yyyy \'at\' h:mm a')}
-              </Typography>
-            </Box>
-            
-            {topic.content && (
-              <Box 
-                sx={{ 
-                  '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1, margin: '8px 0' },
-                  '& a': { color: 'primary.main', textDecoration: 'underline' }
-                }}
-                dangerouslySetInnerHTML={{ __html: topic.content }}
-              />
+            {editingTopic ? (
+              // Edit mode for topic
+              <Box>
+                <TextField
+                  fullWidth
+                  label="Topic Title"
+                  value={editTopicTitle}
+                  onChange={(e) => setEditTopicTitle(e.target.value)}
+                  sx={{ mb: 2 }}
+                  required
+                />
+                <RichTextEditor
+                  value={editTopicContent}
+                  onChange={setEditTopicContent}
+                  placeholder="Edit topic content..."
+                  minHeight={200}
+                  showSaveDraft={false}
+                />
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 2 }}>
+                  <Button onClick={() => {
+                    setEditingTopic(false);
+                    setEditTopicTitle('');
+                    setEditTopicContent('');
+                  }}>
+                    Cancel
+                  </Button>
+                  <Button variant="contained" onClick={handleSaveTopicEdit} disabled={!editTopicTitle.trim()}>
+                    Save Changes
+                  </Button>
+                </Box>
+              </Box>
+            ) : (
+              // View mode for topic
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                  {topic.is_pinned && (
+                    <Chip icon={<PinIcon />} label="Pinned" size="small" color="primary" variant="outlined" />
+                  )}
+                  {topic.is_locked && (
+                    <Chip icon={<LockIcon />} label="Locked" size="small" color="default" variant="outlined" />
+                  )}
+                  <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                    {topic.title}
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
+                  <Avatar 
+                    sx={{ 
+                      width: { xs: 40, sm: 48 }, 
+                      height: { xs: 40, sm: 48 }, 
+                      fontSize: { xs: '1rem', sm: '1.25rem' },
+                      bgcolor: getRoleBadgeColor(topic.author?.role) + '.main',
+                      fontWeight: 600
+                    }}
+                  >
+                    {topic.author?.first_name?.charAt(0) || '?'}
+                  </Avatar>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {topic.author?.first_name} {topic.author?.last_name}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                      <Chip
+                        label={getRoleLabel(topic.author?.role)}
+                        size="small"
+                        color={getRoleBadgeColor(topic.author?.role) as any}
+                        variant="outlined"
+                        sx={{ height: 20, fontSize: '0.7rem' }}
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {format(new Date(topic.created_at), 'MMM d, yyyy \'at\' h:mm a')}
+                      </Typography>
+                      {topic.updated_at && topic.updated_at !== topic.created_at && (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          • Edited {formatDistanceToNow(new Date(topic.updated_at), { addSuffix: true })}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                </Box>
+                
+                {topic.content && (
+                  <Box 
+                    sx={{ 
+                      mb: 2,
+                      p: 2,
+                      bgcolor: 'grey.50',
+                      borderRadius: 1,
+                      '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1, margin: '8px 0' },
+                      '& a': { color: 'primary.main', textDecoration: 'underline' },
+                      '& ul, & ol': { pl: 3, mb: 1 },
+                      '& p': { mb: 1 }
+                    }}
+                    dangerouslySetInnerHTML={{ __html: topic.content }}
+                  />
+                )}
+              </>
             )}
             {topic.attachments && topic.attachments.length > 0 && (
               <Box sx={{ mt: 2 }}>
@@ -441,7 +563,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
             )}
           </Box>
 
-          {canModerate && (
+          {(canModerate || topic.created_by === userProfile?.id) && (
             <IconButton onClick={(e) => setMenuAnchor({ el: e.currentTarget })}>
               <MoreIcon />
             </IconButton>
@@ -449,113 +571,168 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
         </Box>
       </Paper>
 
-      {/* Replies */}
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        {replies.length} Repl{replies.length === 1 ? 'y' : 'ies'}
-      </Typography>
-
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress />
+      {/* Replies Section */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            {replies.length} Repl{replies.length === 1 ? 'y' : 'ies'}
+          </Typography>
         </Box>
-      ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {replies.map((reply) => (
-            <Paper key={reply.id} sx={{ p: 2 }}>
-              {editingReply?.id === reply.id ? (
-                // Edit mode
-                <Box>
-                  <RichTextEditor
-                    value={editContent}
-                    onChange={setEditContent}
-                    placeholder="Edit your reply..."
-                    minHeight={150}
-                    showSaveDraft={false}
-                  />
-                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 2 }}>
-                    <Button onClick={() => setEditingReply(null)}>Cancel</Button>
-                    <Button variant="contained" onClick={handleSaveEdit}>Save</Button>
+
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : replies.length === 0 ? (
+          <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'grey.50' }}>
+            <Typography variant="body1" color="text.secondary">
+              No replies yet. Be the first to reply!
+            </Typography>
+          </Paper>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {replies.map((reply, index) => (
+              <Paper 
+                key={reply.id} 
+                sx={{ 
+                  p: 2.5, 
+                  borderLeft: '3px solid',
+                  borderColor: getRoleBadgeColor(reply.author?.role) + '.main',
+                  bgcolor: index % 2 === 0 ? 'background.paper' : 'grey.50',
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    boxShadow: 2
+                  }
+                }}
+              >
+                {editingReply?.id === reply.id ? (
+                  // Edit mode
+                  <Box>
+                    <RichTextEditor
+                      value={editContent}
+                      onChange={setEditContent}
+                      placeholder="Edit your reply..."
+                      minHeight={150}
+                      showSaveDraft={false}
+                    />
+                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 2 }}>
+                      <Button onClick={() => {
+                        setEditingReply(null);
+                        setEditContent('');
+                      }}>
+                        Cancel
+                      </Button>
+                      <Button variant="contained" onClick={handleSaveEdit} disabled={!editContent.trim()}>
+                        Save Changes
+                      </Button>
+                    </Box>
                   </Box>
-                </Box>
-              ) : (
-                // View mode
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-                  <Avatar 
-                    sx={{ 
-                      bgcolor: getRoleBadgeColor(reply.author?.role) + '.main'
-                    }}
-                  >
-                    {reply.author?.first_name?.charAt(0) || '?'}
-                  </Avatar>
-                  
-                  <Box sx={{ flex: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                      <Typography variant="subtitle2">
-                        {reply.author?.first_name} {reply.author?.last_name}
-                      </Typography>
-                      <Chip
-                        label={getRoleLabel(reply.author?.role)}
-                        size="small"
-                        color={getRoleBadgeColor(reply.author?.role) as any}
-                        variant="outlined"
-                        sx={{ height: 18, fontSize: '0.65rem' }}
-                      />
+                ) : (
+                  // View mode
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                    <Avatar 
+                      sx={{ 
+                        width: 40,
+                        height: 40,
+                        bgcolor: getRoleBadgeColor(reply.author?.role) + '.main',
+                        fontWeight: 600
+                      }}
+                    >
+                      {reply.author?.first_name?.charAt(0) || '?'}
+                    </Avatar>
+                    
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {reply.author?.first_name} {reply.author?.last_name}
+                        </Typography>
+                        <Chip
+                          label={getRoleLabel(reply.author?.role)}
+                          size="small"
+                          color={getRoleBadgeColor(reply.author?.role) as any}
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.7rem' }}
+                        />
                       <Typography variant="caption" color="text.secondary">
                         {formatDistanceToNow(new Date(reply.created_at), { addSuffix: true })}
-                        {reply.edited_at && ' (edited)'}
                       </Typography>
-                    </Box>
-                    
-                    <Box 
-                      sx={{ 
-                        '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1, margin: '8px 0' },
-                        '& a': { color: 'primary.main', textDecoration: 'underline' }
-                      }}
-                      dangerouslySetInnerHTML={{ __html: reply.content }}
-                    />
-                    {reply.attachments && reply.attachments.length > 0 && (
-                      <Box sx={{ mt: 1 }}>
-                        {reply.attachments.map((att, idx) => (
-                          <Chip
-                            key={idx}
-                            icon={<AttachFileIcon />}
-                            label={att.name}
-                            size="small"
-                            component="a"
-                            href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            clickable
-                            sx={{ mr: 1, mb: 1 }}
-                          />
-                        ))}
+                      {reply.edited_at && reply.edited_at !== reply.created_at && (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          • Edited {formatDistanceToNow(new Date(reply.edited_at), { addSuffix: true })}
+                        </Typography>
+                      )}
                       </Box>
+                      
+                      <Box 
+                        sx={{ 
+                          mt: 1,
+                          p: 1.5,
+                          bgcolor: 'background.paper',
+                          borderRadius: 1,
+                          '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1, margin: '8px 0' },
+                          '& a': { color: 'primary.main', textDecoration: 'underline' },
+                          '& ul, & ol': { pl: 3, mb: 1 },
+                          '& p': { mb: 1, lineHeight: 1.6 }
+                        }}
+                        dangerouslySetInnerHTML={{ __html: reply.content }}
+                      />
+                      {reply.attachments && reply.attachments.length > 0 && (
+                        <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 500 }}>
+                            Attachments:
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {reply.attachments.map((att, idx) => (
+                              <Chip
+                                key={idx}
+                                icon={<AttachFileIcon />}
+                                label={att.name}
+                                size="small"
+                                component="a"
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                clickable
+                                sx={{ 
+                                  '&:hover': {
+                                    bgcolor: 'action.hover'
+                                  }
+                                }}
+                              />
+                            ))}
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+
+                    {(canModerate || reply.created_by === userProfile?.id) && (
+                      <IconButton 
+                        size="small"
+                        onClick={(e) => setMenuAnchor({ el: e.currentTarget, reply })}
+                        sx={{ mt: 0.5 }}
+                      >
+                        <MoreIcon fontSize="small" />
+                      </IconButton>
                     )}
                   </Box>
-
-                  {(canModerate || reply.created_by === userProfile?.id) && (
-                    <IconButton 
-                      size="small"
-                      onClick={(e) => setMenuAnchor({ el: e.currentTarget, reply })}
-                    >
-                      <MoreIcon fontSize="small" />
-                    </IconButton>
-                  )}
-                </Box>
-              )}
-            </Paper>
-          ))}
-        </Box>
-      )}
+                )}
+              </Paper>
+            ))}
+          </Box>
+        )}
+      </Box>
 
       {/* Reply Input */}
       {!topic.is_locked ? (
-        <Paper sx={{ p: 2, mt: 3 }}>
+        <Paper sx={{ p: { xs: 1.5, sm: 2 }, mt: 3 }}>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
               {error}
             </Alert>
           )}
+          <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+            Write a Reply
+          </Typography>
           <RichTextEditor
             value={replyContent}
             onChange={setReplyContent}
@@ -567,25 +744,33 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
           />
           {replyAttachments.length > 0 && (
             <Box sx={{ mt: 2 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 500 }}>
                 Attachments:
               </Typography>
-              {replyAttachments.map((att, idx) => (
-                <Chip
-                  key={idx}
-                  label={att.name}
-                  size="small"
-                  onDelete={() => setReplyAttachments(prev => prev.filter((_, i) => i !== idx))}
-                  sx={{ mr: 1, mb: 1 }}
-                />
-              ))}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {replyAttachments.map((att, idx) => (
+                  <Chip
+                    key={idx}
+                    label={att.name}
+                    size="small"
+                    onDelete={() => setReplyAttachments(prev => prev.filter((_, i) => i !== idx))}
+                  />
+                ))}
+              </Box>
             </Box>
           )}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'flex-end', 
+            mt: 2, 
+            gap: 1,
+            flexDirection: { xs: 'column', sm: 'row' }
+          }}>
             <Button
               variant="outlined"
               onClick={handleSaveDraftReply}
               disabled={savingDraft || !replyContent.trim()}
+              fullWidth={window.innerWidth < 600}
             >
               {savingDraft ? <CircularProgress size={24} /> : 'Save Draft'}
             </Button>
@@ -593,6 +778,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
               variant="contained"
               onClick={handleSubmitReply}
               disabled={submitting || savingDraft || !replyContent.trim()}
+              fullWidth={window.innerWidth < 600}
             >
               {submitting ? <CircularProgress size={24} /> : 'Post Reply'}
             </Button>
@@ -610,16 +796,32 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
         open={Boolean(menuAnchor) && !menuAnchor?.reply}
         onClose={() => setMenuAnchor(null)}
       >
-        <MenuItem onClick={handleTogglePin}>
-          <ListItemIcon><PinIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>{topic.is_pinned ? 'Unpin Topic' : 'Pin Topic'}</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleToggleLock}>
-          <ListItemIcon>
-            {topic.is_locked ? <UnlockIcon fontSize="small" /> : <LockIcon fontSize="small" />}
-          </ListItemIcon>
-          <ListItemText>{topic.is_locked ? 'Unlock Topic' : 'Lock Topic'}</ListItemText>
-        </MenuItem>
+        {topic.created_by === userProfile?.id && (
+          <MenuItem onClick={handleEditTopic}>
+            <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Edit Topic</ListItemText>
+          </MenuItem>
+        )}
+        {canModerate && (
+          <>
+            <MenuItem onClick={handleTogglePin}>
+              <ListItemIcon><PinIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>{topic.is_pinned ? 'Unpin Topic' : 'Pin Topic'}</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={handleToggleLock}>
+              <ListItemIcon>
+                {topic.is_locked ? <UnlockIcon fontSize="small" /> : <LockIcon fontSize="small" />}
+              </ListItemIcon>
+              <ListItemText>{topic.is_locked ? 'Unlock Topic' : 'Lock Topic'}</ListItemText>
+            </MenuItem>
+          </>
+        )}
+        {(canModerate || topic.created_by === userProfile?.id) && (
+          <MenuItem onClick={handleDeleteTopic} sx={{ color: 'error.main' }}>
+            <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText>Delete Topic</ListItemText>
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Reply Menu */}
@@ -643,15 +845,27 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
         </MenuItem>
       </Menu>
 
-      {/* Delete Confirmation */}
+      {/* Delete Reply Confirmation */}
       <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
         <DialogTitle>Delete Reply</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to delete this reply?</Typography>
+          <Typography>Are you sure you want to delete this reply? This action cannot be undone.</Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
           <Button onClick={confirmDeleteReply} color="error" variant="contained">Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Topic Confirmation */}
+      <Dialog open={deleteTopicConfirmOpen} onClose={() => setDeleteTopicConfirmOpen(false)}>
+        <DialogTitle>Delete Topic</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete this topic and all its replies? This action cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTopicConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={confirmDeleteTopic} color="error" variant="contained">Delete</Button>
         </DialogActions>
       </Dialog>
     </Box>
