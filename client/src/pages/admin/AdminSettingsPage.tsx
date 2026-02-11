@@ -547,7 +547,14 @@ export default function AdminSettingsPage() {
         Registration form, role permissions, and other configuration.
       </Typography>
 
-      <Tabs value={tabIndex} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+      <Tabs 
+        value={tabIndex} 
+        onChange={handleTabChange} 
+        sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
+      >
         <Tab label="Registration Questions" />
         <Tab label="Permissions" />
         <Tab label="Granular Permissions" />
