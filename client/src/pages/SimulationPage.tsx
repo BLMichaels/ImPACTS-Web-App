@@ -1131,19 +1131,6 @@ const SimulationPage: React.FC = () => {
         <Box sx={{ mb: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Button
             variant="contained"
-            startIcon={<AssessmentIcon />}
-            onClick={() => {
-              const gapsSection = document.getElementById('all-identified-gaps');
-              if (gapsSection) {
-                gapsSection.scrollIntoView({ behavior: 'smooth' });
-              }
-            }}
-            sx={{ minWidth: 200 }}
-          >
-            View All Identified Gaps
-          </Button>
-          <Button
-            variant="contained"
             color="secondary"
             startIcon={<PlayIcon />}
             onClick={() => handleOpenCaseGapDialog()}
@@ -1161,206 +1148,11 @@ const SimulationPage: React.FC = () => {
           </Button>
         </Box>
 
-        {/* Simulation Cases */}
-        <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
-          SimBox Cases
-        </Typography>
-        
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
-          {SIMULATION_CASES.map((caseItem) => {
-            const caseGaps = gaps.filter(gap => gap.caseName === caseItem.name);
-            const completedGaps = caseGaps.filter(gap => gap.status === 'completed');
-            const inProgressGaps = caseGaps.filter(gap => gap.status === 'in_progress');
-            
-            return (
-              <Card key={caseItem.id} sx={{ width: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Typography 
-                        variant="h6" 
-                        component="h3" 
-                        gutterBottom
-                        sx={{ 
-                          cursor: 'pointer',
-                          color: 'primary.main',
-                          textDecoration: 'underline',
-                          mb: 0,
-                          '&:hover': {
-                            color: 'primary.dark',
-                            textDecoration: 'underline'
-                          }
-                        }}
-                        onClick={() => {
-                          // Map case names to their EmergencySimBox URLs
-                          const caseUrls: Record<string, string> = {
-                            'Diabetic Ketoacidosis (DKA)': 'https://www.emergencysimbox.com/diabetic-ketoacidosis-dka',
-                            'Bronchiolitis': 'https://www.emergencysimbox.com/respiratory-distress',
-                            'Asthma': 'https://www.emergencysimbox.com/a-child-with-wheeze',
-                            'Severe Head Injury': 'https://www.emergencysimbox.com/severe-head-injury',
-                            'A Vomiting Baby': 'https://www.emergencysimbox.com/a-vomiting-baby',
-                            'Pediatric Tracheostomy Emergency': 'https://www.emergencysimbox.com/trach',
-                            'Newborn Resuscitation': 'https://www.emergencysimbox.com/newborn-resuscitation',
-                            'A Postpartum Complication': 'https://www.emergencysimbox.com/a-postpartum-complication',
-                            'Scald Burn': 'https://www.emergencysimbox.com/scald-burn',
-                            'Agitation': 'https://www.emergencysimbox.com/agitation',
-                            'A Seizing Infant': 'https://www.emergencysimbox.com/a-seizing-infant',
-                            'Supraventricular Tachycardia': 'https://www.emergencysimbox.com/a-fussy-baby',
-                            'Blunt Abdominal Trauma': 'https://www.emergencysimbox.com/pediatric-trauma',
-                            'A Sick Neonate': 'https://www.emergencysimbox.com/a-sick-neonate',
-                            'A Seizing Child': 'https://www.emergencysimbox.com/a-seizing-child',
-                            'Pediatric Anaphylaxis': 'https://www.emergencysimbox.com/anaphylaxis',
-                            'Altered Mental Status': 'https://www.emergencysimbox.com/altered-mental-status'
-                          };
-                          
-                          const url = caseUrls[caseItem.name];
-                          if (url) {
-                            window.open(url, '_blank');
-                          }
-                        }}
-                      >
-                        {caseItem.name}
-                      </Typography>
-                      {caseGaps.length > 0 && (
-                        <Chip 
-                          label={`${completedGaps.length}/${caseGaps.length} resolved`}
-                          size="small" 
-                          color={completedGaps.length === caseGaps.length ? 'success' : 'warning'}
-                        />
-                      )}
-                    </Box>
-                    <Button
-                      variant="contained"
-                      onClick={() => handleStartSimulation(caseItem.id)}
-                      sx={{ minWidth: 200 }}
-                    >
-                      Identified Gaps & Action Plans
-                    </Button>
-                  </Box>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
-                      Learning Objectives:
-                    </Typography>
-                    <Box component="ul" sx={{ pl: 2, m: 0 }}>
-                      {caseItem.learningObjectives.map((objective, index) => (
-                        <Typography 
-                          key={index} 
-                          component="li" 
-                          variant="body2" 
-                          color="text.secondary"
-                          sx={{ mb: 0.5, lineHeight: 1.4 }}
-                        >
-                          {objective}
-                        </Typography>
-                      ))}
-                    </Box>
-                  </Box>
-
-                  {/* Identified Gaps for this case */}
-                  {caseGaps.length > 0 && (
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
-                        Identified Gaps ({caseGaps.length}):
-                      </Typography>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                        {caseGaps.map((gap) => (
-                          <Chip
-                            key={gap.id}
-                            label={gap.description}
-                            size="small"
-                            color={getSeverityColor(gap.severity) as any}
-                            icon={getCategoryIcon(gap.category)}
-                            onClick={() => handleOpenGapDialog(gap)}
-                            sx={{ cursor: 'pointer' }}
-                          />
-                        ))}
-                      </Box>
-                      
-                      {/* Action Plans Summary */}
-                      {inProgressGaps.length > 0 && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            {inProgressGaps.length} action plan{inProgressGaps.length > 1 ? 's' : ''} in progress
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  )}
-                  
-                </CardContent>
-              </Card>
-            );
-          })}
-        </Box>
-
-        {/* Other Cases */}
-        {otherCases.length > 0 && (
-          <>
-            <Typography variant="h5" gutterBottom sx={{ mb: 3, mt: 4 }}>
-              Other Cases
-            </Typography>
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
-              {otherCases.map((caseName) => {
-                const caseGaps = gaps.filter(gap => gap.caseName === caseName);
-                return (
-                  <Card key={caseName} sx={{ width: '100%' }}>
-                    <CardContent>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 0 }}>
-                          {caseName}
-                        </Typography>
-                        <Button
-                          variant="outlined"
-                          onClick={() => {
-                            setCaseGapForm(prev => ({ ...prev, caseName: 'other', otherCaseName: caseName }));
-                            handleOpenCaseGapDialog();
-                          }}
-                          sx={{ minWidth: 200 }}
-                        >
-                          Identified Gaps & Action Plans
-                        </Button>
-                      </Box>
-                      
-                      {caseGaps.length > 0 && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            {caseGaps.length} gap{caseGaps.length !== 1 ? 's' : ''} identified
-                          </Typography>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {caseGaps.slice(0, 3).map((gap) => (
-                              <Chip
-                                key={gap.id}
-                                label={gap.description.length > 50 ? `${gap.description.substring(0, 50)}...` : gap.description}
-                                size="small"
-                                color={gap.status === 'completed' ? 'success' : gap.severity === 'high' ? 'error' : gap.severity === 'medium' ? 'warning' : 'default'}
-                                variant={gap.status === 'completed' ? 'filled' : 'outlined'}
-                              />
-                            ))}
-                            {caseGaps.length > 3 && (
-                              <Chip
-                                label={`+${caseGaps.length - 3} more`}
-                                size="small"
-                                variant="outlined"
-                              />
-                            )}
-                          </Box>
-                        </Box>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </Box>
-          </>
-        )}
-
-        {/* Sortable Gap Management */}
-        <Box sx={{ mt: 4 }} id="all-identified-gaps">
+        {/* Sortable Gap Management - Moved to Top */}
+        <Box sx={{ mb: 4 }} id="all-identified-gaps">
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Typography variant="h5" gutterBottom>
-              All Identified Gaps
+              All Identified Gaps & Action Plans
             </Typography>
           </Box>
 
@@ -1659,6 +1451,201 @@ const SimulationPage: React.FC = () => {
           )}
         </Box>
 
+        {/* Simulation Cases */}
+        <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
+          SimBox Cases
+        </Typography>
+        
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
+          {SIMULATION_CASES.map((caseItem) => {
+            const caseGaps = gaps.filter(gap => gap.caseName === caseItem.name);
+            const completedGaps = caseGaps.filter(gap => gap.status === 'completed');
+            const inProgressGaps = caseGaps.filter(gap => gap.status === 'in_progress');
+            
+            return (
+              <Card key={caseItem.id} sx={{ width: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Typography 
+                        variant="h6" 
+                        component="h3" 
+                        gutterBottom
+                        sx={{ 
+                          cursor: 'pointer',
+                          color: 'primary.main',
+                          textDecoration: 'underline',
+                          mb: 0,
+                          '&:hover': {
+                            color: 'primary.dark',
+                            textDecoration: 'underline'
+                          }
+                        }}
+                        onClick={() => {
+                          // Map case names to their EmergencySimBox URLs
+                          const caseUrls: Record<string, string> = {
+                            'Diabetic Ketoacidosis (DKA)': 'https://www.emergencysimbox.com/diabetic-ketoacidosis-dka',
+                            'Bronchiolitis': 'https://www.emergencysimbox.com/respiratory-distress',
+                            'Asthma': 'https://www.emergencysimbox.com/a-child-with-wheeze',
+                            'Severe Head Injury': 'https://www.emergencysimbox.com/severe-head-injury',
+                            'A Vomiting Baby': 'https://www.emergencysimbox.com/a-vomiting-baby',
+                            'Pediatric Tracheostomy Emergency': 'https://www.emergencysimbox.com/trach',
+                            'Newborn Resuscitation': 'https://www.emergencysimbox.com/newborn-resuscitation',
+                            'A Postpartum Complication': 'https://www.emergencysimbox.com/a-postpartum-complication',
+                            'Scald Burn': 'https://www.emergencysimbox.com/scald-burn',
+                            'Agitation': 'https://www.emergencysimbox.com/agitation',
+                            'A Seizing Infant': 'https://www.emergencysimbox.com/a-seizing-infant',
+                            'Supraventricular Tachycardia': 'https://www.emergencysimbox.com/a-fussy-baby',
+                            'Blunt Abdominal Trauma': 'https://www.emergencysimbox.com/pediatric-trauma',
+                            'A Sick Neonate': 'https://www.emergencysimbox.com/a-sick-neonate',
+                            'A Seizing Child': 'https://www.emergencysimbox.com/a-seizing-child',
+                            'Pediatric Anaphylaxis': 'https://www.emergencysimbox.com/anaphylaxis',
+                            'Altered Mental Status': 'https://www.emergencysimbox.com/altered-mental-status'
+                          };
+                          
+                          const url = caseUrls[caseItem.name];
+                          if (url) {
+                            window.open(url, '_blank');
+                          }
+                        }}
+                      >
+                        {caseItem.name}
+                      </Typography>
+                      {caseGaps.length > 0 && (
+                        <Chip 
+                          label={`${completedGaps.length}/${caseGaps.length} resolved`}
+                          size="small" 
+                          color={completedGaps.length === caseGaps.length ? 'success' : 'warning'}
+                        />
+                      )}
+                    </Box>
+                    <Button
+                      variant="contained"
+                      onClick={() => handleStartSimulation(caseItem.id)}
+                      sx={{ minWidth: 200 }}
+                    >
+                      Identified Gaps & Action Plans
+                    </Button>
+                  </Box>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
+                      Learning Objectives:
+                    </Typography>
+                    <Box component="ul" sx={{ pl: 2, m: 0 }}>
+                      {caseItem.learningObjectives.map((objective, index) => (
+                        <Typography 
+                          key={index} 
+                          component="li" 
+                          variant="body2" 
+                          color="text.secondary"
+                          sx={{ mb: 0.5, lineHeight: 1.4 }}
+                        >
+                          {objective}
+                        </Typography>
+                      ))}
+                    </Box>
+                  </Box>
+
+                  {/* Identified Gaps for this case */}
+                  {caseGaps.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
+                        Identified Gaps ({caseGaps.length}):
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                        {caseGaps.map((gap) => (
+                          <Chip
+                            key={gap.id}
+                            label={gap.description}
+                            size="small"
+                            color={getSeverityColor(gap.severity) as any}
+                            icon={getCategoryIcon(gap.category)}
+                            onClick={() => handleOpenGapDialog(gap)}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ))}
+                      </Box>
+                      
+                      {/* Action Plans Summary */}
+                      {inProgressGaps.length > 0 && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {inProgressGaps.length} action plan{inProgressGaps.length > 1 ? 's' : ''} in progress
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                  
+                </CardContent>
+              </Card>
+            );
+          })}
+        </Box>
+
+        {/* Other Cases */}
+        {otherCases.length > 0 && (
+          <>
+            <Typography variant="h5" gutterBottom sx={{ mb: 3, mt: 4 }}>
+              Other Cases
+            </Typography>
+            
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
+              {otherCases.map((caseName) => {
+                const caseGaps = gaps.filter(gap => gap.caseName === caseName);
+                return (
+                  <Card key={caseName} sx={{ width: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 0 }}>
+                          {caseName}
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          onClick={() => {
+                            setCaseGapForm(prev => ({ ...prev, caseName: 'other', otherCaseName: caseName }));
+                            handleOpenCaseGapDialog();
+                          }}
+                          sx={{ minWidth: 200 }}
+                        >
+                          Identified Gaps & Action Plans
+                        </Button>
+                      </Box>
+                      
+                      {caseGaps.length > 0 && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            {caseGaps.length} gap{caseGaps.length !== 1 ? 's' : ''} identified
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {caseGaps.slice(0, 3).map((gap) => (
+                              <Chip
+                                key={gap.id}
+                                label={gap.description.length > 50 ? `${gap.description.substring(0, 50)}...` : gap.description}
+                                size="small"
+                                color={gap.status === 'completed' ? 'success' : gap.severity === 'high' ? 'error' : gap.severity === 'medium' ? 'warning' : 'default'}
+                                variant={gap.status === 'completed' ? 'filled' : 'outlined'}
+                              />
+                            ))}
+                            {caseGaps.length > 3 && (
+                              <Chip
+                                label={`+${caseGaps.length - 3} more`}
+                                size="small"
+                                variant="outlined"
+                              />
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Box>
+          </>
+        )}
+
         {/* Simulation Dialog with Stepper */}
         <Dialog open={open} onClose={handleCloseDialog} maxWidth="md" fullWidth>
           <DialogTitle>
@@ -1903,119 +1890,157 @@ const SimulationPage: React.FC = () => {
 
         {/* Gap Dialog */}
         <Dialog open={showGapDialog} onClose={handleCloseGapDialog} maxWidth="md" fullWidth>
-          <DialogTitle>
-            {editingGap ? 'Edit Gap' : 'Identify Gap'}
+          <DialogTitle sx={{ pb: 1 }}>
+            <Typography variant="h5" component="div" sx={{ fontWeight: 600 }}>
+              {editingGap ? 'Edit Gap & Action Plan' : 'Identify Gap & Action Plan'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {editingGap ? 'Update gap details and action plan' : 'Document a gap and create an action plan to address it'}
+            </Typography>
           </DialogTitle>
           <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Category</InputLabel>
-                  <Select
-                    value={gapForm.category}
-                    onChange={(e) => setGapForm({ ...gapForm, category: e.target.value })}
-                    label="Category"
-                  >
-                    {GAP_CATEGORIES.map(category => (
-                      <MenuItem key={category.value} value={category.value}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          {category.icon}
-                          <Box sx={{ ml: 1 }}>
-                            <Typography variant="body2">{category.label}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {category.description}
+            {/* Gap Information Section */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <WarningIcon fontSize="small" />
+                Gap Information
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Category</InputLabel>
+                    <Select
+                      value={gapForm.category}
+                      onChange={(e) => setGapForm({ ...gapForm, category: e.target.value })}
+                      label="Category"
+                    >
+                      {GAP_CATEGORIES.map(category => (
+                        <MenuItem key={category.value} value={category.value}>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            {category.icon}
+                            <Box sx={{ ml: 1 }}>
+                              <Typography variant="body2">{category.label}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {category.description}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Severity</InputLabel>
+                    <Select
+                      value={gapForm.severity}
+                      onChange={(e) => setGapForm({ ...gapForm, severity: e.target.value })}
+                      label="Severity"
+                    >
+                      {SEVERITY_LEVELS.map(level => (
+                        <MenuItem key={level.value} value={level.value}>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Chip label={level.label} size="small" color={level.color as any} />
+                            <Typography variant="body2" sx={{ ml: 1 }}>
+                              {level.description}
                             </Typography>
                           </Box>
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Gap Description"
+                    multiline
+                    rows={4}
+                    value={gapForm.description}
+                    onChange={(e) => setGapForm({ ...gapForm, description: e.target.value })}
+                    placeholder="Describe the gap identified during the simulation..."
+                    helperText="Be specific about what was missing or what went wrong"
+                  />
+                </Grid>
               </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Severity</InputLabel>
-                  <Select
-                    value={gapForm.severity}
-                    onChange={(e) => setGapForm({ ...gapForm, severity: e.target.value })}
-                    label="Severity"
-                  >
-                    {SEVERITY_LEVELS.map(level => (
-                      <MenuItem key={level.value} value={level.value}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Chip label={level.label} size="small" color={level.color as any} />
-                          <Typography variant="body2" sx={{ ml: 1 }}>
-                            {level.description}
-                          </Typography>
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+            </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Action Plan Section */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <BuildIcon fontSize="small" />
+                Action Plan
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Action Plan"
+                    multiline
+                    rows={4}
+                    value={gapForm.actionPlan}
+                    onChange={(e) => setGapForm({ ...gapForm, actionPlan: e.target.value })}
+                    placeholder="What steps will be taken to address this gap?"
+                    helperText="Outline specific actions, training, or changes needed to resolve this gap"
+                  />
+                </Grid>
               </Grid>
-              
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Gap Description"
-                  multiline
-                  rows={3}
-                  value={gapForm.description}
-                  onChange={(e) => setGapForm({ ...gapForm, description: e.target.value })}
-                  placeholder="Describe the gap identified during the simulation..."
-                />
+            </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Assignment & Tracking Section */}
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PeopleIcon fontSize="small" />
+                Assignment & Tracking
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Assigned To"
+                    value={gapForm.assignedTo}
+                    onChange={(e) => setGapForm({ ...gapForm, assignedTo: e.target.value })}
+                    placeholder="Person or department responsible"
+                    helperText="Who will be responsible for implementing this action plan?"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Target Date"
+                    type="date"
+                    value={gapForm.targetDate}
+                    onChange={(e) => setGapForm({ ...gapForm, targetDate: e.target.value })}
+                    InputLabelProps={{ shrink: true }}
+                    helperText="When should this action plan be completed?"
+                  />
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={gapForm.status}
+                      onChange={(e) => setGapForm({ ...gapForm, status: e.target.value })}
+                      label="Status"
+                    >
+                      <MenuItem value="identified">Identified</MenuItem>
+                      <MenuItem value="in_progress">In Progress</MenuItem>
+                      <MenuItem value="completed">Completed</MenuItem>
+                      <MenuItem value="cancelled">Cancelled</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
               </Grid>
-              
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Action Plan"
-                  multiline
-                  rows={3}
-                  value={gapForm.actionPlan}
-                  onChange={(e) => setGapForm({ ...gapForm, actionPlan: e.target.value })}
-                  placeholder="What steps will be taken to address this gap?"
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Assigned To"
-                  value={gapForm.assignedTo}
-                  onChange={(e) => setGapForm({ ...gapForm, assignedTo: e.target.value })}
-                  placeholder="Person or department responsible"
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Target Date"
-                  type="date"
-                  value={gapForm.targetDate}
-                  onChange={(e) => setGapForm({ ...gapForm, targetDate: e.target.value })}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    value={gapForm.status}
-                    onChange={(e) => setGapForm({ ...gapForm, status: e.target.value })}
-                    label="Status"
-                  >
-                    <MenuItem value="identified">Identified</MenuItem>
-                    <MenuItem value="in_progress">In Progress</MenuItem>
-                    <MenuItem value="completed">Completed</MenuItem>
-                    <MenuItem value="cancelled">Cancelled</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
+            </Box>
             {/* Linked Activities Section */}
             {editingGap && editingGap.linkedActivities && editingGap.linkedActivities.length > 0 && (
               <Grid item xs={12}>
@@ -2089,147 +2114,189 @@ const SimulationPage: React.FC = () => {
           onClose={handleCloseCaseGapDialog}
           maxWidth="md"
           fullWidth
-          disablePortal
-          disableEnforceFocus
-          disableAutoFocus
-          disableRestoreFocus
-          hideBackdrop={false}
         >
-          <DialogTitle>Add Case-Related Gap</DialogTitle>
+          <DialogTitle sx={{ pb: 1 }}>
+            <Typography variant="h5" component="div" sx={{ fontWeight: 600 }}>
+              Add Case-Related Gap & Action Plan
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Document a gap identified during a specific simulation case and create an action plan
+            </Typography>
+          </DialogTitle>
           <DialogContent>
-            <Grid container spacing={3} sx={{ mt: 1 }}>
-              {/* Case Selection */}
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Case</InputLabel>
-                  <Select
-                    value={caseGapForm.caseName}
-                    onChange={(e) => handleCaseGapChange('caseName', e.target.value)}
-                    label="Case"
-                  >
-                    {SIMULATION_CASES.map((caseItem) => (
-                      <MenuItem key={caseItem.id} value={caseItem.name}>
-                        {caseItem.name}
-                      </MenuItem>
-                    ))}
-                    <MenuItem value="other">Other</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
+            {/* Case Selection Section */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PlayIcon fontSize="small" />
+                Simulation Case
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Case</InputLabel>
+                    <Select
+                      value={caseGapForm.caseName}
+                      onChange={(e) => handleCaseGapChange('caseName', e.target.value)}
+                      label="Case"
+                    >
+                      {SIMULATION_CASES.map((caseItem) => (
+                        <MenuItem key={caseItem.id} value={caseItem.name}>
+                          {caseItem.name}
+                        </MenuItem>
+                      ))}
+                      <MenuItem value="other">Other</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
 
-              {/* Other Case Name Input */}
-              {caseGapForm.caseName === 'other' && (
+                {/* Other Case Name Input */}
+                {caseGapForm.caseName === 'other' && (
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Other Case Name"
+                      value={caseGapForm.otherCaseName}
+                      onChange={(e) => handleCaseGapChange('otherCaseName', e.target.value)}
+                      placeholder="Enter the name of the other case"
+                      helperText="Specify the simulation case name if not listed above"
+                    />
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Gap Information Section */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <WarningIcon fontSize="small" />
+                Gap Information
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Category</InputLabel>
+                    <Select
+                      value={caseGapForm.category}
+                      onChange={(e) => handleCaseGapChange('category', e.target.value)}
+                      label="Category"
+                    >
+                      <MenuItem value="equipment">Equipment</MenuItem>
+                      <MenuItem value="knowledge">Knowledge</MenuItem>
+                      <MenuItem value="policy">Policy</MenuItem>
+                      <MenuItem value="communication">Communication</MenuItem>
+                      <MenuItem value="training">Training</MenuItem>
+                      <MenuItem value="resources">Resources</MenuItem>
+                      <MenuItem value="other">Other</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Severity</InputLabel>
+                    <Select
+                      value={caseGapForm.severity}
+                      onChange={(e) => handleCaseGapChange('severity', e.target.value)}
+                      label="Severity"
+                    >
+                      <MenuItem value="low">Low</MenuItem>
+                      <MenuItem value="medium">Medium</MenuItem>
+                      <MenuItem value="high">High</MenuItem>
+                      <MenuItem value="critical">Critical</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Other Case Name"
-                    value={caseGapForm.otherCaseName}
-                    onChange={(e) => handleCaseGapChange('otherCaseName', e.target.value)}
-                    placeholder="Enter the name of the other case"
+                    multiline
+                    rows={4}
+                    label="Gap Description"
+                    value={caseGapForm.description}
+                    onChange={(e) => handleCaseGapChange('description', e.target.value)}
+                    placeholder="Describe the gap identified during the simulation"
+                    helperText="Be specific about what was missing or what went wrong during this case"
                   />
                 </Grid>
-              )}
+              </Grid>
+            </Box>
 
-              {/* Category and Severity */}
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Category</InputLabel>
-                  <Select
-                    value={caseGapForm.category}
-                    onChange={(e) => handleCaseGapChange('category', e.target.value)}
-                    label="Category"
-                  >
-                    <MenuItem value="equipment">Equipment</MenuItem>
-                    <MenuItem value="knowledge">Knowledge</MenuItem>
-                    <MenuItem value="policy">Policy</MenuItem>
-                    <MenuItem value="communication">Communication</MenuItem>
-                    <MenuItem value="training">Training</MenuItem>
-                    <MenuItem value="resources">Resources</MenuItem>
-                    <MenuItem value="other">Other</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Severity</InputLabel>
-                  <Select
-                    value={caseGapForm.severity}
-                    onChange={(e) => handleCaseGapChange('severity', e.target.value)}
-                    label="Severity"
-                  >
-                    <MenuItem value="low">Low</MenuItem>
-                    <MenuItem value="medium">Medium</MenuItem>
-                    <MenuItem value="high">High</MenuItem>
-                    <MenuItem value="critical">Critical</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
+            <Divider sx={{ my: 3 }} />
 
-              {/* Description */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={3}
-                  label="Gap Description"
-                  value={caseGapForm.description}
-                  onChange={(e) => handleCaseGapChange('description', e.target.value)}
-                  placeholder="Describe the gap identified during the simulation"
-                />
+            {/* Action Plan Section */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <BuildIcon fontSize="small" />
+                Action Plan
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={4}
+                    label="Action Plan"
+                    value={caseGapForm.actionPlan}
+                    onChange={(e) => handleCaseGapChange('actionPlan', e.target.value)}
+                    placeholder="Describe the action plan to address this gap"
+                    helperText="Outline specific actions, training, or changes needed to resolve this gap"
+                  />
+                </Grid>
               </Grid>
+            </Box>
 
-              {/* Action Plan */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={3}
-                  label="Action Plan"
-                  value={caseGapForm.actionPlan}
-                  onChange={(e) => handleCaseGapChange('actionPlan', e.target.value)}
-                  placeholder="Describe the action plan to address this gap"
-                />
-              </Grid>
+            <Divider sx={{ my: 3 }} />
 
-              {/* Assignment and Status */}
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="Assigned To"
-                  value={caseGapForm.assignedTo}
-                  onChange={(e) => handleCaseGapChange('assignedTo', e.target.value)}
-                  placeholder="Person responsible"
-                />
+            {/* Assignment & Tracking Section */}
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PeopleIcon fontSize="small" />
+                Assignment & Tracking
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Assigned To"
+                    value={caseGapForm.assignedTo}
+                    onChange={(e) => handleCaseGapChange('assignedTo', e.target.value)}
+                    placeholder="Person responsible"
+                    helperText="Who will implement this?"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Target Date"
+                    type="date"
+                    value={caseGapForm.targetDate}
+                    onChange={(e) => handleCaseGapChange('targetDate', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Completion deadline"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={caseGapForm.status}
+                      onChange={(e) => handleCaseGapChange('status', e.target.value)}
+                      label="Status"
+                    >
+                      <MenuItem value="identified">Identified</MenuItem>
+                      <MenuItem value="in_progress">In Progress</MenuItem>
+                      <MenuItem value="completed">Completed</MenuItem>
+                      <MenuItem value="cancelled">Cancelled</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
               </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="Target Date"
-                  type="date"
-                  value={caseGapForm.targetDate}
-                  onChange={(e) => handleCaseGapChange('targetDate', e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <FormControl fullWidth>
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    value={caseGapForm.status}
-                    onChange={(e) => handleCaseGapChange('status', e.target.value)}
-                    label="Status"
-                  >
-                    <MenuItem value="identified">Identified</MenuItem>
-                    <MenuItem value="in_progress">In Progress</MenuItem>
-                    <MenuItem value="completed">Completed</MenuItem>
-                    <MenuItem value="cancelled">Cancelled</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
+            </Box>
           </DialogContent>
           <DialogActions>
             <Button onClick={handleCloseCaseGapDialog}>Cancel</Button>
