@@ -1357,9 +1357,14 @@ const SnapshotPage = () => {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Overall Checklist Progress
-              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Overall Checklist Progress
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Overall completion percentage across all checklist milestones. Calculated from completed vs. total milestones on your Checklist page.
+                </Typography>
+              </Box>
               <Box sx={{ mt: 2 }}>
                 {milestones.length > 0 ? (
                   <>
@@ -1393,9 +1398,14 @@ const SnapshotPage = () => {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Gap Plan Completion Overview
-              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Gap Plan Completion Overview
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Count of gap plans by status category. Shows how many plans are in progress, completed, need updates, or need to be developed. Data from your Gaps & Education page.
+                </Typography>
+              </Box>
               <Box sx={{ mt: 2 }}>
                 {gapPlans.length > 0 ? (
                   <>
@@ -1441,9 +1451,14 @@ const SnapshotPage = () => {
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Readiness Score Trend
-                </Typography>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Readiness Score Trend
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    Summary of your PRS assessment scores showing latest, average, highest, and current live score. Based on saved assessments and your current PRS responses.
+                  </Typography>
+                </Box>
               <Box sx={{ mt: 2 }}>
                 {readinessScores.length > 0 ? (
                   <>
@@ -1564,9 +1579,14 @@ const SnapshotPage = () => {
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                      Readiness Score Progress Over Time
-                    </Typography>
+                    <Box>
+                      <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                        Readiness Score Progress Over Time
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        Shows your Pediatric Readiness Score (PRS) assessments over time. Data comes from saved PRS assessments on your Tool page and your current live assessment score.
+                      </Typography>
+                    </Box>
                     {readinessScores.length > 0 && (
                       <Chip 
                         label={`${readinessScores.length} Assessment${readinessScores.length !== 1 ? 's' : ''}`}
@@ -1922,9 +1942,14 @@ const SnapshotPage = () => {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Checklist Progress by Stage
-              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Checklist Progress by Stage
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Progress through the 4 PECC stages (Establish, Implement, Lead, Sustain). Shows completed tasks vs. total tasks for each stage from your Checklist page.
+                </Typography>
+              </Box>
               <Box sx={{ mt: 2 }}>
                 {milestones && milestones.length > 0 ? (
                   <Grid container spacing={2}>
@@ -1969,9 +1994,14 @@ const SnapshotPage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Simulations by Type
-                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Simulations by Type
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Distribution of simulation activities by type (e.g., Mock Codes, Drills, etc.). Data pulled from Activities logged with category "Simulation Facilitation".
+                    </Typography>
+                  </Box>
                   <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
                     {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
                       <>
@@ -2041,9 +2071,14 @@ const SnapshotPage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Simulation Participants
-                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Simulation Participants
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Total participants and average participants per simulation type. Calculated from participant counts entered when logging simulation activities.
+                    </Typography>
+                  </Box>
                   <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
                     {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
                       <>
@@ -2144,9 +2179,14 @@ const SnapshotPage = () => {
             <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Gap Plan Status Distribution
-                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Gap Plan Status Distribution
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Breakdown of gap plans by their current status (Completed, In Progress, Needs Update, etc.). Data from your Gaps & Education page.
+                    </Typography>
+                  </Box>
                   <Box sx={{ mt: 2 }}>
                     {gapPlans.length > 0 ? (
                       <>
@@ -2205,9 +2245,14 @@ const SnapshotPage = () => {
             <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Gap Plan Priority Breakdown
-                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Gap Plan Priority Breakdown
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Distribution of gap plans by priority level (High/Low Importance and Urgency combinations). Helps identify which gaps need immediate attention.
+                    </Typography>
+                  </Box>
                   <Box sx={{ mt: 2 }}>
                     {gapPlans.length > 0 ? (
                       <>
@@ -2265,9 +2310,14 @@ const SnapshotPage = () => {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                PECC Work Hours Analysis
-              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  PECC Work Hours Analysis
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Total hours logged across different time periods. Calculated from hours entered when logging activities on your Activities page.
+                </Typography>
+              </Box>
               <Box sx={{ mt: 2 }}>
                 {activities.length > 0 ? (
                   <Grid container spacing={2}>
@@ -2366,9 +2416,14 @@ const SnapshotPage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Activity Category Distribution
-                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Activity Category Distribution
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Breakdown of activities by category showing both count and total hours. Sorted by total hours. Data from all activities logged on your Activities page.
+                    </Typography>
+                  </Box>
                   <Box sx={{ mt: 2 }}>
                     {activities.length > 0 ? (
                       <>
@@ -2436,10 +2491,15 @@ const SnapshotPage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                      Domain Performance Analysis
-                    </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Box>
+                      <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                        Domain Performance Analysis
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        Breakdown of your performance across 6 PRS domains (Administration & Coordination, Staffing, Quality Improvement, Patient Safety, Policies & Procedures, Equipment). Calculated from your current PRS assessment answers.
+                      </Typography>
+                    </Box>
                     <Chip 
                       label="Based on Current PRS Assessment" 
                       color="primary" 
@@ -2549,9 +2609,14 @@ const SnapshotPage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-                    Domain Performance Visualization
-                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                      Domain Performance Visualization
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Visual comparison of your performance percentage across all 6 PRS domains. Green (≥80%), Orange (60-79%), Red (&lt;60%). Based on your current PRS assessment responses.
+                    </Typography>
+                  </Box>
                   
                   <Box sx={{ 
                     position: 'relative', 
