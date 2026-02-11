@@ -278,45 +278,6 @@ export default function AdminSettingsPage() {
     }
   }, []);
   
-  // Load PECC users for PRS section toggle
-  useEffect(() => {
-    const loadPeccUsers = async () => {
-      setLoadingPeccUsers(true);
-      try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('id, email, first_name, last_name')
-          .eq('role', 'pecc')
-          .order('email');
-        
-        if (error) throw error;
-        
-        if (data) {
-          const usersWithSettings = await Promise.all(
-            data.map(async (user) => {
-              // Check localStorage for PRS section visibility (default to true)
-              const prsVisible = localStorage.getItem(`pecc_prs_section_visible_${user.id}`);
-              return {
-                id: user.id,
-                email: user.email || '',
-                firstName: user.first_name || '',
-                lastName: user.last_name || '',
-                prsSectionVisible: prsVisible === null ? true : prsVisible === 'true'
-              };
-            })
-          );
-          setPeccUsers(usersWithSettings);
-        }
-      } catch (error) {
-        console.error('Error loading PECC users:', error);
-      } finally {
-        setLoadingPeccUsers(false);
-      }
-    };
-    
-    loadPeccUsers();
-  }, []);
-  
   // Load Education Questions
   useEffect(() => {
     const saved = localStorage.getItem('education_questions');
