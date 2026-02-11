@@ -24,15 +24,19 @@ const EducationRichTextEditor: React.FC<EducationRichTextEditorProps> = ({
   label
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const isInternalChangeRef = useRef(false);
 
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value;
+    // Only update if the change came from outside (prop change, not user input)
+    if (editorRef.current && !isInternalChangeRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value || '';
     }
+    isInternalChangeRef.current = false;
   }, [value]);
 
   const handleInput = () => {
     if (editorRef.current) {
+      isInternalChangeRef.current = true;
       onChange(editorRef.current.innerHTML);
     }
   };
@@ -108,7 +112,6 @@ const EducationRichTextEditor: React.FC<EducationRichTextEditorProps> = ({
           ref={editorRef}
           contentEditable
           onInput={handleInput}
-          dangerouslySetInnerHTML={{ __html: value }}
           style={{
             minHeight: `${minHeight}px`,
             padding: '12px',
