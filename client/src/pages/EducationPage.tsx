@@ -254,25 +254,6 @@ const EducationPage: React.FC = () => {
               <Typography variant="body1" sx={{ mb: 2 }}>
                 {educationContent[question.id]?.question || question.text}
               </Typography>
-              
-              {question.options && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Options:
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {question.options.map((option: string, index: number) => (
-                      <Chip 
-                        key={index} 
-                        label={option} 
-                        size="small" 
-                        variant="outlined"
-                        sx={{ fontSize: '0.75rem' }}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )}
             </Box>
             
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, ml: 2 }}>
