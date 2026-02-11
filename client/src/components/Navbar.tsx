@@ -161,7 +161,7 @@ const Navbar: React.FC = () => {
       case UserRole.ADMIN: return '/admin/dashboard';
       case UserRole.MANAGER: return '/manager/dashboard';
       case UserRole.MENTOR: return '/mentor/dashboard';
-      default: return '/dashboard';
+      default: return '/tool';
     }
   };
 

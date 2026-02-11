@@ -251,24 +251,24 @@ interface ReadinessScore {
             Welcome back, {(userProfile as any)?.firstName || (userProfile as any)?.first_name || 'PECC'}!
           </Typography>
           <Typography variant={isMobile ? "body1" : "h6"} color="text.secondary" sx={{ mb: 2 }}>
-            Your Pediatric Readiness Dashboard
+            Your PECC Support Tool
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Track your progress, manage resources, and coordinate with your hospital team to improve pediatric emergency care readiness.
           </Typography>
         </Box>
 
-        {/* How This Dashboard Works Section */}
+        {/* How This Tool Works Section */}
         <Grid container spacing={isMobile ? 2 : 3} sx={{ mb: isMobile ? 3 : 4 }}>
           <Grid item xs={12}>
           <Card sx={{ p: 2 }}>
             <CardContent>
               <Typography variant="h4" gutterBottom color="primary" sx={{ mb: 2 }}>
-                How This Dashboard Works
+                How This Tool Works
               </Typography>
               
               <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
-                Welcome to your ImPACTS PECC Tracker! This dashboard is designed to guide you through your Pediatric Emergency Care Coordinator journey. Here's how to get started:
+                Welcome to your ImPACTS PECC Support Tool! This tool is designed to guide you through your Pediatric Emergency Care Coordinator journey. Here's how to get started:
               </Typography>
               
               <Grid container spacing={isMobile ? 1 : 2} sx={{ mt: 2 }}>

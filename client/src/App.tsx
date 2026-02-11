@@ -105,7 +105,7 @@ const getDefaultDashboard = (role: UserRole): string => {
       return '/mentor/dashboard';
     case UserRole.PECC:
     default:
-      return '/dashboard';
+      return '/tool';
   }
 };
 
@@ -195,7 +195,8 @@ function App() {
                   <Route path="/invite/:code" element={<InvitationPage />} />
                   
                   {/* PECC Routes */}
-                  <Route path="/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><DashboardPage /></ProtectedRoute>} />
+                  <Route path="/tool" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><DashboardPage /></ProtectedRoute>} />
+                  <Route path="/dashboard" element={<Navigate to="/tool" replace />} />
                   <Route path="/snapshot" element={<ProtectedRoute><SnapshotPage /></ProtectedRoute>} />
                   <Route path="/simulation" element={<ProtectedRoute><SimulationPage /></ProtectedRoute>} />
                   <Route path="/milestones" element={<ProtectedRoute><MilestonesPage /></ProtectedRoute>} />

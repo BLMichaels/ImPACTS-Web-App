@@ -34,7 +34,7 @@ interface PermissionState {
 
 // Group permissions by category for better organization
 const PERMISSION_GROUPS = {
-  'Dashboard & Views': [
+  'Tool & Views': [
     PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.VIEW_AGGREGATED_DATA,
     PERMISSIONS.VIEW_SNAPSHOT,

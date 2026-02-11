@@ -3764,13 +3764,13 @@ const AdminCRMPage: React.FC = () => {
                 )}
               </Grid>
               
-              {/* PECC user settings: Dashboard section visibility — only for PECC contacts */}
+              {/* PECC user settings: Tool section visibility — only for PECC contacts */}
               {detailContact.type === 'pecc' && (
                 <Grid container spacing={3} sx={{ mt: 2 }}>
                   <Grid item xs={12}>
-                    <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>PECC Dashboard Settings</Typography>
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>PECC Support Tool Settings</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Control which sections this PECC user can see on their dashboard and snapshot pages.
+                      Control which sections this PECC user can see on their PECC Support Tool and snapshot pages.
                     </Typography>
                   </Grid>
                   <Grid item xs={12}>
@@ -3793,7 +3793,7 @@ const AdminCRMPage: React.FC = () => {
                                   Pediatric Readiness Scores Section
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                  When disabled, the PRS section will be hidden from both the Dashboard and Snapshot pages.
+                                  When disabled, the PRS section will be hidden from both the PECC Support Tool and Snapshot pages.
                                 </Typography>
                               </Box>
                             }

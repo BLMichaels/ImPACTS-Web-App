@@ -644,6 +644,11 @@ const AccountPage = () => {
                         Access to Manager Dashboard, Mentors management, and CRM.
                       </Typography>
                     )}
+                    {getTier() === 'pecc' && (
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Access to PECC Support Tool, Activities, Snapshot, Checklist, Gaps & Education, and Simulation.
+                      </Typography>
+                    )}
                   </Alert>
                 </CardContent>
               </Card>

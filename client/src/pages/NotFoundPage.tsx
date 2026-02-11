@@ -17,8 +17,8 @@ const NotFoundPage = () => {
         <Typography variant="body1" sx={{ mb: 4 }}>
           The page you are looking for does not exist.
         </Typography>
-        <Button variant="contained" onClick={() => navigate('/dashboard')}>
-          Go to Dashboard
+        <Button variant="contained" onClick={() => navigate('/tool')}>
+          Go to PECC Support Tool
         </Button>
       </Box>
     </Container>
