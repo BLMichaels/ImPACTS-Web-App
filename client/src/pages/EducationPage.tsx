@@ -360,30 +360,34 @@ const EducationPage: React.FC = () => {
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#2e7d32' }}>
                 Why:
               </Typography>
-              <Typography variant="body1" sx={{ mb: 3 }}>
-                {selectedEducationContent.why}
-              </Typography>
+              <Box 
+                sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
+                dangerouslySetInnerHTML={{ __html: selectedEducationContent.why || '' }}
+              />
 
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1976d2' }}>
                 Background:
               </Typography>
-              <Typography variant="body1" sx={{ mb: 3 }}>
-                {selectedEducationContent.background}
-              </Typography>
+              <Box 
+                sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
+                dangerouslySetInnerHTML={{ __html: selectedEducationContent.background || '' }}
+              />
 
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#f57c00' }}>
                 Example:
               </Typography>
-              <Typography variant="body1" sx={{ mb: 3 }}>
-                {selectedEducationContent.example}
-              </Typography>
+              <Box 
+                sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
+                dangerouslySetInnerHTML={{ __html: selectedEducationContent.example || '' }}
+              />
 
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#7b1fa2' }}>
                 Sustainability Practices for PECC:
               </Typography>
-              <Typography variant="body1" sx={{ mb: 3 }}>
-                {selectedEducationContent.sustainability}
-              </Typography>
+              <Box 
+                sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
+                dangerouslySetInnerHTML={{ __html: selectedEducationContent.sustainability || '' }}
+              />
 
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#d32f2f' }}>
                 Additional Resources:
