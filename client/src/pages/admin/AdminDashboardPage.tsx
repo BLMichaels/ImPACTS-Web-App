@@ -96,7 +96,7 @@ const AdminDashboardPage: React.FC = () => {
 
   return (
     <Box sx={{ py: 3 }}>
-      <Typography variant="h4" gutterBottom>Admin Dashboard</Typography>
+      <Typography variant="h4" gutterBottom>Admin Tool</Typography>
       <Typography color="textSecondary" gutterBottom sx={{ mb: 2 }}>
         Welcome back, {userProfile?.first_name || 'Admin'}! Manage the entire ImPACTS system, users, and configurations.
       </Typography>
@@ -104,11 +104,11 @@ const AdminDashboardPage: React.FC = () => {
         Oversee all users, hospitals, programs, cohorts, and system settings. Monitor system-wide activity and ensure smooth operation of the platform.
       </Typography>
 
-      {/* How This Dashboard Works Section */}
+      {/* How This Tool Works Section */}
       <Card sx={{ p: 2, mb: 4 }}>
         <CardContent>
           <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 2 }}>
-            How This Dashboard Works
+            How This Tool Works
           </Typography>
           
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
@@ -210,7 +210,7 @@ const AdminDashboardPage: React.FC = () => {
 
       {/* System Stats */}
       <Grid container spacing={3} sx={{ mt: 2 }}>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>System Stats</Typography>
             <Divider sx={{ mb: 2 }} />
@@ -237,44 +237,6 @@ const AdminDashboardPage: React.FC = () => {
           </Paper>
         </Grid>
 
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>Quick Actions</Typography>
-            <Divider sx={{ mb: 2 }} />
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Button variant="outlined" startIcon={<PeopleIcon />} onClick={() => navigate('/admin/crm?tab=team')}>
-                Manage Users
-              </Button>
-              <Button variant="outlined" startIcon={<HospitalIcon />} onClick={() => navigate('/admin/crm')}>
-                Manage CRM
-              </Button>
-              <Button variant="outlined" startIcon={<SecurityIcon />} onClick={() => navigate('/admin/permissions')}>
-                Role Permissions
-              </Button>
-              <Button variant="outlined" startIcon={<SettingsIcon />}>
-                System Settings
-              </Button>
-              <Button variant="outlined" startIcon={<TimelineIcon />}>
-                View Reports
-              </Button>
-            </Box>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>Recent Activity</Typography>
-            <Divider sx={{ mb: 2 }} />
-            <List>
-              <ListItem>
-                <ListItemText 
-                  primary="Recent activity" 
-                  secondary="Activity will appear here as users register and log data." 
-                />
-              </ListItem>
-            </List>
-          </Paper>
-        </Grid>
       </Grid>
 
       <DashboardResources userId={currentUser?.uid} />

@@ -123,17 +123,22 @@ const Navbar: React.FC = () => {
           { path: '/manager/wages', label: 'Wages & Expenses', icon: <MoneyIcon /> }
         ];
 
-      case UserRole.MENTOR:
-        return [
+      case UserRole.MENTOR: {
+        const mentorItems: NavItem[] = [
           { path: '/mentor/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
           { path: '/mentor/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> },
           { path: '/mentor/programs', label: 'Programs', icon: <ProgramsIcon /> },
           { path: '/mentor/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
-          { path: '/mentor/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
-          { path: '/mentor/wages', label: 'Wages', icon: <MoneyIcon /> }
+          { path: '/mentor/snapshot', label: 'Snapshot', icon: <TimelineIcon /> }
         ];
+        // Only show wages tab if admin has enabled it for this mentor
+        if (userProfile && (userProfile as any).wages_enabled) {
+          mentorItems.push({ path: '/mentor/wages', label: 'Wages', icon: <MoneyIcon /> });
+        }
+        return mentorItems;
+      }
 
       case UserRole.PECC:
       default: {
@@ -141,7 +146,7 @@ const Navbar: React.FC = () => {
           { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
-          { path: '/gap-plan', label: 'Gaps & Education', icon: <AssignmentIcon /> },
+          { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> },
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
         const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
@@ -161,7 +166,7 @@ const Navbar: React.FC = () => {
       case UserRole.ADMIN: return '/admin/dashboard';
       case UserRole.MANAGER: return '/manager/dashboard';
       case UserRole.MENTOR: return '/mentor/dashboard';
-      default: return '/tool';
+      default: return '/dashboard';
     }
   };
 

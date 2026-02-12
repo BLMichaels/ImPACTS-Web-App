@@ -119,7 +119,7 @@ const ManagerDashboardPage: React.FC = () => {
   return (
     <Box sx={{ py: 3 }}>
       <Typography variant="h4" gutterBottom>
-        Manager Dashboard
+        Manager Tool
       </Typography>
       <Typography color="textSecondary" gutterBottom sx={{ mb: 2 }}>
         Welcome back, {userProfile?.first_name || 'Manager'}! Here's your team overview.
@@ -128,11 +128,11 @@ const ManagerDashboardPage: React.FC = () => {
         Oversee your mentors, hospitals, and PECCs. Monitor team activity, manage assignments, and track progress across your region.
       </Typography>
 
-      {/* How This Dashboard Works Section */}
+      {/* How This Tool Works Section */}
       <Card sx={{ p: 2, mb: 4 }}>
         <CardContent>
           <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 2 }}>
-            How This Dashboard Works
+            How This Tool Works
           </Typography>
           
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
@@ -267,7 +267,7 @@ const ManagerDashboardPage: React.FC = () => {
       {/* Main Content */}
       <Grid container spacing={3} sx={{ mt: 2 }}>
         {/* Mentor Overview */}
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6">My Mentors</Typography>
@@ -324,54 +324,6 @@ const ManagerDashboardPage: React.FC = () => {
           </Paper>
         </Grid>
 
-        {/* Quick Actions */}
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>Quick Actions</Typography>
-            <Divider sx={{ mb: 2 }} />
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Button 
-                variant="outlined" 
-                fullWidth 
-                startIcon={<PeopleIcon />}
-                onClick={() => navigate('/manager/mentors')}
-              >
-                Add New Mentor
-              </Button>
-              <Button 
-                variant="outlined" 
-                fullWidth 
-                startIcon={<HospitalIcon />}
-                onClick={() => navigate('/manager/crm')}
-              >
-                Manage Hospitals
-              </Button>
-              <Button 
-                variant="outlined" 
-                fullWidth 
-                startIcon={<PeopleIcon />}
-              >
-                Assign PECC to Mentor
-              </Button>
-              <Button 
-                variant="outlined" 
-                fullWidth 
-                startIcon={<MoneyIcon />}
-              >
-                Review Expenses
-              </Button>
-              <Button 
-                variant="outlined" 
-                fullWidth 
-                startIcon={<TrendingIcon />}
-              >
-                Generate Reports
-              </Button>
-            </Box>
-          </Paper>
-
-        </Grid>
       </Grid>
 
       <DashboardResources userId={currentUser?.uid} />

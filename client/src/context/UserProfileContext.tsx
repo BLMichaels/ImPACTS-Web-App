@@ -27,6 +27,9 @@ export interface UserProfile {
   mentor_name?: string;
   manager_name?: string;
   hospital_facility_id?: string | null;  // PECC's site (hospital); matches CRM contact id
+  
+  // Mentor-specific fields
+  wages_enabled?: boolean;  // If true, mentor can see wages tab (admin-controlled)
 }
 
 interface UserProfileContextType {

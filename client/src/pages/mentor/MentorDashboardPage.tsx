@@ -184,11 +184,11 @@ const MentorDashboardPage: React.FC = () => {
         Support your assigned hospitals and PECCs in their pediatric readiness journey. Guide them through milestones, track progress, and help them achieve their goals.
       </Typography>
 
-      {/* How This Dashboard Works Section */}
+      {/* How This Tool Works Section */}
       <Card sx={{ p: 2, mb: 4 }}>
         <CardContent>
           <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 2 }}>
-            How This Dashboard Works
+            How This Tool Works
           </Typography>
           
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
@@ -304,49 +304,8 @@ const MentorDashboardPage: React.FC = () => {
 
       {/* Main Content */}
       <Grid container spacing={3} sx={{ mt: 2 }}>
-        {/* Recent Activities */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">Recent Activities</Typography>
-              <Button size="small" onClick={() => navigate('/mentor/activities')}>
-                View All
-              </Button>
-            </Box>
-            {recentActivities.length === 0 ? (
-              <Typography color="textSecondary" align="center" sx={{ py: 3 }}>
-                No activities recorded yet
-              </Typography>
-            ) : (
-              <List>
-                {recentActivities.map((activity, index) => (
-                  <React.Fragment key={activity.id}>
-                    <ListItem>
-                      <ListItemAvatar>
-                        <Avatar sx={{ bgcolor: activity.category === 'SC' ? '#7b1fa2' : '#1976d2' }}>
-                          <ActivityIcon />
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText
-                        primary={activity.activityName}
-                        secondary={
-                          <>
-                            {format(new Date(activity.date), 'MMM d, yyyy')} • {activity.hours}h
-                            <Chip label={activity.category} size="small" sx={{ ml: 1 }} />
-                          </>
-                        }
-                      />
-                    </ListItem>
-                    {index < recentActivities.length - 1 && <Divider variant="inset" component="li" />}
-                  </React.Fragment>
-                ))}
-              </List>
-            )}
-          </Paper>
-        </Grid>
-
         {/* Hospital Overview */}
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6">My Hospitals</Typography>
@@ -405,53 +364,6 @@ const MentorDashboardPage: React.FC = () => {
           </Paper>
         </Grid>
       </Grid>
-
-      {/* Quick Actions */}
-      <Paper sx={{ mt: 3, p: 2 }}>
-        <Typography variant="h6" gutterBottom>Quick Actions</Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={6} sm={3}>
-            <Button 
-              variant="outlined" 
-              fullWidth 
-              startIcon={<ActivityIcon />}
-              onClick={() => navigate('/mentor/activities')}
-            >
-              Log Activity
-            </Button>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Button 
-              variant="outlined" 
-              fullWidth 
-              startIcon={<PeopleIcon />}
-              onClick={() => navigate('/mentor/hospitals')}
-            >
-              Invite PECC
-            </Button>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Button 
-              variant="outlined" 
-              fullWidth 
-              startIcon={<CheckIcon />}
-              onClick={() => navigate('/mentor/milestones')}
-            >
-              Update Milestones
-            </Button>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Button 
-              variant="outlined" 
-              fullWidth 
-              startIcon={<TrendingIcon />}
-              onClick={() => navigate('/mentor/snapshot')}
-            >
-              View Snapshot
-            </Button>
-          </Grid>
-        </Grid>
-      </Paper>
 
       <DashboardResources userId={currentUser?.uid} />
     </Box>

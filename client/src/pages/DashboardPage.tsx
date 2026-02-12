@@ -268,7 +268,7 @@ interface ReadinessScore {
               </Typography>
               
               <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
-                Welcome to your ImPACTS PECC Support Tool! This tool is designed to guide you through your Pediatric Emergency Care Coordinator journey. Here's how to get started:
+                Welcome to your ImPACTS PECC Tracker! This tool is designed to guide you through your Pediatric Emergency Care Coordinator journey. Here's how to get started:
               </Typography>
               
               <Grid container spacing={isMobile ? 1 : 2} sx={{ mt: 2 }}>
