@@ -314,7 +314,7 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
   if (!userId) return null;
 
   return (
-    <Box sx={{ mb: 6 }}>
+    <Box sx={{ mt: 10, mb: 6 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h4" color="primary">Resources & Tools</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddDialogOpen(true)} sx={{ fontSize: '0.875rem' }}>

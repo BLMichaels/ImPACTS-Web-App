@@ -125,7 +125,6 @@ const Navbar: React.FC = () => {
 
       case UserRole.MENTOR: {
         const mentorItems: NavItem[] = [
-          { path: '/mentor/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
           { path: '/mentor/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> },
