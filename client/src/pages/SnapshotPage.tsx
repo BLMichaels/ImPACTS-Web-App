@@ -2600,7 +2600,7 @@ const SnapshotPage = () => {
                             })()}
                           </Box>
                           
-                          {/* X-axis baseline */}
+                          {/* X-axis baseline - at exactly Y=0 */}
                           <Box
                             sx={{
                               position: 'absolute',
@@ -2609,7 +2609,7 @@ const SnapshotPage = () => {
                               bottom: 60,
                               height: '2px',
                               bgcolor: 'text.primary',
-                              zIndex: 2
+                              zIndex: 10
                             }}
                           />
                           
@@ -2617,9 +2617,11 @@ const SnapshotPage = () => {
                           {(() => {
                             const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
                             const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
+                            const chartAreaHeight = 450 - 60 - 60; // Total height minus top padding and bottom label area
                             const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
                             return steps.map((value, idx) => {
                               const percent = (value / maxValue) * 100;
+                              const bottomPosition = 60 + (percent / 100) * chartAreaHeight;
                               return (
                                 <Box
                                   key={value}
@@ -2627,7 +2629,7 @@ const SnapshotPage = () => {
                                     position: 'absolute',
                                     left: 50,
                                     right: 0,
-                                    bottom: `${60 + (percent / 100) * (450 - 60 - 60)}px`,
+                                    bottom: `${bottomPosition}px`,
                                     height: '1px',
                                     bgcolor: idx === steps.length - 1 ? 'transparent' : 'divider',
                                     opacity: 0.2,
@@ -2645,12 +2647,14 @@ const SnapshotPage = () => {
                             display: 'flex',
                             alignItems: 'flex-end',
                             justifyContent: 'space-between',
-                            gap: 1
+                            gap: 1,
+                            pb: 7.5
                           }}>
                             {Object.entries(domainStats).map(([domain, data], index) => {
                               const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
                               const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
-                              const barHeight = maxValue > 0 ? ((data.count / maxValue) * (450 - 60 - 60)) : 0;
+                              const chartAreaHeight = 450 - 60 - 60; // Total height minus top padding and bottom label area
+                              const barHeight = maxValue > 0 ? ((data.count / maxValue) * chartAreaHeight) : 0;
                               
                               return (
                                 <Box 
@@ -2662,28 +2666,10 @@ const SnapshotPage = () => {
                                     alignItems: 'center',
                                     flex: 1,
                                     height: '100%',
-                                    justifyContent: 'flex-end',
-                                    pb: 7.5
+                                    justifyContent: 'flex-end'
                                   }}
                                 >
-                                  {/* Value label above bar */}
-                                  {data.count > 0 && (
-                                    <Typography 
-                                      variant="caption" 
-                                      sx={{ 
-                                        position: 'absolute',
-                                        top: `${450 - 60 - barHeight - 20}px`,
-                                        fontWeight: 600,
-                                        fontSize: '0.75rem',
-                                        color: 'text.primary',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      {data.count}
-                                    </Typography>
-                                  )}
-                                  
-                                  {/* Bar */}
+                                  {/* Bar - starts exactly at baseline */}
                                   <Box
                                     sx={{
                                       width: '100%',
@@ -2692,17 +2678,54 @@ const SnapshotPage = () => {
                                       minHeight: data.count > 0 ? '4px' : '0px',
                                       bgcolor: 'primary.main',
                                       borderRadius: '4px 4px 0 0',
-                                      position: 'relative',
+                                      position: 'absolute',
+                                      bottom: 60,
                                       transition: 'all 0.3s ease',
                                       '&:hover': {
                                         opacity: 0.8,
                                         transform: 'translateY(-2px)'
                                       },
-                                      zIndex: 1
+                                      zIndex: 5,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
                                     }}
-                                  />
+                                  >
+                                    {/* Data label inside bar */}
+                                    {data.count > 0 && barHeight > 20 && (
+                                      <Typography 
+                                        variant="caption" 
+                                        sx={{ 
+                                          fontWeight: 600,
+                                          fontSize: '0.75rem',
+                                          color: 'white',
+                                          textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+                                        }}
+                                      >
+                                        {data.count}
+                                      </Typography>
+                                    )}
+                                  </Box>
                                   
-                                  {/* Domain label - fixed at bottom */}
+                                  {/* Data label above bar if bar is too small */}
+                                  {data.count > 0 && barHeight <= 20 && (
+                                    <Typography 
+                                      variant="caption" 
+                                      sx={{ 
+                                        position: 'absolute',
+                                        bottom: `${60 + barHeight + 4}px`,
+                                        fontWeight: 600,
+                                        fontSize: '0.75rem',
+                                        color: 'text.primary',
+                                        whiteSpace: 'nowrap',
+                                        zIndex: 6
+                                      }}
+                                    >
+                                      {data.count}
+                                    </Typography>
+                                  )}
+                                  
+                                  {/* Domain label - directly at baseline */}
                                   <Typography 
                                     variant="caption" 
                                     sx={{ 
@@ -2796,7 +2819,7 @@ const SnapshotPage = () => {
                             })()}
                           </Box>
                           
-                          {/* X-axis baseline */}
+                          {/* X-axis baseline - at exactly Y=0 */}
                           <Box
                             sx={{
                               position: 'absolute',
@@ -2805,7 +2828,7 @@ const SnapshotPage = () => {
                               bottom: 60,
                               height: '2px',
                               bgcolor: 'text.primary',
-                              zIndex: 2
+                              zIndex: 10
                             }}
                           />
                           
@@ -2813,9 +2836,11 @@ const SnapshotPage = () => {
                           {(() => {
                             const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
                             const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
+                            const chartAreaHeight = 450 - 60 - 60; // Total height minus top padding and bottom label area
                             const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
                             return steps.map((value, idx) => {
                               const percent = (value / maxValue) * 100;
+                              const bottomPosition = 60 + (percent / 100) * chartAreaHeight;
                               return (
                                 <Box
                                   key={value}
@@ -2823,7 +2848,7 @@ const SnapshotPage = () => {
                                     position: 'absolute',
                                     left: 50,
                                     right: 0,
-                                    bottom: `${60 + (percent / 100) * (450 - 60 - 60)}px`,
+                                    bottom: `${bottomPosition}px`,
                                     height: '1px',
                                     bgcolor: idx === steps.length - 1 ? 'transparent' : 'divider',
                                     opacity: 0.2,
@@ -2841,12 +2866,14 @@ const SnapshotPage = () => {
                             display: 'flex',
                             alignItems: 'flex-end',
                             justifyContent: 'space-between',
-                            gap: 1
+                            gap: 1,
+                            pb: 7.5
                           }}>
                             {Object.entries(domainStats).map(([domain, data], index) => {
                               const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
                               const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
-                              const barHeight = maxValue > 0 ? ((data.hours / maxValue) * (450 - 60 - 60)) : 0;
+                              const chartAreaHeight = 450 - 60 - 60; // Total height minus top padding and bottom label area
+                              const barHeight = maxValue > 0 ? ((data.hours / maxValue) * chartAreaHeight) : 0;
                               
                               return (
                                 <Box 
@@ -2858,28 +2885,10 @@ const SnapshotPage = () => {
                                     alignItems: 'center',
                                     flex: 1,
                                     height: '100%',
-                                    justifyContent: 'flex-end',
-                                    pb: 7.5
+                                    justifyContent: 'flex-end'
                                   }}
                                 >
-                                  {/* Value label above bar */}
-                                  {data.hours > 0 && (
-                                    <Typography 
-                                      variant="caption" 
-                                      sx={{ 
-                                        position: 'absolute',
-                                        top: `${450 - 60 - barHeight - 20}px`,
-                                        fontWeight: 600,
-                                        fontSize: '0.75rem',
-                                        color: 'text.primary',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      {data.hours.toFixed(1)}h
-                                    </Typography>
-                                  )}
-                                  
-                                  {/* Bar */}
+                                  {/* Bar - starts exactly at baseline */}
                                   <Box
                                     sx={{
                                       width: '100%',
@@ -2888,17 +2897,54 @@ const SnapshotPage = () => {
                                       minHeight: data.hours > 0 ? '4px' : '0px',
                                       bgcolor: 'secondary.main',
                                       borderRadius: '4px 4px 0 0',
-                                      position: 'relative',
+                                      position: 'absolute',
+                                      bottom: 60,
                                       transition: 'all 0.3s ease',
                                       '&:hover': {
                                         opacity: 0.8,
                                         transform: 'translateY(-2px)'
                                       },
-                                      zIndex: 1
+                                      zIndex: 5,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
                                     }}
-                                  />
+                                  >
+                                    {/* Data label inside bar */}
+                                    {data.hours > 0 && barHeight > 20 && (
+                                      <Typography 
+                                        variant="caption" 
+                                        sx={{ 
+                                          fontWeight: 600,
+                                          fontSize: '0.75rem',
+                                          color: 'white',
+                                          textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+                                        }}
+                                      >
+                                        {data.hours.toFixed(1)}h
+                                      </Typography>
+                                    )}
+                                  </Box>
                                   
-                                  {/* Domain label - fixed at bottom */}
+                                  {/* Data label above bar if bar is too small */}
+                                  {data.hours > 0 && barHeight <= 20 && (
+                                    <Typography 
+                                      variant="caption" 
+                                      sx={{ 
+                                        position: 'absolute',
+                                        bottom: `${60 + barHeight + 4}px`,
+                                        fontWeight: 600,
+                                        fontSize: '0.75rem',
+                                        color: 'text.primary',
+                                        whiteSpace: 'nowrap',
+                                        zIndex: 6
+                                      }}
+                                    >
+                                      {data.hours.toFixed(1)}h
+                                    </Typography>
+                                  )}
+                                  
+                                  {/* Domain label - directly at baseline */}
                                   <Typography 
                                     variant="caption" 
                                     sx={{ 
