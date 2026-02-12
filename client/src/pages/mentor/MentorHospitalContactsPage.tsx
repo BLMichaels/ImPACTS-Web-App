@@ -34,7 +34,8 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  InputAdornment
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
@@ -45,13 +46,22 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Send as SendIcon,
-  ContentCopy as CopyIcon
+  ContentCopy as CopyIcon,
+  Search as SearchIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
 // Types
+interface DatedNote {
+  date: string; // YYYY-MM-DD
+  text: string;
+}
+
 interface Hospital {
   id: string;
   name: string;
@@ -62,6 +72,7 @@ interface Hospital {
   traumaLevel: string;
   edSize: string;
   notes: string;
+  notesLog?: DatedNote[]; // dated notes (newest first in UI)
   isWorkingWith: boolean; // true = actively working with, false = just a contact/reference
 }
 
@@ -165,6 +176,22 @@ const MentorHospitalContactsPage: React.FC = () => {
   const [addIsWorkingWith, setAddIsWorkingWith] = useState(true);
   const [showAllHospitals, setShowAllHospitals] = useState(false); // Filter toggle
 
+  // Hospital table filter/sort
+  const [hospitalSearch, setHospitalSearch] = useState('');
+  const [hospitalFilterState, setHospitalFilterState] = useState<string>('');
+  const [hospitalFilterTrauma, setHospitalFilterTrauma] = useState<string>('');
+  const [hospitalSortBy, setHospitalSortBy] = useState<'name' | 'location' | 'traumaLevel' | 'status' | 'contactCount' | 'primaryContact'>('name');
+  const [hospitalSortOrder, setHospitalSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Contacts list filter/sort (in hospital details dialog)
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactSortBy, setContactSortBy] = useState<'name' | 'role' | 'status' | 'primary'>('name');
+  const [contactSortOrder, setContactSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Dated note form (hospital detail)
+  const [newNoteDate, setNewNoteDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newNoteText, setNewNoteText] = useState('');
+
   // Load CRM hospitals for Add Hospital cascading dropdowns
   useEffect(() => {
     let mounted = true;
@@ -246,7 +273,8 @@ const MentorHospitalContactsPage: React.FC = () => {
           // Migrate old hospitals to include isWorkingWith field (default to true)
           hospitals = Array.isArray(parsed) ? parsed.map((h: Hospital) => ({
             ...h,
-            isWorkingWith: h.isWorkingWith ?? true
+            isWorkingWith: h.isWorkingWith ?? true,
+            notesLog: Array.isArray((h as Hospital & { notesLog?: DatedNote[] }).notesLog) ? (h as Hospital & { notesLog: DatedNote[] }).notesLog : []
           })) : [];
         }
       } catch {
@@ -421,7 +449,8 @@ const MentorHospitalContactsPage: React.FC = () => {
       }
       const hospitalData: Hospital = {
         id: editingHospital.id,
-        ...hospitalForm
+        ...hospitalForm,
+        notesLog: editingHospital.notesLog ?? []
       };
       const newHospitals = hospitals.map(h => h.id === editingHospital.id ? hospitalData : h);
       saveHospitals(newHospitals);
@@ -452,6 +481,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       traumaLevel: TRAUMA_LEVELS.includes(String(crmRow.trauma_level ?? '')) ? String(crmRow.trauma_level) : 'Non-Designated',
       edSize: String(crmRow.ed_size ?? ''),
       notes: String(crmRow.notes ?? ''),
+      notesLog: [],
       isWorkingWith: addIsWorkingWith
     };
     const newHospitals = [...hospitals, hospitalData];
@@ -466,6 +496,21 @@ const MentorHospitalContactsPage: React.FC = () => {
     setSelectedHospital(hospital);
     linkHospitalToCRM(hospital);
     setHospitalDetailsDialogOpen(true);
+    setNewNoteDate(new Date().toISOString().slice(0, 10));
+    setNewNoteText('');
+  };
+
+  const handleAddDatedNote = () => {
+    if (!selectedHospital || !newNoteText.trim()) return;
+    const note: DatedNote = { date: newNoteDate, text: newNoteText.trim() };
+    const notesLog = [...(selectedHospital.notesLog ?? []), note].sort((a, b) => b.date.localeCompare(a.date));
+    const updated: Hospital = { ...selectedHospital, notesLog };
+    const newHospitals = hospitals.map(h => h.id === selectedHospital.id ? updated : h);
+    saveHospitals(newHospitals);
+    setSelectedHospital(updated);
+    setNewNoteText('');
+    setNewNoteDate(new Date().toISOString().slice(0, 10));
+    setSnackbar({ open: true, message: 'Dated note added', severity: 'success' });
   };
 
   const handleRemoveHospital = (hospitalId: string) => {
@@ -566,10 +611,11 @@ const MentorHospitalContactsPage: React.FC = () => {
   };
 
   const handleDeleteContact = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this contact?')) {
+    if (window.confirm('Remove this contact from your list? They will remain in the CRM; you just won’t see them in your contacts for this hospital.')) {
       const newContacts = contacts.filter(c => c.id !== id);
       saveContacts(newContacts);
-      setSnackbar({ open: true, message: 'Contact deleted', severity: 'success' });
+      setContactDialogOpen(false);
+      setSnackbar({ open: true, message: 'Contact removed from your list', severity: 'success' });
     }
   };
 
@@ -596,10 +642,113 @@ const MentorHospitalContactsPage: React.FC = () => {
     ? contacts.filter(c => c.hospitalId === selectedHospital.id)
     : [];
 
+  // Reset contact filter/sort when opening a different hospital
+  useEffect(() => {
+    if (!selectedHospital) {
+      setContactSearch('');
+    }
+  }, [selectedHospital?.id]);
+
   // Filter hospitals based on showAllHospitals toggle
   const displayedHospitals = showAllHospitals 
     ? hospitals 
     : hospitals.filter(h => h.isWorkingWith);
+
+  // Options for hospital filters (from current data)
+  const hospitalStateOptions = useMemo(() => {
+    const s = new Set(displayedHospitals.map(h => h.state).filter(Boolean));
+    return Array.from(s).sort();
+  }, [displayedHospitals]);
+
+  // Apply search and filters to hospitals, then sort
+  const filteredAndSortedHospitals = useMemo(() => {
+    const search = (hospitalSearch || '').toLowerCase().trim();
+    let list = displayedHospitals;
+    if (search) {
+      list = list.filter(h => {
+        const name = normalizeHospitalOrOrgName(h.name).toLowerCase();
+        const location = `${(h.city || '')} ${(h.state || '')}`.toLowerCase();
+        return name.includes(search) || location.includes(search);
+      });
+    }
+    if (hospitalFilterState) {
+      list = list.filter(h => (h.state || '') === hospitalFilterState);
+    }
+    if (hospitalFilterTrauma) {
+      list = list.filter(h => (h.traumaLevel || '') === hospitalFilterTrauma);
+    }
+    const dir = hospitalSortOrder === 'asc' ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      const aContacts = contacts.filter(c => c.hospitalId === a.id);
+      const bContacts = contacts.filter(c => c.hospitalId === b.id);
+      const aPrimary = aContacts.find(c => c.isPrimaryContact);
+      const bPrimary = bContacts.find(c => c.isPrimaryContact);
+      const aPrimaryName = aPrimary ? `${aPrimary.firstName} ${aPrimary.lastName}` : '';
+      const bPrimaryName = bPrimary ? `${bPrimary.firstName} ${bPrimary.lastName}` : '';
+      let cmp = 0;
+      switch (hospitalSortBy) {
+        case 'name':
+          cmp = normalizeHospitalOrOrgName(a.name).localeCompare(normalizeHospitalOrOrgName(b.name));
+          break;
+        case 'location':
+          cmp = (a.state || '').localeCompare(b.state || '') || (a.city || '').localeCompare(b.city || '');
+          break;
+        case 'traumaLevel':
+          cmp = (a.traumaLevel || '').localeCompare(b.traumaLevel || '');
+          break;
+        case 'status':
+          cmp = (a.isWorkingWith === b.isWorkingWith) ? 0 : (a.isWorkingWith ? 1 : -1);
+          break;
+        case 'contactCount':
+          cmp = aContacts.length - bContacts.length;
+          break;
+        case 'primaryContact':
+          cmp = aPrimaryName.localeCompare(bPrimaryName);
+          break;
+        default:
+          break;
+      }
+      return cmp * dir;
+    });
+    return list;
+  }, [displayedHospitals, hospitalSearch, hospitalFilterState, hospitalFilterTrauma, hospitalSortBy, hospitalSortOrder, contacts]);
+
+  // Filter and sort contacts in the hospital details dialog
+  const filteredAndSortedContacts = useMemo(() => {
+    const search = (contactSearch || '').toLowerCase().trim();
+    let list = hospitalContacts;
+    if (search) {
+      list = list.filter(c => {
+        const name = `${c.firstName} ${c.lastName}`.toLowerCase();
+        const email = (c.email || '').toLowerCase();
+        const role = (c.roleAtHospital || '').toLowerCase();
+        const status = (c.contactStatus || '').toLowerCase();
+        return name.includes(search) || email.includes(search) || role.includes(search) || status.includes(search);
+      });
+    }
+    const dir = contactSortOrder === 'asc' ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      let cmp = 0;
+      switch (contactSortBy) {
+        case 'name':
+          cmp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+          break;
+        case 'role':
+          cmp = (a.roleAtHospital || '').localeCompare(b.roleAtHospital || '');
+          break;
+        case 'status':
+          cmp = (a.contactStatus || '').localeCompare(b.contactStatus || '');
+          break;
+        case 'primary':
+          cmp = (a.isPrimaryContact === b.isPrimaryContact) ? 0 : (a.isPrimaryContact ? -1 : 1);
+          break;
+        default:
+          break;
+      }
+      return cmp * dir;
+    });
+    return list;
+  }, [hospitalContacts, contactSearch, contactSortBy, contactSortOrder]);
 
   return (
     <Box sx={{ py: 3 }}>
@@ -615,7 +764,7 @@ const MentorHospitalContactsPage: React.FC = () => {
 
       {/* List View - Table */}
       <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 2 }}>
           <FormControlLabel
             control={
               <Checkbox
@@ -626,9 +775,84 @@ const MentorHospitalContactsPage: React.FC = () => {
             label="Show all hospitals (including contacts only)"
           />
           <Typography variant="body2" color="textSecondary">
-            {displayedHospitals.length} of {hospitals.length} hospitals
+            {filteredAndSortedHospitals.length} of {displayedHospitals.length} hospitals
+            {displayedHospitals.length !== hospitals.length && ` (${hospitals.length} total)`}
           </Typography>
         </Box>
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Search hospitals..."
+              value={hospitalSearch}
+              onChange={(e) => setHospitalSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" color="action" />
+                  </InputAdornment>
+                )
+              }}
+            />
+          </Grid>
+          <Grid item xs={6} sm={3} md={2}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>State</InputLabel>
+              <Select
+                value={hospitalFilterState}
+                label="State"
+                onChange={(e) => setHospitalFilterState(e.target.value)}
+              >
+                <MenuItem value="">All</MenuItem>
+                {hospitalStateOptions.map(st => (
+                  <MenuItem key={st} value={st}>{st}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} sm={3} md={2}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Trauma Level</InputLabel>
+              <Select
+                value={hospitalFilterTrauma}
+                label="Trauma Level"
+                onChange={(e) => setHospitalFilterTrauma(e.target.value)}
+              >
+                <MenuItem value="">All</MenuItem>
+                {TRAUMA_LEVELS.map(t => (
+                  <MenuItem key={t} value={t}>{t}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} sm={3} md={2}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Sort by</InputLabel>
+              <Select
+                value={hospitalSortBy}
+                label="Sort by"
+                onChange={(e) => setHospitalSortBy(e.target.value as typeof hospitalSortBy)}
+              >
+                <MenuItem value="name">Hospital Name</MenuItem>
+                <MenuItem value="location">Location</MenuItem>
+                <MenuItem value="traumaLevel">Trauma Level</MenuItem>
+                <MenuItem value="status">Status</MenuItem>
+                <MenuItem value="contactCount"># Contacts</MenuItem>
+                <MenuItem value="primaryContact">Primary Contact</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} sm={2} md={1}>
+            <IconButton
+              size="small"
+              onClick={() => setHospitalSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+              title={hospitalSortOrder === 'asc' ? 'Ascending (click for descending)' : 'Descending (click for ascending)'}
+            >
+              {hospitalSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
+            </IconButton>
+          </Grid>
+        </Grid>
         <Paper>
           <TableContainer>
             <Table>
@@ -644,7 +868,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {displayedHospitals.map(hospital => {
+                {filteredAndSortedHospitals.map(hospital => {
                   const hContacts = contacts.filter(c => c.hospitalId === hospital.id);
                   const primaryContact = hContacts.find(c => c.isPrimaryContact);
                   
@@ -711,23 +935,18 @@ const MentorHospitalContactsPage: React.FC = () => {
                           >
                             <SendIcon fontSize="small" />
                           </IconButton>
-                          <IconButton 
-                            size="small" 
-                            color="error"
-                            onClick={() => handleRemoveHospital(hospital.id)}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
                         </Box>
                       </TableCell>
                     </TableRow>
                   );
                 })}
-                {displayedHospitals.length === 0 && (
+                {filteredAndSortedHospitals.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                       <Typography color="textSecondary">
-                        No hospitals found. Click "Add Hospital" to get started.
+                        {displayedHospitals.length === 0
+                          ? 'No hospitals found. Click "Add Hospital" to get started.'
+                          : 'No hospitals match the current filters. Try changing search or filters.'}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -750,8 +969,8 @@ const MentorHospitalContactsPage: React.FC = () => {
             <DialogTitle>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="h6">{normalizeHospitalOrOrgName(selectedHospital.name)}</Typography>
-                <IconButton onClick={() => setHospitalDetailsDialogOpen(false)} size="small">
-                  <DeleteIcon />
+                <IconButton onClick={() => setHospitalDetailsDialogOpen(false)} size="small" aria-label="Close">
+                  <CloseIcon />
                 </IconButton>
               </Box>
             </DialogTitle>
@@ -789,12 +1008,49 @@ const MentorHospitalContactsPage: React.FC = () => {
               <Typography variant="subtitle2" color="textSecondary">ED Size</Typography>
               <Typography gutterBottom>{selectedHospital.edSize || '-'}</Typography>
               
-              {selectedHospital.notes && (
-                <>
-                  <Typography variant="subtitle2" color="textSecondary">Notes</Typography>
-                  <Typography>{selectedHospital.notes}</Typography>
-                </>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom>Notes</Typography>
+              <Typography variant="subtitle2" color="textSecondary">General notes</Typography>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>
+                {selectedHospital.notes || '—'}
+              </Typography>
+              <Typography variant="subtitle2" color="textSecondary" gutterBottom>Dated notes</Typography>
+              {(selectedHospital.notesLog ?? []).length === 0 ? (
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>No dated notes yet.</Typography>
+              ) : (
+                <Box sx={{ mb: 2, maxHeight: 160, overflow: 'auto' }}>
+                  {(selectedHospital.notesLog ?? []).map((entry, i) => (
+                    <Box key={i} sx={{ mb: 1.5, pb: 1.5, borderBottom: i < (selectedHospital.notesLog!.length - 1) ? 1 : 0, borderColor: 'divider' }}>
+                      <Typography variant="caption" color="textSecondary">{entry.date}</Typography>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
+                    </Box>
+                  ))}
+                </Box>
               )}
+              <TextField
+                size="small"
+                type="date"
+                label="Note date"
+                value={newNoteDate}
+                onChange={(e) => setNewNoteDate(e.target.value)}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                sx={{ mb: 1 }}
+              />
+              <TextField
+                size="small"
+                label="Add a dated note"
+                placeholder="e.g. Call with PECC lead, discussed timeline..."
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                fullWidth
+                multiline
+                minRows={2}
+                sx={{ mb: 1 }}
+              />
+              <Button size="small" variant="outlined" onClick={handleAddDatedNote} disabled={!newNoteText.trim()}>
+                Add note
+              </Button>
               
               <Button 
                 variant="outlined" 
@@ -840,15 +1096,63 @@ const MentorHospitalContactsPage: React.FC = () => {
                   </Button>
                 </Box>
               </Box>
+              {hospitalContacts.length > 0 && (
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      placeholder="Search contacts..."
+                      value={contactSearch}
+                      onChange={(e) => setContactSearch(e.target.value)}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon fontSize="small" color="action" />
+                          </InputAdornment>
+                        )
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3} md={2}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel>Sort by</InputLabel>
+                      <Select
+                        value={contactSortBy}
+                        label="Sort by"
+                        onChange={(e) => setContactSortBy(e.target.value as typeof contactSortBy)}
+                      >
+                        <MenuItem value="name">Name</MenuItem>
+                        <MenuItem value="role">Role</MenuItem>
+                        <MenuItem value="status">Status</MenuItem>
+                        <MenuItem value="primary">Primary first</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={6} sm={2} md={1}>
+                    <IconButton
+                      size="small"
+                      onClick={() => setContactSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+                      title={contactSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                    >
+                      {contactSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
+                    </IconButton>
+                  </Grid>
+                </Grid>
+              )}
               <Divider sx={{ mb: 2 }} />
               
               {hospitalContacts.length === 0 ? (
                 <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
                   No contacts for this hospital yet
                 </Typography>
+              ) : filteredAndSortedContacts.length === 0 ? (
+                <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
+                  No contacts match the search. Try a different term.
+                </Typography>
               ) : (
                 <List>
-                  {hospitalContacts.map((contact, index) => (
+                  {filteredAndSortedContacts.map((contact, index) => (
                     <React.Fragment key={contact.id}>
                       <ListItem>
                         <ListItemAvatar>
@@ -893,15 +1197,12 @@ const MentorHospitalContactsPage: React.FC = () => {
                           }
                         />
                         <ListItemSecondaryAction>
-                          <IconButton size="small" onClick={() => handleEditContact(contact)}>
+                          <IconButton size="small" onClick={() => handleEditContact(contact)} aria-label="Edit contact">
                             <EditIcon />
-                          </IconButton>
-                          <IconButton size="small" onClick={() => handleDeleteContact(contact.id)}>
-                            <DeleteIcon />
                           </IconButton>
                         </ListItemSecondaryAction>
                       </ListItem>
-                      {index < hospitalContacts.length - 1 && <Divider variant="inset" component="li" />}
+                      {index < filteredAndSortedContacts.length - 1 && <Divider variant="inset" component="li" />}
                     </React.Fragment>
                   ))}
                 </List>
@@ -1214,6 +1515,15 @@ const MentorHospitalContactsPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setContactDialogOpen(false)}>Cancel</Button>
+          <Box sx={{ flex: 1 }} />
+          {editingContact && (
+            <Button
+              color="error"
+              onClick={() => editingContact && handleDeleteContact(editingContact.id)}
+            >
+              Remove from list
+            </Button>
+          )}
           <Button onClick={handleSaveContact} variant="contained">Save</Button>
         </DialogActions>
       </Dialog>
