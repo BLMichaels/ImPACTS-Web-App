@@ -151,16 +151,29 @@ const SnapshotPage = () => {
 
   const filteredData = getDateFilteredData;
 
-  // Calculate domain statistics from activities (based on domain tagging)
+  // Map activity categories to domains
+  const categoryToDomainMap: Record<string, string[]> = {
+    'PECC role education and advancement': ['Administration & Coordination'],
+    'Collaborative work with PECC counterpart, EMS, or other EDs': ['Administration & Coordination'],
+    'Staffing competency evaluations': ['Care Team Competencies'],
+    'Ensuring all Pediatric Policies and Procedures are implemented and updated': ['Policies, Procedures, & Protocols'],
+    'Promoting pediatric disaster preparedness': ['Policies, Procedures, & Protocols'],
+    'Ensuring ED staff are prepared to care for all children, including those with special health needs': ['Policies, Procedures, & Protocols'],
+    'Ensuring equipment, medication, and supplies are available to all ED staff': ['Equipment, Supplies, & Medication'],
+    'Promoting patient and family education in injury prevention': ['Pediatric Patient & Medication Safety'],
+    'Facilitating and participating in ED pediatric QI/PI activities': ['Quality & Process Improvement']
+  };
+
+  // Calculate domain statistics from activities (based on category mapping)
   const domainStats = useMemo(() => {
     const stats: Record<string, { count: number; hours: number }> = {};
     const allDomains = [
       'Administration & Coordination',
-      'Staffing',
-      'Quality Improvement',
-      'Patient Safety',
-      'Policies & Procedures',
-      'Equipment'
+      'Care Team Competencies',
+      'Policies, Procedures, & Protocols',
+      'Equipment, Supplies, & Medication',
+      'Pediatric Patient & Medication Safety',
+      'Quality & Process Improvement'
     ];
     
     // Initialize all domains
@@ -170,9 +183,16 @@ const SnapshotPage = () => {
     
     // Process activities from filtered data
     filteredData.activities.forEach((activity: any) => {
-      const domains = activity.readinessDomains || [];
-      if (Array.isArray(domains) && domains.length > 0) {
-        domains.forEach((domain: string) => {
+      const category = activity.category || '';
+      const domains = categoryToDomainMap[category] || [];
+      
+      // If activity has explicit domain tags, use those; otherwise use category mapping
+      const activityDomains = activity.readinessDomains && Array.isArray(activity.readinessDomains) && activity.readinessDomains.length > 0
+        ? activity.readinessDomains
+        : domains;
+      
+      if (activityDomains.length > 0) {
+        activityDomains.forEach((domain: string) => {
           if (stats[domain]) {
             stats[domain].count += 1;
             stats[domain].hours += activity.hours || 0;
@@ -2534,7 +2554,7 @@ const SnapshotPage = () => {
                           Activity Count by Domain
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                          Number of activities tagged to each pediatric readiness domain. Based on domain tags assigned when logging activities on your Activities page.
+                          Number of activities in each pediatric readiness domain. Activities are automatically mapped to domains based on their category (e.g., "PECC role education" maps to Administration & Coordination).
                         </Typography>
                       </Box>
                       
@@ -2677,7 +2697,7 @@ const SnapshotPage = () => {
                         </Box>
                       ) : (
                         <Alert severity="info" sx={{ mt: 2 }}>
-                          No activities have been tagged with domains yet. Tag your activities with domains when logging them to see this breakdown.
+                          No activities found in the mapped categories. Activities are automatically assigned to domains based on their category (e.g., "PECC role education" → Administration & Coordination).
                         </Alert>
                       )}
                     </CardContent>
@@ -2695,7 +2715,7 @@ const SnapshotPage = () => {
                           Activity Hours by Domain
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                          Total hours logged for activities in each pediatric readiness domain. Shows where you're spending your time across the 6 domains. Based on domain tags and hours from your Activities page.
+                          Total hours logged for activities in each pediatric readiness domain. Shows where you're spending your time across the 6 domains. Activities are automatically mapped to domains based on their category from your Activities page.
                         </Typography>
                       </Box>
                       
@@ -2838,7 +2858,7 @@ const SnapshotPage = () => {
                         </Box>
                       ) : (
                         <Alert severity="info" sx={{ mt: 2 }}>
-                          No activities have been tagged with domains yet. Tag your activities with domains when logging them to see this breakdown.
+                          No activities found in the mapped categories. Activities are automatically assigned to domains based on their category (e.g., "PECC role education" → Administration & Coordination).
                         </Alert>
                       )}
                     </CardContent>
