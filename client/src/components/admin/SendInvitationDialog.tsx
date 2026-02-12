@@ -21,6 +21,7 @@ import { supabase } from '../../supabase';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
 interface SendInvitationDialogProps {
   open: boolean;
@@ -78,7 +79,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       .select('id, name')
       .order('name');
     if (hospitalsData) {
-      setHospitals(hospitalsData.map(h => ({ id: h.id, name: h.name })));
+      setHospitals(hospitalsData.map(h => ({ id: h.id, name: normalizeHospitalOrOrgName(h.name) })));
     }
     
     // Load mentors

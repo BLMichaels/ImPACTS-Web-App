@@ -690,7 +690,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const metrics = hospitalMetrics[hospitalId];
     if (metrics?.peccUserId) {
       handleHospitalMenuClose();
-      alert(`Viewing PECC account for ${hospitals.find(h => h.id === hospitalId)?.name}`);
+      alert(`Viewing PECC account for ${normalizeHospitalOrOrgName(hospitals.find(h => h.id === hospitalId)?.name)}`);
     }
   };
 

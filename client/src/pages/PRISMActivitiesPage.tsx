@@ -44,6 +44,7 @@ import {
   Assignment as AssignmentIcon
 } from '@mui/icons-material';
 import { useUserProfile } from '../context/UserProfileContext';
+import { normalizeHospitalOrOrgName } from '../utils/displayName';
 
 interface PRISMActivity {
   id: string;
@@ -310,7 +311,7 @@ const PRISMActivitiesPage: React.FC = () => {
                   <MenuItem value="all">All Hospitals</MenuItem>
                   {hospitals.map(hospital => (
                     <MenuItem key={hospital.id} value={hospital.id}>
-                      {hospital.name}
+                      {normalizeHospitalOrOrgName(hospital.name)}
                     </MenuItem>
                   ))}
                 </Select>
@@ -363,10 +364,10 @@ const PRISMActivitiesPage: React.FC = () => {
                       </Typography>
                     </Box>
                   </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {activity.hospitalName}
-                    </Typography>
+<TableCell>
+                      <Typography variant="body2">
+                        {normalizeHospitalOrOrgName(activity.hospitalName)}
+                      </Typography>
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>

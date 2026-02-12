@@ -401,7 +401,7 @@ const MentorActivitiesPage: React.FC = () => {
 
   // Get hospital names
   const getHospitalNames = (ids: string[]) => {
-    return ids.map(id => hospitals.find(h => h.id === id)?.name || id).join(', ');
+    return ids.map(id => normalizeHospitalOrOrgName(hospitals.find(h => h.id === id)?.name) || id).join(', ');
   };
 
   // Calculate statistics
@@ -990,7 +990,7 @@ const MentorActivitiesPage: React.FC = () => {
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map((id) => (
-                          <Chip key={id} label={hospitals.find(h => h.id === id)?.name || id} size="small" />
+                          <Chip key={id} label={normalizeHospitalOrOrgName(hospitals.find(h => h.id === id)?.name) || id} size="small" />
                         ))}
                       </Box>
                     )}

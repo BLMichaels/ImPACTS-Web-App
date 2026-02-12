@@ -26,6 +26,7 @@ import {
   Schedule as ScheduleIcon
 } from '@mui/icons-material';
 import { useUserProfile } from '../context/UserProfileContext';
+import { normalizeHospitalOrOrgName } from '../utils/displayName';
 
 const PRISMDashboardPage: React.FC = () => {
   const { userProfile } = useUserProfile();
@@ -144,7 +145,7 @@ const PRISMDashboardPage: React.FC = () => {
                         <BusinessIcon />
                       </ListItemIcon>
                       <ListItemText
-                        primary={hospital.name}
+                        primary={normalizeHospitalOrOrgName(hospital.name)}
                         secondary={
                           <Box>
                             <Typography variant="body2" color="text.secondary">

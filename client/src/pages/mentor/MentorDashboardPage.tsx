@@ -330,7 +330,7 @@ const MentorDashboardPage: React.FC = () => {
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                        {hospital.name}
+                        {normalizeHospitalOrOrgName(hospital.name)}
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
                         <Typography variant="body2" color="text.secondary">
@@ -379,7 +379,7 @@ const MentorDashboardPage: React.FC = () => {
           <>
             <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: 1, borderColor: 'divider' }}>
               <Typography variant="h6" fontWeight={600}>
-                {selectedHospital.name}
+                {normalizeHospitalOrOrgName(selectedHospital.name)}
               </Typography>
               <IconButton size="small" onClick={() => setHospitalDrawerOpen(false)} aria-label="Close">
                 <CloseIcon />

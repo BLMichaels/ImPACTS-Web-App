@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile, UserProfile } from '../context/UserProfileContext';
+import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import { UserRole } from '../types/database';
 import { useNavigate } from 'react-router-dom';
 import TermsOfService from '../components/TermsOfService';
@@ -326,7 +327,7 @@ const AccountPage = () => {
                     <TextField
                       fullWidth
                       label="Hospital Name"
-                      value={hospitalInfo.name}
+                      value={normalizeHospitalOrOrgName(hospitalInfo.name)}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, name: e.target.value })}
                       disabled={!editingHospital}
                       size="small"
@@ -642,11 +643,6 @@ const AccountPage = () => {
                     {getTier() === 'manager' && (
                       <Typography variant="body2" sx={{ mt: 1 }}>
                         Access to Manager Dashboard, Mentors management, and CRM.
-                      </Typography>
-                    )}
-                    {getTier() === 'pecc' && (
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        Access to PECC Support Tool, Activities, Snapshot, Checklist, Gaps & Education, and Simulation.
                       </Typography>
                     )}
                   </Alert>

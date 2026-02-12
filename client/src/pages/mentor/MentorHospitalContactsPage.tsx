@@ -359,7 +359,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   const handleEditHospital = (hospital: Hospital) => {
     setEditingHospital(hospital);
     setHospitalForm({
-      name: hospital.name,
+      name: normalizeHospitalOrOrgName(hospital.name),
       address: hospital.address,
       city: hospital.city,
       state: hospital.state,
@@ -659,7 +659,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <HospitalIcon color="primary" />
                           <Typography variant="body2" fontWeight={500}>
-                            {hospital.name}
+                            {normalizeHospitalOrOrgName(hospital.name)}
                           </Typography>
                         </Box>
                       </TableCell>
@@ -749,7 +749,7 @@ const MentorHospitalContactsPage: React.FC = () => {
           <>
             <DialogTitle>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h6">{selectedHospital.name}</Typography>
+                <Typography variant="h6">{normalizeHospitalOrOrgName(selectedHospital.name)}</Typography>
                 <IconButton onClick={() => setHospitalDetailsDialogOpen(false)} size="small">
                   <DeleteIcon />
                 </IconButton>
@@ -772,7 +772,7 @@ const MentorHospitalContactsPage: React.FC = () => {
               </Box>
               
               <Typography variant="subtitle2" color="textSecondary">Name</Typography>
-              <Typography gutterBottom>{selectedHospital.name}</Typography>
+              <Typography gutterBottom>{normalizeHospitalOrOrgName(selectedHospital.name)}</Typography>
               
               <Typography variant="subtitle2" color="textSecondary">Trauma Level</Typography>
               <Chip label={selectedHospital.traumaLevel} size="small" sx={{ mb: 1 }} />
@@ -1052,7 +1052,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                       onChange={(_, newValue) => {
                         setAddHospitalId(newValue ? String(newValue.facility_id ?? newValue.id ?? '') : '');
                       }}
-                      getOptionLabel={(option) => option.name || 'Unknown'}
+                      getOptionLabel={(option) => normalizeHospitalOrOrgName(option.name) || 'Unknown'}
                       renderInput={(params) => (
                         <TextField {...params} label="Hospital" placeholder="Select or type to search" disabled={!addCity} />
                       )}
@@ -1220,7 +1220,7 @@ const MentorHospitalContactsPage: React.FC = () => {
 
       {/* Invite Dialog */}
       <Dialog open={inviteDialogOpen} onClose={() => setInviteDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Invite PECC to {selectedHospital?.name}</DialogTitle>
+        <DialogTitle>Invite PECC to {selectedHospital ? normalizeHospitalOrOrgName(selectedHospital.name) : ''}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
             Send a unique registration link to invite a PECC. The link will automatically associate them with this hospital and you as their mentor.
