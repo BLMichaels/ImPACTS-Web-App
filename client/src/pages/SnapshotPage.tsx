@@ -2561,23 +2561,19 @@ const SnapshotPage = () => {
                       {hasDomainData ? (
                         <Box sx={{ 
                           position: 'relative', 
-                          height: 400, 
-                          display: 'flex', 
-                          alignItems: 'flex-end', 
-                          justifyContent: 'space-around', 
-                          px: { xs: 2, md: 4 },
-                          py: 3,
-                          borderLeft: '2px solid',
-                          borderBottom: '2px solid',
-                          borderColor: 'divider',
-                          minHeight: 350
+                          height: 450,
+                          pl: 6,
+                          pr: 2,
+                          pt: 2,
+                          pb: 8
                         }}>
                           {/* Y-axis labels */}
                           <Box sx={{ 
                             position: 'absolute', 
-                            left: -30, 
+                            left: 0, 
                             top: 0, 
                             bottom: 0,
+                            width: 50,
                             display: 'flex',
                             flexDirection: 'column',
                             justifyContent: 'space-between',
@@ -2589,111 +2585,150 @@ const SnapshotPage = () => {
                               const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
                               const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
                               return steps.map((value) => (
-                                <Typography key={value} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                <Typography 
+                                  key={value} 
+                                  variant="caption" 
+                                  sx={{ 
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500,
+                                    color: 'text.primary'
+                                  }}
+                                >
                                   {value}
                                 </Typography>
                               ));
                             })()}
                           </Box>
                           
-                          {/* Grid lines */}
-                          {[100, 80, 60, 40, 20, 0].map((percent) => (
-                            <Box
-                              key={percent}
-                              sx={{
-                                position: 'absolute',
-                                left: 0,
-                                right: 0,
-                                bottom: `${(percent / 100) * 100}%`,
-                                height: '1px',
-                                bgcolor: 'divider',
-                                opacity: 0.3,
-                                zIndex: 0
-                              }}
-                            />
-                          ))}
+                          {/* X-axis baseline */}
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: 50,
+                              right: 0,
+                              bottom: 60,
+                              height: '2px',
+                              bgcolor: 'text.primary',
+                              zIndex: 2
+                            }}
+                          />
                           
-                          {/* Chart bars */}
-                          {Object.entries(domainStats).map(([domain, data]) => {
+                          {/* Grid lines */}
+                          {(() => {
                             const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
-                            const barHeight = maxCount > 0 ? `${(data.count / maxCount) * 100}%` : '0%';
-                            
-                            return (
-                              <Box 
-                                key={domain}
-                                sx={{ 
-                                  position: 'relative',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center',
-                                  flex: 1,
-                                  maxWidth: { xs: '80px', md: '120px' },
-                                  zIndex: 1
-                                }}
-                              >
-                                {/* Bar */}
+                            const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
+                            const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
+                            return steps.map((value, idx) => {
+                              const percent = (value / maxValue) * 100;
+                              return (
                                 <Box
+                                  key={value}
                                   sx={{
-                                    width: { xs: '40px', md: '60px' },
-                                    height: barHeight,
-                                    minHeight: data.count > 0 ? '20px' : '4px',
-                                    bgcolor: 'primary.main',
-                                    borderRadius: '4px 4px 0 0',
+                                    position: 'absolute',
+                                    left: 50,
+                                    right: 0,
+                                    bottom: `${60 + (percent / 100) * (450 - 60 - 60)}px`,
+                                    height: '1px',
+                                    bgcolor: idx === steps.length - 1 ? 'transparent' : 'divider',
+                                    opacity: 0.2,
+                                    zIndex: 0
+                                  }}
+                                />
+                              );
+                            });
+                          })()}
+                          
+                          {/* Chart bars and labels */}
+                          <Box sx={{ 
+                            position: 'relative',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'space-between',
+                            gap: 1
+                          }}>
+                            {Object.entries(domainStats).map(([domain, data], index) => {
+                              const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
+                              const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
+                              const barHeight = maxValue > 0 ? ((data.count / maxValue) * (450 - 60 - 60)) : 0;
+                              
+                              return (
+                                <Box 
+                                  key={domain}
+                                  sx={{ 
                                     position: 'relative',
-                                    transition: 'all 0.3s ease',
-                                    '&:hover': {
-                                      opacity: 0.8,
-                                      transform: 'scaleY(1.05)',
-                                      transformOrigin: 'bottom'
-                                    },
-                                    mb: 1
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    flex: 1,
+                                    height: '100%',
+                                    justifyContent: 'flex-end',
+                                    pb: 7.5
                                   }}
                                 >
-                                  {/* Value label on bar */}
+                                  {/* Value label above bar */}
                                   {data.count > 0 && (
-                                    <Box
-                                      sx={{
+                                    <Typography 
+                                      variant="caption" 
+                                      sx={{ 
                                         position: 'absolute',
-                                        top: -20,
-                                        left: '50%',
-                                        transform: 'translateX(-50%)',
-                                        bgcolor: 'background.paper',
-                                        px: 0.5,
-                                        borderRadius: 1,
-                                        border: '1px solid',
-                                        borderColor: 'divider'
+                                        top: `${450 - 60 - barHeight - 20}px`,
+                                        fontWeight: 600,
+                                        fontSize: '0.75rem',
+                                        color: 'text.primary',
+                                        whiteSpace: 'nowrap'
                                       }}
                                     >
-                                      <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>
-                                        {data.count}
-                                      </Typography>
-                                    </Box>
+                                      {data.count}
+                                    </Typography>
                                   )}
+                                  
+                                  {/* Bar */}
+                                  <Box
+                                    sx={{
+                                      width: '100%',
+                                      maxWidth: { xs: '50px', md: '70px' },
+                                      height: `${barHeight}px`,
+                                      minHeight: data.count > 0 ? '4px' : '0px',
+                                      bgcolor: 'primary.main',
+                                      borderRadius: '4px 4px 0 0',
+                                      position: 'relative',
+                                      transition: 'all 0.3s ease',
+                                      '&:hover': {
+                                        opacity: 0.8,
+                                        transform: 'translateY(-2px)'
+                                      },
+                                      zIndex: 1
+                                    }}
+                                  />
+                                  
+                                  {/* Domain label - fixed at bottom */}
+                                  <Typography 
+                                    variant="caption" 
+                                    sx={{ 
+                                      position: 'absolute',
+                                      bottom: 0,
+                                      left: 0,
+                                      right: 0,
+                                      textAlign: 'center',
+                                      fontSize: { xs: '0.65rem', md: '0.7rem' },
+                                      lineHeight: 1.3,
+                                      fontWeight: 500,
+                                      color: 'text.primary',
+                                      wordBreak: 'break-word',
+                                      px: 0.5
+                                    }}
+                                  >
+                                    {domain.split(' ').map((word, i) => (
+                                      <Box key={i} component="span" sx={{ display: 'block' }}>
+                                        {word}
+                                      </Box>
+                                    ))}
+                                  </Typography>
                                 </Box>
-                                
-                                {/* Domain label */}
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    textAlign: 'center',
-                                    fontSize: { xs: '0.65rem', md: '0.75rem' },
-                                    lineHeight: 1.2,
-                                    mt: 0.5,
-                                    fontWeight: 500,
-                                    color: 'text.primary',
-                                    wordBreak: 'break-word',
-                                    maxWidth: '100%'
-                                  }}
-                                >
-                                  {domain.split(' ').map((word, i) => (
-                                    <Box key={i} component="span" sx={{ display: 'block' }}>
-                                      {word}
-                                    </Box>
-                                  ))}
-                                </Typography>
-                              </Box>
-                            );
-                          })}
+                              );
+                            })}
+                          </Box>
                         </Box>
                       ) : (
                         <Alert severity="info" sx={{ mt: 2 }}>
@@ -2722,23 +2757,19 @@ const SnapshotPage = () => {
                       {hasDomainData ? (
                         <Box sx={{ 
                           position: 'relative', 
-                          height: 400, 
-                          display: 'flex', 
-                          alignItems: 'flex-end', 
-                          justifyContent: 'space-around', 
-                          px: { xs: 2, md: 4 },
-                          py: 3,
-                          borderLeft: '2px solid',
-                          borderBottom: '2px solid',
-                          borderColor: 'divider',
-                          minHeight: 350
+                          height: 450,
+                          pl: 6,
+                          pr: 2,
+                          pt: 2,
+                          pb: 8
                         }}>
                           {/* Y-axis labels */}
                           <Box sx={{ 
                             position: 'absolute', 
-                            left: -30, 
+                            left: 0, 
                             top: 0, 
                             bottom: 0,
+                            width: 50,
                             display: 'flex',
                             flexDirection: 'column',
                             justifyContent: 'space-between',
@@ -2750,111 +2781,150 @@ const SnapshotPage = () => {
                               const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
                               const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
                               return steps.map((value) => (
-                                <Typography key={value} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                <Typography 
+                                  key={value} 
+                                  variant="caption" 
+                                  sx={{ 
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500,
+                                    color: 'text.primary'
+                                  }}
+                                >
                                   {value}h
                                 </Typography>
                               ));
                             })()}
                           </Box>
                           
-                          {/* Grid lines */}
-                          {[100, 80, 60, 40, 20, 0].map((percent) => (
-                            <Box
-                              key={percent}
-                              sx={{
-                                position: 'absolute',
-                                left: 0,
-                                right: 0,
-                                bottom: `${(percent / 100) * 100}%`,
-                                height: '1px',
-                                bgcolor: 'divider',
-                                opacity: 0.3,
-                                zIndex: 0
-                              }}
-                            />
-                          ))}
+                          {/* X-axis baseline */}
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: 50,
+                              right: 0,
+                              bottom: 60,
+                              height: '2px',
+                              bgcolor: 'text.primary',
+                              zIndex: 2
+                            }}
+                          />
                           
-                          {/* Chart bars */}
-                          {Object.entries(domainStats).map(([domain, data]) => {
+                          {/* Grid lines */}
+                          {(() => {
                             const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
-                            const barHeight = maxHours > 0 ? `${(data.hours / maxHours) * 100}%` : '0%';
-                            
-                            return (
-                              <Box 
-                                key={domain}
-                                sx={{ 
-                                  position: 'relative',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center',
-                                  flex: 1,
-                                  maxWidth: { xs: '80px', md: '120px' },
-                                  zIndex: 1
-                                }}
-                              >
-                                {/* Bar */}
+                            const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
+                            const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
+                            return steps.map((value, idx) => {
+                              const percent = (value / maxValue) * 100;
+                              return (
                                 <Box
+                                  key={value}
                                   sx={{
-                                    width: { xs: '40px', md: '60px' },
-                                    height: barHeight,
-                                    minHeight: data.hours > 0 ? '20px' : '4px',
-                                    bgcolor: 'secondary.main',
-                                    borderRadius: '4px 4px 0 0',
+                                    position: 'absolute',
+                                    left: 50,
+                                    right: 0,
+                                    bottom: `${60 + (percent / 100) * (450 - 60 - 60)}px`,
+                                    height: '1px',
+                                    bgcolor: idx === steps.length - 1 ? 'transparent' : 'divider',
+                                    opacity: 0.2,
+                                    zIndex: 0
+                                  }}
+                                />
+                              );
+                            });
+                          })()}
+                          
+                          {/* Chart bars and labels */}
+                          <Box sx={{ 
+                            position: 'relative',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'space-between',
+                            gap: 1
+                          }}>
+                            {Object.entries(domainStats).map(([domain, data], index) => {
+                              const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
+                              const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
+                              const barHeight = maxValue > 0 ? ((data.hours / maxValue) * (450 - 60 - 60)) : 0;
+                              
+                              return (
+                                <Box 
+                                  key={domain}
+                                  sx={{ 
                                     position: 'relative',
-                                    transition: 'all 0.3s ease',
-                                    '&:hover': {
-                                      opacity: 0.8,
-                                      transform: 'scaleY(1.05)',
-                                      transformOrigin: 'bottom'
-                                    },
-                                    mb: 1
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    flex: 1,
+                                    height: '100%',
+                                    justifyContent: 'flex-end',
+                                    pb: 7.5
                                   }}
                                 >
-                                  {/* Value label on bar */}
+                                  {/* Value label above bar */}
                                   {data.hours > 0 && (
-                                    <Box
-                                      sx={{
+                                    <Typography 
+                                      variant="caption" 
+                                      sx={{ 
                                         position: 'absolute',
-                                        top: -20,
-                                        left: '50%',
-                                        transform: 'translateX(-50%)',
-                                        bgcolor: 'background.paper',
-                                        px: 0.5,
-                                        borderRadius: 1,
-                                        border: '1px solid',
-                                        borderColor: 'divider'
+                                        top: `${450 - 60 - barHeight - 20}px`,
+                                        fontWeight: 600,
+                                        fontSize: '0.75rem',
+                                        color: 'text.primary',
+                                        whiteSpace: 'nowrap'
                                       }}
                                     >
-                                      <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>
-                                        {data.hours.toFixed(1)}h
-                                      </Typography>
-                                    </Box>
+                                      {data.hours.toFixed(1)}h
+                                    </Typography>
                                   )}
+                                  
+                                  {/* Bar */}
+                                  <Box
+                                    sx={{
+                                      width: '100%',
+                                      maxWidth: { xs: '50px', md: '70px' },
+                                      height: `${barHeight}px`,
+                                      minHeight: data.hours > 0 ? '4px' : '0px',
+                                      bgcolor: 'secondary.main',
+                                      borderRadius: '4px 4px 0 0',
+                                      position: 'relative',
+                                      transition: 'all 0.3s ease',
+                                      '&:hover': {
+                                        opacity: 0.8,
+                                        transform: 'translateY(-2px)'
+                                      },
+                                      zIndex: 1
+                                    }}
+                                  />
+                                  
+                                  {/* Domain label - fixed at bottom */}
+                                  <Typography 
+                                    variant="caption" 
+                                    sx={{ 
+                                      position: 'absolute',
+                                      bottom: 0,
+                                      left: 0,
+                                      right: 0,
+                                      textAlign: 'center',
+                                      fontSize: { xs: '0.65rem', md: '0.7rem' },
+                                      lineHeight: 1.3,
+                                      fontWeight: 500,
+                                      color: 'text.primary',
+                                      wordBreak: 'break-word',
+                                      px: 0.5
+                                    }}
+                                  >
+                                    {domain.split(' ').map((word, i) => (
+                                      <Box key={i} component="span" sx={{ display: 'block' }}>
+                                        {word}
+                                      </Box>
+                                    ))}
+                                  </Typography>
                                 </Box>
-                                
-                                {/* Domain label */}
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    textAlign: 'center',
-                                    fontSize: { xs: '0.65rem', md: '0.75rem' },
-                                    lineHeight: 1.2,
-                                    mt: 0.5,
-                                    fontWeight: 500,
-                                    color: 'text.primary',
-                                    wordBreak: 'break-word',
-                                    maxWidth: '100%'
-                                  }}
-                                >
-                                  {domain.split(' ').map((word, i) => (
-                                    <Box key={i} component="span" sx={{ display: 'block' }}>
-                                      {word}
-                                    </Box>
-                                  ))}
-                                </Typography>
-                              </Box>
-                            );
-                          })}
+                              );
+                            })}
+                          </Box>
                         </Box>
                       ) : (
                         <Alert severity="info" sx={{ mt: 2 }}>
