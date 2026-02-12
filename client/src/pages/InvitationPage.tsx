@@ -26,6 +26,8 @@ interface InvitationData {
   managerName?: string;
   status: string;
   expiresAt: string;
+  customMessage?: string | null;
+  cohortIds?: string[];
 }
 
 const InvitationPage: React.FC = () => {
@@ -120,7 +122,11 @@ const InvitationPage: React.FC = () => {
         mentorName,
         managerName,
         status: invitationData.status,
-        expiresAt: invitationData.expires_at
+        expiresAt: invitationData.expires_at,
+        customMessage: (invitationData as { custom_message?: string }).custom_message ?? null,
+        cohortIds: Array.isArray((invitationData as { cohort_ids?: string[] }).cohort_ids)
+          ? (invitationData as { cohort_ids: string[] }).cohort_ids
+          : undefined
       };
       
       setInvitation(invitation);
@@ -204,7 +210,7 @@ const InvitationPage: React.FC = () => {
         // Add assignments based on invitation
         const { data: invData } = await supabase
           .from('invitations')
-          .select('mentor_id, manager_id')
+          .select('mentor_id, manager_id, cohort_ids, invited_by')
           .eq('code', code)
           .single();
         
@@ -228,6 +234,18 @@ const InvitationPage: React.FC = () => {
         if (updateError) {
           console.error('Failed to update user profile:', updateError);
           // Continue anyway - profile can be updated later
+        }
+        
+        // Add PECC to pre-designated cohorts
+        const cohortIds = (invData as { cohort_ids?: string[] } | null)?.cohort_ids;
+        const invitedBy = (invData as { invited_by?: string } | null)?.invited_by;
+        if (invitation.role === 'pecc' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
+          for (const cohortId of cohortIds) {
+            await supabase.from('cohort_members').upsert(
+              { cohort_id: cohortId, user_id: data.user.id, added_by: invitedBy },
+              { onConflict: 'cohort_id,user_id' }
+            );
+          }
         }
         
         // Mark invitation as accepted
@@ -315,6 +333,12 @@ const InvitationPage: React.FC = () => {
               <Chip label={`Manager: ${invitation.managerName}`} variant="outlined" />
             )}
           </Box>
+          {invitation.customMessage && (
+            <Typography variant="body2" sx={{ mt: 2, p: 1.5, bgcolor: 'background.paper', borderRadius: 1 }}>
+              <strong>Message from your inviter:</strong><br />
+              {invitation.customMessage}
+            </Typography>
+          )}
           <Alert severity="info" sx={{ mt: 2 }}>
             {(() => {
               const savedMessage = localStorage.getItem('email_confirmation_message');

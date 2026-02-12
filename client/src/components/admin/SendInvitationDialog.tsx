@@ -56,6 +56,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   const [hospitals, setHospitals] = useState<Array<{ id: string; name: string }>>([]);
   const [mentors, setMentors] = useState<Array<{ id: string; name: string; email: string }>>([]);
   const [managers, setManagers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [cohorts, setCohorts] = useState<Array<{ id: string; name: string }>>([]);
+  const [cohortIds, setCohortIds] = useState<string[]>([]);
+  const [customMessage, setCustomMessage] = useState('');
   
   useEffect(() => {
     if (open) {
@@ -68,6 +71,8 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setError(null);
       setSuccess(false);
       setInvitationCode('');
+      setCohortIds([]);
+      setCustomMessage('');
       loadOptions();
     }
   }, [open, contactEmail]);
@@ -109,6 +114,16 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         email: m.email
       })));
     }
+    
+    // Load cohorts (for PECC pre-designation)
+    const { data: cohortsData } = await supabase
+      .from('cohorts')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
+    if (cohortsData) {
+      setCohorts(cohortsData.map(c => ({ id: c.id, name: c.name })));
+    }
   };
   
   const handleSend = async () => {
@@ -144,7 +159,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         hospitalId: hospitalId || null,
         mentorId: role === UserRole.PECC ? (mentorId || null) : null,
         managerId: role === UserRole.MENTOR ? (managerId || null) : null,
-        managerIdForPECC: role === UserRole.PECC ? (managerIdForPECC || null) : null
+        managerIdForPECC: role === UserRole.PECC ? (managerIdForPECC || null) : null,
+        cohortIds: role === UserRole.PECC && cohortIds.length > 0 ? cohortIds : undefined,
+        customMessage: customMessage.trim() || undefined
       });
       
       setInvitationCode(code);
@@ -271,6 +288,30 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                     Please assign either a mentor or a direct manager for this PECC.
                   </Alert>
                 )}
+                
+                <Autocomplete
+                  multiple
+                  options={cohorts}
+                  getOptionLabel={(option) => option.name}
+                  value={cohorts.filter(c => cohortIds.includes(c.id))}
+                  onChange={(_, value) => setCohortIds(value.map(c => c.id))}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Pre-designate cohorts (optional)" placeholder="Select cohorts" sx={{ mb: 2 }} />
+                  )}
+                  disabled={loading}
+                />
+                
+                <TextField
+                  label="Custom message (optional)"
+                  value={customMessage}
+                  onChange={(e) => setCustomMessage(e.target.value)}
+                  fullWidth
+                  multiline
+                  rows={3}
+                  placeholder="Add a personal message to the invitation..."
+                  disabled={loading}
+                  sx={{ mb: 2 }}
+                />
               </>
             )}
             

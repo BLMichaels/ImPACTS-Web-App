@@ -56,6 +56,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
+import { createAndSendInvitation } from '../../utils/invitations';
+import { UserRole } from '../../types/database';
 
 // Types
 interface DatedNote {
@@ -169,6 +171,11 @@ const MentorHospitalContactsPage: React.FC = () => {
   });
   
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteCohortIds, setInviteCohortIds] = useState<string[]>([]);
+  const [inviteCustomMessage, setInviteCustomMessage] = useState('');
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteSuccessCode, setInviteSuccessCode] = useState<string | null>(null);
+  const [inviteCohorts, setInviteCohorts] = useState<Array<{ id: string; name: string }>>([]);
 
   // CRM hospitals for Add Hospital (state → city → hospital)
   const [crmHospitals, setCrmHospitals] = useState<CrmHospitalRow[]>([]);
@@ -640,23 +647,61 @@ const MentorHospitalContactsPage: React.FC = () => {
     });
   };
 
-  // Invite handler
-  const handleSendInvite = () => {
-    // Generate unique invite code
-    const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
-    const inviteUrl = `${window.location.origin}/invite/${inviteCode}`;
-    
-    // In production, this would save to the database and send an email
-    // For now, just copy to clipboard
-    navigator.clipboard.writeText(inviteUrl);
-    
-    setSnackbar({ 
-      open: true, 
-      message: `Invitation link copied to clipboard! Share with: ${inviteEmail}`, 
-      severity: 'success' 
-    });
+  // Load cohorts when invite dialog opens
+  useEffect(() => {
+    if (inviteDialogOpen) {
+      setInviteCohortIds([]);
+      setInviteCustomMessage('');
+      setInviteSuccessCode(null);
+      (async () => {
+        const { data } = await supabase
+          .from('cohorts')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name');
+        if (data) setInviteCohorts(data.map(c => ({ id: c.id, name: c.name })));
+      })();
+    }
+  }, [inviteDialogOpen]);
+
+  const handleSendInvite = async () => {
+    if (!inviteEmail.trim() || !currentUser?.id || !selectedHospital) return;
+    setInviteSending(true);
+    try {
+      const { code } = await createAndSendInvitation({
+        email: inviteEmail.trim(),
+        role: UserRole.PECC,
+        invitedBy: currentUser.id,
+        hospitalId: selectedHospital.id,
+        mentorId: currentUser.id,
+        cohortIds: inviteCohortIds.length > 0 ? inviteCohortIds : undefined,
+        customMessage: inviteCustomMessage.trim() || undefined
+      });
+      setInviteSuccessCode(code);
+      const inviteUrl = `${window.location.origin}/invite/${code}`;
+      navigator.clipboard.writeText(inviteUrl);
+      setSnackbar({
+        open: true,
+        message: 'Invitation created! Link copied to clipboard.',
+        severity: 'success'
+      });
+    } catch (err: unknown) {
+      setSnackbar({
+        open: true,
+        message: err instanceof Error ? err.message : 'Failed to create invitation',
+        severity: 'error'
+      });
+    } finally {
+      setInviteSending(false);
+    }
+  };
+
+  const handleCloseInviteDialog = () => {
     setInviteDialogOpen(false);
     setInviteEmail('');
+    setInviteCohortIds([]);
+    setInviteCustomMessage('');
+    setInviteSuccessCode(null);
   };
 
   const hospitalContacts = selectedHospital 
@@ -1568,31 +1613,78 @@ const MentorHospitalContactsPage: React.FC = () => {
       </Dialog>
 
       {/* Invite Dialog */}
-      <Dialog open={inviteDialogOpen} onClose={() => setInviteDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={inviteDialogOpen} onClose={handleCloseInviteDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Invite PECC to {selectedHospital ? normalizeHospitalOrOrgName(selectedHospital.name) : ''}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            Send a unique registration link to invite a PECC. The link will automatically associate them with this hospital and you as their mentor.
-          </Typography>
-          <TextField
-            label="PECC Email Address"
-            type="email"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            fullWidth
-            placeholder="pecc@hospital.org"
-          />
+          {inviteSuccessCode ? (
+            <Box>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Invitation created. The registration link has been copied to your clipboard.
+              </Alert>
+              <Typography variant="body2" color="textSecondary">
+                Share this link with the PECC: <strong>{window.location.origin}/invite/{inviteSuccessCode}</strong>
+              </Typography>
+              <Button
+                startIcon={<CopyIcon />}
+                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/invite/${inviteSuccessCode}`)}
+                sx={{ mt: 2 }}
+              >
+                Copy link again
+              </Button>
+            </Box>
+          ) : (
+            <>
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                Create a registration link for a PECC. They will be associated with this hospital and you as their mentor.
+              </Typography>
+              <TextField
+                label="PECC Email Address"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                fullWidth
+                placeholder="pecc@hospital.org"
+                disabled={inviteSending}
+                sx={{ mb: 2 }}
+              />
+              <Autocomplete
+                multiple
+                size="small"
+                options={inviteCohorts}
+                getOptionLabel={(option) => option.name}
+                value={inviteCohorts.filter(c => inviteCohortIds.includes(c.id))}
+                onChange={(_, value) => setInviteCohortIds(value.map(c => c.id))}
+                renderInput={(params) => (
+                  <TextField {...params} label="Pre-designate cohorts (optional)" placeholder="Select cohorts" />
+                )}
+                disabled={inviteSending}
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                label="Custom message (optional)"
+                value={inviteCustomMessage}
+                onChange={(e) => setInviteCustomMessage(e.target.value)}
+                fullWidth
+                multiline
+                rows={3}
+                placeholder="Add a personal message to the invitation..."
+                disabled={inviteSending}
+              />
+            </>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInviteDialogOpen(false)}>Cancel</Button>
-          <Button 
-            onClick={handleSendInvite} 
-            variant="contained" 
-            startIcon={<CopyIcon />}
-            disabled={!inviteEmail}
-          >
-            Generate & Copy Invite Link
-          </Button>
+          <Button onClick={handleCloseInviteDialog}>{inviteSuccessCode ? 'Close' : 'Cancel'}</Button>
+          {!inviteSuccessCode && (
+            <Button
+              onClick={handleSendInvite}
+              variant="contained"
+              startIcon={inviteSending ? <CircularProgress size={20} /> : <CopyIcon />}
+              disabled={!inviteEmail.trim() || inviteSending}
+            >
+              {inviteSending ? 'Creating...' : 'Create invitation & copy link'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
