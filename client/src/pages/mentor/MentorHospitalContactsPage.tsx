@@ -49,6 +49,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
+import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
 // Types
 interface Hospital {
@@ -221,7 +222,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     }
   }, [currentUser]);
 
-  const loadData = () => {
+  const loadData = async () => {
     const uid = currentUser?.id;
     if (!uid) return;
 
@@ -252,6 +253,25 @@ const MentorHospitalContactsPage: React.FC = () => {
         hospitals = [];
       }
     }
+
+    // Sync hospital names from CRM so updates in CRM appear in tabs
+    if (hospitals.length > 0) {
+      const nameByKey: Record<string, string> = {};
+      const ids = hospitals.map((h: Hospital) => h.id);
+      const orParts = ids.flatMap((id: string) => [`id.eq.${id}`, `facility_id.eq.${id}`]);
+      const { data: rows } = await supabase.from('hospitals').select('id, facility_id, name').or(orParts.join(','));
+      (rows || []).forEach((r: { id?: string; facility_id?: string; name?: string }) => {
+        const name = r.name != null ? normalizeHospitalOrOrgName(r.name) : '';
+        if (r.id) nameByKey[r.id] = name;
+        if (r.facility_id != null) nameByKey[String(r.facility_id)] = name;
+      });
+      hospitals = hospitals.map((h: Hospital) => ({
+        ...h,
+        name: nameByKey[h.id] ?? normalizeHospitalOrOrgName(h.name)
+      }));
+      localStorage.setItem(`mentorHospitals_${uid}`, JSON.stringify(hospitals));
+    }
+
     setHospitals(hospitals);
     setSelectedHospital(hospitals.length > 0 ? hospitals[0] : null);
 

@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
+import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import TermsOfService from '../components/TermsOfService';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../types/database';
 
@@ -90,7 +91,7 @@ export default function RegisterPage() {
         }
         const list: HospitalOption[] = (data as Record<string, unknown>[]).map((row) => {
           const id = String(row.facility_id ?? row.id ?? '');
-          const name = String(row.name ?? 'Unknown');
+          const name = normalizeHospitalOrOrgName(String(row.name ?? 'Unknown'));
           const state = String(row.state ?? '');
           const city = String(row.city ?? '');
           const hospitalSystem = row.hospital_system != null ? String(row.hospital_system) : undefined;

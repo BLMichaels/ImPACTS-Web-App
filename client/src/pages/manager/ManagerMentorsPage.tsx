@@ -35,6 +35,7 @@ import {
   LocalHospital as HospitalIcon,
   ContentCopy as CopyIcon
 } from '@mui/icons-material';
+import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
 interface Mentor {
   id: string;
@@ -282,10 +283,11 @@ const ManagerMentorsPage: React.FC = () => {
           </Typography>
           <List>
             {hospitals.map((hospital) => {
-              const isAssigned = selectedMentor?.hospitals.includes(hospital.name);
+              const normalizedName = normalizeHospitalOrOrgName(hospital.name);
+              const isAssigned = selectedMentor?.hospitals?.some((h: string) => normalizeHospitalOrOrgName(h) === normalizedName) ?? false;
               return (
                 <ListItem key={hospital.id} button>
-                  <ListItemText primary={hospital.name} />
+                  <ListItemText primary={normalizedName} />
                   <ListItemSecondaryAction>
                     <Chip 
                       label={isAssigned ? 'Assigned' : 'Assign'} 

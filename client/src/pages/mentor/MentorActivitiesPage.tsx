@@ -47,6 +47,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
 // Default Mentor categories - will be overridden by localStorage if available
 const DEFAULT_CATEGORIES = [
@@ -616,7 +617,7 @@ const MentorActivitiesPage: React.FC = () => {
                   {hospitals.map((hospital) => (
                     <MenuItem key={hospital.id} value={hospital.id}>
                       <Checkbox checked={hospitalFilter.includes(hospital.id)} />
-                      <ListItemText primary={hospital.name} />
+                      <ListItemText primary={normalizeHospitalOrOrgName(hospital.name)} />
                     </MenuItem>
                   ))}
                 </Select>
@@ -997,7 +998,7 @@ const MentorActivitiesPage: React.FC = () => {
                     {hospitals.map((hospital) => (
                       <MenuItem key={hospital.id} value={hospital.id}>
                         <Checkbox checked={formData.hospitalIds.includes(hospital.id)} />
-                        <ListItemText primary={hospital.name} />
+                        <ListItemText primary={normalizeHospitalOrOrgName(hospital.name)} />
                       </MenuItem>
                     ))}
                   </Select>

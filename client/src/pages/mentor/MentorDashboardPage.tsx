@@ -32,6 +32,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { format } from 'date-fns';
+import { supabase } from '../../supabase';
+import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import DashboardResources from '../../components/DashboardResources';
 
 interface DashboardStats {
@@ -112,7 +114,7 @@ const MentorDashboardPage: React.FC = () => {
   const [selectedHospital, setSelectedHospital] = useState<HospitalSummary | null>(null);
   const [hospitalDrawerOpen, setHospitalDrawerOpen] = useState(false);
 
-  const loadDashboardData = () => {
+  const loadDashboardData = async () => {
     const uid = currentUser?.id;
     if (!uid) {
       setLoading(false);
@@ -128,6 +130,19 @@ const MentorDashboardPage: React.FC = () => {
     const contacts: StoredContact[] = savedContactsRaw ? JSON.parse(savedContactsRaw) : [];
 
     const workingHospitals = hospitals.filter((h: StoredHospital) => h.isWorkingWith !== false);
+
+    // Sync hospital names from CRM (Supabase) so updates in CRM appear in tabs
+    const nameByKey: Record<string, string> = {};
+    if (workingHospitals.length > 0) {
+      const ids = workingHospitals.map((h: StoredHospital) => h.id);
+      const orParts = ids.flatMap((id: string) => [`id.eq.${id}`, `facility_id.eq.${id}`]);
+      const { data: rows } = await supabase.from('hospitals').select('id, facility_id, name').or(orParts.join(','));
+      (rows || []).forEach((r: { id?: string; facility_id?: string; name?: string }) => {
+        const name = r.name != null ? normalizeHospitalOrOrgName(r.name) : '';
+        if (r.id) nameByKey[r.id] = name;
+        if (r.facility_id != null) nameByKey[String(r.facility_id)] = name;
+      });
+    }
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -157,9 +172,10 @@ const MentorDashboardPage: React.FC = () => {
       const lastActivityAt = sortedByDate[0]?.date || null;
       const totalHours = hospitalActivities.reduce((sum: number, a: StoredActivity) => sum + (a.hours || 0), 0);
 
+      const displayName = nameByKey[h.id] ?? normalizeHospitalOrOrgName(h.name ?? 'Unknown');
       return {
         id: h.id,
-        name: h.name || 'Unknown',
+        name: displayName,
         city: h.city,
         state: h.state,
         phone: h.phone,

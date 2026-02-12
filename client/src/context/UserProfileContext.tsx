@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import { useAuth } from './AuthContext';
 import { supabase } from '../supabase';
 import { UserRole, PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } from '../types/database';
+import { normalizeHospitalOrOrgName } from '../utils/displayName';
 
 // Re-export UserRole as UserTier for backward compatibility
 export { UserRole as UserTier } from '../types/database';
@@ -158,8 +159,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         }
 
         // PECC: resolve site and visible tabs (page = hospital/site; tabs set in CRM)
+        let sid: string | null = null;
         if (profile.role === 'pecc') {
-          let sid: string | null = prof.hospital_facility_id ?? null;
+          sid = prof.hospital_facility_id ?? null;
           if (!sid) {
             const { data: memberRow, error: memErr } = await supabase
               .from('site_members')
@@ -189,6 +191,21 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         } else {
           setSiteId(null);
           setVisibleTabs([]);
+        }
+
+        // Resolve hospital/site name from CRM (hospitals table) so tabs and UI show current name after CRM updates
+        const siteIdToResolve = prof.hospital_facility_id ?? (profile.role === 'pecc' ? sid : null);
+        if (siteIdToResolve) {
+          const { data: hospitalRow } = await supabase
+            .from('hospitals')
+            .select('name')
+            .or(`id.eq.${siteIdToResolve},facility_id.eq.${siteIdToResolve}`)
+            .limit(1)
+            .maybeSingle();
+          const hospitalName = (hospitalRow as { name?: string } | null)?.name;
+          setUserProfile({ ...prof, hospital_name: hospitalName != null ? normalizeHospitalOrOrgName(hospitalName) : prof.hospital_name });
+        } else {
+          setUserProfile(prof);
         }
 
         // Update last login

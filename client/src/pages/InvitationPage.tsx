@@ -15,6 +15,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
+import { normalizeHospitalOrOrgName } from '../utils/displayName';
 
 interface InvitationData {
   code: string;
@@ -86,7 +87,7 @@ const InvitationPage: React.FC = () => {
           .select('name')
           .eq('id', invitationData.hospital_id)
           .single();
-        if (hospital) hospitalName = hospital.name;
+        if (hospital) hospitalName = normalizeHospitalOrOrgName(hospital.name);
       }
       
       if (invitationData.mentor_id) {

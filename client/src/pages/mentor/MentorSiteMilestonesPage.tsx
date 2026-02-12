@@ -37,6 +37,7 @@ import { format, parseISO } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
+import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
 // Interfaces matching MilestonesPage
 interface MilestoneTask {
@@ -760,7 +761,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
               {hospitals.map(hospital => (
                 <Chip
                   key={hospital.id}
-                  label={hospital.name}
+                  label={normalizeHospitalOrOrgName(hospital.name)}
                   size="small"
                   icon={hiddenHospitals.has(hospital.id) ? <HideIcon /> : <ShowIcon />}
                   onClick={() => toggleHospitalVisibility(hospital.id)}
@@ -829,7 +830,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
                                 '&:hover': { textDecoration: 'underline' }
                               }}
                             >
-                              {hospital.name}
+                              {normalizeHospitalOrOrgName(hospital.name)}
                             </Link>
                             <IconButton 
                               size="small" 
