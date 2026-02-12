@@ -151,7 +151,40 @@ const SnapshotPage = () => {
 
   const filteredData = getDateFilteredData;
 
-  // Calculate domain scores from PRS questions
+  // Calculate domain statistics from activities (based on domain tagging)
+  const domainStats = useMemo(() => {
+    const stats: Record<string, { count: number; hours: number }> = {};
+    const allDomains = [
+      'Administration & Coordination',
+      'Staffing',
+      'Quality Improvement',
+      'Patient Safety',
+      'Policies & Procedures',
+      'Equipment'
+    ];
+    
+    // Initialize all domains
+    allDomains.forEach(domain => {
+      stats[domain] = { count: 0, hours: 0 };
+    });
+    
+    // Process activities from filtered data
+    filteredData.activities.forEach((activity: any) => {
+      const domains = activity.readinessDomains || [];
+      if (Array.isArray(domains) && domains.length > 0) {
+        domains.forEach((domain: string) => {
+          if (stats[domain]) {
+            stats[domain].count += 1;
+            stats[domain].hours += activity.hours || 0;
+          }
+        });
+      }
+    });
+    
+    return stats;
+  }, [filteredData.activities]);
+
+  // Calculate domain scores from PRS questions (keeping for backward compatibility but not used in charts)
   const domainScores = useMemo(() => {
     try {
       const prsQuestions = localStorage.getItem('prsQuestions');
@@ -2485,316 +2518,336 @@ const SnapshotPage = () => {
             </Grid>
           </Grid>
 
-        {/* Domain Performance Analysis - Only show if PRS section is visible */}
-        {prsSectionVisible && domainScores && (
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Box>
-                      <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                        Domain Performance Analysis
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                        Breakdown of your performance across 6 PRS domains (Administration & Coordination, Staffing, Quality Improvement, Patient Safety, Policies & Procedures, Equipment). Calculated from your current PRS assessment answers.
-                      </Typography>
-                    </Box>
-                    <Chip 
-                      label="Based on Current PRS Assessment" 
-                      color="primary" 
-                      size="small"
-                      variant="outlined"
-                    />
-                  </Box>
-                  
-                  <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-                    {/* Header Row */}
-                    <Box sx={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr 1fr' },
-                      bgcolor: 'primary.main',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      '& > div': { p: 2 }
-                    }}>
-                      <Box>Domain of Pediatric Readiness</Box>
-                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Your Points</Box>
-                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Total Possible</Box>
-                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Percentage</Box>
-                    </Box>
-                    
-                    {/* Data Rows */}
-                    {Object.entries(domainScores).map(([domain, data], index) => {
-                      const getColorForPercentage = (pct: number) => {
-                        if (pct >= 80) return 'success.main';
-                        if (pct >= 60) return 'warning.main';
-                        return 'error.main';
-                      };
-                      
-                      return (
-                        <Box 
-                          key={domain}
-                          sx={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr 1fr' },
-                            borderBottom: index < Object.keys(domainScores).length - 1 ? '1px solid' : 'none',
-                            borderColor: 'divider',
-                            '&:hover': { bgcolor: 'action.hover' },
-                            '& > div': { p: 2, display: 'flex', alignItems: 'center' }
-                          }}
-                        >
-                          <Box sx={{ fontWeight: 600 }}>{domain}</Box>
-                          <Box sx={{ justifyContent: 'center', display: { xs: 'none', md: 'flex' } }}>
-                            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                              {data.earned.toFixed(1)}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ justifyContent: 'center', display: { xs: 'none', md: 'flex' } }}>
-                            <Typography variant="body2" color="text.secondary">
-                              {data.total}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ justifyContent: 'space-between', flexDirection: { xs: 'column', md: 'row' }, gap: 1 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-                              <LinearProgress 
-                                variant="determinate" 
-                                value={data.percentage} 
-                                sx={{ 
-                                  flex: 1, 
-                                  height: 8, 
-                                  borderRadius: 4,
-                                  bgcolor: 'grey.200',
-                                  '& .MuiLinearProgress-bar': {
-                                    bgcolor: getColorForPercentage(data.percentage)
-                                  }
-                                }}
-                              />
-                              <Typography 
-                                variant="body1" 
-                                sx={{ 
-                                  fontWeight: 'bold',
-                                  minWidth: '50px',
-                                  textAlign: 'right',
-                                  color: getColorForPercentage(data.percentage)
-                                }}
-                              >
-                                {data.percentage}%
-                              </Typography>
-                            </Box>
-                            {/* Mobile view */}
-                            <Box sx={{ display: { xs: 'flex', md: 'none' }, justifyContent: 'space-between', fontSize: '0.875rem', color: 'text.secondary' }}>
-                              <span>{data.earned.toFixed(1)} / {data.total} points</span>
-                            </Box>
-                          </Box>
-                        </Box>
-                      );
-                    })}
-                  </Paper>
-                  
-                  {!domainScores && (
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      Complete your PRS assessment to see domain-specific performance breakdown.
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        )}
-
-        {/* Domain Performance Bar Chart - Only show if PRS section is visible */}
-        {prsSectionVisible && domainScores && (
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                      Domain Performance Visualization
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Visual comparison of your performance percentage across all 6 PRS domains. Green (≥80%), Orange (60-79%), Red (&lt;60%). Based on your current PRS assessment responses.
-                    </Typography>
-                  </Box>
-                  
-                  <Box sx={{ 
-                    position: 'relative', 
-                    height: 400, 
-                    display: 'flex', 
-                    alignItems: 'flex-end', 
-                    justifyContent: 'space-around', 
-                    px: { xs: 2, md: 4 },
-                    py: 3,
-                    borderLeft: '2px solid',
-                    borderBottom: '2px solid',
-                    borderColor: 'divider',
-                    minHeight: 350
-                  }}>
-                    {/* Y-axis labels */}
-                    <Box sx={{ 
-                      position: 'absolute', 
-                      left: -30, 
-                      top: 0, 
-                      bottom: 0,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-end',
-                      pr: 1
-                    }}>
-                      {[100, 80, 60, 40, 20, 0].map((percent) => (
-                        <Typography key={percent} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                          {percent}%
+        {/* Activity Domain Analysis - Based on Activity Tagging */}
+        {(() => {
+          const hasDomainData = Object.values(domainStats).some(stat => stat.count > 0 || stat.hours > 0);
+          
+          return (
+            <>
+              {/* Activity Count by Domain */}
+              <Grid container spacing={3} sx={{ mb: 4 }}>
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                          Activity Count by Domain
                         </Typography>
-                      ))}
-                    </Box>
-                    
-                    {/* Grid lines */}
-                    {[100, 80, 60, 40, 20, 0].map((percent) => (
-                      <Box
-                        key={percent}
-                        sx={{
-                          position: 'absolute',
-                          left: 0,
-                          right: 0,
-                          bottom: `${(percent / 100) * 100}%`,
-                          height: '1px',
-                          bgcolor: 'divider',
-                          opacity: 0.3,
-                          zIndex: 0
-                        }}
-                      />
-                    ))}
-                    
-                    {/* Chart bars */}
-                    {Object.entries(domainScores).map(([domain, data], index) => {
-                      const getColorForPercentage = (pct: number) => {
-                        if (pct >= 80) return '#4caf50';
-                        if (pct >= 60) return '#ff9800';
-                        return '#f44336';
-                      };
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          Number of activities tagged to each pediatric readiness domain. Based on domain tags assigned when logging activities on your Activities page.
+                        </Typography>
+                      </Box>
                       
-                      const barHeight = `${data.percentage}%`;
-                      const maxLabelLength = Math.max(...Object.keys(domainScores).map(d => d.length));
-                      
-                      return (
-                        <Box 
-                          key={domain}
-                          sx={{ 
-                            position: 'relative',
+                      {hasDomainData ? (
+                        <Box sx={{ 
+                          position: 'relative', 
+                          height: 400, 
+                          display: 'flex', 
+                          alignItems: 'flex-end', 
+                          justifyContent: 'space-around', 
+                          px: { xs: 2, md: 4 },
+                          py: 3,
+                          borderLeft: '2px solid',
+                          borderBottom: '2px solid',
+                          borderColor: 'divider',
+                          minHeight: 350
+                        }}>
+                          {/* Y-axis labels */}
+                          <Box sx={{ 
+                            position: 'absolute', 
+                            left: -30, 
+                            top: 0, 
+                            bottom: 0,
                             display: 'flex',
                             flexDirection: 'column',
-                            alignItems: 'center',
-                            flex: 1,
-                            maxWidth: { xs: '80px', md: '120px' },
-                            zIndex: 1
-                          }}
-                        >
-                          {/* Bar */}
-                          <Box
-                            sx={{
-                              width: { xs: '40px', md: '60px' },
-                              height: barHeight,
-                              minHeight: data.percentage > 0 ? '20px' : '4px',
-                              bgcolor: getColorForPercentage(data.percentage),
-                              borderRadius: '4px 4px 0 0',
-                              position: 'relative',
-                              transition: 'all 0.3s ease',
-                              '&:hover': {
-                                opacity: 0.8,
-                                transform: 'scaleY(1.05)',
-                                transformOrigin: 'bottom'
-                              },
-                              mb: 1
-                            }}
-                          >
-                            {/* Value label on bar */}
-                            {data.percentage > 5 && (
-                              <Box
-                                sx={{
-                                  position: 'absolute',
-                                  top: -20,
-                                  left: '50%',
-                                  transform: 'translateX(-50%)',
-                                  bgcolor: 'background.paper',
-                                  px: 0.5,
-                                  borderRadius: 1,
-                                  border: '1px solid',
-                                  borderColor: 'divider'
-                                }}
-                              >
-                                <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>
-                                  {data.percentage}%
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-end',
+                            pr: 1
+                          }}>
+                            {(() => {
+                              const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
+                              const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
+                              const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
+                              return steps.map((value) => (
+                                <Typography key={value} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                  {value}
                                 </Typography>
-                              </Box>
-                            )}
+                              ));
+                            })()}
                           </Box>
                           
-                          {/* Domain label */}
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              textAlign: 'center',
-                              fontSize: { xs: '0.65rem', md: '0.75rem' },
-                              lineHeight: 1.2,
-                              mt: 0.5,
-                              fontWeight: 500,
-                              color: 'text.primary',
-                              wordBreak: 'break-word',
-                              maxWidth: '100%'
-                            }}
-                          >
-                            {domain.split(' ').map((word, i) => (
-                              <Box key={i} component="span" sx={{ display: 'block' }}>
-                                {word}
-                              </Box>
-                            ))}
-                          </Typography>
+                          {/* Grid lines */}
+                          {[100, 80, 60, 40, 20, 0].map((percent) => (
+                            <Box
+                              key={percent}
+                              sx={{
+                                position: 'absolute',
+                                left: 0,
+                                right: 0,
+                                bottom: `${(percent / 100) * 100}%`,
+                                height: '1px',
+                                bgcolor: 'divider',
+                                opacity: 0.3,
+                                zIndex: 0
+                              }}
+                            />
+                          ))}
                           
-                          {/* Points label */}
-                          <Typography 
-                            variant="caption" 
-                            color="text.secondary"
-                            sx={{ 
-                              fontSize: '0.65rem',
-                              mt: 0.5,
-                              textAlign: 'center'
-                            }}
-                          >
-                            {data.earned.toFixed(1)}/{data.total}
-                          </Typography>
+                          {/* Chart bars */}
+                          {Object.entries(domainStats).map(([domain, data]) => {
+                            const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
+                            const barHeight = maxCount > 0 ? `${(data.count / maxCount) * 100}%` : '0%';
+                            
+                            return (
+                              <Box 
+                                key={domain}
+                                sx={{ 
+                                  position: 'relative',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  flex: 1,
+                                  maxWidth: { xs: '80px', md: '120px' },
+                                  zIndex: 1
+                                }}
+                              >
+                                {/* Bar */}
+                                <Box
+                                  sx={{
+                                    width: { xs: '40px', md: '60px' },
+                                    height: barHeight,
+                                    minHeight: data.count > 0 ? '20px' : '4px',
+                                    bgcolor: 'primary.main',
+                                    borderRadius: '4px 4px 0 0',
+                                    position: 'relative',
+                                    transition: 'all 0.3s ease',
+                                    '&:hover': {
+                                      opacity: 0.8,
+                                      transform: 'scaleY(1.05)',
+                                      transformOrigin: 'bottom'
+                                    },
+                                    mb: 1
+                                  }}
+                                >
+                                  {/* Value label on bar */}
+                                  {data.count > 0 && (
+                                    <Box
+                                      sx={{
+                                        position: 'absolute',
+                                        top: -20,
+                                        left: '50%',
+                                        transform: 'translateX(-50%)',
+                                        bgcolor: 'background.paper',
+                                        px: 0.5,
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider'
+                                      }}
+                                    >
+                                      <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>
+                                        {data.count}
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+                                
+                                {/* Domain label */}
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    textAlign: 'center',
+                                    fontSize: { xs: '0.65rem', md: '0.75rem' },
+                                    lineHeight: 1.2,
+                                    mt: 0.5,
+                                    fontWeight: 500,
+                                    color: 'text.primary',
+                                    wordBreak: 'break-word',
+                                    maxWidth: '100%'
+                                  }}
+                                >
+                                  {domain.split(' ').map((word, i) => (
+                                    <Box key={i} component="span" sx={{ display: 'block' }}>
+                                      {word}
+                                    </Box>
+                                  ))}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
                         </Box>
-                      );
-                    })}
-                  </Box>
-                  
-                  {/* Legend */}
-                  <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mt: 3, flexWrap: 'wrap' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{ width: 16, height: 16, bgcolor: '#4caf50', borderRadius: 1 }} />
-                      <Typography variant="caption">Excellent (≥80%)</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{ width: 16, height: 16, bgcolor: '#ff9800', borderRadius: 1 }} />
-                      <Typography variant="caption">Good (60-79%)</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{ width: 16, height: 16, bgcolor: '#f44336', borderRadius: 1 }} />
-                      <Typography variant="caption">Needs Improvement (&lt;60%)</Typography>
-                    </Box>
-                  </Box>
-                  
-                  {!domainScores && (
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      Complete your PRS assessment to see domain performance visualization.
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        )}
+                      ) : (
+                        <Alert severity="info" sx={{ mt: 2 }}>
+                          No activities have been tagged with domains yet. Tag your activities with domains when logging them to see this breakdown.
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* Activity Hours by Domain */}
+              <Grid container spacing={3} sx={{ mb: 4 }}>
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                          Activity Hours by Domain
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          Total hours logged for activities in each pediatric readiness domain. Shows where you're spending your time across the 6 domains. Based on domain tags and hours from your Activities page.
+                        </Typography>
+                      </Box>
+                      
+                      {hasDomainData ? (
+                        <Box sx={{ 
+                          position: 'relative', 
+                          height: 400, 
+                          display: 'flex', 
+                          alignItems: 'flex-end', 
+                          justifyContent: 'space-around', 
+                          px: { xs: 2, md: 4 },
+                          py: 3,
+                          borderLeft: '2px solid',
+                          borderBottom: '2px solid',
+                          borderColor: 'divider',
+                          minHeight: 350
+                        }}>
+                          {/* Y-axis labels */}
+                          <Box sx={{ 
+                            position: 'absolute', 
+                            left: -30, 
+                            top: 0, 
+                            bottom: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-end',
+                            pr: 1
+                          }}>
+                            {(() => {
+                              const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
+                              const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
+                              const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
+                              return steps.map((value) => (
+                                <Typography key={value} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                  {value}h
+                                </Typography>
+                              ));
+                            })()}
+                          </Box>
+                          
+                          {/* Grid lines */}
+                          {[100, 80, 60, 40, 20, 0].map((percent) => (
+                            <Box
+                              key={percent}
+                              sx={{
+                                position: 'absolute',
+                                left: 0,
+                                right: 0,
+                                bottom: `${(percent / 100) * 100}%`,
+                                height: '1px',
+                                bgcolor: 'divider',
+                                opacity: 0.3,
+                                zIndex: 0
+                              }}
+                            />
+                          ))}
+                          
+                          {/* Chart bars */}
+                          {Object.entries(domainStats).map(([domain, data]) => {
+                            const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
+                            const barHeight = maxHours > 0 ? `${(data.hours / maxHours) * 100}%` : '0%';
+                            
+                            return (
+                              <Box 
+                                key={domain}
+                                sx={{ 
+                                  position: 'relative',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  flex: 1,
+                                  maxWidth: { xs: '80px', md: '120px' },
+                                  zIndex: 1
+                                }}
+                              >
+                                {/* Bar */}
+                                <Box
+                                  sx={{
+                                    width: { xs: '40px', md: '60px' },
+                                    height: barHeight,
+                                    minHeight: data.hours > 0 ? '20px' : '4px',
+                                    bgcolor: 'secondary.main',
+                                    borderRadius: '4px 4px 0 0',
+                                    position: 'relative',
+                                    transition: 'all 0.3s ease',
+                                    '&:hover': {
+                                      opacity: 0.8,
+                                      transform: 'scaleY(1.05)',
+                                      transformOrigin: 'bottom'
+                                    },
+                                    mb: 1
+                                  }}
+                                >
+                                  {/* Value label on bar */}
+                                  {data.hours > 0 && (
+                                    <Box
+                                      sx={{
+                                        position: 'absolute',
+                                        top: -20,
+                                        left: '50%',
+                                        transform: 'translateX(-50%)',
+                                        bgcolor: 'background.paper',
+                                        px: 0.5,
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider'
+                                      }}
+                                    >
+                                      <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>
+                                        {data.hours.toFixed(1)}h
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+                                
+                                {/* Domain label */}
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    textAlign: 'center',
+                                    fontSize: { xs: '0.65rem', md: '0.75rem' },
+                                    lineHeight: 1.2,
+                                    mt: 0.5,
+                                    fontWeight: 500,
+                                    color: 'text.primary',
+                                    wordBreak: 'break-word',
+                                    maxWidth: '100%'
+                                  }}
+                                >
+                                  {domain.split(' ').map((word, i) => (
+                                    <Box key={i} component="span" sx={{ display: 'block' }}>
+                                      {word}
+                                    </Box>
+                                  ))}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      ) : (
+                        <Alert severity="info" sx={{ mt: 2 }}>
+                          No activities have been tagged with domains yet. Tag your activities with domains when logging them to see this breakdown.
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </>
+          );
+        })()}
 
 
         </Container>
