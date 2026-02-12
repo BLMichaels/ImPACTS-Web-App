@@ -1,35 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
   Grid,
-  Paper,
   Card,
   CardContent,
-  CardActions,
   Button,
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar,
   Avatar,
   Chip,
+  LinearProgress,
+  Drawer,
+  IconButton,
   Divider,
-  LinearProgress
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
   Assignment as ActivityIcon,
   People as PeopleIcon,
   TrendingUp as TrendingIcon,
+  Close as CloseIcon,
+  Email as EmailIcon,
   CalendarToday as CalendarIcon,
-  CheckCircle as CheckIcon,
-  Warning as WarningIcon
+  AccessTime as HoursIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { format, subDays, isAfter } from 'date-fns';
+import { format } from 'date-fns';
 import DashboardResources from '../../components/DashboardResources';
 
 interface DashboardStats {
@@ -40,28 +42,64 @@ interface DashboardStats {
   simulationsThisMonth: number;
 }
 
-interface RecentActivity {
+interface StoredHospital {
+  id: string;
+  name: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  phone?: string;
+  traumaLevel?: string;
+  edSize?: string;
+  notes?: string;
+  isWorkingWith?: boolean;
+}
+
+interface StoredContact {
+  id: string;
+  hospitalId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  isPrimaryContact?: boolean;
+  contactStatus?: string;
+}
+
+interface StoredActivity {
   id: string;
   date: string;
   activityName: string;
   category: string;
   hours: number;
+  description?: string;
+  hospitalIds?: string[];
 }
 
 interface HospitalSummary {
   id: string;
   name: string;
+  city?: string;
+  state?: string;
+  phone?: string;
+  traumaLevel?: string;
+  address?: string;
+  notes?: string;
   peccName: string;
-  lastActivity: string | null;
-  milestonesCompleted: number;
-  totalMilestones: number;
+  peccEmail: string;
+  activityCount: number;
+  totalHours: number;
+  lastActivityAt: string | null;
+  activities: StoredActivity[];
 }
 
 const MentorDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
-  
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const [stats, setStats] = useState<DashboardStats>({
     totalHospitals: 0,
     totalPeccs: 0,
@@ -69,96 +107,117 @@ const MentorDashboardPage: React.FC = () => {
     hoursThisMonth: 0,
     simulationsThisMonth: 0
   });
-  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [hospitalSummaries, setHospitalSummaries] = useState<HospitalSummary[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (currentUser) {
-      loadDashboardData();
-    }
-  }, [currentUser]);
+  const [selectedHospital, setSelectedHospital] = useState<HospitalSummary | null>(null);
+  const [hospitalDrawerOpen, setHospitalDrawerOpen] = useState(false);
 
   const loadDashboardData = () => {
-    // Load activities from localStorage
-    const savedActivities = localStorage.getItem(`mentorActivities_${currentUser?.id}`);
-    const activities = savedActivities ? JSON.parse(savedActivities) : [];
-    
-    // Load hospitals from localStorage; start empty when no saved data
-    const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser?.id}`);
-    const hospitals = savedHospitals ? JSON.parse(savedHospitals) : [];
+    const uid = currentUser?.id;
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
 
-    // Calculate stats for current month
+    const savedActivitiesRaw = localStorage.getItem(`mentorActivities_${uid}`);
+    const savedHospitalsRaw = localStorage.getItem(`mentorHospitals_${uid}`);
+    const savedContactsRaw = localStorage.getItem(`mentorContacts_${uid}`);
+
+    const activities: StoredActivity[] = savedActivitiesRaw ? JSON.parse(savedActivitiesRaw) : [];
+    const hospitals: StoredHospital[] = savedHospitalsRaw ? JSON.parse(savedHospitalsRaw) : [];
+    const contacts: StoredContact[] = savedContactsRaw ? JSON.parse(savedContactsRaw) : [];
+
+    const workingHospitals = hospitals.filter((h: StoredHospital) => h.isWorkingWith !== false);
+
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    
-    const thisMonthActivities = activities.filter((a: RecentActivity) => 
-      new Date(a.date) >= startOfMonth
-    );
-    
-    const simulationsThisMonth = thisMonthActivities.filter((a: RecentActivity) => 
-      a.category === 'SC'
-    ).length;
+    const thisMonthActivities = activities.filter((a: StoredActivity) => new Date(a.date) >= startOfMonth);
+    const simulationsThisMonth = thisMonthActivities.filter((a: StoredActivity) => a.category === 'SC').length;
 
     setStats({
-      totalHospitals: hospitals.length,
-      totalPeccs: hospitals.length, // Assuming 1 PECC per hospital for now
+      totalHospitals: workingHospitals.length,
+      totalPeccs: workingHospitals.length,
       activitiesThisMonth: thisMonthActivities.length,
-      hoursThisMonth: thisMonthActivities.reduce((sum: number, a: RecentActivity) => sum + a.hours, 0),
+      hoursThisMonth: thisMonthActivities.reduce((sum: number, a: StoredActivity) => sum + (a.hours || 0), 0),
       simulationsThisMonth
     });
 
-    // Get recent activities (last 5)
-    const sorted = [...activities].sort((a: RecentActivity, b: RecentActivity) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    setRecentActivities(sorted.slice(0, 5));
+    const summaries: HospitalSummary[] = workingHospitals.map((h: StoredHospital) => {
+      const hContacts = contacts.filter((c: StoredContact) => c.hospitalId === h.id);
+      const primary = hContacts.find((c: StoredContact) => c.isPrimaryContact) || hContacts[0];
+      const peccName = primary ? `${primary.firstName} ${primary.lastName}`.trim() || '—' : '—';
+      const peccEmail = primary?.email?.trim() || '—';
 
-    // Create hospital summaries from loaded data
-    const summaries: HospitalSummary[] = hospitals.map((h: { id: string; name: string }) => {
-      const lastAct = activities.find((a: RecentActivity & { hospitalIds?: string[] }) => 
-        a.hospitalIds?.includes(h.id)
+      const hospitalActivities = (activities || []).filter(
+        (a: StoredActivity) => (a.hospitalIds || []).includes(h.id)
       );
+      const sortedByDate = [...hospitalActivities].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      const lastActivityAt = sortedByDate[0]?.date || null;
+      const totalHours = hospitalActivities.reduce((sum: number, a: StoredActivity) => sum + (a.hours || 0), 0);
+
       return {
         id: h.id,
-        name: h.name,
-        peccName: '',
-        lastActivity: lastAct?.date || null,
-        milestonesCompleted: 0,
-        totalMilestones: 0
+        name: h.name || 'Unknown',
+        city: h.city,
+        state: h.state,
+        phone: h.phone,
+        traumaLevel: h.traumaLevel,
+        address: h.address,
+        notes: h.notes,
+        peccName,
+        peccEmail,
+        activityCount: hospitalActivities.length,
+        totalHours,
+        lastActivityAt,
+        activities: sortedByDate
       };
     });
+
     setHospitalSummaries(summaries);
-    
     setLoading(false);
   };
 
-  const StatCard = ({ title, value, icon, color, subtitle }: {
+  useEffect(() => {
+    if (currentUser) loadDashboardData();
+  }, [currentUser]);
+
+  const handleHospitalClick = (hospital: HospitalSummary) => {
+    setSelectedHospital(hospital);
+    setHospitalDrawerOpen(true);
+  };
+
+  const StatCard = ({
+    title,
+    value,
+    icon,
+    color,
+    subtitle
+  }: {
     title: string;
     value: string | number;
     icon: React.ReactNode;
     color: string;
     subtitle?: string;
   }) => (
-    <Card>
+    <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2 }}>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box>
-            <Typography color="textSecondary" variant="body2" gutterBottom>
+            <Typography color="text.secondary" variant="body2" gutterBottom>
               {title}
             </Typography>
             <Typography variant="h4" component="div" sx={{ color }}>
               {value}
             </Typography>
             {subtitle && (
-              <Typography variant="caption" color="textSecondary">
+              <Typography variant="caption" color="text.secondary">
                 {subtitle}
               </Typography>
             )}
           </Box>
-          <Avatar sx={{ bgcolor: color, width: 56, height: 56 }}>
-            {icon}
-          </Avatar>
+          <Avatar sx={{ bgcolor: color, width: 48, height: 48 }}>{icon}</Avatar>
         </Box>
       </CardContent>
     </Card>
@@ -177,193 +236,221 @@ const MentorDashboardPage: React.FC = () => {
       <Typography variant="h4" gutterBottom>
         Welcome, {userProfile?.first_name || 'Mentor'}!
       </Typography>
-      <Typography color="textSecondary" gutterBottom sx={{ mb: 2 }}>
+      <Typography color="text.secondary" gutterBottom sx={{ mb: 2 }}>
         Here's an overview of your mentorship activities
       </Typography>
-      <Typography variant="body1" color="textSecondary" sx={{ mb: 4 }}>
-        Support your assigned hospitals and PECCs in their pediatric readiness journey. Guide them through milestones, track progress, and help them achieve their goals.
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+        Support your assigned hospitals and PECCs. Click a hospital to see details and your activity history there.
       </Typography>
 
-      {/* How This Tool Works Section */}
-      <Card sx={{ p: 2, mb: 4 }}>
-        <CardContent>
-          <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 2 }}>
+      {/* How This Tool Works - compact */}
+      <Card elevation={0} sx={{ p: 2, mb: 4, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+        <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+          <Typography variant="h6" gutterBottom color="primary">
             How This Tool Works
           </Typography>
-          
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
-            As a Mentor, you guide hospitals and PECCs through their pediatric readiness journey. Here's what you can do:
+          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>
+            Manage hospitals and contacts, log activities and simulations, track site milestones, and participate in programs and cohorts. Use the menu to navigate.
           </Typography>
-          
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
-              <Box sx={{ p: 1 }}>
-                <Typography variant="h6" gutterBottom color="primary">
-                  🏥 Hospital Management
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  View and manage your assigned hospitals. Monitor PECC progress, review milestones, and provide guidance to help hospitals advance through readiness stages.
-                </Typography>
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Box sx={{ p: 1 }}>
-                <Typography variant="h6" gutterBottom color="primary">
-                  👥 PECC Support
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Work directly with PECCs at your assigned hospitals. Review their activities, help with gap plans, and support their professional development.
-                </Typography>
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Box sx={{ p: 1 }}>
-                <Typography variant="h6" gutterBottom color="primary">
-                  ✅ Milestone Tracking
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Update and track PECC milestones through the Establish, Implement, Lead, and Sustain stages. Help PECCs complete objectives and advance their journey.
-                </Typography>
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Box sx={{ p: 1 }}>
-                <Typography variant="h6" gutterBottom color="primary">
-                  📝 Activity Logging
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Log your mentorship activities, site visits, training sessions, and simulations. Track your time and document the support you provide to hospitals.
-                </Typography>
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Box sx={{ p: 1 }}>
-                <Typography variant="h6" gutterBottom color="primary">
-                  📊 Programs & Cohorts
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Participate in programs and cohorts. Post announcements, facilitate discussions, and collaborate with other mentors and PECCs.
-                </Typography>
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Box sx={{ p: 1 }}>
-                <Typography variant="h6" gutterBottom color="primary">
-                  💰 Wages & Expenses
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Submit expense reports for reimbursement. Track your wages, travel expenses, and other costs related to your mentorship activities.
-                </Typography>
-              </Box>
-            </Grid>
-          </Grid>
         </CardContent>
       </Card>
 
-      {/* Stats Cards */}
-      <Grid container spacing={3} sx={{ mt: 2 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="My Hospitals"
-            value={stats.totalHospitals}
-            icon={<HospitalIcon />}
-            color="#1976d2"
-          />
+      {/* Stats */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid item xs={6} md={3}>
+          <StatCard title="My Hospitals" value={stats.totalHospitals} icon={<HospitalIcon />} color="#1976d2" />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="My PECCs"
-            value={stats.totalPeccs}
-            icon={<PeopleIcon />}
-            color="#388e3c"
-          />
+        <Grid item xs={6} md={3}>
+          <StatCard title="Activities This Month" value={stats.activitiesThisMonth} icon={<ActivityIcon />} color="#f57c00" subtitle={`${stats.hoursThisMonth.toFixed(1)} hours`} />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Activities This Month"
-            value={stats.activitiesThisMonth}
-            icon={<ActivityIcon />}
-            color="#f57c00"
-            subtitle={`${stats.hoursThisMonth.toFixed(1)} hours`}
-          />
+        <Grid item xs={6} md={3}>
+          <StatCard title="Simulations This Month" value={stats.simulationsThisMonth} icon={<TrendingIcon />} color="#7b1fa2" />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Simulations This Month"
-            value={stats.simulationsThisMonth}
-            icon={<TrendingIcon />}
-            color="#7b1fa2"
-          />
+        <Grid item xs={6} md={3}>
+          <StatCard title="PECCs" value={stats.totalPeccs} icon={<PeopleIcon />} color="#388e3c" />
         </Grid>
       </Grid>
 
-      {/* Main Content */}
-      <Grid container spacing={3} sx={{ mt: 2 }}>
-        {/* Hospital Overview */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">My Hospitals</Typography>
-              <Button size="small" onClick={() => navigate('/mentor/hospitals')}>
-                View All
-              </Button>
-            </Box>
-            {hospitalSummaries.length === 0 ? (
-              <Typography color="textSecondary" align="center" sx={{ py: 3 }}>
-                No hospitals assigned yet
-              </Typography>
-            ) : (
-              <List>
-                {hospitalSummaries.map((hospital, index) => (
-                  <React.Fragment key={hospital.id}>
-                    <ListItem>
-                      <ListItemAvatar>
-                        <Avatar sx={{ bgcolor: '#388e3c' }}>
-                          <HospitalIcon />
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText
-                        primary={hospital.name}
-                        secondary={
-                          <Box>
-                            <Typography variant="caption" display="block">
-                              PECC: {hospital.peccName}
+      {/* My Hospitals - clean cards */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6" fontWeight={600}>
+          My Hospitals
+        </Typography>
+        <Button size="small" variant="outlined" onClick={() => navigate('/mentor/hospitals')}>
+          Manage hospitals
+        </Button>
+      </Box>
+
+      {hospitalSummaries.length === 0 ? (
+        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 4, textAlign: 'center' }}>
+          <Typography color="text.secondary">No hospitals assigned yet. Add hospitals from the Hospitals page.</Typography>
+          <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate('/mentor/hospitals')}>
+            Go to Hospitals
+          </Button>
+        </Card>
+      ) : (
+        <Grid container spacing={2}>
+          {hospitalSummaries.map((hospital) => (
+            <Grid item xs={12} md={6} key={hospital.id}>
+              <Card
+                elevation={0}
+                sx={{
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    borderColor: 'primary.main',
+                    bgcolor: 'action.hover'
+                  }
+                }}
+                onClick={() => handleHospitalClick(hospital)}
+              >
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                    <Avatar sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
+                      <HospitalIcon />
+                    </Avatar>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                        {hospital.name}
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {hospital.peccName}
+                        </Typography>
+                        {hospital.peccEmail !== '—' && (
+                          <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <EmailIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                            <Typography variant="body2" color="text.secondary" noWrap>
+                              {hospital.peccEmail}
                             </Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-                              <Typography variant="caption" sx={{ mr: 1 }}>
-                                Milestones: {hospital.milestonesCompleted}/{hospital.totalMilestones}
-                              </Typography>
-                              <LinearProgress 
-                                variant="determinate" 
-                                value={(hospital.milestonesCompleted / hospital.totalMilestones) * 100}
-                                sx={{ flexGrow: 1, height: 6, borderRadius: 3 }}
-                              />
-                            </Box>
                           </Box>
-                        }
-                      />
-                      {hospital.lastActivity && isAfter(subDays(new Date(), 14), new Date(hospital.lastActivity)) && (
-                        <Chip 
-                          icon={<WarningIcon />} 
-                          label="Needs attention" 
-                          size="small" 
-                          color="warning"
-                        />
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
+                        <Chip size="small" icon={<ActivityIcon sx={{ fontSize: 14 }} />} label={`${hospital.activityCount} activities`} variant="outlined" />
+                        <Chip size="small" icon={<HoursIcon sx={{ fontSize: 14 }} />} label={`${hospital.totalHours.toFixed(1)} h`} variant="outlined" />
+                        {hospital.lastActivityAt && (
+                          <Chip size="small" icon={<CalendarIcon sx={{ fontSize: 14 }} />} label={`Last: ${format(new Date(hospital.lastActivityAt), 'MMM d, yyyy')}`} variant="outlined" />
+                        )}
+                      </Box>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Hospital detail drawer */}
+      <Drawer
+        anchor={isMobile ? 'bottom' : 'right'}
+        open={hospitalDrawerOpen}
+        onClose={() => setHospitalDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: isMobile ? '100%' : 420,
+            maxHeight: isMobile ? '85%' : '100%',
+            borderLeft: isMobile ? 0 : 1,
+            borderColor: 'divider'
+          }
+        }}
+      >
+        {selectedHospital && (
+          <>
+            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: 1, borderColor: 'divider' }}>
+              <Typography variant="h6" fontWeight={600}>
+                {selectedHospital.name}
+              </Typography>
+              <IconButton size="small" onClick={() => setHospitalDrawerOpen(false)} aria-label="Close">
+                <CloseIcon />
+              </IconButton>
+            </Box>
+            <Box sx={{ overflow: 'auto', flex: 1, p: 2 }}>
+              {/* Hospital info */}
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Hospital details
+              </Typography>
+              <Box sx={{ mb: 3 }}>
+                {(selectedHospital.city || selectedHospital.state) && (
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>
+                    {[selectedHospital.city, selectedHospital.state].filter(Boolean).join(', ')}
+                  </Typography>
+                )}
+                {selectedHospital.address && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    {selectedHospital.address}
+                  </Typography>
+                )}
+                {selectedHospital.phone && (
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>
+                    {selectedHospital.phone}
+                  </Typography>
+                )}
+                {selectedHospital.traumaLevel && (
+                  <Chip label={selectedHospital.traumaLevel} size="small" sx={{ mt: 0.5 }} />
+                )}
+              </Box>
+
+              <Divider sx={{ my: 2 }} />
+
+              {/* PECC contact */}
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                PECC contact
+              </Typography>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="body2">{selectedHospital.peccName}</Typography>
+                {selectedHospital.peccEmail !== '—' && (
+                  <Typography variant="body2" color="primary" component="a" href={`mailto:${selectedHospital.peccEmail}`}>
+                    {selectedHospital.peccEmail}
+                  </Typography>
+                )}
+              </Box>
+
+              <Divider sx={{ my: 2 }} />
+
+              {/* Activities at this hospital */}
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Your activities at this hospital ({selectedHospital.activities.length})
+              </Typography>
+              {selectedHospital.activities.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No activities logged yet for this hospital.
+                </Typography>
+              ) : (
+                <List disablePadding>
+                  {selectedHospital.activities.map((activity) => (
+                    <ListItem key={activity.id} disablePadding sx={{ py: 1, flexDirection: 'column', alignItems: 'stretch' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                        <Typography variant="body2" fontWeight={500}>
+                          {activity.activityName}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {format(new Date(activity.date), 'MMM d, yyyy')} · {activity.hours}h
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                        <Chip label={activity.category} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                      </Box>
+                      {activity.description?.trim() && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                          {activity.description}
+                        </Typography>
                       )}
                     </ListItem>
-                    {index < hospitalSummaries.length - 1 && <Divider variant="inset" component="li" />}
-                  </React.Fragment>
-                ))}
-              </List>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
+                  ))}
+                </List>
+              )}
+              <Button variant="outlined" fullWidth sx={{ mt: 2 }} onClick={() => { setHospitalDrawerOpen(false); navigate('/mentor/activities'); }}>
+                Log activity
+              </Button>
+            </Box>
+          </>
+        )}
+      </Drawer>
 
       <DashboardResources userId={currentUser?.uid} />
     </Box>
