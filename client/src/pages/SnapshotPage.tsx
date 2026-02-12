@@ -2567,39 +2567,6 @@ const SnapshotPage = () => {
                           pt: 2,
                           pb: 8
                         }}>
-                          {/* Y-axis labels */}
-                          <Box sx={{ 
-                            position: 'absolute', 
-                            left: 0, 
-                            top: 0, 
-                            bottom: 0,
-                            width: 50,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between',
-                            alignItems: 'flex-end',
-                            pr: 1
-                          }}>
-                            {(() => {
-                              const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
-                              const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
-                              const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
-                              return steps.map((value) => (
-                                <Typography 
-                                  key={value} 
-                                  variant="caption" 
-                                  sx={{ 
-                                    fontSize: '0.75rem',
-                                    fontWeight: 500,
-                                    color: 'text.primary'
-                                  }}
-                                >
-                                  {value}
-                                </Typography>
-                              ));
-                            })()}
-                          </Box>
-                          
                           {/* Chart area - bars will be positioned here */}
                           <Box sx={{
                             position: 'absolute',
@@ -2612,6 +2579,39 @@ const SnapshotPage = () => {
                             justifyContent: 'space-between',
                             gap: 1
                           }}>
+                            {/* Y-axis labels - aligned with chart area */}
+                            <Box sx={{ 
+                              position: 'absolute', 
+                              left: -50, 
+                              top: 0, 
+                              bottom: 0,
+                              width: 50,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-end',
+                              pr: 1
+                            }}>
+                              {(() => {
+                                const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
+                                const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
+                                const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
+                                return steps.map((value) => (
+                                  <Typography 
+                                    key={value} 
+                                    variant="caption" 
+                                    sx={{ 
+                                      fontSize: '0.75rem',
+                                      fontWeight: 500,
+                                      color: 'text.primary'
+                                    }}
+                                  >
+                                    {value}
+                                  </Typography>
+                                ));
+                              })()}
+                            </Box>
+                            
                             {/* X-axis baseline - at exactly Y=0 (bottom of chart area) */}
                             <Box
                               sx={{
@@ -2801,39 +2801,6 @@ const SnapshotPage = () => {
                           pt: 2,
                           pb: 8
                         }}>
-                          {/* Y-axis labels */}
-                          <Box sx={{ 
-                            position: 'absolute', 
-                            left: 0, 
-                            top: 0, 
-                            bottom: 0,
-                            width: 50,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between',
-                            alignItems: 'flex-end',
-                            pr: 1
-                          }}>
-                            {(() => {
-                              const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
-                              const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
-                              const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
-                              return steps.map((value) => (
-                                <Typography 
-                                  key={value} 
-                                  variant="caption" 
-                                  sx={{ 
-                                    fontSize: '0.75rem',
-                                    fontWeight: 500,
-                                    color: 'text.primary'
-                                  }}
-                                >
-                                  {value}h
-                                </Typography>
-                              ));
-                            })()}
-                          </Box>
-                          
                           {/* Chart area - bars will be positioned here */}
                           <Box sx={{
                             position: 'absolute',
@@ -2846,6 +2813,39 @@ const SnapshotPage = () => {
                             justifyContent: 'space-between',
                             gap: 1
                           }}>
+                            {/* Y-axis labels - aligned with chart area */}
+                            <Box sx={{ 
+                              position: 'absolute', 
+                              left: -50, 
+                              top: 0, 
+                              bottom: 0,
+                              width: 50,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-end',
+                              pr: 1
+                            }}>
+                              {(() => {
+                                const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
+                                const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
+                                const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
+                                return steps.map((value) => (
+                                  <Typography 
+                                    key={value} 
+                                    variant="caption" 
+                                    sx={{ 
+                                      fontSize: '0.75rem',
+                                      fontWeight: 500,
+                                      color: 'text.primary'
+                                    }}
+                                  >
+                                    {value}h
+                                  </Typography>
+                                ));
+                              })()}
+                            </Box>
+                            
                             {/* X-axis baseline - at exactly Y=0 (bottom of chart area) */}
                             <Box
                               sx={{
