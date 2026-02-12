@@ -35,7 +35,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  InputAdornment
+  InputAdornment,
+  Switch
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
@@ -87,6 +88,7 @@ interface Contact {
   roleAtHospital: string;
   isPrimaryContact: boolean;
   isActivelyEngaged: boolean;
+  isWorkingWithMentor?: boolean; // true = actively working with this mentor; false = contact only for this mentor
   notes: string;
 }
 
@@ -162,6 +164,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     roleAtHospital: '',
     isPrimaryContact: false,
     isActivelyEngaged: false,
+    isWorkingWithMentor: true,
     notes: ''
   });
   
@@ -185,7 +188,7 @@ const MentorHospitalContactsPage: React.FC = () => {
 
   // Contacts list filter/sort (in hospital details dialog)
   const [contactSearch, setContactSearch] = useState('');
-  const [contactSortBy, setContactSortBy] = useState<'name' | 'role' | 'status' | 'primary'>('name');
+  const [contactSortBy, setContactSortBy] = useState<'name' | 'role' | 'status' | 'primary' | 'workingWithMe'>('name');
   const [contactSortOrder, setContactSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Dated note form (hospital detail)
@@ -561,6 +564,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       roleAtHospital: '',
       isPrimaryContact: false,
       isActivelyEngaged: false,
+      isWorkingWithMentor: true,
       notes: ''
     });
     setContactDialogOpen(true);
@@ -577,6 +581,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       roleAtHospital: contact.roleAtHospital,
       isPrimaryContact: contact.isPrimaryContact,
       isActivelyEngaged: contact.isActivelyEngaged,
+      isWorkingWithMentor: contact.isWorkingWithMentor !== false,
       notes: contact.notes
     });
     setContactDialogOpen(true);
@@ -595,7 +600,8 @@ const MentorHospitalContactsPage: React.FC = () => {
     const contactData: Contact = {
       id: editingContact?.id || `contact_${Date.now()}`,
       hospitalId: editingContact?.hospitalId || selectedHospital!.id,
-      ...contactForm
+      ...contactForm,
+      isWorkingWithMentor: contactForm.isWorkingWithMentor !== false
     };
 
     let newContacts: Contact[];
@@ -617,6 +623,21 @@ const MentorHospitalContactsPage: React.FC = () => {
       setContactDialogOpen(false);
       setSnackbar({ open: true, message: 'Contact removed from your list', severity: 'success' });
     }
+  };
+
+  const handleToggleContactWorkingWith = (contact: Contact) => {
+    const next = contact.isWorkingWithMentor !== false ? false : true;
+    const updated: Contact = { ...contact, isWorkingWithMentor: next };
+    const newContacts = contacts.map(c => c.id === contact.id ? updated : c);
+    saveContacts(newContacts);
+    if (editingContact?.id === contact.id) {
+      setContactForm(prev => ({ ...prev, isWorkingWithMentor: next }));
+    }
+    setSnackbar({
+      open: true,
+      message: next ? 'Contact marked as working with you' : 'Contact marked as not actively working with you',
+      severity: 'success'
+    });
   };
 
   // Invite handler
@@ -741,6 +762,9 @@ const MentorHospitalContactsPage: React.FC = () => {
           break;
         case 'primary':
           cmp = (a.isPrimaryContact === b.isPrimaryContact) ? 0 : (a.isPrimaryContact ? -1 : 1);
+          break;
+        case 'workingWithMe':
+          cmp = (a.isWorkingWithMentor !== false) === (b.isWorkingWithMentor !== false) ? 0 : (a.isWorkingWithMentor !== false ? -1 : 1);
           break;
         default:
           break;
@@ -916,15 +940,8 @@ const MentorHospitalContactsPage: React.FC = () => {
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Box sx={{ display: 'flex', gap: 1 }}>
-                          <IconButton size="small" onClick={() => handleEditHospital(hospital)}>
+                          <IconButton size="small" onClick={() => handleEditHospital(hospital)} aria-label="Edit hospital">
                             <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleToggleWorkingWith(hospital.id)}
-                            color={hospital.isWorkingWith ? 'default' : 'success'}
-                          >
-                            {hospital.isWorkingWith ? 'Contact' : 'Working'}
                           </IconButton>
                           <IconButton 
                             size="small" 
@@ -932,6 +949,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                               setSelectedHospital(hospital);
                               setInviteDialogOpen(true);
                             }}
+                            aria-label="Invite PECC"
                           >
                             <SendIcon fontSize="small" />
                           </IconButton>
@@ -1126,6 +1144,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                         <MenuItem value="role">Role</MenuItem>
                         <MenuItem value="status">Status</MenuItem>
                         <MenuItem value="primary">Primary first</MenuItem>
+                        <MenuItem value="workingWithMe">Working with me first</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -1162,7 +1181,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                         </ListItemAvatar>
                         <ListItemText
                           primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                               {contact.firstName} {contact.lastName}
                               {contact.isPrimaryContact && (
                                 <Chip label="Primary" size="small" color="primary" />
@@ -1170,6 +1189,14 @@ const MentorHospitalContactsPage: React.FC = () => {
                               {contact.isActivelyEngaged && (
                                 <Chip label="Active" size="small" color="success" />
                               )}
+                              <Chip
+                                size="small"
+                                variant={contact.isWorkingWithMentor !== false ? 'filled' : 'outlined'}
+                                color={contact.isWorkingWithMentor !== false ? 'success' : 'default'}
+                                label={contact.isWorkingWithMentor !== false ? 'Working with me' : 'Not actively working with me'}
+                                onClick={(e) => { e.stopPropagation(); handleToggleContactWorkingWith(contact); }}
+                                sx={{ cursor: 'pointer' }}
+                              />
                             </Box>
                           }
                           secondary={
@@ -1499,6 +1526,18 @@ const MentorHospitalContactsPage: React.FC = () => {
                   />
                 }
                 label="Actively Engaged ED"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={contactForm.isWorkingWithMentor !== false}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, isWorkingWithMentor: e.target.checked }))}
+                    color="primary"
+                  />
+                }
+                label="Working with me (actively working with this mentor)"
               />
             </Grid>
             <Grid item xs={12}>
