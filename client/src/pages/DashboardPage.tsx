@@ -393,7 +393,7 @@ interface ReadinessScore {
       )}
 
       {/* Hospital Department Contacts Section - Accordion */}
-      <Box sx={{ mb: 6 }}>
+      <Box sx={{ mb: 8 }}>
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 2 }}>
