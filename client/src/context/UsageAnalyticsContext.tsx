@@ -4,18 +4,42 @@ import { useAuth } from './AuthContext';
 import { useUserProfile } from './UserProfileContext';
 import { supabase } from '../supabase';
 
-export type UsageEventType = 'login' | 'page_view' | 'click';
+export type UsageEventType = 'login' | 'page_view' | 'click' | 'link_click' | 'checklist' | 'activity';
+
+export interface UsageMetadata {
+  time_spent_seconds?: number;
+  target?: string;
+  /** link_click */
+  url?: string;
+  label?: string;
+  link_context?: string;
+  /** checklist */
+  action?: string;
+  checklist_id?: string;
+  item_id?: string;
+  stage_id?: string;
+  name?: string;
+  /** activity */
+  activity_id?: string;
+  [key: string]: unknown;
+}
 
 interface UsageAnalyticsContextType {
   trackLogin: () => void;
   trackPageView: (path: string, timeSpentSeconds?: number) => void;
   trackClick: (target: string, path?: string) => void;
+  trackLinkClick: (url: string, label?: string, linkContext?: string) => void;
+  trackChecklist: (action: string, meta?: { checklist_id?: string; item_id?: string; stage_id?: string; name?: string }) => void;
+  trackActivity: (action: string, meta?: { activity_id?: string; name?: string }) => void;
 }
 
 const noopAnalytics: UsageAnalyticsContextType = {
   trackLogin: () => {},
   trackPageView: () => {},
   trackClick: () => {},
+  trackLinkClick: () => {},
+  trackChecklist: () => {},
+  trackActivity: () => {},
 };
 
 const UsageAnalyticsContext = createContext<UsageAnalyticsContextType | undefined>(undefined);
@@ -62,7 +86,7 @@ function useUsageTracker() {
   }, [siteId, userProfile?.hospital_facility_id]);
 
   const track = useCallback(
-    async (eventType: UsageEventType, path: string, metadata: Record<string, unknown> = {}) => {
+    async (eventType: UsageEventType, path: string, metadata: UsageMetadata | Record<string, unknown> = {}) => {
       if (!currentUser?.id || !actualRole) return;
       try {
         const payload: Record<string, unknown> = {
@@ -70,7 +94,7 @@ function useUsageTracker() {
           role: actualRole,
           event_type: eventType,
           path: path || '/',
-          metadata,
+          metadata: metadata && typeof metadata === 'object' ? metadata : {},
         };
         if (hospitalIdRef.current) payload.hospital_id = hospitalIdRef.current;
         await supabase.from('usage_events').insert(payload);
@@ -100,6 +124,34 @@ function useUsageTracker() {
     (target: string, path?: string) => {
       if (!currentUser?.id || !actualRole) return;
       track('click', path || window.location.pathname || '/', { target }).catch(() => {});
+    },
+    [currentUser?.id, actualRole, track]
+  );
+
+  const trackLinkClick = useCallback(
+    (url: string, label?: string, linkContext?: string) => {
+      if (!currentUser?.id || !actualRole) return;
+      const path = window.location.pathname || '/';
+      const meta: UsageMetadata = { url: url || path, target: label || url };
+      if (linkContext) meta.link_context = linkContext;
+      if (label) meta.label = label;
+      track('link_click', path, meta).catch(() => {});
+    },
+    [currentUser?.id, actualRole, track]
+  );
+
+  const trackChecklist = useCallback(
+    (action: string, meta?: { checklist_id?: string; item_id?: string; stage_id?: string; name?: string }) => {
+      if (!currentUser?.id || !actualRole) return;
+      track('checklist', window.location.pathname || '/', { action, ...meta }).catch(() => {});
+    },
+    [currentUser?.id, actualRole, track]
+  );
+
+  const trackActivity = useCallback(
+    (action: string, meta?: { activity_id?: string; name?: string }) => {
+      if (!currentUser?.id || !actualRole) return;
+      track('activity', window.location.pathname || '/', { action, ...meta }).catch(() => {});
     },
     [currentUser?.id, actualRole, track]
   );
@@ -135,12 +187,12 @@ function useUsageTracker() {
     }
   }, [location.pathname, currentUser?.id, actualRole, trackPageView]);
 
-  return { trackLogin, trackPageView, trackClick };
+  return { trackLogin, trackPageView, trackClick, trackLinkClick, trackChecklist, trackActivity };
 }
 
 export const UsageAnalyticsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { trackLogin, trackPageView, trackClick } = useUsageTracker();
-  const value = { trackLogin, trackPageView, trackClick };
+  const { trackLogin, trackPageView, trackClick, trackLinkClick, trackChecklist, trackActivity } = useUsageTracker();
+  const value = { trackLogin, trackPageView, trackClick, trackLinkClick, trackChecklist, trackActivity };
   return (
     <UsageAnalyticsContext.Provider value={value}>
       {children}
