@@ -33,6 +33,7 @@ import AnnouncementList from './AnnouncementList';
 import DiscussionTopicList from './DiscussionTopicList';
 import DiscussionTopicView from './DiscussionTopicView';
 import MemberList from './MemberList';
+import ScormPackagesSection from '../ScormPackagesSection';
 
 interface CohortDetailProps {
   cohort: Cohort;
@@ -53,6 +54,8 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
 }) => {
   const { userProfile, userRole } = useUserProfile();
   const isPECC = userRole === UserRole.PECC;
+  const isMentor = userRole === UserRole.MENTOR;
+  const useStackedLayout = isPECC || isMentor; // Both PECCs and Mentors use stacked layout
   const [tabValue, setTabValue] = useState(0);
   
   // Check tab visibility permissions
@@ -97,9 +100,9 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         .order('last_reply_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
-      // Load members with user info (skip for PECC - they don't see the Members list)
+      // Load members with user info (skip for PECC & Mentor - they don't see the Members list)
       let membersData: CohortMember[] | null = null;
-      if (userProfile?.role !== UserRole.PECC) {
+      if (userProfile?.role !== UserRole.PECC && userProfile?.role !== UserRole.MENTOR) {
         const { data: m } = await supabase
           .from('cohort_members')
           .select(`
@@ -250,6 +253,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         cohortId={cohort.id}
         onBack={() => setSelectedTopic(null)}
         canModerate={canManage}
+        canReply={true}
         onMarkAsRead={handleMarkDiscussionAsRead}
       />
     );
@@ -292,7 +296,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                 {cohort.description}
               </Typography>
             )}
-            {!isPECC && (
+            {!useStackedLayout && (
               <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
                 {members.length} member{members.length !== 1 ? 's' : ''}
               </Typography>
@@ -309,8 +313,8 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         </Box>
       </Paper>
 
-      {/* PECC: stacked Announcements + Discussions (no tabs, no Members) */}
-      {isPECC ? (
+      {/* PECC & Mentor: stacked Announcements + Discussions (no tabs, no Members) */}
+      {useStackedLayout ? (
         <Box>
           <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <AnnouncementIcon fontSize="small" /> Announcements
@@ -319,6 +323,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             cohortId={cohort.id}
             announcements={announcements}
             canPost={canAnnounce}
+            canModerate={canManage}
             onAnnouncementCreated={handleAnnouncementCreated}
             onAnnouncementDeleted={handleAnnouncementDeleted}
             loading={loading}
@@ -335,7 +340,10 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             onTopicDeleted={handleTopicDeleted}
             loading={loading}
             canManage={canManage}
+            canPost={true}
           />
+          <Divider sx={{ my: 4 }} />
+          <ScormPackagesSection title="Cohort learning modules" placement="cohort" cohortId={cohort.id} />
         </Box>
       ) : (
         <>
@@ -393,6 +401,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                   cohortId={cohort.id}
                   announcements={announcements}
                   canPost={canAnnounce}
+                  canModerate={canManage}
                   onAnnouncementCreated={handleAnnouncementCreated}
                   onAnnouncementDeleted={handleAnnouncementDeleted}
                   loading={loading}
@@ -409,6 +418,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                   onTopicDeleted={handleTopicDeleted}
                   loading={loading}
                   canManage={canManage}
+                  canPost={true}
                 />
               );
             }
@@ -427,6 +437,8 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             }
             return null;
           })()}
+          <Divider sx={{ my: 4 }} />
+          <ScormPackagesSection title="Cohort learning modules" placement="cohort" cohortId={cohort.id} />
         </>
       )}
     </Box>

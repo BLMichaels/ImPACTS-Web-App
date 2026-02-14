@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Container, 
-  Typography, 
-  Box, 
-  Checkbox, 
-  FormControlLabel, 
-  Chip, 
-  Grid, 
+import {
+  Container,
+  Typography,
+  Box,
+  Checkbox,
+  FormControlLabel,
+  Chip,
+  Grid,
   Divider,
   Accordion,
   AccordionSummary,
@@ -17,6 +17,10 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import { useAuth } from '../context/AuthContext';
+import { useUserProfile } from '../context/UserProfileContext';
+import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
+import { supabase } from '../supabase';
+import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface MilestoneTask {
   id: string;
@@ -36,8 +40,10 @@ interface MilestoneStage {
 
 const MilestonesPage = () => {
   const { currentUser } = useAuth();
+  const { siteId } = useUserProfile();
+  const { trackChecklist } = useUsageAnalytics();
   const dataLoadedRef = useRef(false);
-  console.log('MilestonesPage rendering with user auth...'); // Debug log
+  const [hospitalId, setHospitalId] = useState<string | null>(null);
   
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
@@ -373,108 +379,100 @@ const MilestonesPage = () => {
     }
   ]);
 
-  // Save milestone data to localStorage whenever stages change
+  // Resolve PECC siteId to hospital_id (UUID) for shared checklist table
   useEffect(() => {
-    // This useEffect is no longer needed since we save immediately in handleTaskToggle
-    // Keeping it for debugging purposes only
-    if (currentUser?.uid) {
-      console.log('🔄 Stages changed, current state:', stages);
+    if (!siteId) {
+      setHospitalId(null);
+      return;
     }
-  }, [stages, currentUser?.uid]);
+    (async () => {
+      const { data } = await supabase
+        .from('hospitals')
+        .select('id')
+        .or(`id.eq.${siteId},facility_id.eq.${siteId}`)
+        .limit(1)
+        .maybeSingle();
+      setHospitalId(data?.id ?? null);
+    })();
+  }, [siteId]);
 
-  // Load milestone data from localStorage on component mount
   useEffect(() => {
-    if (currentUser?.uid) {
+    trackChecklist('view', { checklist_id: 'milestones' });
+  }, [trackChecklist]);
+
+  // Load checklist from Supabase (shared with Mentor Site Milestones) when hospitalId is set
+  useEffect(() => {
+    if (!hospitalId) return;
+    (async () => {
+      const { data: rows } = await supabase
+        .from('site_checklist_progress')
+        .select('task_id, completed')
+        .eq('hospital_id', hospitalId);
+      if (rows && rows.length > 0) {
+        const completedByTask: Record<string, boolean> = {};
+        rows.forEach((r: { task_id: string; completed: boolean }) => { completedByTask[r.task_id] = r.completed; });
+        setStages(prev => prev.map(stage => ({
+          ...stage,
+          tasks: stage.tasks.map(task => ({
+            ...task,
+            completed: completedByTask[task.id] ?? task.completed
+          }))
+        })));
+      }
+      dataLoadedRef.current = true;
+    })();
+  }, [hospitalId]);
+
+  // Load milestone data from localStorage on component mount (fallback when no site/hospital or Supabase unavailable)
+  useEffect(() => {
+    if (currentUser?.uid && !hospitalId) {
       try {
         const key = `milestones_${currentUser.uid}`;
-        console.log('🔄 Loading milestones from localStorage with key:', key);
-        
         const savedStages = localStorage.getItem(key);
-        console.log('📁 Found saved data:', savedStages ? 'YES' : 'NO', savedStages);
-        
         if (savedStages) {
           const parsedStages = JSON.parse(savedStages);
-          console.log('✅ Successfully parsed milestones:', parsedStages);
-          console.log('🔍 Checking if saved data has rich content (descriptions/links):', 
-            parsedStages.map((stage: MilestoneStage) => ({
-              stageId: stage.id,
-              hasLinks: stage.tasks.some((task: MilestoneTask) => task.links && task.links.length > 0),
-              sampleTask: stage.tasks[0]
-            }))
-          );
-          
-          // Check if saved data has rich content
-          const hasRichContent = parsedStages.some((stage: MilestoneStage) => 
+          const hasRichContent = parsedStages.some((stage: MilestoneStage) =>
             stage.tasks.some((task: MilestoneTask) => task.links && task.links.length > 0)
           );
-          
           if (hasRichContent) {
-            console.log('✅ Saved data has rich content, using as-is');
             setStages(parsedStages);
           } else {
-            console.log('🔄 Saved data is simple, merging with rich content');
-            // Merge saved completion data with rich content
-            const mergedStages = stages.map((defaultStage, stageIndex) => {
+            setStages(prev => prev.map((defaultStage, stageIndex) => {
               const savedStage = parsedStages[stageIndex];
               if (savedStage) {
                 return {
-                  ...defaultStage, // Keep rich content (descriptions, links)
+                  ...defaultStage,
                   tasks: defaultStage.tasks.map((defaultTask, taskIndex) => {
                     const savedTask = savedStage.tasks[taskIndex];
-                    if (savedTask) {
-                      return {
-                        ...defaultTask, // Keep rich content
-                        completed: savedTask.completed // Keep completion status
-                      };
-                    }
-                    return defaultTask;
+                    return savedTask ? { ...defaultTask, completed: savedTask.completed } : defaultTask;
                   })
                 };
               }
               return defaultStage;
-            });
-            
-            console.log('✅ Merged rich content with saved completion data:', mergedStages);
-            setStages(mergedStages);
+            }));
           }
-          
-          dataLoadedRef.current = true;
-        } else {
-          console.log('ℹ️ No saved milestones found for user, using default stages');
-          dataLoadedRef.current = true;
         }
+        dataLoadedRef.current = true;
       } catch (err) {
-        console.error('❌ Error loading milestones:', err);
+        console.error('Error loading milestones:', err);
         dataLoadedRef.current = true;
       }
-    } else {
-      console.log('⚠️ No currentUser.uid available for loading');
     }
-  }, [currentUser?.uid]); // Only depend on currentUser.uid
+  }, [currentUser?.uid, hospitalId]);
 
-  // Cleanup logging when component unmounts
-  useEffect(() => {
-    return () => {
-      console.log('🔄 MilestonesPage component unmounting, current stages:', stages);
-      if (currentUser?.uid) {
-        const key = `milestones_${currentUser.uid}`;
-        const saved = localStorage.getItem(key);
-        console.log('📁 localStorage state on unmount:', { key, saved: saved ? 'EXISTS' : 'MISSING' });
-      }
-    };
-  }, [stages, currentUser?.uid]);
 
   const handleTaskToggle = (stageId: string, taskId: string) => {
-    console.log('�� Toggling task:', { stageId, taskId, timestamp: new Date().toISOString() });
-    
-    // Update state immediately
+    const newCompleted = !stages.find(s => s.id === stageId)?.tasks.find(t => t.id === taskId)?.completed;
+    const stage = stages.find(s => s.id === stageId);
+    const task = stage?.tasks.find(t => t.id === taskId);
+    trackChecklist(newCompleted ? 'task_complete' : 'task_uncomplete', { checklist_id: 'milestones', stage_id: stageId, item_id: taskId, name: task?.text?.slice(0, 80) });
     const newStages = stages.map(stage => 
       stage.id === stageId 
         ? {
             ...stage,
             tasks: stage.tasks.map(task => 
               task.id === taskId 
-                ? { ...task, completed: !task.completed }
+                ? { ...task, completed: newCompleted }
                 : task
             )
           }
@@ -484,14 +482,23 @@ const MilestonesPage = () => {
     // Update state
     setStages(newStages);
     
-    // Save to localStorage IMMEDIATELY
+    if (hospitalId) {
+      supabase
+        .from('site_checklist_progress')
+        .upsert({
+          hospital_id: hospitalId,
+          task_id: taskId,
+          completed: newCompleted,
+          completed_at: newCompleted ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'hospital_id,task_id' })
+        .then(({ error }) => { if (error) console.error('Checklist save error:', error); });
+    }
     if (currentUser?.uid) {
       try {
-        const key = `milestones_${currentUser.uid}`;
-        localStorage.setItem(key, JSON.stringify(newStages));
-        console.log('✅ IMMEDIATELY SAVED milestones to localStorage:', { key, newStages, timestamp: new Date().toISOString() });
+        localStorage.setItem(`milestones_${currentUser.uid}`, JSON.stringify(newStages));
       } catch (err) {
-        console.error('❌ Error immediately saving milestones:', err);
+        console.error('Error saving milestones to localStorage:', err);
       }
     }
   };
@@ -551,6 +558,8 @@ const MilestonesPage = () => {
         </Button>
       </Box>
       
+      <ScormPackagesSection title="Checklist learning modules" placement="checklist" />
+
       {stages.map((stage) => {
         const progress = getStageProgress(stage);
         

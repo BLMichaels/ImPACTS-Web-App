@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Container,
   Typography,
@@ -10,8 +10,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Chip,
-  Divider,
   Link,
   TextField,
   Grid,
@@ -19,15 +17,17 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Alert
+  Alert,
+  Chip
 } from '@mui/material';
-import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
+import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { ASSESSMENT_QUESTIONS } from './PRSPage';
+import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface EducationContent {
+  category?: string;
   question: string;
   why: string;
   background: string;
@@ -76,11 +76,20 @@ const formatUrl = (url: string): string => {
   return `https://${url}`;
 };
 
-const EducationPage: React.FC = () => {
+const GAP_PLANS_STORAGE_KEY = (uid: string) => `gapPlans_${uid}`;
+export const GAP_PLANS_UPDATED_EVENT = 'impacts:gapPlansUpdated';
+
+interface EducationPageProps {
+  onGapPlanSaved?: () => void;
+}
+
+const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const { trackLinkClick } = useUsageAnalytics();
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
   const [educationDialogOpen, setEducationDialogOpen] = useState(false);
+  const [gapPlansRefreshKey, setGapPlansRefreshKey] = useState(0);
   const [educationContent, setEducationContent] = useState<Record<string, EducationContent>>({});
   const [gapPlanDialogOpen, setGapPlanDialogOpen] = useState(false);
   const [gapPlanQuestionId, setGapPlanQuestionId] = useState<string | null>(null);
@@ -106,33 +115,28 @@ const EducationPage: React.FC = () => {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const contentMap: Record<string, EducationContent> = {};
           parsed.forEach((eq: any) => {
-            // Ensure questionId is a string and validate that all required fields exist
-            const questionId = String(eq.questionId || '');
-            if (questionId && eq.question && eq.why && eq.background && eq.example && eq.sustainability) {
-              contentMap[questionId] = {
-                question: eq.question,
-                why: eq.why,
-                background: eq.background,
-                example: eq.example,
-                sustainability: eq.sustainability,
-                resources: eq.resources || []
-              };
-            }
+            contentMap[eq.questionId] = {
+              category: eq.category ?? '',
+              question: eq.question ?? '',
+              why: eq.why ?? '',
+              background: eq.background ?? '',
+              example: eq.example ?? '',
+              sustainability: eq.sustainability ?? '',
+              resources: eq.resources || []
+            };
           });
           setEducationContent(contentMap);
-          console.log('Loaded education content for questions:', Object.keys(contentMap));
-        } else {
-          // Empty array - clear any old data
-          setEducationContent({});
         }
       } catch (e) {
         console.error('Error loading education content:', e);
-        setEducationContent({});
       }
-    } else {
-      // No saved data - ensure empty state
-      setEducationContent({});
     }
+  }, []);
+
+  useEffect(() => {
+    const onGapPlansUpdated = () => setGapPlansRefreshKey((k) => k + 1);
+    window.addEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
+    return () => window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
   }, []);
 
   const handleQuestionClick = (questionId: string) => {
@@ -146,22 +150,9 @@ const EducationPage: React.FC = () => {
   };
 
   const handleAddGapPlan = (questionId: string) => {
-    const question = ASSESSMENT_QUESTIONS.find(q => q.id === questionId);
-    if (!question) return;
-    
-    // Check if gap plan already exists
-    const existingGapPlans = currentUser?.uid 
-      ? JSON.parse(localStorage.getItem(`gapPlans_${currentUser.uid}`) || '[]')
-      : [];
-    const existingPlan = existingGapPlans.find((plan: GapPlan) => plan.questionId === questionId);
-    
-    if (existingPlan) {
-      // Navigate to gap plan page to edit
-      navigate('/gap-plan');
-      return;
-    }
-    
-    // Open dialog to create new gap plan
+    if (!questionId) return;
+
+    // Always open the Create Gap Plan dialog for this question (user can add multiple plans per question)
     setGapPlanQuestionId(questionId);
     setGapPlanFormData({
       action: '',
@@ -180,23 +171,23 @@ const EducationPage: React.FC = () => {
   
   const handleSaveGapPlan = () => {
     if (!currentUser?.uid || !gapPlanQuestionId) return;
-    
-    const question = ASSESSMENT_QUESTIONS.find(q => q.id === gapPlanQuestionId);
-    if (!question) return;
-    
+
     if (!gapPlanFormData.action?.trim() || !gapPlanFormData.owner?.trim()) {
       alert('Please fill in "What is the action/plan to resolve?" and "Owner(s) Name" fields.');
       return;
     }
-    
+
+    const content = educationContent[gapPlanQuestionId];
+    const questionText = content?.question || `Question ${gapPlanQuestionId}`;
+
     // Load existing gap plans
     const existingGapPlans = JSON.parse(localStorage.getItem(`gapPlans_${currentUser.uid}`) || '[]');
-    
+
     // Create new gap plan
     const newGapPlan: GapPlan = {
       id: Date.now().toString(),
       questionId: gapPlanQuestionId,
-      questionText: question.text,
+      questionText,
       action: gapPlanFormData.action || '',
       owner: gapPlanFormData.owner || '',
       status: gapPlanFormData.status || '',
@@ -212,92 +203,116 @@ const EducationPage: React.FC = () => {
     // Save to localStorage
     const updatedPlans = [...existingGapPlans, newGapPlan];
     localStorage.setItem(`gapPlans_${currentUser.uid}`, JSON.stringify(updatedPlans));
-    
-    // Close dialog and navigate to gap plan page
+
+    onGapPlanSaved?.();
+    window.dispatchEvent(new CustomEvent(GAP_PLANS_UPDATED_EVENT));
+
     setGapPlanDialogOpen(false);
     setGapPlanQuestionId(null);
     navigate('/gap-plan');
   };
 
-  const renderQuestionCard = (question: any) => {
-    if (question.type === 'header') {
-      return (
-        <Box key={question.id} sx={{ mb: 3 }}>
-          <Typography variant="h5" component="h2" gutterBottom color="primary">
-            {question.text}
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-        </Box>
-      );
+  // All gap plans for current user (from Gaps & Education only; exclude activity-shaped data)
+  const allGapPlans = useMemo(() => {
+    if (!currentUser?.uid) return [];
+    try {
+      const raw = localStorage.getItem(GAP_PLANS_STORAGE_KEY(currentUser.uid));
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((p: any) => p && typeof p.questionId !== 'undefined' && typeof p.action === 'string');
+    } catch {
+      return [];
     }
+  }, [currentUser?.uid, gapPlansRefreshKey]);
 
-    return (
-      <Card 
-        key={question.id} 
-        sx={{ 
-          mb: 2, 
-          cursor: 'pointer',
-          transition: 'all 0.2s ease-in-out',
-          '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: 3
-          }
-        }}
-        onClick={() => handleQuestionClick(question.id)}
-      >
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h6" component="h3" sx={{ mb: 1, color: '#1976d2' }}>
-                Question {question.id}
-              </Typography>
-              <Typography variant="body1" sx={{ mb: 2 }}>
-                {educationContent[question.id]?.question || question.text}
-              </Typography>
-            </Box>
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, ml: 2 }}>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<SchoolIcon />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleQuestionClick(question.id);
-                }}
-                sx={{ 
-                  minWidth: 'auto',
-                  px: 2
-                }}
-              >
-                Learn More
-              </Button>
-              
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<AddIcon />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAddGapPlan(question.id);
-                }}
-                sx={{ 
-                  minWidth: 'auto',
-                  px: 2,
-                  backgroundColor: '#4caf50',
-                  '&:hover': {
-                    backgroundColor: '#45a049'
-                  }
-                }}
-              >
-                Gap Plan
-              </Button>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
+  // Only show actual gap plans (have questionId + action), not activity-shaped items
+  const gapPlansForSelectedQuestion = useMemo(() => {
+    if (!selectedQuestion) return [];
+    return (allGapPlans as GapPlan[]).filter(
+      (p) =>
+        p &&
+        String(p.questionId) === String(selectedQuestion) &&
+        typeof (p as any).action === 'string'
     );
-  };
+  }, [selectedQuestion, allGapPlans]);
+
+  // Build list from Admin education settings only (no pre-canned questions)
+  const educationQuestionList = Object.entries(educationContent)
+    .map(([questionId, content]) => ({
+      id: questionId,
+      text: content.question,
+      category: content.category ?? '',
+      gapPlanCount: (allGapPlans as GapPlan[]).filter(
+        (p) => p && String(p.questionId) === String(questionId) && typeof (p as any).action === 'string'
+      ).length
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+
+  const renderQuestionCard = (question: { id: string; text: string; category: string; gapPlanCount: number }) => (
+    <Card
+      key={question.id}
+      sx={{
+        mb: 2,
+        cursor: 'pointer',
+        transition: 'all 0.2s ease-in-out',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          boxShadow: 3
+        }
+      }}
+      onClick={() => handleQuestionClick(question.id)}
+    >
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 1, color: '#1976d2' }}>
+              {question.category?.trim() ? `Question ${question.id}: ${question.category}` : `Question ${question.id}`}
+            </Typography>
+            {question.gapPlanCount > 0 && (
+              <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.5 }}>
+                {question.gapPlanCount} gap plan{question.gapPlanCount !== 1 ? 's' : ''} for this question
+              </Typography>
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, ml: 2 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<SchoolIcon />}
+              onClick={(e) => {
+                e.stopPropagation();
+                trackLinkClick(`/gap-plan?q=${question.id}`, 'Learn More', 'education_card');
+                handleQuestionClick(question.id);
+              }}
+              sx={{ minWidth: 'auto', px: 2 }}
+            >
+              Learn More
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                trackLinkClick('/gap-plan', 'Gap Plan', 'education_card');
+                handleAddGapPlan(question.id);
+              }}
+              sx={{
+                minWidth: 'auto',
+                px: 2,
+                backgroundColor: '#4caf50',
+                '&:hover': { backgroundColor: '#45a049' }
+              }}
+            >
+              Gap Plan
+            </Button>
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
+  );
 
   const selectedEducationContent = selectedQuestion ? educationContent[selectedQuestion] : null;
 
@@ -312,22 +327,9 @@ const EducationPage: React.FC = () => {
         best practices, and implementation strategies.
       </Typography>
 
-      {ASSESSMENT_QUESTIONS
-        .filter(question => {
-          // Only show questions that have education content configured in Admin Settings
-          // Ensure both IDs are strings for proper matching
-          const questionId = String(question.id);
-          const hasContent = educationContent.hasOwnProperty(questionId) && 
-                            educationContent[questionId]?.question && 
-                            educationContent[questionId]?.why &&
-                            educationContent[questionId]?.background &&
-                            educationContent[questionId]?.example &&
-                            educationContent[questionId]?.sustainability;
-          return hasContent;
-        })
-        .map(renderQuestionCard)}
-      
-      {Object.keys(educationContent).length === 0 && (
+      {educationQuestionList.map(renderQuestionCard)}
+
+      {educationQuestionList.length === 0 && (
         <Alert severity="info" sx={{ mt: 4 }}>
           <Typography variant="body1" gutterBottom>
             No education content available yet.
@@ -338,7 +340,7 @@ const EducationPage: React.FC = () => {
         </Alert>
       )}
 
-      <ScormPackagesSection title="SCORM learning modules" />
+      <ScormPackagesSection title="SCORM learning modules" placement="education" />
 
       {/* Education Dialog */}
       <Dialog 
@@ -348,22 +350,24 @@ const EducationPage: React.FC = () => {
         fullWidth
       >
         <DialogTitle sx={{ color: '#1976d2', fontWeight: 'bold' }}>
-          Question {selectedQuestion}
+          {selectedEducationContent?.category?.trim()
+            ? `Question ${selectedQuestion}: ${selectedEducationContent.category}`
+            : `Question ${selectedQuestion}`}
         </DialogTitle>
         <DialogContent>
           {selectedEducationContent ? (
             <Box>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
-                Question:
+                Assessment Question:
               </Typography>
               <Typography variant="body1" sx={{ mb: 3 }}>
-                {selectedEducationContent.question}
+                {selectedEducationContent.question || '—'}
               </Typography>
 
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#2e7d32' }}>
                 Why:
               </Typography>
-              <Box 
+              <Box
                 sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
                 dangerouslySetInnerHTML={{ __html: selectedEducationContent.why || '' }}
               />
@@ -371,7 +375,7 @@ const EducationPage: React.FC = () => {
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1976d2' }}>
                 Background:
               </Typography>
-              <Box 
+              <Box
                 sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
                 dangerouslySetInnerHTML={{ __html: selectedEducationContent.background || '' }}
               />
@@ -379,7 +383,7 @@ const EducationPage: React.FC = () => {
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#f57c00' }}>
                 Example:
               </Typography>
-              <Box 
+              <Box
                 sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
                 dangerouslySetInnerHTML={{ __html: selectedEducationContent.example || '' }}
               />
@@ -387,7 +391,7 @@ const EducationPage: React.FC = () => {
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#7b1fa2' }}>
                 Sustainability Practices for PECC:
               </Typography>
-              <Box 
+              <Box
                 sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
                 dangerouslySetInnerHTML={{ __html: selectedEducationContent.sustainability || '' }}
               />
@@ -395,31 +399,29 @@ const EducationPage: React.FC = () => {
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#d32f2f' }}>
                 Additional Resources:
               </Typography>
-              <Box sx={{ mb: 2 }}>
+              <Box component="ul" sx={{ mb: 2, pl: 3, m: 0, listStyle: 'disc', '& li': { mb: 0.5 } }}>
                 {selectedEducationContent.resources.map((resource, index) => {
                   const parsed = parseResource(resource);
                   const url = formatUrl(parsed.url);
+                  const linkBlue = '#0000EE';
                   return (
-                    <Box key={index} sx={{ mb: 1 }}>
+                    <Box component="li" key={index}>
                       {url ? (
                         <Link
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
                           variant="body2"
-                          sx={{ 
-                            display: 'inline-block',
-                            color: 'primary.main',
+                          sx={{
+                            color: linkBlue,
                             textDecoration: 'underline',
-                            '&:hover': {
-                              color: 'primary.dark'
-                            }
+                            '&:hover': { color: '#551A8B' }
                           }}
                         >
                           {parsed.title || resource}
                         </Link>
                       ) : (
-                        <Typography variant="body2">
+                        <Typography variant="body2" component="span" sx={{ color: linkBlue }}>
                           {parsed.title || resource}
                         </Typography>
                       )}
@@ -427,6 +429,42 @@ const EducationPage: React.FC = () => {
                   );
                 })}
               </Box>
+
+              <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 'bold', color: '#1565c0', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AssignmentIcon fontSize="small" />
+                Gap Plans for this question:
+              </Typography>
+              {gapPlansForSelectedQuestion.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  No gap plans yet. Use &quot;Gap Plan&quot; on the card or add one from the Gaps & Education table.
+                </Typography>
+              ) : (
+                <Box sx={{ mb: 2 }}>
+                  {gapPlansForSelectedQuestion.map((plan) => (
+                    <Box
+                      key={plan.id}
+                      sx={{
+                        p: 1.5,
+                        mb: 1,
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        bgcolor: 'action.hover'
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>{plan.action}</Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                        <Chip size="small" label={plan.owner || '—'} variant="outlined" />
+                        {plan.status ? <Chip size="small" label={plan.status} color="primary" variant="outlined" /> : null}
+                        {plan.priority ? <Chip size="small" label={plan.priority} variant="outlined" /> : null}
+                      </Box>
+                    </Box>
+                  ))}
+                  <Button size="small" variant="outlined" onClick={() => { handleCloseDialog(); navigate('/gap-plan'); }} sx={{ mt: 1 }}>
+                    View all on Gaps & Education
+                  </Button>
+                </Box>
+              )}
             </Box>
           ) : (
             <Typography variant="body1" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
@@ -450,7 +488,9 @@ const EducationPage: React.FC = () => {
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Question: {ASSESSMENT_QUESTIONS.find(q => q.id === gapPlanQuestionId)?.text}
+                Question: {gapPlanQuestionId
+                  ? (educationContent[gapPlanQuestionId]?.question || `Question ${gapPlanQuestionId}`)
+                  : ''}
               </Typography>
             </Grid>
             
