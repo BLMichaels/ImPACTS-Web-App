@@ -1,228 +1,184 @@
-import React, { useRef, useEffect } from 'react';
-import { Box, IconButton, Tooltip, Divider } from '@mui/material';
+import React, { useRef, useEffect, useCallback } from 'react';
 import {
-  FormatBold as FormatBoldIcon,
-  FormatItalic as FormatItalicIcon,
-  FormatUnderlined as FormatUnderlinedIcon,
-  FormatListBulleted as FormatListBulletedIcon,
-  Link as LinkIcon,
-  Image as ImageIcon,
-  AttachFile as AttachFileIcon,
-  Save as SaveIcon
-} from '@mui/icons-material';
+  Box,
+  ButtonGroup,
+  IconButton,
+  Tooltip,
+  Chip
+} from '@mui/material';
+import FormatBoldIcon from '@mui/icons-material/FormatBold';
+import FormatItalicIcon from '@mui/icons-material/FormatItalic';
+import LinkIcon from '@mui/icons-material/Link';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+
+const ALLOWED_TAGS = ['b', 'i', 'em', 'strong', 'a', 'br', 'p', 'span', 'ul', 'ol', 'li'];
+const ALLOWED_ATTRS: Record<string, string[]> = { a: ['href', 'target', 'rel'] };
+
+export function sanitizeHtml(html: string): string {
+  if (!html || typeof html !== 'string') return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const walk = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const el = node as Element;
+    const tag = el.tagName.toLowerCase();
+    if (!ALLOWED_TAGS.includes(tag)) return Array.from(node.childNodes).map(walk).join('');
+    const attrs = ALLOWED_ATTRS[tag];
+    let attrStr = '';
+    if (attrs && el.hasAttributes()) {
+      attrs.forEach((a) => {
+        const v = el.getAttribute(a);
+        if (v) attrStr += ` ${a}="${v.replace(/"/g, '&quot;')}"`;
+      });
+    }
+    const inner = Array.from(node.childNodes).map(walk).join('');
+    if (tag === 'a') return `<a${attrStr} target="_blank" rel="noopener noreferrer">${inner}</a>`;
+    return `<${tag}${attrStr}>${inner}</${tag}>`;
+  };
+  return walk(doc.body).trim() || '';
+}
+
+export function stripHtmlToText(html: string): string {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return (doc.body.textContent || '').trim();
+}
 
 interface RichTextEditorProps {
   value: string;
-  onChange: (value: string) => void;
-  onSaveDraft?: () => void;
-  onFileUpload?: (file: File) => Promise<string | null>;
+  onChange: (html: string) => void;
   placeholder?: string;
-  minHeight?: number;
-  showSaveDraft?: boolean;
+  minRows?: number;
+  disabled?: boolean;
+  onAttach?: (files: File[]) => void;
+  attachments?: Array<{ name: string; url: string; type: string; size?: number }>;
+  onRemoveAttachment?: (index: number) => void;
 }
+
+const editableSx = {
+  minHeight: 120,
+  padding: '14px',
+  border: '1px solid rgba(0, 0, 0, 0.23)',
+  borderRadius: 1,
+  outline: 'none',
+  '&:focus': {
+    borderColor: 'primary.main',
+    borderWidth: 2,
+    padding: '13px'
+  },
+  '& a': {
+    color: 'primary.main',
+    textDecoration: 'underline'
+  }
+};
 
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
   onChange,
-  onSaveDraft,
-  onFileUpload,
   placeholder = 'Write your message...',
-  minHeight = 120,
-  showSaveDraft = true
+  minRows = 3,
+  disabled,
+  onAttach,
+  attachments = [],
+  onRemoveAttachment
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const isInternalChangeRef = useRef(false);
 
   useEffect(() => {
-    // Only update if the change came from outside (prop change, not user input)
-    if (editorRef.current && !isInternalChangeRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value || '';
+    const el = editorRef.current;
+    if (!el) return;
+    if (el.innerHTML !== value) {
+      el.innerHTML = value || '';
     }
-    isInternalChangeRef.current = false;
   }, [value]);
 
-  const handleInput = () => {
-    if (editorRef.current) {
-      isInternalChangeRef.current = true; // Mark as internal change
-      onChange(editorRef.current.innerHTML);
-    }
-  };
+  const handleInput = useCallback(() => {
+    const el = editorRef.current;
+    if (el) onChange(sanitizeHtml(el.innerHTML));
+  }, [onChange]);
 
-  const execCommand = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
+  const exec = useCallback((cmd: string, value?: string) => {
+    document.execCommand(cmd, false, value);
     editorRef.current?.focus();
     handleInput();
-  };
+  }, [handleInput]);
 
-  const handleBold = () => execCommand('bold');
-  const handleItalic = () => execCommand('italic');
-  const handleUnderline = () => execCommand('underline');
-  
+  const handleBold = () => exec('bold');
+  const handleItalic = () => exec('italic');
   const handleLink = () => {
-    const url = prompt('Enter URL:');
-    if (url) {
-      execCommand('createLink', url);
-    }
+    const url = window.prompt('Enter URL:');
+    if (url) exec('createLink', url);
   };
 
-  const handleBulletList = () => execCommand('insertUnorderedList');
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !onFileUpload) return;
-
-    const url = await onFileUpload(file);
-    if (url && editorRef.current) {
-      if (file.type.startsWith('image/')) {
-        execCommand('insertImage', url);
-      } else {
-        // For PDFs and other files, insert as link
-        const link = document.createElement('a');
-        link.href = url;
-        link.textContent = file.name;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          selection.getRangeAt(0).insertNode(link);
-          handleInput();
-        }
-      }
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files?.length && onAttach) onAttach(Array.from(files));
+    e.target.value = '';
   };
 
   return (
-    <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
-      {/* Toolbar */}
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 0.5, 
-        p: 0.5, 
-        bgcolor: 'grey.50',
-        borderBottom: 1,
-        borderColor: 'divider'
-      }}>
+    <Box>
+      <ButtonGroup size="small" sx={{ mb: 0.5 }}>
         <Tooltip title="Bold">
-          <IconButton size="small" onClick={handleBold}>
+          <IconButton onClick={handleBold} disabled={disabled} aria-label="Bold">
             <FormatBoldIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Italic">
-          <IconButton size="small" onClick={handleItalic}>
+          <IconButton onClick={handleItalic} disabled={disabled} aria-label="Italic">
             <FormatItalicIcon fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Underline">
-          <IconButton size="small" onClick={handleUnderline}>
-            <FormatUnderlinedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Insert Link">
-          <IconButton size="small" onClick={handleLink}>
+        <Tooltip title="Insert link">
+          <IconButton onClick={handleLink} disabled={disabled} aria-label="Insert link">
             <LinkIcon fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Bullet List">
-          <IconButton size="small" onClick={handleBulletList}>
-            <FormatListBulletedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        {onFileUpload && (
-          <>
-            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-            <Tooltip title="Upload Image">
-              <IconButton 
-                size="small" 
-                onClick={() => {
-                  if (fileInputRef.current) {
-                    fileInputRef.current.accept = 'image/*';
-                    fileInputRef.current.click();
-                  }
-                }}
-              >
-                <ImageIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Upload File (PDF, etc.)">
-              <IconButton 
-                size="small" 
-                onClick={() => {
-                  if (fileInputRef.current) {
-                    fileInputRef.current.accept = '.pdf,.doc,.docx';
-                    fileInputRef.current.click();
-                  }
-                }}
-              >
-                <AttachFileIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </>
+        {onAttach && (
+          <Tooltip title="Attach file">
+            <IconButton component="label" disabled={disabled} aria-label="Attach file">
+              <AttachFileIcon fontSize="small" />
+              <input type="file" hidden multiple onChange={handleFileChange} />
+            </IconButton>
+          </Tooltip>
         )}
-        {showSaveDraft && onSaveDraft && (
-          <>
-            <Box sx={{ flex: 1 }} />
-            <Tooltip title="Save Draft">
-              <IconButton size="small" onClick={onSaveDraft} color="primary">
-                <SaveIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </>
-        )}
-      </Box>
-
-      {/* Editor */}
+      </ButtonGroup>
       <Box
         ref={editorRef}
-        contentEditable
+        contentEditable={!disabled}
         onInput={handleInput}
-        dir="ltr"
-        style={{
-          minHeight: `${minHeight}px`,
-          padding: '12px',
-          outline: 'none',
-          overflowY: 'auto',
-          direction: 'ltr',
-          textAlign: 'left'
-        }}
+        onPaste={handleInput}
         data-placeholder={placeholder}
+        suppressContentEditableWarning
         sx={{
-          '&:empty:before': {
-            content: 'attr(data-placeholder)',
-            color: 'text.disabled',
-            pointerEvents: 'none'
-          },
-          '& img': {
-            maxWidth: '100%',
-            height: 'auto',
-            borderRadius: 1,
-            margin: '8px 0'
-          },
-          '& a': {
-            color: 'primary.main',
-            textDecoration: 'underline'
-          },
-          '& ul, & ol': {
-            marginLeft: '20px',
-            paddingLeft: '20px'
-          },
-          '& u': {
-            textDecoration: 'underline'
-          }
+          ...editableSx,
+          minHeight: minRows * 24,
+          bgcolor: disabled ? 'action.hover' : undefined
         }}
       />
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        style={{ display: 'none' }}
-        onChange={handleFileSelect}
-      />
+      <style>{`
+        [data-placeholder]:empty:before {
+          content: attr(data-placeholder);
+          color: rgba(0,0,0,0.38);
+        }
+      `}</style>
+      {attachments.length > 0 && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
+          {attachments.map((att, i) => (
+            <Chip
+              key={i}
+              size="small"
+              label={att.name}
+              onDelete={onRemoveAttachment ? () => onRemoveAttachment(i) : undefined}
+              component="a"
+              href={att.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              clickable
+            />
+          ))}
+        </Box>
+      )}
     </Box>
   );
 };
