@@ -37,6 +37,7 @@ interface AnnouncementListProps {
   cohortId: string;
   announcements: CohortAnnouncement[];
   canPost: boolean;
+  canModerate?: boolean; // Admins/Managers can delete any announcement
   onAnnouncementCreated: (announcement: CohortAnnouncement) => void;
   onAnnouncementDeleted: (announcementId: string) => void;
   loading: boolean;
@@ -46,11 +47,26 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
   cohortId,
   announcements,
   canPost,
+  canModerate = false,
   onAnnouncementCreated,
   onAnnouncementDeleted,
   loading
 }) => {
   const { userProfile } = useUserProfile();
+  
+  const canEditAnnouncement = (announcement: CohortAnnouncement) => {
+    // Only the author can edit
+    return announcement.created_by === userProfile?.id;
+  };
+  
+  const canDeleteAnnouncement = (announcement: CohortAnnouncement) => {
+    // Author or moderators (admin/manager) can delete
+    return announcement.created_by === userProfile?.id || canModerate;
+  };
+  
+  const showMenuForAnnouncement = (announcement: CohortAnnouncement) => {
+    return canEditAnnouncement(announcement) || canDeleteAnnouncement(announcement);
+  };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<CohortAnnouncement | null>(null);
   const [title, setTitle] = useState('');
@@ -272,7 +288,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
                   </Typography>
                 </Box>
 
-                {canPost && (
+                {showMenuForAnnouncement(announcement) && (
                   <IconButton 
                     size="small"
                     onClick={(e) => handleMenuOpen(e, announcement)}
@@ -292,14 +308,18 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
         open={Boolean(menuAnchor)}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={handleEdit}>
-          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Edit</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleDeleteClick} sx={{ color: 'error.main' }}>
-          <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
-          <ListItemText>Delete</ListItemText>
-        </MenuItem>
+        {menuAnchor?.announcement && canEditAnnouncement(menuAnchor.announcement) && (
+          <MenuItem onClick={handleEdit}>
+            <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Edit</ListItemText>
+          </MenuItem>
+        )}
+        {menuAnchor?.announcement && canDeleteAnnouncement(menuAnchor.announcement) && (
+          <MenuItem onClick={handleDeleteClick} sx={{ color: 'error.main' }}>
+            <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText>Delete</ListItemText>
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Create/Edit Dialog */}
