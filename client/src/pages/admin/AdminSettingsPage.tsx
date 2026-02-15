@@ -97,7 +97,8 @@ export default function AdminSettingsPage() {
     'programs': 5,
     'cohorts': 6,
     'activity-categories': 7,
-    'education': 8
+    'education': 8,
+    'simulations': 9
   }), []);
 
   const tabIndexToParam: Record<number, string> = useMemo(() => ({
@@ -109,7 +110,8 @@ export default function AdminSettingsPage() {
     5: 'programs',
     6: 'cohorts',
     7: 'activity-categories',
-    8: 'education'
+    8: 'education',
+    9: 'simulations'
   }), []);
 
   // Initialize tab from URL or default to 0
@@ -173,6 +175,26 @@ export default function AdminSettingsPage() {
     resources: []
   });
   const [newResource, setNewResource] = useState('');
+
+  // PECC Simulations (Simulation tab list) - all fields optional
+  interface PeccSimulation {
+    id: string;
+    name: string | null;
+    url: string | null;
+    learning_objectives: string | null;
+    additional_resources: { name: string; url: string }[];
+    display_order: number;
+  }
+  const [simulationsList, setSimulationsList] = useState<PeccSimulation[]>([]);
+  const [simulationsLoading, setSimulationsLoading] = useState(false);
+  const [simDialogOpen, setSimDialogOpen] = useState(false);
+  const [editingSimId, setEditingSimId] = useState<string | null>(null);
+  const [simForm, setSimForm] = useState<{
+    name: string;
+    url: string;
+    learning_objectives: string;
+    additional_resources: { name: string; url: string }[];
+  }>({ name: '', url: '', learning_objectives: '', additional_resources: [] });
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -224,6 +246,36 @@ export default function AdminSettingsPage() {
   };
 
   useEffect(() => { loadQuestions(); }, []);
+
+  const loadSimulations = async () => {
+    setSimulationsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('pecc_simulations')
+        .select('*')
+        .order('display_order', { ascending: true });
+      if (error) throw error;
+      setSimulationsList((data || []).map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        name: r.name != null ? String(r.name) : null,
+        url: r.url != null ? String(r.url) : null,
+        learning_objectives: r.learning_objectives != null ? String(r.learning_objectives) : null,
+        additional_resources: Array.isArray(r.additional_resources)
+          ? (r.additional_resources as { name?: string; url?: string }[]).map(x => ({
+              name: x?.name ?? '',
+              url: x?.url ?? ''
+            }))
+          : [],
+        display_order: Number(r.display_order) ?? 0
+      })));
+    } catch (e) {
+      console.error('Load pecc_simulations:', e);
+      setSimulationsList([]);
+    } finally {
+      setSimulationsLoading(false);
+    }
+  };
+  useEffect(() => { loadSimulations(); }, []);
   
   // Load email settings
   useEffect(() => {
@@ -343,7 +395,63 @@ export default function AdminSettingsPage() {
     localStorage.setItem('education_questions', JSON.stringify(updated));
     setSnackbar({ open: true, message: 'Education question deleted', severity: 'success' });
   };
-  
+
+  const openSimDialog = (sim?: PeccSimulation) => {
+    if (sim) {
+      setEditingSimId(sim.id);
+      setSimForm({
+        name: sim.name ?? '',
+        url: sim.url ?? '',
+        learning_objectives: sim.learning_objectives ?? '',
+        additional_resources: (sim.additional_resources || []).length ? sim.additional_resources : [{ name: '', url: '' }]
+      });
+    } else {
+      setEditingSimId(null);
+      setSimForm({ name: '', url: '', learning_objectives: '', additional_resources: [] });
+    }
+    setSimDialogOpen(true);
+  };
+  const handleSaveSim = async () => {
+    const payload = {
+      name: simForm.name.trim() || null,
+      url: simForm.url.trim() || null,
+      learning_objectives: simForm.learning_objectives.trim() || null,
+      additional_resources: simForm.additional_resources
+        .filter(r => (r.name && r.name.trim()) || (r.url && r.url.trim()))
+        .map(r => ({ name: (r.name || '').trim(), url: (r.url || '').trim() })),
+      updated_at: new Date().toISOString()
+    };
+    try {
+      if (editingSimId) {
+        const { error } = await supabase.from('pecc_simulations').update(payload).eq('id', editingSimId);
+        if (error) throw error;
+      } else {
+        const maxOrder = simulationsList.length ? Math.max(...simulationsList.map(s => s.display_order), 0) : 0;
+        const { error } = await supabase.from('pecc_simulations').insert({
+          ...payload,
+          display_order: maxOrder + 1
+        });
+        if (error) throw error;
+      }
+      setSimDialogOpen(false);
+      loadSimulations();
+      setSnackbar({ open: true, message: 'Simulation saved', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to save simulation', severity: 'error' });
+    }
+  };
+  const handleDeleteSim = async (id: string) => {
+    if (!window.confirm('Remove this simulation from the list?')) return;
+    try {
+      const { error } = await supabase.from('pecc_simulations').delete().eq('id', id);
+      if (error) throw error;
+      loadSimulations();
+      setSnackbar({ open: true, message: 'Simulation removed', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to delete', severity: 'error' });
+    }
+  };
+
   const handleAddResource = () => {
     if (newResource.trim()) {
       setEducationForm(prev => ({
@@ -498,6 +606,7 @@ export default function AdminSettingsPage() {
         <Tab label="Cohorts" />
         <Tab label="Activity Categories" />
         <Tab label="Education" />
+        <Tab label="Simulations" />
       </Tabs>
 
       {/* Registration Questions */}
@@ -947,6 +1056,79 @@ export default function AdminSettingsPage() {
           </TableContainer>
         </Box>
       )}
+
+      {/* Simulations (PECC Simulation tab list) */}
+      {tabIndex === 9 && (
+        <Box>
+          <Typography variant="h6" gutterBottom>Simulations</Typography>
+          <Typography color="textSecondary" sx={{ mb: 2 }}>
+            Manage the list of simulations shown on the PECC Simulation tab. All fields are optional.
+          </Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => openSimDialog()} sx={{ mb: 2 }}>
+            Add simulation
+          </Button>
+          {simulationsLoading ? (
+            <Typography>Loading…</Typography>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>URL</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {simulationsList.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} align="center">
+                        <Typography color="textSecondary">No simulations yet. Add one to show on the Simulation tab.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    simulationsList.map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell>{s.name || '—'}</TableCell>
+                        <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.url || '—'}</TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" onClick={() => openSimDialog(s)}><EditIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => handleDeleteSim(s.id)}><DeleteIcon fontSize="small" /></IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
+      )}
+
+      {/* Simulation Add/Edit Dialog */}
+      <Dialog open={simDialogOpen} onClose={() => setSimDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingSimId ? 'Edit simulation' : 'Add simulation'}</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth label="Name" value={simForm.name} onChange={e => setSimForm(prev => ({ ...prev, name: e.target.value }))} margin="normal" placeholder="Optional" />
+          <TextField fullWidth label="URL" value={simForm.url} onChange={e => setSimForm(prev => ({ ...prev, url: e.target.value }))} margin="normal" placeholder="Optional — name will link here" />
+          <TextField fullWidth label="Learning objectives" value={simForm.learning_objectives} onChange={e => setSimForm(prev => ({ ...prev, learning_objectives: e.target.value }))} margin="normal" multiline rows={4} placeholder="Optional — one per line (shown as bullets)" />
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Additional resources (optional)</Typography>
+          {simForm.additional_resources.map((res, idx) => (
+            <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
+              <TextField size="small" label="Name" value={res.name} onChange={e => setSimForm(prev => ({ ...prev, additional_resources: prev.additional_resources.map((r, i) => i === idx ? { ...r, name: e.target.value } : r) }))} placeholder="Label" sx={{ flex: 1 }} />
+              <TextField size="small" label="URL" value={res.url} onChange={e => setSimForm(prev => ({ ...prev, additional_resources: prev.additional_resources.map((r, i) => i === idx ? { ...r, url: e.target.value } : r) }))} placeholder="https://…" sx={{ flex: 1 }} />
+              <IconButton size="small" onClick={() => setSimForm(prev => ({ ...prev, additional_resources: prev.additional_resources.filter((_, i) => i !== idx) }))}><DeleteIcon fontSize="small" /></IconButton>
+            </Box>
+          ))}
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setSimForm(prev => ({ ...prev, additional_resources: [...prev.additional_resources, { name: '', url: '' }] }))}>
+            Add resource
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSimDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleSaveSim} variant="contained">Save</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Education Question Edit Dialog */}
       <Dialog open={educationDialogOpen} onClose={() => setEducationDialogOpen(false)} maxWidth="md" fullWidth>

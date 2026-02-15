@@ -56,6 +56,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import ScormPackagesSection from '../components/ScormPackagesSection';
+import { supabase } from '../supabase';
 
 interface SimulationCase {
   id: string;
@@ -407,6 +408,14 @@ const SimulationPage: React.FC = () => {
     overallRating: 3
   });
 
+  const [peccSimulations, setPeccSimulations] = useState<Array<{
+    id: string;
+    name: string | null;
+    url: string | null;
+    learning_objectives: string | null;
+    additional_resources: { name: string; url: string }[];
+  }>>([]);
+
   const [caseGapForm, setCaseGapForm] = useState({
     caseName: '',
     otherCaseName: '',
@@ -460,6 +469,26 @@ const SimulationPage: React.FC = () => {
       localStorage.setItem(`simulation_gaps_${currentUser.uid}`, JSON.stringify(gaps));
     }
   }, [gaps, currentUser]);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data, error } = await supabase.from('pecc_simulations').select('id, name, url, learning_objectives, additional_resources').order('display_order', { ascending: true });
+      if (error) {
+        console.error('pecc_simulations', error);
+        return;
+      }
+      setPeccSimulations((data || []).map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        name: r.name != null ? String(r.name) : null,
+        url: r.url != null ? String(r.url) : null,
+        learning_objectives: r.learning_objectives != null ? String(r.learning_objectives) : null,
+        additional_resources: Array.isArray(r.additional_resources)
+          ? (r.additional_resources as { name?: string; url?: string }[]).map(x => ({ name: x?.name ?? '', url: x?.url ?? '' }))
+          : []
+      })));
+    };
+    load();
+  }, []);
 
   const handleStartSimulation = (caseId: string) => {
     trackClick?.('Simulation - Start');
@@ -1161,202 +1190,7 @@ const SimulationPage: React.FC = () => {
           </Button>
         </Box>
 
-        {/* Simulation Cases */}
-        <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
-          SimBox Cases
-        </Typography>
-        
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
-          {SIMULATION_CASES.map((caseItem) => {
-            const caseGaps = gaps.filter(gap => gap.caseName === caseItem.name);
-            const completedGaps = caseGaps.filter(gap => gap.status === 'completed');
-            const inProgressGaps = caseGaps.filter(gap => gap.status === 'in_progress');
-            
-            return (
-              <Card key={caseItem.id} sx={{ width: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Typography 
-                        variant="h6" 
-                        component="h3" 
-                        gutterBottom
-                        sx={{ 
-                          cursor: 'pointer',
-                          color: 'primary.main',
-                          textDecoration: 'underline',
-                          mb: 0,
-                          '&:hover': {
-                            color: 'primary.dark',
-                            textDecoration: 'underline'
-                          }
-                        }}
-                        onClick={() => {
-                          // Map case names to their EmergencySimBox URLs
-                          const caseUrls: Record<string, string> = {
-                            'Diabetic Ketoacidosis (DKA)': 'https://www.emergencysimbox.com/diabetic-ketoacidosis-dka',
-                            'Bronchiolitis': 'https://www.emergencysimbox.com/respiratory-distress',
-                            'Asthma': 'https://www.emergencysimbox.com/a-child-with-wheeze',
-                            'Severe Head Injury': 'https://www.emergencysimbox.com/severe-head-injury',
-                            'A Vomiting Baby': 'https://www.emergencysimbox.com/a-vomiting-baby',
-                            'Pediatric Tracheostomy Emergency': 'https://www.emergencysimbox.com/trach',
-                            'Newborn Resuscitation': 'https://www.emergencysimbox.com/newborn-resuscitation',
-                            'A Postpartum Complication': 'https://www.emergencysimbox.com/a-postpartum-complication',
-                            'Scald Burn': 'https://www.emergencysimbox.com/scald-burn',
-                            'Agitation': 'https://www.emergencysimbox.com/agitation',
-                            'A Seizing Infant': 'https://www.emergencysimbox.com/a-seizing-infant',
-                            'Supraventricular Tachycardia': 'https://www.emergencysimbox.com/a-fussy-baby',
-                            'Blunt Abdominal Trauma': 'https://www.emergencysimbox.com/pediatric-trauma',
-                            'A Sick Neonate': 'https://www.emergencysimbox.com/a-sick-neonate',
-                            'A Seizing Child': 'https://www.emergencysimbox.com/a-seizing-child',
-                            'Pediatric Anaphylaxis': 'https://www.emergencysimbox.com/anaphylaxis',
-                            'Altered Mental Status': 'https://www.emergencysimbox.com/altered-mental-status'
-                          };
-                          
-                          const url = caseUrls[caseItem.name];
-                          if (url) {
-                            window.open(url, '_blank');
-                          }
-                        }}
-                      >
-                        {caseItem.name}
-                      </Typography>
-                      {caseGaps.length > 0 && (
-                        <Chip 
-                          label={`${completedGaps.length}/${caseGaps.length} resolved`}
-                          size="small" 
-                          color={completedGaps.length === caseGaps.length ? 'success' : 'warning'}
-                        />
-                      )}
-                    </Box>
-                    <Button
-                      variant="contained"
-                      onClick={() => handleStartSimulation(caseItem.id)}
-                      sx={{ minWidth: 200 }}
-                    >
-                      Identified Gaps & Action Plans
-                    </Button>
-                  </Box>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
-                      Learning Objectives:
-                    </Typography>
-                    <Box component="ul" sx={{ pl: 2, m: 0 }}>
-                      {caseItem.learningObjectives.map((objective, index) => (
-                        <Typography 
-                          key={index} 
-                          component="li" 
-                          variant="body2" 
-                          color="text.secondary"
-                          sx={{ mb: 0.5, lineHeight: 1.4 }}
-                        >
-                          {objective}
-                        </Typography>
-                      ))}
-                    </Box>
-                  </Box>
-
-                  {/* Identified Gaps for this case */}
-                  {caseGaps.length > 0 && (
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
-                        Identified Gaps ({caseGaps.length}):
-                      </Typography>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                        {caseGaps.map((gap) => (
-                          <Chip
-                            key={gap.id}
-                            label={gap.description}
-                            size="small"
-                            color={getSeverityColor(gap.severity) as any}
-                            icon={getCategoryIcon(gap.category)}
-                            onClick={() => handleOpenGapDialog(gap)}
-                            sx={{ cursor: 'pointer' }}
-                          />
-                        ))}
-                      </Box>
-                      
-                      {/* Action Plans Summary */}
-                      {inProgressGaps.length > 0 && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            {inProgressGaps.length} action plan{inProgressGaps.length > 1 ? 's' : ''} in progress
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  )}
-                  
-                </CardContent>
-              </Card>
-            );
-          })}
-        </Box>
-
-        {/* Other Cases */}
-        {otherCases.length > 0 && (
-          <>
-            <Typography variant="h5" gutterBottom sx={{ mb: 3, mt: 4 }}>
-              Other Cases
-            </Typography>
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
-              {otherCases.map((caseName) => {
-                const caseGaps = gaps.filter(gap => gap.caseName === caseName);
-                return (
-                  <Card key={caseName} sx={{ width: '100%' }}>
-                    <CardContent>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 0 }}>
-                          {caseName}
-                        </Typography>
-                        <Button
-                          variant="outlined"
-                          onClick={() => {
-                            setCaseGapForm(prev => ({ ...prev, caseName: 'other', otherCaseName: caseName }));
-                            handleOpenCaseGapDialog();
-                          }}
-                          sx={{ minWidth: 200 }}
-                        >
-                          Identified Gaps & Action Plans
-                        </Button>
-                      </Box>
-                      
-                      {caseGaps.length > 0 && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            {caseGaps.length} gap{caseGaps.length !== 1 ? 's' : ''} identified
-                          </Typography>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {caseGaps.slice(0, 3).map((gap) => (
-                              <Chip
-                                key={gap.id}
-                                label={gap.description.length > 50 ? `${gap.description.substring(0, 50)}...` : gap.description}
-                                size="small"
-                                color={gap.status === 'completed' ? 'success' : gap.severity === 'high' ? 'error' : gap.severity === 'medium' ? 'warning' : 'default'}
-                                variant={gap.status === 'completed' ? 'filled' : 'outlined'}
-                              />
-                            ))}
-                            {caseGaps.length > 3 && (
-                              <Chip
-                                label={`+${caseGaps.length - 3} more`}
-                                size="small"
-                                variant="outlined"
-                              />
-                            )}
-                          </Box>
-                        </Box>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </Box>
-          </>
-        )}
-
-        {/* Sortable Gap Management */}
+        {/* All Identified Gaps - above simulations for PECC */}
         <Box sx={{ mt: 4 }} id="all-identified-gaps">
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Typography variant="h5" gutterBottom>
@@ -1442,9 +1276,9 @@ const SimulationPage: React.FC = () => {
                       label="Case"
                     >
                       <MenuItem value="all">All Cases</MenuItem>
-                      {SIMULATION_CASES.map((caseItem) => (
-                        <MenuItem key={caseItem.id} value={caseItem.name}>
-                          {caseItem.name}
+                      {[...new Set([...peccSimulations.map(s => s.name).filter(Boolean) as string[], ...gaps.map(g => g.caseName), ...otherCases])].filter(Boolean).sort().map((caseName) => (
+                        <MenuItem key={caseName} value={caseName}>
+                          {caseName}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1658,6 +1492,175 @@ const SimulationPage: React.FC = () => {
             </Card>
           )}
         </Box>
+
+        {/* Simulations (admin-managed list) */}
+        <Typography variant="h5" gutterBottom sx={{ mb: 3, mt: 4 }}>
+          Simulations
+        </Typography>
+        
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
+          {peccSimulations.map((sim) => {
+            const caseGaps = gaps.filter(gap => gap.caseName === (sim.name ?? ''));
+            const completedGaps = caseGaps.filter(gap => gap.status === 'completed');
+            const objectives = (sim.learning_objectives ?? '').trim().split(/\r?\n/).filter(Boolean);
+            const resources = (sim.additional_resources || []).filter(r => (r.name && r.name.trim()) || (r.url && r.url.trim()));
+            return (
+              <Card key={sim.id} sx={{ width: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      {sim.url ? (
+                        <Typography
+                          variant="h6"
+                          component="a"
+                          href={sim.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{ color: 'primary.main', textDecoration: 'underline', '&:hover': { color: 'primary.dark' }, mb: 0 }}
+                        >
+                          {sim.name || 'Simulation'}
+                        </Typography>
+                      ) : (
+                        <Typography variant="h6" component="h3" sx={{ mb: 0 }}>
+                          {sim.name || 'Simulation'}
+                        </Typography>
+                      )}
+                      {caseGaps.length > 0 && (
+                        <Chip
+                          label={`${completedGaps.length}/${caseGaps.length} resolved`}
+                          size="small"
+                          color={completedGaps.length === caseGaps.length ? 'success' : 'warning'}
+                        />
+                      )}
+                    </Box>
+                    <Button
+                      variant="contained"
+                      onClick={() => {
+                        setCaseGapForm(prev => ({ ...prev, caseName: sim.name ?? '', otherCaseName: '' }));
+                        handleOpenCaseGapDialog();
+                      }}
+                      sx={{ minWidth: 200 }}
+                    >
+                      Identified Gaps & Action Plans
+                    </Button>
+                  </Box>
+                  {objectives.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
+                        Learning Objectives:
+                      </Typography>
+                      <Box component="ul" sx={{ pl: 2, m: 0 }}>
+                        {objectives.map((obj, idx) => (
+                          <Typography key={idx} component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5, lineHeight: 1.4 }}>
+                            {obj}
+                          </Typography>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                  {resources.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
+                        Additional Resources:
+                      </Typography>
+                      <Box component="ul" sx={{ pl: 2, m: 0 }}>
+                        {resources.map((r, idx) => (
+                          <li key={idx}>
+                            <Typography component="a" href={r.url} target="_blank" rel="noopener noreferrer" variant="body2" sx={{ color: 'primary.main', textDecoration: 'underline' }}>
+                              {r.name?.trim() || r.url}
+                            </Typography>
+                          </li>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                  {caseGaps.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
+                        Identified Gaps ({caseGaps.length}):
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {caseGaps.map((gap) => (
+                          <Chip
+                            key={gap.id}
+                            label={gap.description}
+                            size="small"
+                            color={getSeverityColor(gap.severity) as any}
+                            icon={getCategoryIcon(gap.category)}
+                            onClick={() => handleOpenGapDialog(gap)}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </Box>
+
+        {/* Other Cases */}
+        {otherCases.length > 0 && (
+          <>
+            <Typography variant="h5" gutterBottom sx={{ mb: 3, mt: 4 }}>
+              Other Cases
+            </Typography>
+            
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
+              {otherCases.map((caseName) => {
+                const caseGaps = gaps.filter(gap => gap.caseName === caseName);
+                return (
+                  <Card key={caseName} sx={{ width: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 0 }}>
+                          {caseName}
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          onClick={() => {
+                            setCaseGapForm(prev => ({ ...prev, caseName: 'other', otherCaseName: caseName }));
+                            handleOpenCaseGapDialog();
+                          }}
+                          sx={{ minWidth: 200 }}
+                        >
+                          Identified Gaps & Action Plans
+                        </Button>
+                      </Box>
+                      
+                      {caseGaps.length > 0 && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            {caseGaps.length} gap{caseGaps.length !== 1 ? 's' : ''} identified
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {caseGaps.slice(0, 3).map((gap) => (
+                              <Chip
+                                key={gap.id}
+                                label={gap.description.length > 50 ? `${gap.description.substring(0, 50)}...` : gap.description}
+                                size="small"
+                                color={gap.status === 'completed' ? 'success' : gap.severity === 'high' ? 'error' : gap.severity === 'medium' ? 'warning' : 'default'}
+                                variant={gap.status === 'completed' ? 'filled' : 'outlined'}
+                              />
+                            ))}
+                            {caseGaps.length > 3 && (
+                              <Chip
+                                label={`+${caseGaps.length - 3} more`}
+                                size="small"
+                                variant="outlined"
+                              />
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Box>
+          </>
+        )}
 
         {/* Simulation Dialog with Stepper */}
         <Dialog open={open} onClose={handleCloseDialog} maxWidth="md" fullWidth>
@@ -2107,9 +2110,9 @@ const SimulationPage: React.FC = () => {
                     onChange={(e) => handleCaseGapChange('caseName', e.target.value)}
                     label="Case"
                   >
-                    {SIMULATION_CASES.map((caseItem) => (
-                      <MenuItem key={caseItem.id} value={caseItem.name}>
-                        {caseItem.name}
+                    {peccSimulations.filter(s => s.name && s.name.trim()).map((sim) => (
+                      <MenuItem key={sim.id} value={sim.name!}>
+                        {sim.name}
                       </MenuItem>
                     ))}
                     <MenuItem value="other">Other</MenuItem>
