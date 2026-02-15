@@ -58,7 +58,10 @@ interface Activity {
   id: string;
   date: string;
   activity: string;
-  category: string;
+  /** Single category (legacy); prefer categories when present */
+  category?: string;
+  /** Multiple categories (current) */
+  categories?: string[];
   hours: number;
   simulation?: string;
   simulationOther?: string;
@@ -71,6 +74,13 @@ interface Activity {
   updated_at?: string;
   last_sync_at?: string;
   submitted_by?: string; // User id who submitted (for shared-site per-person hours)
+}
+
+/** Normalize activity to categories array (supports legacy single category) */
+function getActivityCategories(a: Activity): string[] {
+  if (a.categories && a.categories.length > 0) return a.categories;
+  if (a.category) return [a.category];
+  return [];
 }
 
 interface GapPlan {
@@ -134,7 +144,10 @@ const PARTICIPANT_OPTIONS = Array.from({ length: 26 }, (_, i) => i);
 
 const ActivitiesPage = () => {
   const { currentUser, loading } = useAuth();
-  const { trackClick } = useUsageAnalytics();
+  const { trackClick, trackActivity } = useUsageAnalytics();
+  useEffect(() => {
+    trackActivity('view');
+  }, [trackActivity]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [simulationGaps, setSimulationGaps] = useState<any[]>([]);
@@ -145,7 +158,7 @@ const ActivitiesPage = () => {
   const [formData, setFormData] = useState({
     date: '',
     activity: '',
-    category: '',
+    categories: [] as string[],
     hours: 0,
     simulation: '',
     simulationOther: '',
@@ -267,19 +280,22 @@ const ActivitiesPage = () => {
 
   const handleSubmit = () => {
     try {
-      if (!formData.date || !formData.activity || !formData.category || formData.hours === undefined || formData.hours === null) {
-        setError('Please fill in all required fields');
+      const hasCategories = formData.categories && formData.categories.length > 0;
+      if (!formData.date || !formData.activity || !hasCategories || formData.hours === undefined || formData.hours === null) {
+        setError('Please fill in all required fields (including at least one category)');
         return;
       }
 
-      const isSimulation = formData.category === 'Simulation Facilitation';
+      const isSimulation = formData.categories.includes('Simulation Facilitation');
       
       if (editingActivity) {
+        trackActivity('edit', { activity_id: editingActivity.id, name: formData.activity?.slice(0, 80) });
         const updatedActivity: Activity = {
           ...editingActivity,
           date: formData.date,
           activity: formData.activity,
-          category: formData.category,
+          categories: formData.categories,
+          category: formData.categories[0],
           hours: formData.hours,
           simulation: isSimulation ? formData.simulation : undefined,
           simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
@@ -294,12 +310,14 @@ const ActivitiesPage = () => {
         );
         saveActivities(updatedActivities);
       } else {
+        trackActivity('create', { name: formData.activity?.slice(0, 80) });
         const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
         const newActivity: Activity = {
           id: Date.now().toString(),
           date: formData.date,
           activity: formData.activity,
-          category: formData.category,
+          categories: formData.categories,
+          category: formData.categories[0],
           hours: formData.hours,
           simulation: isSimulation ? formData.simulation : undefined,
           simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
@@ -328,7 +346,7 @@ const ActivitiesPage = () => {
       setFormData({
         date: activity.date,
         activity: activity.activity,
-        category: activity.category,
+        categories: getActivityCategories(activity),
         hours: activity.hours,
         simulation: activity.simulation || '',
         simulationOther: activity.simulationOther || '',
@@ -347,6 +365,7 @@ const ActivitiesPage = () => {
 
   const handleDelete = (id: string) => {
     try {
+      trackActivity('delete', { activity_id: id });
       const updatedActivities = activities.filter(activity => activity.id !== id);
       saveActivities(updatedActivities);
     } catch (err) {
@@ -364,7 +383,7 @@ const ActivitiesPage = () => {
       setFormData({
         date: '',
         activity: '',
-        category: '',
+        categories: [],
         hours: 0,
         simulation: '',
         simulationOther: '',
@@ -406,14 +425,14 @@ const ActivitiesPage = () => {
     }));
   };
 
-  const isSimulationCategory = formData.category === 'Simulation Facilitation';
+  const isSimulationCategory = formData.categories.includes('Simulation Facilitation');
 
   // Filter and sort activities
   const filteredAndSortedActivities = activities
     .filter(activity => {
       if (filterDateStart && activity.date < filterDateStart) return false;
       if (filterDateEnd && activity.date > filterDateEnd) return false;
-      if (filterCategory && activity.category !== filterCategory) return false;
+      if (filterCategory && !getActivityCategories(activity).includes(filterCategory)) return false;
       return true;
     })
     .sort((a, b) => {
@@ -424,7 +443,7 @@ const ActivitiesPage = () => {
           comparison = a.date.localeCompare(b.date);
           break;
         case 'category':
-          comparison = a.category.localeCompare(b.category);
+          comparison = (getActivityCategories(a).join(', ') || '').localeCompare(getActivityCategories(b).join(', ') || '');
           break;
         case 'hours':
           comparison = a.hours - b.hours;
@@ -461,7 +480,7 @@ const ActivitiesPage = () => {
       const exportData = filteredAndSortedActivities.map(activity => ({
         Date: formatDate(activity.date),
         Activity: activity.activity,
-        Category: activity.category,
+        Category: getActivityCategories(activity).join('; '),
         Hours: activity.hours,
         Simulation: activity.simulation || '',
         Participants: activity.participants || '',
@@ -510,7 +529,7 @@ const ActivitiesPage = () => {
         yPos += 8;
 
         doc.setFontSize(10);
-        doc.text(`Date: ${formatDate(activity.date)} | Category: ${activity.category} | Hours: ${activity.hours}`, 20, yPos);
+        doc.text(`Date: ${formatDate(activity.date)} | Category: ${getActivityCategories(activity).join(', ')} | Hours: ${activity.hours}`, 20, yPos);
         yPos += 8;
 
         if (activity.simulation) {
@@ -926,7 +945,7 @@ const ActivitiesPage = () => {
                             Category:
                           </Typography>
                           <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
-                            {activity.category}
+                            {getActivityCategories(activity).join(', ')}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -1111,14 +1130,37 @@ const ActivitiesPage = () => {
             </Grid>
             <Grid item xs={12}>
               <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel>Category</InputLabel>
+                <InputLabel>Categories</InputLabel>
                 <Select
-                  value={formData.category}
-                  label="Category"
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  multiple
+                  value={formData.categories}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData(prev => ({
+                      ...prev,
+                      categories: typeof value === 'string' ? value.split(',') : value
+                    }));
+                  }}
+                  input={<OutlinedInput label="Categories" />}
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {(selected as string[]).map((cat) => (
+                        <Chip key={cat} label={cat} size="small" />
+                      ))}
+                    </Box>
+                  )}
+                  MenuProps={{
+                    PaperProps: {
+                      style: {
+                        maxHeight: 400,
+                        width: 'auto',
+                        minWidth: '100%'
+                      }
+                    }
+                  }}
                 >
                   {activityCategories.map(category => (
-                    <MenuItem key={category} value={category}>
+                    <MenuItem key={category} value={category} sx={{ whiteSpace: 'normal', py: 1 }}>
                       {category}
                     </MenuItem>
                   ))}
