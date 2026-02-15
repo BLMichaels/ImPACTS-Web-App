@@ -37,24 +37,45 @@ import {
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { UserRole, PERMISSIONS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User } from '../../types/database';
+import { UserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User } from '../../types/database';
+
+const PERMISSION_GROUPS: Record<string, string[]> = {
+  'Dashboard & Views': [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_AGGREGATED_DATA, PERMISSIONS.VIEW_SNAPSHOT, PERMISSIONS.EXPORT_DATA],
+  'Activities': [PERMISSIONS.VIEW_OWN_ACTIVITIES, PERMISSIONS.VIEW_TEAM_ACTIVITIES, PERMISSIONS.VIEW_ALL_ACTIVITIES, PERMISSIONS.MANAGE_OWN_ACTIVITIES],
+  'Hospitals': [PERMISSIONS.VIEW_OWN_HOSPITALS, PERMISSIONS.VIEW_ALL_HOSPITALS, PERMISSIONS.MANAGE_HOSPITALS],
+  'Contacts & CRM': [PERMISSIONS.VIEW_CONTACTS, PERMISSIONS.MANAGE_CONTACTS],
+  'User Management': [PERMISSIONS.VIEW_USERS, PERMISSIONS.MANAGE_USERS, PERMISSIONS.SEND_INVITATIONS],
+  'Assessments & Plans': [PERMISSIONS.VIEW_PRS, PERMISSIONS.VIEW_GAP_PLANS, PERMISSIONS.VIEW_MILESTONES, PERMISSIONS.VIEW_SIMULATIONS],
+  'Wages & Expenses': [PERMISSIONS.VIEW_OWN_WAGES, PERMISSIONS.VIEW_TEAM_WAGES, PERMISSIONS.MANAGE_WAGES],
+  'Cohorts': [PERMISSIONS.VIEW_COHORTS, PERMISSIONS.MANAGE_COHORTS, PERMISSIONS.COHORT_INVITE, PERMISSIONS.COHORT_ANNOUNCE, PERMISSIONS.COHORT_MODERATE],
+  'Programs': [PERMISSIONS.VIEW_PROGRAMS, PERMISSIONS.MANAGE_PROGRAMS, PERMISSIONS.PROGRAM_ANNOUNCE],
+  'Administration': [PERMISSIONS.MANAGE_PERMISSIONS, PERMISSIONS.SYSTEM_SETTINGS]
+};
+
+const TOOL_SECTION_TABS = [
+  { key: 'snapshot_prs_section', label: 'Pediatric Readiness Scores (on Snapshot / Tool page)' }
+];
 
 interface GranularPermissionsManagerProps {
   mode: 'admin' | 'manager';  // Admin can manage all, Manager can only manage their team
+  initialSelectedUserId?: string;  // When opening from CRM "Manage permissions", pre-select this user
 }
 
-const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({ mode }) => {
+const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({ mode, initialSelectedUserId }) => {
   const { userProfile } = useUserProfile();
   const [activeTab, setActiveTab] = useState(0);  // 0: Users, 1: Cohorts, 2: Programs, 3: Tabs
   
   // Data
   const [users, setUsers] = useState<User[]>([]);
+  const [staffEmails, setStaffEmails] = useState<Set<string>>(new Set());
+  const [staffAdminEmails, setStaffAdminEmails] = useState<Set<string>>(new Set()); // CRM staff with is_admin=true
+  const [staffNamesByEmail, setStaffNamesByEmail] = useState<Record<string, string>>({});
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Selected entities
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [selectedUserId, setSelectedUserId] = useState<string>(initialSelectedUserId || '');
   const [selectedCohortId, setSelectedCohortId] = useState<string>('');
   const [selectedProgramId, setSelectedProgramId] = useState<string>('');
   
@@ -68,18 +89,54 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   const [permissionStates, setPermissionStates] = useState<Record<string, boolean>>({});
   const [tabVisibilityStates, setTabVisibilityStates] = useState<Record<string, boolean>>({});
   
-  // Common tabs for cohorts/programs
-  const COMMON_TABS = ['announcements', 'discussions', 'members', 'activities', 'milestones', 'wages'];
+  // Common tabs for cohorts/programs (tab_key -> display label)
+  const COHORT_PROGRAM_TABS: { key: string; label: string }[] = [
+    { key: 'announcements', label: 'Announcements' },
+    { key: 'discussions', label: 'Discussions' },
+    { key: 'members', label: 'Members' },
+    { key: 'activities', label: 'Activities' },
+    { key: 'milestones', label: 'Milestones' },
+    { key: 'wages', label: 'Wages & Expenses' },
+    { key: 'learning', label: 'Learning modules (SCORM)' }
+  ];
+
+  const getUserDisplayName = (u: User): string => {
+    const fromUser = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+    if (fromUser) return fromUser;
+    const fromCrm = staffNamesByEmail[(u.email || '').trim().toLowerCase()];
+    if (fromCrm) return fromCrm;
+    return (u.email || '').trim() || '(No name)';
+  };
+
+  const isEffectivelyAdmin = (u: User): boolean => {
+    if (u.is_admin) return true;
+    const email = (u.email || '').trim().toLowerCase();
+    return !!(email && staffEmails.has(email) && staffAdminEmails.has(email));
+  };
+
+  const getEffectiveRoleLabel = (u: User): string => {
+    if (u.is_admin || isEffectivelyAdmin(u)) return 'Admin';
+    const email = (u.email || '').trim().toLowerCase();
+    if (email && staffEmails.has(email)) return 'Staff';
+    return u.role || '—';
+  };
   
   useEffect(() => {
     loadData();
   }, [mode, userProfile?.id]);
+
+  useEffect(() => {
+    if (initialSelectedUserId && users.some(u => u.id === initialSelectedUserId)) {
+      setSelectedUserId(initialSelectedUserId);
+      setActiveTab(0);
+    }
+  }, [initialSelectedUserId, users]);
   
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load users (filtered by mode)
-      let usersQuery = supabase.from('users').select('id, email, first_name, last_name, phone, role, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc');
+      // Load users (filtered by mode). Include is_admin so we show effective role (Admin overrides base role).
+      let usersQuery = supabase.from('users').select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc');
       if (mode === 'manager' && userProfile?.id) {
         // Managers can only see their direct reports
         usersQuery = usersQuery.or(`manager_id.eq.${userProfile.id},manager_id_for_pecc.eq.${userProfile.id}`);
@@ -93,6 +150,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           last_name: string;
           phone: string | null;
           role: string;
+          is_admin?: boolean;
           is_active: boolean;
           created_at: string;
           updated_at: string;
@@ -103,10 +161,11 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         }) => ({
           id: u.id,
           email: u.email,
-          first_name: u.first_name,
-          last_name: u.last_name,
+          first_name: u.first_name ?? '',
+          last_name: u.last_name ?? '',
           phone: u.phone || null,
           role: u.role as UserRole,
+          is_admin: u.is_admin === true,
           is_active: u.is_active ?? true,
           created_at: u.created_at || new Date().toISOString(),
           updated_at: u.updated_at || new Date().toISOString(),
@@ -116,21 +175,48 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           manager_id_for_pecc: u.manager_id_for_pecc || null
         })));
       }
+
+      // Load CRM staff (contact_type='staff') so we can align display: show "Staff" / "Admin" and use CRM names when user name is missing
+      if (mode === 'admin') {
+        const { data: staffRows } = await supabase
+          .from('crm_organizations')
+          .select('email, first_name, last_name, is_admin')
+          .eq('contact_type', 'staff');
+        const emails = new Set<string>();
+        const adminEmails = new Set<string>();
+        const namesByEmail: Record<string, string> = {};
+        (staffRows || []).forEach((r: { email?: string; first_name?: string; last_name?: string; is_admin?: boolean }) => {
+          const email = (r.email || '').trim().toLowerCase();
+          if (email) {
+            emails.add(email);
+            if (r.is_admin === true) adminEmails.add(email);
+            const name = [r.first_name, r.last_name].filter(Boolean).join(' ').trim();
+            if (name && !namesByEmail[email]) namesByEmail[email] = name;
+          }
+        });
+        setStaffEmails(emails);
+        setStaffAdminEmails(adminEmails);
+        setStaffNamesByEmail(namesByEmail);
+      } else {
+        setStaffEmails(new Set());
+        setStaffAdminEmails(new Set());
+        setStaffNamesByEmail({});
+      }
       
-      // Load cohorts (filtered by mode)
-      let cohortsQuery = supabase.from('cohorts').select('id, name, description, program_id, created_by, is_active, created_at, updated_at').eq('is_active', true);
+      // Load cohorts (admin: all; manager: only managed, active)
+      let cohortsQuery = supabase.from('cohorts').select('id, name, description, program_id, created_by, is_active, created_at, updated_at').order('name');
       if (mode === 'manager' && userProfile?.id) {
-        // Get cohorts managed by this manager
         const { data: managedCohorts } = await supabase
           .from('cohort_managers')
           .select('cohort_id')
           .eq('manager_id', userProfile.id);
         if (managedCohorts && managedCohorts.length > 0) {
-          cohortsQuery = cohortsQuery.in('id', managedCohorts.map(c => c.cohort_id));
+          cohortsQuery = cohortsQuery.in('id', managedCohorts.map((c: { cohort_id: string }) => c.cohort_id)).eq('is_active', true);
         } else {
-          cohortsQuery = cohortsQuery.eq('id', '00000000-0000-0000-0000-000000000000'); // No results
+          cohortsQuery = cohortsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
         }
       }
+      // Admin: no is_active filter so all cohorts (including inactive) appear for configuration
       const { data: cohortsData } = await cohortsQuery;
       if (cohortsData) {
         setCohorts(cohortsData.map((c: {
@@ -154,18 +240,17 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         })));
       }
       
-      // Load programs (filtered by mode)
-      let programsQuery = supabase.from('programs').select('id, name, description, start_date, end_date, created_by, is_active, created_at, updated_at').eq('is_active', true);
+      // Load programs (admin: all; manager: only managed, active)
+      let programsQuery = supabase.from('programs').select('id, name, description, start_date, end_date, created_by, is_active, created_at, updated_at').order('name');
       if (mode === 'manager' && userProfile?.id) {
-        // Get programs managed by this manager
         const { data: managedPrograms } = await supabase
           .from('program_managers')
           .select('program_id')
           .eq('manager_id', userProfile.id);
         if (managedPrograms && managedPrograms.length > 0) {
-          programsQuery = programsQuery.in('id', managedPrograms.map(p => p.program_id));
+          programsQuery = programsQuery.in('id', managedPrograms.map((p: { program_id: string }) => p.program_id)).eq('is_active', true);
         } else {
-          programsQuery = programsQuery.eq('id', '00000000-0000-0000-0000-000000000000'); // No results
+          programsQuery = programsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
         }
       }
       const { data: programsData } = await programsQuery;
@@ -214,6 +299,14 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         data.forEach(p => { states[p.permission_key] = p.is_enabled; });
         setPermissionStates(states);
       }
+      const { data: userTabsData } = await supabase
+        .from('view_tabs')
+        .select('*')
+        .eq('user_id', selectedUserId);
+      setViewTabs(userTabsData || []);
+      const tabStates: Record<string, boolean> = {};
+      (userTabsData || []).forEach(t => { tabStates[t.tab_key] = t.is_visible; });
+      setTabVisibilityStates(prev => ({ ...prev, ...tabStates }));
     }
     
     if (selectedCohortId) {
@@ -394,70 +487,136 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       {/* User Permissions Tab */}
       {activeTab === 0 && (
         <Paper sx={{ p: 3 }}>
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel>Select User</InputLabel>
-            <Select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} label="Select User">
-              <MenuItem value=""><em>None</em></MenuItem>
-              {users.map(u => (
-                <MenuItem key={u.id} value={u.id}>
-                  {u.first_name} {u.last_name} ({u.email}) - {u.role}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Search users by name or email</Typography>
+          <Autocomplete
+            value={users.find(u => u.id === selectedUserId) ?? null}
+            onChange={(_, user) => setSelectedUserId(user?.id ?? '')}
+            options={users}
+            getOptionLabel={(u) => {
+              const name = getUserDisplayName(u);
+              const role = getEffectiveRoleLabel(u);
+              return `${name} (${u.email}) — ${role}`;
+            }}
+            filterOptions={(options, { inputValue }) => {
+              const q = (inputValue || '').trim().toLowerCase();
+              if (!q) return options;
+              return options.filter(u => {
+                const name = getUserDisplayName(u).toLowerCase();
+                const email = (u.email || '').toLowerCase();
+                return name.includes(q) || email.includes(q);
+              });
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Search and select user"
+                placeholder="Type name or email to find a user (e.g. John Smith)"
+              />
+            )}
+            renderOption={(props, u) => {
+              const name = getUserDisplayName(u);
+              const role = getEffectiveRoleLabel(u);
+              const admin = isEffectivelyAdmin(u);
+              return (
+                <li {...props} key={u.id}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <span>{name}</span>
+                    <Typography variant="body2" color="text.secondary">({u.email})</Typography>
+                    <Chip label={role} size="small" color={admin ? 'error' : role === 'Staff' ? 'primary' : 'default'} variant="outlined" />
+                  </Box>
+                </li>
+              );
+            }}
+            sx={{ mb: 2 }}
+          />
           
-          {selectedUserId && (
+          {selectedUserId && (() => {
+            const selectedUser = users.find(u => u.id === selectedUserId);
+            const isAdmin = selectedUser ? isEffectivelyAdmin(selectedUser) : false;
+            return (
             <Box>
-              <Typography variant="subtitle1" gutterBottom>Permission Overrides</Typography>
+              {isAdmin && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  This user is an <strong>Admin</strong>. Admins have full access to the platform regardless of their base role ({selectedUser?.role ?? '—'}). The toggles below reflect that (all on by default); you can still turn specific overrides off if needed.
+                </Alert>
+              )}
+              <Typography variant="subtitle1" gutterBottom>Permission overrides (fine-grained feature toggles)</Typography>
               <Grid container spacing={2}>
-                {Object.values(PERMISSIONS).map(perm => {
-                  const existing = userPermissions.find(p => p.permission_key === perm);
-                  const isEnabled = existing ? existing.is_enabled : permissionStates[perm] ?? false;
-                  
-                  return (
-                    <Grid item xs={12} sm={6} md={4} key={perm}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={isEnabled}
-                            onChange={(e) => {
-                              setPermissionStates(prev => ({ ...prev, [perm]: e.target.checked }));
-                              handleSaveUserPermission(perm, e.target.checked);
-                            }}
-                          />
-                        }
-                        label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                      />
-                      {existing && (
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeletePermission('user', existing.id)}
-                          sx={{ ml: 1 }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      )}
+                {Object.entries(PERMISSION_GROUPS).map(([groupName, perms]) => (
+                  <Grid item xs={12} key={groupName}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>{groupName}</Typography>
+                    <Grid container spacing={1}>
+                      {perms.map(perm => {
+                        const existing = userPermissions.find(p => p.permission_key === perm);
+                        const isEnabled = existing ? existing.is_enabled : (isAdmin ? true : (permissionStates[perm] ?? false));
+                        return (
+                          <Grid item xs={12} sm={6} md={4} key={perm}>
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={isEnabled}
+                                  onChange={(e) => {
+                                    setPermissionStates(prev => ({ ...prev, [perm]: e.target.checked }));
+                                    handleSaveUserPermission(perm, e.target.checked);
+                                  }}
+                                />
+                              }
+                              label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                            />
+                            {existing && (
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeletePermission('user', existing.id)}
+                                sx={{ ml: 0.5 }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                          </Grid>
+                        );
+                      })}
                     </Grid>
-                  );
-                })}
+                  </Grid>
+                ))}
               </Grid>
             </Box>
-          )}
+          );
+          })()}
         </Paper>
       )}
       
       {/* Cohort Permissions Tab */}
       {activeTab === 1 && (
         <Paper sx={{ p: 3 }}>
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel>Select Cohort</InputLabel>
-            <Select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)} label="Select Cohort">
-              <MenuItem value=""><em>None</em></MenuItem>
-              {cohorts.map(c => (
-                <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Typography variant="subtitle1" gutterBottom sx={{ mb: 1 }}>Select a cohort to set permissions and tab visibility for its members</Typography>
+          <Autocomplete
+            value={cohorts.find(c => c.id === selectedCohortId) ?? null}
+            onChange={(_, c) => setSelectedCohortId(c?.id ?? '')}
+            options={cohorts}
+            getOptionLabel={(c) => `${c.name}${c.is_active === false ? ' (Inactive)' : ''}${c.program_id ? ` — ${c.program_id}` : ''}`}
+            filterOptions={(options, { inputValue }) => {
+              const q = (inputValue || '').trim().toLowerCase();
+              if (!q) return options;
+              return options.filter(c =>
+                c.name.toLowerCase().includes(q) ||
+                (c.program_id || '').toLowerCase().includes(q) ||
+                (c.description || '').toLowerCase().includes(q)
+              );
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Search and select cohort" placeholder="Type cohort name or program to find..." />
+            )}
+            renderOption={(props, c) => (
+              <li {...props} key={c.id}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <span>{c.name}</span>
+                  {c.is_active === false && <Chip label="Inactive" size="small" color="default" variant="outlined" />}
+                  {c.program_id && <Typography variant="body2" color="text.secondary">— {c.program_id}</Typography>}
+                </Box>
+              </li>
+            )}
+            sx={{ mb: 3 }}
+          />
           
           {selectedCohortId && (
             <Box>
@@ -469,8 +628,21 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               <FormControl fullWidth sx={{ mb: 2 }}>
                 <Autocomplete
                   options={users}
-                  getOptionLabel={(u) => `${u.first_name} ${u.last_name} (${u.email})`}
-                  renderInput={(params) => <TextField {...params} label="Select User" />}
+                  getOptionLabel={(u) => {
+                    const name = getUserDisplayName(u);
+                    const role = getEffectiveRoleLabel(u);
+                    return `${name} (${u.email}) — ${role}`;
+                  }}
+                  filterOptions={(options, { inputValue }) => {
+                    const q = (inputValue || '').trim().toLowerCase();
+                    if (!q) return options;
+                    return options.filter(u => {
+                      const name = getUserDisplayName(u).toLowerCase();
+                      const email = (u.email || '').toLowerCase();
+                      return name.includes(q) || email.includes(q);
+                    });
+                  }}
+                  renderInput={(params) => <TextField {...params} label="Select User" placeholder="Type name or email to search..." />}
                   onChange={(_, user) => {
                     if (user) {
                       // Show permissions for this user
@@ -487,17 +659,17 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                 />
               </FormControl>
               
-              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role</Typography>
+              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role (default: all on for new members; user-specific overrides take precedence)</Typography>
               <Grid container spacing={2}>
                 {[UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC].map(role => (
                   <Grid item xs={12} key={role}>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>{role.charAt(0).toUpperCase() + role.slice(1)}</Typography>
-                    {Object.values(PERMISSIONS).slice(0, 5).map(perm => {
+                    {Object.values(PERMISSIONS).map(perm => {
                       const key = `role_${role}_${perm}`;
                       const existing = cohortPermissions.find(
                         p => p.cohort_id === selectedCohortId && p.role === role && p.permission_key === perm
                       );
-                      const isEnabled = existing ? existing.is_enabled : permissionStates[key] ?? false;
+                      const isEnabled = existing ? existing.is_enabled : (permissionStates[key] ?? true);
                       
                       return (
                         <FormControlLabel
@@ -527,15 +699,33 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       {/* Program Permissions Tab */}
       {activeTab === 2 && (
         <Paper sx={{ p: 3 }}>
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel>Select Program</InputLabel>
-            <Select value={selectedProgramId} onChange={(e) => setSelectedProgramId(e.target.value)} label="Select Program">
-              <MenuItem value=""><em>None</em></MenuItem>
-              {programs.map(p => (
-                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Typography variant="subtitle1" gutterBottom sx={{ mb: 1 }}>Select a program to set permissions and tab visibility for its members</Typography>
+          <Autocomplete
+            value={programs.find(p => p.id === selectedProgramId) ?? null}
+            onChange={(_, p) => setSelectedProgramId(p?.id ?? '')}
+            options={programs}
+            getOptionLabel={(p) => `${p.name}${p.is_active === false ? ' (Inactive)' : ''}`}
+            filterOptions={(options, { inputValue }) => {
+              const q = (inputValue || '').trim().toLowerCase();
+              if (!q) return options;
+              return options.filter(p =>
+                p.name.toLowerCase().includes(q) ||
+                (p.description || '').toLowerCase().includes(q)
+              );
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Search and select program" placeholder="Type program name to find..." />
+            )}
+            renderOption={(props, p) => (
+              <li {...props} key={p.id}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <span>{p.name}</span>
+                  {p.is_active === false && <Chip label="Inactive" size="small" color="default" variant="outlined" />}
+                </Box>
+              </li>
+            )}
+            sx={{ mb: 3 }}
+          />
           
           {selectedProgramId && (
             <Box>
@@ -543,17 +733,17 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                 Set permissions for specific users or roles within this program. User-specific overrides take precedence over role-based permissions.
               </Alert>
               
-              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role</Typography>
+              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role (default: all on; user-specific overrides take precedence)</Typography>
               <Grid container spacing={2}>
                 {[UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC].map(role => (
                   <Grid item xs={12} key={role}>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>{role.charAt(0).toUpperCase() + role.slice(1)}</Typography>
-                    {Object.values(PERMISSIONS).slice(0, 5).map(perm => {
+                    {Object.values(PERMISSIONS).map(perm => {
                       const key = `role_${role}_${perm}`;
                       const existing = programPermissions.find(
                         p => p.program_id === selectedProgramId && p.role === role && p.permission_key === perm
                       );
-                      const isEnabled = existing ? existing.is_enabled : permissionStates[key] ?? false;
+                      const isEnabled = existing ? existing.is_enabled : (permissionStates[key] ?? true);
                       
                       return (
                         <FormControlLabel
@@ -583,24 +773,90 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       {/* Tab Visibility Tab */}
       {activeTab === 3 && (
         <Paper sx={{ p: 3 }}>
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Scope</InputLabel>
-            <Select value={activeTab === 3 ? 'cohort' : 'user'} disabled>
-              <MenuItem value="user">User</MenuItem>
-              <MenuItem value="cohort">Cohort</MenuItem>
-              <MenuItem value="program">Program</MenuItem>
-            </Select>
-          </FormControl>
+          <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+            Control which tabs and sections are visible
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            For <strong>users</strong>: control PECC Support Tool tabs (Snapshot, Activities, Gaps &amp; Education, Simulation, etc.) and sections like Pediatric Readiness Scores. For <strong>cohorts</strong> and <strong>programs</strong>: control announcements, discussions, members, and other cohort/program page tabs. Default is visible when no override is set.
+          </Typography>
+
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Choose who or what to configure</Typography>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} md={4}>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>User (PECC tool tabs)</Typography>
+              <Autocomplete
+                value={users.find(u => u.id === selectedUserId) ?? null}
+                onChange={(_, u) => {
+                  setSelectedUserId(u?.id ?? '');
+                  if (u) { setSelectedCohortId(''); setSelectedProgramId(''); }
+                }}
+                options={users}
+                getOptionLabel={(u) => `${getUserDisplayName(u)} (${u.email})`}
+                filterOptions={(options, { inputValue }) => {
+                  const q = (inputValue || '').trim().toLowerCase();
+                  if (!q) return options;
+                  return options.filter(u =>
+                    getUserDisplayName(u).toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
+                  );
+                }}
+                renderInput={(params) => <TextField {...params} size="small" placeholder="Search user..." />}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>Cohort (cohort page tabs)</Typography>
+              <Autocomplete
+                value={cohorts.find(c => c.id === selectedCohortId) ?? null}
+                onChange={(_, c) => {
+                  setSelectedCohortId(c?.id ?? '');
+                  if (c) { setSelectedUserId(''); setSelectedProgramId(''); }
+                }}
+                options={cohorts}
+                getOptionLabel={(c) => `${c.name}${c.is_active === false ? ' (Inactive)' : ''}`}
+                filterOptions={(options, { inputValue }) => {
+                  const q = (inputValue || '').trim().toLowerCase();
+                  if (!q) return options;
+                  return options.filter(c =>
+                    c.name.toLowerCase().includes(q) || (c.program_id || '').toLowerCase().includes(q)
+                  );
+                }}
+                renderInput={(params) => <TextField {...params} size="small" placeholder="Search cohort..." />}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>Program (program page tabs)</Typography>
+              <Autocomplete
+                value={programs.find(p => p.id === selectedProgramId) ?? null}
+                onChange={(_, p) => {
+                  setSelectedProgramId(p?.id ?? '');
+                  if (p) { setSelectedUserId(''); setSelectedCohortId(''); }
+                }}
+                options={programs}
+                getOptionLabel={(p) => `${p.name}${p.is_active === false ? ' (Inactive)' : ''}`}
+                filterOptions={(options, { inputValue }) => {
+                  const q = (inputValue || '').trim().toLowerCase();
+                  if (!q) return options;
+                  return options.filter(p =>
+                    p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q)
+                  );
+                }}
+                renderInput={(params) => <TextField {...params} size="small" placeholder="Search program..." />}
+              />
+            </Grid>
+          </Grid>
+          {!selectedUserId && !selectedCohortId && !selectedProgramId && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Select a user, cohort, or program above to see and edit their tab visibility settings.
+            </Alert>
+          )}
           
-          {(selectedUserId || selectedCohortId || selectedProgramId) && (
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>Tab Visibility</Typography>
-              <Grid container spacing={2}>
-                {COMMON_TABS.map(tab => {
+          {selectedUserId && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" gutterBottom>User: PECC Tool page tabs</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Show or hide entire tabs on the PECC Support Tool (e.g. Snapshot, Activities, Gaps & Education, Simulation).</Typography>
+              <Grid container spacing={1}>
+                {PECC_TAB_KEYS.map(tab => {
                   const existing = viewTabs.find(t => t.tab_key === tab);
-                  const isVisible = existing ? existing.is_visible : tabVisibilityStates[tab] ?? true;
-                  const scope = selectedUserId ? 'user' : selectedCohortId ? 'cohort' : 'program';
-                  
+                  const isVisible = existing ? existing.is_visible : (tabVisibilityStates[tab] ?? true);
                   return (
                     <Grid item xs={12} sm={6} md={4} key={tab}>
                       <FormControlLabel
@@ -609,11 +865,69 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                             checked={isVisible}
                             onChange={(e) => {
                               setTabVisibilityStates(prev => ({ ...prev, [tab]: e.target.checked }));
-                              handleSaveTabVisibility(tab, e.target.checked, scope);
+                              handleSaveTabVisibility(tab, e.target.checked, 'user');
                             }}
                           />
                         }
-                        label={tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        label={tab === 'gap-plan' ? 'Gaps & Education' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                      />
+                    </Grid>
+                  );
+                })}
+              </Grid>
+              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Tool page sections</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Show or hide specific sections within a tab (e.g. Pediatric Readiness Scores on the Snapshot tab).</Typography>
+              <Grid container spacing={1}>
+                {TOOL_SECTION_TABS.map(({ key, label }) => {
+                  const existing = viewTabs.find(t => t.tab_key === key);
+                  const isVisible = existing ? existing.is_visible : (tabVisibilityStates[key] ?? true);
+                  return (
+                    <Grid item xs={12} sm={6} md={4} key={key}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={isVisible}
+                            onChange={(e) => {
+                              setTabVisibilityStates(prev => ({ ...prev, [key]: e.target.checked }));
+                              handleSaveTabVisibility(key, e.target.checked, 'user');
+                            }}
+                          />
+                        }
+                        label={label}
+                      />
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Box>
+          )}
+          
+          {(selectedCohortId || selectedProgramId) && !selectedUserId && (
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                {selectedCohortId ? 'Cohort' : 'Program'} page tabs — show or hide these sections for members
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                When a tab is hidden, members of this {selectedCohortId ? 'cohort' : 'program'} will not see it on the cohort/program detail page.
+              </Typography>
+              <Grid container spacing={2}>
+                {COHORT_PROGRAM_TABS.map(({ key, label }) => {
+                  const existing = viewTabs.find(t => t.tab_key === key);
+                  const isVisible = existing ? existing.is_visible : (tabVisibilityStates[key] ?? true);
+                  const scope = selectedCohortId ? 'cohort' : 'program';
+                  return (
+                    <Grid item xs={12} sm={6} md={4} key={key}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={isVisible}
+                            onChange={(e) => {
+                              setTabVisibilityStates(prev => ({ ...prev, [key]: e.target.checked }));
+                              handleSaveTabVisibility(key, e.target.checked, scope);
+                            }}
+                          />
+                        }
+                        label={label}
                       />
                     </Grid>
                   );
