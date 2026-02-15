@@ -291,25 +291,22 @@ const AdminProgramsPage: React.FC = () => {
     program.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Show program detail
-  if (selectedProgramId) {
-    return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <ProgramDetail
-          programId={selectedProgramId}
-          onBack={() => setSelectedProgramId(null)}
-          onEdit={() => {
-            const program = programs.find(p => p.id === selectedProgramId);
-            if (program) handleOpenEdit(program);
-          }}
-        />
-      </Container>
-    );
-  }
-
+  // Program detail view and list view both render; Create/Edit Dialog is always mounted so Edit works from detail
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      {selectedProgramId ? (
+        <Container maxWidth="lg" sx={{ py: 4 }}>
+          <ProgramDetail
+            programId={selectedProgramId}
+            onBack={() => setSelectedProgramId(null)}
+            onEdit={() => {
+              const program = programs.find(p => p.id === selectedProgramId);
+              if (program) handleOpenEdit(program);
+            }}
+          />
+        </Container>
+      ) : (
+        <Container maxWidth="lg" sx={{ py: 4 }}>
         {/* Header */}
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
           <Box display="flex" alignItems="center" gap={2}>
@@ -398,145 +395,146 @@ const AdminProgramsPage: React.FC = () => {
             ))}
           </Grid>
         )}
+        </Container>
+      )}
 
-        {/* Create/Edit Dialog */}
-        <Dialog
-          open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              {editingProgram ? 'Edit Program' : 'Create Program'}
-              <IconButton onClick={() => setDialogOpen(false)} size="small">
-                <CloseIcon />
-              </IconButton>
-            </Box>
-          </DialogTitle>
-          <DialogContent dividers>
-            <TextField
-              autoFocus
-              margin="normal"
-              label="Program Name"
-              fullWidth
-              required
-              value={formData.name}
-              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+      {/* Create/Edit Dialog — always mounted so Edit works from program detail view */}
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            {editingProgram ? 'Edit Program' : 'Create Program'}
+            <IconButton onClick={() => setDialogOpen(false)} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            autoFocus
+            margin="normal"
+            label="Program Name"
+            fullWidth
+            required
+            value={formData.name}
+            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+          />
+          <TextField
+            margin="normal"
+            label="Description"
+            fullWidth
+            multiline
+            rows={3}
+            value={formData.description}
+            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+          />
+          <Box display="flex" gap={2} mt={2}>
+            <DatePicker
+              label="Start Date"
+              value={formData.start_date}
+              onChange={(date) => setFormData(prev => ({ ...prev, start_date: date }))}
+              slotProps={{ textField: { fullWidth: true } }}
             />
-            <TextField
-              margin="normal"
-              label="Description"
-              fullWidth
-              multiline
-              rows={3}
-              value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+            <DatePicker
+              label="End Date"
+              value={formData.end_date}
+              onChange={(date) => setFormData(prev => ({ ...prev, end_date: date }))}
+              slotProps={{ textField: { fullWidth: true } }}
             />
-            <Box display="flex" gap={2} mt={2}>
-              <DatePicker
-                label="Start Date"
-                value={formData.start_date}
-                onChange={(date) => setFormData(prev => ({ ...prev, start_date: date }))}
-                slotProps={{ textField: { fullWidth: true } }}
+          </Box>
+          <Autocomplete
+            multiple
+            options={managers}
+            getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+            value={managers.filter(m => formData.manager_ids.includes(m.id))}
+            onChange={(_, value) => setFormData(prev => ({ 
+              ...prev, 
+              manager_ids: value.map(v => v.id) 
+            }))}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Program Managers"
+                margin="normal"
+                placeholder="Select managers..."
               />
-              <DatePicker
-                label="End Date"
-                value={formData.end_date}
-                onChange={(date) => setFormData(prev => ({ ...prev, end_date: date }))}
-                slotProps={{ textField: { fullWidth: true } }}
-              />
-            </Box>
-            <Autocomplete
-              multiple
-              options={managers}
-              getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
-              value={managers.filter(m => formData.manager_ids.includes(m.id))}
-              onChange={(_, value) => setFormData(prev => ({ 
-                ...prev, 
-                manager_ids: value.map(v => v.id) 
-              }))}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Program Managers"
-                  margin="normal"
-                  placeholder="Select managers..."
+            )}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip
+                  label={`${option.first_name} ${option.last_name}`}
+                  {...getTagProps({ index })}
+                  key={option.id}
                 />
-              )}
-              renderTags={(value, getTagProps) =>
-                value.map((option, index) => (
-                  <Chip
-                    label={`${option.first_name} ${option.last_name}`}
-                    {...getTagProps({ index })}
-                    key={option.id}
-                  />
-                ))
-              }
-              renderOption={(props, option) => (
-                <li {...props}>
-                  <Box>
-                    <Typography>{option.first_name} {option.last_name}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {option.email} • {option.role}
-                    </Typography>
-                  </Box>
-                </li>
-              )}
-            />
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>Program logo (shown in navbar for users with this as primary program)</Typography>
-              {(formData.logo_url || formData.logo_file) && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                  <img
-                    src={formData.logo_file ? URL.createObjectURL(formData.logo_file) : formData.logo_url || ''}
-                    alt="Logo preview"
-                    style={{ height: 48, width: 'auto', objectFit: 'contain' }}
-                  />
-                  <Button
-                    size="small"
-                    onClick={() => setFormData(prev => ({ ...prev, logo_url: null, logo_file: null }))}
-                  >
-                    Remove logo
-                  </Button>
+              ))
+            }
+            renderOption={(props, option) => (
+              <li {...props}>
+                <Box>
+                  <Typography>{option.first_name} {option.last_name}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {option.email} • {option.role}
+                  </Typography>
                 </Box>
-              )}
-              <Button variant="outlined" component="label" size="small">
-                {formData.logo_url || formData.logo_file ? 'Replace logo' : 'Upload logo image'}
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    setFormData(prev => ({ ...prev, logo_file: file || null, logo_url: file ? prev.logo_url : null }));
-                  }}
+              </li>
+            )}
+          />
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>Program logo (shown in navbar for users with this as primary program)</Typography>
+            {(formData.logo_url || formData.logo_file) && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                <img
+                  src={formData.logo_file ? URL.createObjectURL(formData.logo_file) : formData.logo_url || ''}
+                  alt="Logo preview"
+                  style={{ height: 48, width: 'auto', objectFit: 'contain' }}
                 />
-              </Button>
-            </Box>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                />
-              }
-              label="Active"
-              sx={{ mt: 2 }}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button
-              variant="contained"
-              onClick={handleSaveProgram}
-              disabled={!formData.name.trim() || saving}
-            >
-              {saving ? 'Saving...' : (editingProgram ? 'Save Changes' : 'Create Program')}
+                <Button
+                  size="small"
+                  onClick={() => setFormData(prev => ({ ...prev, logo_url: null, logo_file: null }))}
+                >
+                  Remove logo
+                </Button>
+              </Box>
+            )}
+            <Button variant="outlined" component="label" size="small">
+              {formData.logo_url || formData.logo_file ? 'Replace logo' : 'Upload logo image'}
+              <input
+                type="file"
+                hidden
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  setFormData(prev => ({ ...prev, logo_file: file || null, logo_url: file ? prev.logo_url : null }));
+                }}
+              />
             </Button>
-          </DialogActions>
-        </Dialog>
-      </Container>
+          </Box>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.is_active}
+                onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+              />
+            }
+            label="Active"
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveProgram}
+            disabled={!formData.name.trim() || saving}
+          >
+            {saving ? 'Saving...' : (editingProgram ? 'Save Changes' : 'Create Program')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </LocalizationProvider>
   );
 };
