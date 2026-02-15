@@ -31,6 +31,7 @@ export interface UserProfile {
   
   // Mentor-specific fields
   wages_enabled?: boolean;  // If true, mentor can see wages tab (admin-controlled)
+  primary_program_id?: string | null;  // Which program's logo to show in navbar
 }
 
 interface UserProfileContextType {
@@ -49,6 +50,8 @@ interface UserProfileContextType {
   // PECC site and tab visibility (page = hospital/site; tabs toggled in CRM)
   siteId: string | null;
   visibleTabs: string[];  // Tab keys that are visible for this PECC's site; empty = all visible
+  /** Logo URL for the user's primary program (for navbar). Null = use default ImPACTS logo. */
+  primaryProgramLogoUrl: string | null;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -73,6 +76,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [viewAsRole, setViewAsRole] = useState<UserRole | null>(null);
   const [siteId, setSiteId] = useState<string | null>(null);
   const [visibleTabs, setVisibleTabs] = useState<string[]>([]);
+  const [primaryProgramLogoUrl, setPrimaryProgramLogoUrl] = useState<string | null>(null);
 
   // Fetch user profile from Supabase
   const fetchUserProfile = useCallback(async () => {
@@ -81,6 +85,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       setPermissions([]);
       setSiteId(null);
       setVisibleTabs([]);
+      setPrimaryProgramLogoUrl(null);
       setIsLoading(false);
       return;
     }
@@ -141,8 +146,16 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           createDefaultProfile();
         }
       } else if (profile) {
-        const prof = profile as UserProfile & { hospital_facility_id?: string | null };
+        const prof = profile as UserProfile & { hospital_facility_id?: string | null; primary_program_id?: string | null };
         setUserProfile(prof);
+
+        // Primary program logo for navbar
+        if (prof.primary_program_id) {
+          const { data: prog } = await supabase.from('programs').select('logo_url').eq('id', prof.primary_program_id).maybeSingle();
+          setPrimaryProgramLogoUrl((prog as { logo_url?: string | null } | null)?.logo_url ?? null);
+        } else {
+          setPrimaryProgramLogoUrl(null);
+        }
 
         // Fetch permissions from database
         const { data: perms } = await supabase
@@ -330,7 +343,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     setViewAsRole,
     isViewingAs: viewAsRole !== null && (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true),
     siteId,
-    visibleTabs
+    visibleTabs,
+    primaryProgramLogoUrl
   };
 
   return (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -308,9 +308,30 @@ const ACTIVITY_TYPE_LABELS: Record<ActivityLogType, string> = {
   follow_up: 'Follow-up'
 };
 
+const formatUsageDuration = (seconds: number): string => {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return mm ? `${h}h ${mm}m` : `${h}h`;
+  }
+  return s ? `${m}m ${s}s` : `${m}m`;
+};
+
+const usagePathLabel = (path: string): string => {
+  if (path === '/') return 'Home';
+  const p = path.replace(/^\//, '');
+  const rolePrefix = ['admin', 'mentor', 'manager'].find((r) => p.startsWith(r + '/'));
+  if (rolePrefix) return p.replace(rolePrefix + '/', '').replace(/-/g, ' ') || rolePrefix;
+  return p.replace(/-/g, ' ') || path;
+};
+
 const AdminCRMPage: React.FC = () => {
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { actualRole } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
@@ -355,6 +376,10 @@ const AdminCRMPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
+  const [detailContactUserId, setDetailContactUserId] = useState<string | null>(null); // Resolved user id for "Manage permissions"
+  const [detailUserPrimaryProgramId, setDetailUserPrimaryProgramId] = useState<string | null>(null);
+  const [detailUserPrimaryProgramLogoUrl, setDetailUserPrimaryProgramLogoUrl] = useState<string | null>(null);
+  const [crmProgramsForPrimary, setCrmProgramsForPrimary] = useState<Array<{ id: string; name: string; logo_url?: string | null }>>([]);
   const [panelOpen, setPanelOpen] = useState(false);
   const [fullScreenOpen, setFullScreenOpen] = useState(false);
   const [fullScreenEditMode, setFullScreenEditMode] = useState(false);
@@ -410,11 +435,6 @@ const AdminCRMPage: React.FC = () => {
   const [siteSettingsLoading, setSiteSettingsLoading] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState('');
   const [addMemberLoading, setAddMemberLoading] = useState(false);
-  
-  // PECC user settings: PRS section visibility (when viewing a PECC contact)
-  const [peccUserId, setPeccUserId] = useState<string | null>(null);
-  const [peccPRSSectionVisible, setPeccPRSSectionVisible] = useState(true);
-  const [peccSettingsLoading, setPeccSettingsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     type: 'other' as ContactType,
@@ -508,9 +528,22 @@ const AdminCRMPage: React.FC = () => {
   const [addActivityDate, setAddActivityDate] = useState('');
   const [addReminderDate, setAddReminderDate] = useState('');
   const [addReminderTitle, setAddReminderTitle] = useState('');
-  const [contactUsage, setContactUsage] = useState<{ logins: number; pageViews: number } | null>(null);
+  type ContactUsageDetail = {
+    logins: number;
+    pageViews: number;
+    totalTimeSeconds: number;
+    linkClicksCount: number;
+    checklistCount: number;
+    activityCount: number;
+    timeByPath: Array<{ path: string; totalSeconds: number; views: number }>;
+    linkClicks: Array<{ url: string; label?: string; link_context?: string; created_at: string }>;
+    checklistEvents: Array<{ action: string; name?: string; item_id?: string; created_at: string }>;
+    activityEvents: Array<{ action: string; name?: string; created_at: string }>;
+  };
+  const [contactUsage, setContactUsage] = useState<ContactUsageDetail | null>(null);
   const [contactUsageLoading, setContactUsageLoading] = useState(false);
   const [contactUsagePeriod, setContactUsagePeriod] = useState<'7' | '30' | '90' | 'all'>('30');
+  const [contactUsageDetailsExpanded, setContactUsageDetailsExpanded] = useState(false);
   const [duplicatesDialogOpen, setDuplicatesDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSource, setMergeSource] = useState<Contact | null>(null);
@@ -776,7 +809,8 @@ const AdminCRMPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [canSeeReminders, currentUser?.id]);
 
-  // Load usage for the selected contact – by user_id for person, by hospital_id for hospital; period = 7/30/90 days or all
+  // Load usage for the selected contact – full events for robust metrics (links, time, checklist, activity)
+  // For persons use resolved platform user id (detailContactUserId or c.user_id or c.id) so usage_events.user_id matches
   useEffect(() => {
     const c = detailContact;
     if (!c) {
@@ -789,16 +823,22 @@ const AdminCRMPage: React.FC = () => {
       setContactUsage(null);
       return;
     }
+    const userId = isPerson ? (detailContactUserId ?? c.user_id ?? c.id) : null;
+    if (isPerson && !userId) {
+      setContactUsage(null);
+      setContactUsageLoading(false);
+      return;
+    }
     let cancelled = false;
     setContactUsageLoading(true);
-    let q = supabase.from('usage_events').select('id, event_type');
+    let q = supabase.from('usage_events').select('id, event_type, path, metadata, created_at').order('created_at', { ascending: false }).limit(2000);
     if (contactUsagePeriod !== 'all') {
       const days = parseInt(contactUsagePeriod, 10);
       const since = new Date();
       since.setDate(since.getDate() - days);
       q = q.gte('created_at', since.toISOString());
     }
-    const query = isPerson ? q.eq('user_id', c.id) : q.eq('hospital_id', hospitalId);
+    const query = isPerson ? q.eq('user_id', userId) : q.eq('hospital_id', hospitalId);
     query.then(({ data, error }) => {
       if (cancelled) return;
       setContactUsageLoading(false);
@@ -806,13 +846,118 @@ const AdminCRMPage: React.FC = () => {
         setContactUsage(null);
         return;
       }
-      const events = data as { event_type: string }[];
+      const events = data as Array<{ event_type: string; path?: string; metadata?: Record<string, unknown>; created_at: string }>;
       const logins = events.filter((e) => e.event_type === 'login').length;
-      const pageViews = events.filter((e) => e.event_type === 'page_view').length;
-      setContactUsage({ logins, pageViews });
+      const pageViews = events.filter((e) => e.event_type === 'page_view');
+      let totalTimeSeconds = 0;
+      const timeByPathMap: Record<string, { totalSeconds: number; views: number }> = {};
+      pageViews.forEach((e) => {
+        const sec = (e.metadata?.time_spent_seconds as number) ?? 0;
+        if (sec > 0) {
+          totalTimeSeconds += sec;
+          const path = e.path || '/';
+          if (!timeByPathMap[path]) timeByPathMap[path] = { totalSeconds: 0, views: 0 };
+          timeByPathMap[path].totalSeconds += sec;
+          timeByPathMap[path].views += 1;
+        }
+      });
+      const timeByPath = Object.entries(timeByPathMap).map(([path, v]) => ({ path, totalSeconds: v.totalSeconds, views: v.views })).sort((a, b) => b.totalSeconds - a.totalSeconds);
+      const linkClicks = events.filter((e) => e.event_type === 'link_click').map((e) => ({
+        url: (e.metadata?.url as string) || e.path || '',
+        label: e.metadata?.label as string | undefined,
+        link_context: e.metadata?.link_context as string | undefined,
+        created_at: e.created_at,
+      }));
+      const checklistEvents = events.filter((e) => e.event_type === 'checklist').map((e) => ({
+        action: (e.metadata?.action as string) || '',
+        name: e.metadata?.name as string | undefined,
+        item_id: e.metadata?.item_id as string | undefined,
+        created_at: e.created_at,
+      }));
+      const activityEvents = events.filter((e) => e.event_type === 'activity').map((e) => ({
+        action: (e.metadata?.action as string) || '',
+        name: e.metadata?.name as string | undefined,
+        created_at: e.created_at,
+      }));
+      setContactUsage({
+        logins,
+        pageViews: pageViews.length,
+        totalTimeSeconds,
+        linkClicksCount: linkClicks.length,
+        checklistCount: checklistEvents.length,
+        activityCount: activityEvents.length,
+        timeByPath,
+        linkClicks,
+        checklistEvents,
+        activityEvents,
+      });
     });
     return () => { cancelled = true; };
-  }, [detailContact?.id, detailContact?.type, detailContact?.hospitalId, contactUsagePeriod]);
+  }, [detailContact?.id, detailContact?.type, detailContact?.hospitalId, detailContact?.user_id, detailContactUserId, contactUsagePeriod]);
+
+  // Resolve platform user id for person-type contact (for "Manage permissions" link)
+  useEffect(() => {
+    const c = detailContact;
+    if (!c || !isPersonType(c.type)) {
+      setDetailContactUserId(null);
+      return;
+    }
+    if (c.user_id) {
+      setDetailContactUserId(c.user_id);
+      return;
+    }
+    if (!c.crmCreated && c.id) {
+      setDetailContactUserId(c.id);
+      return;
+    }
+    if (!c.email?.trim()) {
+      setDetailContactUserId(null);
+      return;
+    }
+    let cancelled = false;
+    supabase.from('users').select('id').ilike('email', c.email.trim()).maybeSingle().then(({ data }) => {
+      if (!cancelled && data?.id) setDetailContactUserId(data.id);
+      else if (!cancelled) setDetailContactUserId(null);
+    });
+    return () => { cancelled = true; };
+  }, [detailContact?.id, detailContact?.type, detailContact?.email, detailContact?.user_id, detailContact?.crmCreated]);
+
+  // Load primary program and programs list when viewing a person with user id (for CRM primary program selector)
+  useEffect(() => {
+    if (!detailContactUserId) {
+      setDetailUserPrimaryProgramId(null);
+      setDetailUserPrimaryProgramLogoUrl(null);
+      setCrmProgramsForPrimary([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data: userRow } = await supabase.from('users').select('primary_program_id').eq('id', detailContactUserId).maybeSingle();
+      if (cancelled) return;
+      const pid = (userRow as { primary_program_id?: string | null } | null)?.primary_program_id ?? null;
+      setDetailUserPrimaryProgramId(pid);
+      const { data: programsList } = await supabase.from('programs').select('id, name, logo_url').order('name');
+      if (cancelled) return;
+      setCrmProgramsForPrimary(programsList ?? []);
+      if (pid && programsList?.length) {
+        const prog = (programsList as { id: string; name: string; logo_url?: string | null }[]).find(p => p.id === pid);
+        setDetailUserPrimaryProgramLogoUrl(prog?.logo_url ?? null);
+      } else {
+        setDetailUserPrimaryProgramLogoUrl(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [detailContactUserId]);
+
+  const handleCrmSavePrimaryProgram = async (programId: string | null) => {
+    if (!detailContactUserId) return;
+    const { error } = await supabase.from('users').update({ primary_program_id: programId, updated_at: new Date().toISOString() }).eq('id', detailContactUserId);
+    if (!error) {
+      setDetailUserPrimaryProgramId(programId);
+      const prog = crmProgramsForPrimary.find(p => p.id === programId);
+      setDetailUserPrimaryProgramLogoUrl(prog?.logo_url ?? null);
+    }
+  };
 
   const persistNotesAndActivity = useCallback(async (c: Contact) => {
     const notesLog = c.notesLog ?? [];
@@ -1014,56 +1159,6 @@ const AdminCRMPage: React.FC = () => {
   const removeSiteMember = useCallback(async (siteId: string, userId: string) => {
     await supabase.from('site_members').delete().eq('site_id', siteId).eq('user_id', userId);
     setSiteMembers(prev => prev.filter(m => m.user_id !== userId));
-  }, []);
-  
-  // Load PECC user settings when viewing a PECC contact
-  useEffect(() => {
-    let cancelled = false;
-    if (!fullScreenOpen || detailContact?.type !== 'pecc' || !detailContact.email) {
-      setPeccUserId(null);
-      setPeccPRSSectionVisible(true);
-      setPeccSettingsLoading(false);
-      return;
-    }
-    setPeccSettingsLoading(true);
-    (async () => {
-      try {
-        // Find user by email
-        const { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('email', detailContact.email)
-          .eq('role', 'pecc')
-          .maybeSingle();
-        
-        if (cancelled) return;
-        
-        if (user && user.id) {
-          const userId = user.id;
-          setPeccUserId(userId);
-          // Load PRS section visibility from localStorage (default to true)
-          const prsVisible = localStorage.getItem(`pecc_prs_section_visible_${userId}`);
-          setPeccPRSSectionVisible(prsVisible === null ? true : prsVisible === 'true');
-        } else {
-          setPeccUserId(null);
-          setPeccPRSSectionVisible(true);
-        }
-      } catch (err) {
-        console.error('Error loading PECC settings:', err);
-        if (!cancelled) {
-          setPeccUserId(null);
-          setPeccPRSSectionVisible(true);
-        }
-      } finally {
-        if (!cancelled) setPeccSettingsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [fullScreenOpen, detailContact]);
-  
-  const handleTogglePeccPRSSection = useCallback(async (userId: string, visible: boolean) => {
-    localStorage.setItem(`pecc_prs_section_visible_${userId}`, String(visible));
-    setPeccPRSSectionVisible(visible);
   }, []);
 
   const regions = useMemo(() => [...new Set(contacts.map(c => c.region).filter(Boolean))].sort() as string[], [contacts]);
@@ -3170,9 +3265,38 @@ const AdminCRMPage: React.FC = () => {
                     </FormControl>
                   </Box>
                   <ListItemText
-                    secondary={contactUsageLoading ? 'Loading…' : contactUsage != null ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s)` : '—'}
+                    secondary={
+                      contactUsageLoading ? 'Loading…' : contactUsage != null
+                        ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s); ${formatUsageDuration(contactUsage.totalTimeSeconds)} total time; ${contactUsage.linkClicksCount} link click(s); ${contactUsage.checklistCount} checklist, ${contactUsage.activityCount} activity`
+                        : '—'
+                    }
                     secondaryTypographyProps={{ variant: 'body2' }}
                   />
+                </ListItem>
+              )}
+              {isPersonType(detailContact.type) && detailContactUserId && (
+                <ListItem disablePadding sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  <Box sx={{ width: '100%' }}>
+                    <ListItemText primary="Primary program (navbar logo)" secondary="Logo shown in top-left for this user." secondaryTypographyProps={{ variant: 'body2' }} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                      {detailUserPrimaryProgramLogoUrl && (
+                        <Box component="img" src={detailUserPrimaryProgramLogoUrl} alt="" sx={{ height: 24, objectFit: 'contain', flexShrink: 0 }} onError={() => setDetailUserPrimaryProgramLogoUrl(null)} />
+                      )}
+                      <FormControl size="small" sx={{ minWidth: 180 }}>
+                        <Select
+                          value={detailUserPrimaryProgramId ?? ''}
+                          displayEmpty
+                          onChange={(e) => handleCrmSavePrimaryProgram(e.target.value || null)}
+                          renderValue={(v) => v ? (crmProgramsForPrimary.find(p => p.id === v)?.name ?? v) : 'None'}
+                        >
+                          <MenuItem value="">None</MenuItem>
+                          {crmProgramsForPrimary.map(p => (
+                            <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  </Box>
                 </ListItem>
               )}
               {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
@@ -3217,6 +3341,17 @@ const AdminCRMPage: React.FC = () => {
                   Edit
                 </Button>
                 <Button size="small" variant="outlined" startIcon={<EmailIcon />} fullWidth>Email</Button>
+                {isPersonType(detailContact.type) && detailContactUserId && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<SettingsIcon />}
+                    fullWidth
+                    onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}
+                  >
+                    Manage permissions
+                  </Button>
+                )}
                 {isPersonType(detailContact.type) && detailContact.email && (
                   <Button 
                     size="small" 
@@ -3565,8 +3700,67 @@ const AdminCRMPage: React.FC = () => {
                           </FormControl>
                         </Box>
                         <Typography variant="body2" color="text.secondary">
-                          {contactUsageLoading ? 'Loading…' : contactUsage != null ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s)` : '—'}
+                          {contactUsageLoading ? 'Loading…' : contactUsage != null
+                            ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s); ${formatUsageDuration(contactUsage.totalTimeSeconds)} total time; ${contactUsage.linkClicksCount} link(s), ${contactUsage.checklistCount} checklist, ${contactUsage.activityCount} activity`
+                            : '—'}
                         </Typography>
+                        {contactUsage != null && (contactUsage.timeByPath.length > 0 || contactUsage.linkClicks.length > 0 || contactUsage.checklistEvents.length > 0 || contactUsage.activityEvents.length > 0) && (
+                          <Button size="small" onClick={() => setContactUsageDetailsExpanded((x) => !x)} sx={{ mt: 0.5 }}>
+                            {contactUsageDetailsExpanded ? 'Hide usage details' : 'View usage details'}
+                          </Button>
+                        )}
+                        {contactUsageDetailsExpanded && contactUsage != null && (
+                          <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                            {contactUsage.timeByPath.length > 0 && (
+                              <>
+                                <Typography variant="caption" fontWeight={600} color="text.secondary">Time by page</Typography>
+                                <List dense disablePadding sx={{ mb: 1 }}>
+                                  {contactUsage.timeByPath.slice(0, 10).map(({ path, totalSeconds, views }) => (
+                                    <ListItem key={path} disablePadding sx={{ py: 0.25 }}>
+                                      <ListItemText primary={usagePathLabel(path)} secondary={`${formatUsageDuration(totalSeconds)} (${views} view${views !== 1 ? 's' : ''})`} primaryTypographyProps={{ variant: 'body2' }} secondaryTypographyProps={{ variant: 'caption' }} />
+                                    </ListItem>
+                                  ))}
+                                </List>
+                              </>
+                            )}
+                            {contactUsage.linkClicks.length > 0 && (
+                              <>
+                                <Typography variant="caption" fontWeight={600} color="text.secondary">Links clicked (recent)</Typography>
+                                <List dense disablePadding sx={{ mb: 1 }}>
+                                  {contactUsage.linkClicks.slice(0, 15).map((e, i) => (
+                                    <ListItem key={i} disablePadding sx={{ py: 0.25 }}>
+                                      <ListItemText primary={e.label || e.url} secondary={e.link_context ? `${e.link_context} · ${formatEntryDate(e.created_at)}` : formatEntryDate(e.created_at)} primaryTypographyProps={{ variant: 'body2' }} secondaryTypographyProps={{ variant: 'caption' }} />
+                                    </ListItem>
+                                  ))}
+                                </List>
+                              </>
+                            )}
+                            {contactUsage.checklistEvents.length > 0 && (
+                              <>
+                                <Typography variant="caption" fontWeight={600} color="text.secondary">Checklist actions</Typography>
+                                <List dense disablePadding sx={{ mb: 1 }}>
+                                  {contactUsage.checklistEvents.slice(0, 10).map((e, i) => (
+                                    <ListItem key={i} disablePadding sx={{ py: 0.25 }}>
+                                      <ListItemText primary={`${e.action}${e.name ? `: ${e.name}` : ''}`} secondary={formatEntryDate(e.created_at)} primaryTypographyProps={{ variant: 'body2' }} secondaryTypographyProps={{ variant: 'caption' }} />
+                                    </ListItem>
+                                  ))}
+                                </List>
+                              </>
+                            )}
+                            {contactUsage.activityEvents.length > 0 && (
+                              <>
+                                <Typography variant="caption" fontWeight={600} color="text.secondary">Activity actions</Typography>
+                                <List dense disablePadding>
+                                  {contactUsage.activityEvents.slice(0, 10).map((e, i) => (
+                                    <ListItem key={i} disablePadding sx={{ py: 0.25 }}>
+                                      <ListItemText primary={`${e.action}${e.name ? `: ${e.name}` : ''}`} secondary={formatEntryDate(e.created_at)} primaryTypographyProps={{ variant: 'body2' }} secondaryTypographyProps={{ variant: 'caption' }} />
+                                    </ListItem>
+                                  ))}
+                                </List>
+                              </>
+                            )}
+                          </Box>
+                        )}
                       </ListItem>
                     )}
                   </List>
@@ -3763,52 +3957,6 @@ const AdminCRMPage: React.FC = () => {
                   </Grid>
                 )}
               </Grid>
-              
-              {/* PECC user settings: Tool section visibility — only for PECC contacts */}
-              {detailContact.type === 'pecc' && (
-                <Grid container spacing={3} sx={{ mt: 2 }}>
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>PECC Support Tool Settings</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Control which sections this PECC user can see on their PECC Support Tool and snapshot pages.
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Paper variant="outlined" sx={{ p: 2 }}>
-                      {peccSettingsLoading ? (
-                        <Typography variant="body2" color="text.secondary">Loading…</Typography>
-                      ) : peccUserId ? (
-                        <FormGroup>
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={peccPRSSectionVisible}
-                                onChange={(e) => handleTogglePeccPRSSection(peccUserId, e.target.checked)}
-                                color="primary"
-                              />
-                            }
-                            label={
-                              <Box>
-                                <Typography variant="body2" fontWeight={500}>
-                                  Pediatric Readiness Scores Section
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  When disabled, the PRS section will be hidden from both the PECC Support Tool and Snapshot pages.
-                                </Typography>
-                              </Box>
-                            }
-                          />
-                        </FormGroup>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          User account not found. This setting is only available for PECC users with registered accounts.
-                        </Typography>
-                      )}
-                    </Paper>
-                  </Grid>
-                </Grid>
-              )}
-              
               {/* PECC page (site) settings: tab visibility + shared access — only for hospital contacts */}
               {detailContact.type === 'hospital' && (detailContact.facilityId != null || detailContact.id) && (
                 <Grid container spacing={3} sx={{ mt: 2 }}>
@@ -3861,7 +4009,7 @@ const AdminCRMPage: React.FC = () => {
                 </Grid>
               )}
               {!fullScreenEditMode && (
-                <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
+                <Box sx={{ mt: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                     const c = detailContact;
                     setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
@@ -3871,6 +4019,11 @@ const AdminCRMPage: React.FC = () => {
                     Edit
                   </Button>
                   <Button variant="contained" startIcon={<EmailIcon />}>Email</Button>
+                  {detailContact && isPersonType(detailContact.type) && detailContactUserId && (
+                    <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}>
+                      Manage permissions
+                    </Button>
+                  )}
                 </Box>
               )}
             </>

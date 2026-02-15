@@ -62,7 +62,7 @@ interface GranularPermissionsManagerProps {
 }
 
 const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({ mode, initialSelectedUserId }) => {
-  const { userProfile } = useUserProfile();
+  const { userProfile, refreshProfile } = useUserProfile();
   const [activeTab, setActiveTab] = useState(0);  // 0: Users, 1: Cohorts, 2: Programs, 3: Tabs
   
   // Data
@@ -136,7 +136,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     setLoading(true);
     try {
       // Load users (filtered by mode). Include is_admin so we show effective role (Admin overrides base role).
-      let usersQuery = supabase.from('users').select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc');
+      let usersQuery = supabase.from('users').select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id');
       if (mode === 'manager' && userProfile?.id) {
         // Managers can only see their direct reports
         usersQuery = usersQuery.or(`manager_id.eq.${userProfile.id},manager_id_for_pecc.eq.${userProfile.id}`);
@@ -158,6 +158,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           manager_id: string | null;
           mentor_id: string | null;
           manager_id_for_pecc: string | null;
+          primary_program_id?: string | null;
         }) => ({
           id: u.id,
           email: u.email,
@@ -172,7 +173,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           last_login: u.last_login || null,
           manager_id: u.manager_id || null,
           mentor_id: u.mentor_id || null,
-          manager_id_for_pecc: u.manager_id_for_pecc || null
+          manager_id_for_pecc: u.manager_id_for_pecc || null,
+          primary_program_id: u.primary_program_id ?? null
         })));
       }
 
@@ -389,6 +391,20 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       await loadPermissions();
     }
   };
+
+  const handleSavePrimaryProgram = async (programId: string | null) => {
+    if (!selectedUserId) return;
+    const { error } = await supabase
+      .from('users')
+      .update({ primary_program_id: programId || null, updated_at: new Date().toISOString() })
+      .eq('id', selectedUserId);
+    if (!error) {
+      setUsers(prev => prev.map(u => u.id === selectedUserId ? { ...u, primary_program_id: programId || null } : u));
+      if (selectedUserId === userProfile?.id && refreshProfile) {
+        await refreshProfile();
+      }
+    }
+  };
   
   const handleSaveCohortPermission = async (permissionKey: string, enabled: boolean, userId?: string, role?: UserRole) => {
     if (!selectedCohortId) return;
@@ -579,12 +595,29 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                   </Grid>
                 ))}
               </Grid>
+              <Typography variant="subtitle1" gutterBottom sx={{ mt: 3 }}>Primary program (navbar logo)</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                The logo shown in the top left of the app is determined by this user&apos;s primary program. They can be in multiple programs; this selects which program&apos;s logo to display.
+              </Typography>
+              <FormControl fullWidth sx={{ maxWidth: 400 }}>
+                <InputLabel>Primary program</InputLabel>
+                <Select
+                  value={(selectedUser as User & { primary_program_id?: string | null })?.primary_program_id ?? ''}
+                  label="Primary program"
+                  onChange={(e) => handleSavePrimaryProgram((e.target.value as string) || null)}
+                >
+                  <MenuItem value=""><em>None (default ImPACTS logo)</em></MenuItem>
+                  {programs.map(p => (
+                    <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Box>
           );
           })()}
         </Paper>
       )}
-      
+
       {/* Cohort Permissions Tab */}
       {activeTab === 1 && (
         <Paper sx={{ p: 3 }}>

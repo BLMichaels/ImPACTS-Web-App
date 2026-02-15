@@ -35,6 +35,8 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { ProgramWithStats, UserRole, Program } from '../../types/database';
 import { ProgramCard, ProgramDetail } from '../../components/programs';
 
+const PROGRAM_LOGOS_BUCKET = 'program-logos';
+
 interface ProgramFormData {
   name: string;
   description: string;
@@ -42,6 +44,8 @@ interface ProgramFormData {
   end_date: Date | null;
   is_active: boolean;
   manager_ids: string[];
+  logo_url: string | null;
+  logo_file: File | null;
 }
 
 const initialFormData: ProgramFormData = {
@@ -50,7 +54,9 @@ const initialFormData: ProgramFormData = {
   start_date: null,
   end_date: null,
   is_active: true,
-  manager_ids: []
+  manager_ids: [],
+  logo_url: null,
+  logo_file: null
 };
 
 const AdminProgramsPage: React.FC = () => {
@@ -162,7 +168,6 @@ const AdminProgramsPage: React.FC = () => {
   const handleOpenEdit = async (program: Program) => {
     setEditingProgram(program);
     
-    // Load existing managers for this program
     const { data: programManagers } = await supabase
       .from('program_managers')
       .select('manager_id')
@@ -174,7 +179,9 @@ const AdminProgramsPage: React.FC = () => {
       start_date: program.start_date ? new Date(program.start_date) : null,
       end_date: program.end_date ? new Date(program.end_date) : null,
       is_active: program.is_active,
-      manager_ids: programManagers?.map(m => m.manager_id) || []
+      manager_ids: programManagers?.map((m: { manager_id: string }) => m.manager_id) || [],
+      logo_url: program.logo_url ?? null,
+      logo_file: null
     });
     setDialogOpen(true);
   };
@@ -185,7 +192,9 @@ const AdminProgramsPage: React.FC = () => {
     try {
       setSaving(true);
 
-      const programData = {
+      let logoUrl: string | null = !formData.logo_file ? (editingProgram?.logo_url ?? formData.logo_url ?? null) : null;
+
+      const programDataBase = {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         start_date: formData.start_date?.toISOString().split('T')[0] || null,
@@ -197,33 +206,49 @@ const AdminProgramsPage: React.FC = () => {
       let programId: string;
 
       if (editingProgram) {
-        // Update existing
+        programId = editingProgram.id;
+        if (formData.logo_file) {
+          const ext = formData.logo_file.name.split('.').pop()?.toLowerCase() || 'png';
+          const path = `program-${programId}.${ext}`;
+          const { error: uploadErr } = await supabase.storage
+            .from(PROGRAM_LOGOS_BUCKET)
+            .upload(path, formData.logo_file, { upsert: true, contentType: formData.logo_file.type });
+          if (uploadErr) throw uploadErr;
+          const { data: urlData } = supabase.storage.from(PROGRAM_LOGOS_BUCKET).getPublicUrl(path);
+          logoUrl = urlData?.publicUrl ?? null;
+        }
         const { error } = await supabase
           .from('programs')
-          .update(programData)
-          .eq('id', editingProgram.id);
-
+          .update({ ...programDataBase, logo_url: logoUrl })
+          .eq('id', programId);
         if (error) throw error;
-        programId = editingProgram.id;
 
-        // Remove existing managers
         await supabase
           .from('program_managers')
           .delete()
           .eq('program_id', programId);
       } else {
-        // Create new
         const { data, error } = await supabase
           .from('programs')
           .insert({
-            ...programData,
+            ...programDataBase,
+            logo_url: null,
             created_by: userProfile?.id
           })
           .select()
           .single();
-
         if (error) throw error;
         programId = data.id;
+        if (formData.logo_file) {
+          const ext = formData.logo_file.name.split('.').pop()?.toLowerCase() || 'png';
+          const path = `program-${programId}.${ext}`;
+          const { error: uploadErr } = await supabase.storage
+            .from(PROGRAM_LOGOS_BUCKET)
+            .upload(path, formData.logo_file, { upsert: true, contentType: formData.logo_file.type });
+          if (uploadErr) throw uploadErr;
+          const { data: urlData } = supabase.storage.from(PROGRAM_LOGOS_BUCKET).getPublicUrl(path);
+          await supabase.from('programs').update({ logo_url: urlData?.publicUrl }).eq('id', programId);
+        }
       }
 
       // Add managers
@@ -449,6 +474,36 @@ const AdminProgramsPage: React.FC = () => {
                 </li>
               )}
             />
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>Program logo (shown in navbar for users with this as primary program)</Typography>
+              {(formData.logo_url || formData.logo_file) && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                  <img
+                    src={formData.logo_file ? URL.createObjectURL(formData.logo_file) : formData.logo_url || ''}
+                    alt="Logo preview"
+                    style={{ height: 48, width: 'auto', objectFit: 'contain' }}
+                  />
+                  <Button
+                    size="small"
+                    onClick={() => setFormData(prev => ({ ...prev, logo_url: null, logo_file: null }))}
+                  >
+                    Remove logo
+                  </Button>
+                </Box>
+              )}
+              <Button variant="outlined" component="label" size="small">
+                {formData.logo_url || formData.logo_file ? 'Replace logo' : 'Upload logo image'}
+                <input
+                  type="file"
+                  hidden
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    setFormData(prev => ({ ...prev, logo_file: file || null, logo_url: file ? prev.logo_url : null }));
+                  }}
+                />
+              </Button>
+            </Box>
             <FormControlLabel
               control={
                 <Switch

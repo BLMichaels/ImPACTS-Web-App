@@ -85,6 +85,7 @@ export interface User {
   manager_id: string | null;  // For mentors - who manages them
   mentor_id: string | null;   // For PECCs - who mentors them
   manager_id_for_pecc?: string | null;  // For PECCs - direct manager assignment (bypasses mentor)
+  primary_program_id?: string | null;   // Which program's logo to show in navbar (user can be in multiple programs)
 }
 
 // Hospitals/Organizations table
@@ -701,6 +702,7 @@ export interface Program {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  logo_url?: string | null;  // Public URL of program logo (navbar branding)
 }
 
 // Program membership

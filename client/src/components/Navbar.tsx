@@ -42,6 +42,7 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { UserRole } from '../types/database';
 import { useCohortNotifications } from '../hooks/useCohortNotifications';
 import { Badge } from '@mui/material';
@@ -54,9 +55,10 @@ interface NavItem {
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, actualRole, visibleTabs } = useUserProfile();
+  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, actualRole, visibleTabs, primaryProgramLogoUrl } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
+  const { trackLinkClick } = useUsageAnalytics();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const cohortNotifications = useCohortNotifications();
   
@@ -94,6 +96,9 @@ const Navbar: React.FC = () => {
   };
 
   const handleMobileNavigation = (path: string) => {
+    const items = getNavigationItems();
+    const item = items.find((i) => i.path === path);
+    trackLinkClick(path, item?.label ?? path, 'navbar');
     navigate(path);
     setMobileMenuOpen(false);
   };
@@ -107,30 +112,40 @@ const Navbar: React.FC = () => {
         return [
           { path: '/admin/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
+          { path: '/admin/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/admin/pipeline', label: 'Project Pipeline', icon: <PipelineIcon /> },
           { path: '/admin/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon /> }
         ];
 
-      case UserRole.MANAGER:
-        return [
-          { path: '/manager/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+      case UserRole.MANAGER: {
+        const managerItems: NavItem[] = [
+          { path: '/manager/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
-          { path: '/manager/programs', label: 'Programs', icon: <ProgramsIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
-          { path: '/manager/permissions', label: 'Team Permissions', icon: <SettingsIcon /> },
-          { path: '/manager/wages', label: 'Wages & Expenses', icon: <MoneyIcon /> }
+          { path: '/manager/permissions', label: 'Team Permissions', icon: <SettingsIcon /> }
         ];
+        
+        // If manager has hospital assignments (working as mentor), add mentor-like tabs
+        if (userProfile && (userProfile as any).has_hospital_assignments) {
+          managerItems.splice(1, 0, 
+            { path: '/manager/activities', label: 'My Activities', icon: <WorkIcon /> },
+            { path: '/manager/hospitals', label: 'My Hospitals', icon: <HospitalIcon /> },
+            { path: '/manager/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> }
+          );
+        }
+        
+        return managerItems;
+      }
 
       case UserRole.MENTOR: {
         const mentorItems: NavItem[] = [
+          { path: '/mentor/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
           { path: '/mentor/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> },
-          { path: '/mentor/programs', label: 'Programs', icon: <ProgramsIcon /> },
-          { path: '/mentor/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
-          { path: '/mentor/snapshot', label: 'Snapshot', icon: <TimelineIcon /> }
+          { path: '/mentor/cohorts', label: 'Cohorts', icon: <CohortsIcon /> }
         ];
         // Only show wages tab if admin has enabled it for this mentor
         if (userProfile && (userProfile as any).wages_enabled) {
@@ -145,7 +160,7 @@ const Navbar: React.FC = () => {
           { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
-          { path: '/gap-plan', label: 'Gap Plan', icon: <AssignmentIcon /> },
+          { path: '/gap-plan', label: 'Gaps & Education', icon: <AssignmentIcon /> },
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
         const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
@@ -163,7 +178,7 @@ const Navbar: React.FC = () => {
   const getDashboardPath = (): string => {
     switch (userRole) {
       case UserRole.ADMIN: return '/admin/dashboard';
-      case UserRole.MANAGER: return '/manager/dashboard';
+      case UserRole.MANAGER: return '/manager/overview';
       case UserRole.MENTOR: return '/mentor/dashboard';
       default: return '/dashboard';
     }
@@ -342,17 +357,27 @@ const Navbar: React.FC = () => {
             display: 'flex',
             alignItems: 'center'
           }}
-          onClick={() => navigate(getDashboardPath())}
+          onClick={() => {
+            const dashboardPath = getDashboardPath();
+            trackLinkClick(dashboardPath, 'Dashboard', 'navbar');
+            navigate(dashboardPath);
+          }}
         >
           <img 
-            src="/impacts-logo.png" 
-            alt="ImPACTS Logo" 
+            src={primaryProgramLogoUrl || '/impacts-logo.png'} 
+            alt="Logo" 
             style={{ 
               height: isMobile ? '35px' : '45px',
               width: 'auto'
             }}
             onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
+              const el = e.target as HTMLImageElement;
+              if (primaryProgramLogoUrl) {
+                el.src = '/impacts-logo.png';
+                el.alt = 'ImPACTS Logo';
+              } else {
+                el.style.display = 'none';
+              }
             }}
           />
         </Box>
@@ -382,7 +407,10 @@ const Navbar: React.FC = () => {
                   key={item.path}
                   color="inherit"
                   startIcon={isTablet ? null : icon}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => {
+                    trackLinkClick(item.path, item.label, 'navbar');
+                    navigate(item.path);
+                  }}
                   sx={{
                     backgroundColor: location.pathname === item.path ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
                     '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.2)' },
