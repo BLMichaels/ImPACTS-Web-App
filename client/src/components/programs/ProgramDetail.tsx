@@ -134,24 +134,24 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
       if (programError) throw programError;
       setProgram(programData);
 
-      // Check if current user is a manager
+      // Check if current user is a manager (maybeSingle so 0 rows is ok)
       if (userProfile) {
         const { data: managerData } = await supabase
           .from('program_managers')
           .select('id')
           .eq('program_id', programId)
           .eq('manager_id', userProfile.id)
-          .single();
+          .maybeSingle();
         
         setIsManager(!!managerData);
       }
 
-      // Load members
+      // Load members (use !user_id so PostgREST uses program_members.user_id → users, not added_by)
       const { data: membersData, error: membersError } = await supabase
         .from('program_members')
         .select(`
           *,
-          user:users(id, first_name, last_name, email, role)
+          user:users!user_id(id, first_name, last_name, email, role)
         `)
         .eq('program_id', programId)
         .eq('status', 'active');
