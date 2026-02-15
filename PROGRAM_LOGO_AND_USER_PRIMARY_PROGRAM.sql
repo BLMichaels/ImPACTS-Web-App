@@ -1,8 +1,22 @@
 -- Program logo URL (uploaded to Storage, URL stored here) and user primary program (which program's logo shows in navbar).
 -- Run in Supabase SQL Editor.
 --
--- Storage: create a bucket named "program-logos" (public or with read policy for authenticated).
--- Admins upload logo images; this column stores the public URL.
+-- Storage: create bucket "program-logos" (public) and policies so admins can upload and anyone can read.
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('program-logos', 'program-logos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Allow authenticated users to upload/update/delete program logos (admin Programs page)
+DROP POLICY IF EXISTS "Authenticated can manage program logos" ON storage.objects;
+CREATE POLICY "Authenticated can manage program logos" ON storage.objects
+  FOR ALL USING (bucket_id = 'program-logos' AND auth.role() = 'authenticated')
+  WITH CHECK (bucket_id = 'program-logos' AND auth.role() = 'authenticated');
+
+-- Allow public read for program logos (navbar and CRM show logo URLs)
+DROP POLICY IF EXISTS "Public read program logos" ON storage.objects;
+CREATE POLICY "Public read program logos" ON storage.objects
+  FOR SELECT USING (bucket_id = 'program-logos');
 
 -- Programs: logo image URL (from Supabase Storage or external)
 alter table public.programs

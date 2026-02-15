@@ -193,6 +193,7 @@ const AdminProgramsPage: React.FC = () => {
       setSaving(true);
 
       let logoUrl: string | null = !formData.logo_file ? (editingProgram?.logo_url ?? formData.logo_url ?? null) : null;
+      let logoUploadFailed = false;
 
       const programDataBase = {
         name: formData.name.trim(),
@@ -213,9 +214,12 @@ const AdminProgramsPage: React.FC = () => {
           const { error: uploadErr } = await supabase.storage
             .from(PROGRAM_LOGOS_BUCKET)
             .upload(path, formData.logo_file, { upsert: true, contentType: formData.logo_file.type });
-          if (uploadErr) throw uploadErr;
-          const { data: urlData } = supabase.storage.from(PROGRAM_LOGOS_BUCKET).getPublicUrl(path);
-          logoUrl = urlData?.publicUrl ?? null;
+          if (!uploadErr) {
+            const { data: urlData } = supabase.storage.from(PROGRAM_LOGOS_BUCKET).getPublicUrl(path);
+            logoUrl = urlData?.publicUrl ?? null;
+          } else {
+            logoUploadFailed = true;
+          }
         }
         const { error } = await supabase
           .from('programs')
@@ -245,9 +249,12 @@ const AdminProgramsPage: React.FC = () => {
           const { error: uploadErr } = await supabase.storage
             .from(PROGRAM_LOGOS_BUCKET)
             .upload(path, formData.logo_file, { upsert: true, contentType: formData.logo_file.type });
-          if (uploadErr) throw uploadErr;
-          const { data: urlData } = supabase.storage.from(PROGRAM_LOGOS_BUCKET).getPublicUrl(path);
-          await supabase.from('programs').update({ logo_url: urlData?.publicUrl }).eq('id', programId);
+          if (!uploadErr) {
+            const { data: urlData } = supabase.storage.from(PROGRAM_LOGOS_BUCKET).getPublicUrl(path);
+            await supabase.from('programs').update({ logo_url: urlData?.publicUrl }).eq('id', programId);
+          } else {
+            logoUploadFailed = true;
+          }
         }
       }
 
@@ -268,6 +275,9 @@ const AdminProgramsPage: React.FC = () => {
 
       setDialogOpen(false);
       loadPrograms();
+      if (logoUploadFailed) {
+        setError('Program saved. Logo could not be uploaded: the "program-logos" storage bucket may be missing. Run PROGRAM_LOGO_AND_USER_PRIMARY_PROGRAM.sql in Supabase SQL Editor, then edit the program to upload the logo.');
+      }
     } catch (err) {
       console.error('Error saving program:', err);
       setError('Failed to save program');
