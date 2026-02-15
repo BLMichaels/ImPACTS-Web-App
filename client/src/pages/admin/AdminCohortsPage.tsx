@@ -86,6 +86,14 @@ const AdminCohortsPage: React.FC = () => {
   const [deletingCohort, setDeletingCohort] = useState<Cohort | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Invite mentors dialog (which mentors can invite PECCs to this cohort)
+  const [inviteMentorsDialogOpen, setInviteMentorsDialogOpen] = useState(false);
+  const [inviteMentorsCohort, setInviteMentorsCohort] = useState<Cohort | null>(null);
+  const [allMentors, setAllMentors] = useState<Array<{ id: string; first_name: string; last_name: string; email: string }>>([]);
+  const [inviteMentorAssignments, setInviteMentorAssignments] = useState<Array<{ id: string; mentor_id: string; mentor?: { id: string; first_name: string; last_name: string; email: string } }>>([]);
+  const [selectedInviteMentor, setSelectedInviteMentor] = useState<{ id: string; first_name: string; last_name: string; email: string } | null>(null);
+  const [loadingInviteMentors, setLoadingInviteMentors] = useState(false);
+
   // Menu state
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; cohort: Cohort } | null>(null);
 
@@ -136,7 +144,7 @@ const AdminCohortsPage: React.FC = () => {
             .eq('cohort_id', cohort.id)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           const { data: lastTopic } = await supabase
             .from('cohort_discussion_topics')
@@ -144,7 +152,7 @@ const AdminCohortsPage: React.FC = () => {
             .eq('cohort_id', cohort.id)
             .order('last_reply_at', { ascending: false, nullsFirst: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           const lastActivityDates = [
             lastAnnouncement?.created_at,
@@ -226,6 +234,92 @@ const AdminCohortsPage: React.FC = () => {
       loadManagers();
     }
   }, [assignDialogOpen, loadManagers]);
+
+  const loadInviteMentors = useCallback(async () => {
+    if (!inviteMentorsCohort) return;
+    setLoadingInviteMentors(true);
+    try {
+      const { data: mentorsData, error: mentorsError } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .eq('role', 'mentor')
+        .eq('is_active', true)
+        .order('first_name');
+      if (mentorsError) throw mentorsError;
+      setAllMentors(mentorsData || []);
+
+      const { data: assignedData, error: assignedError } = await supabase
+        .from('cohort_invite_mentors')
+        .select(`
+          id,
+          mentor_id,
+          mentor:mentor_id(id, first_name, last_name, email)
+        `)
+        .eq('cohort_id', inviteMentorsCohort.id);
+      if (assignedError) throw assignedError;
+      const normalized = (assignedData || []).map((row: any) => ({
+        id: row.id,
+        mentor_id: row.mentor_id,
+        mentor: Array.isArray(row.mentor) ? row.mentor[0] : row.mentor
+      }));
+      setInviteMentorAssignments(normalized);
+    } catch (err) {
+      console.error('Error loading invite mentors:', err);
+    } finally {
+      setLoadingInviteMentors(false);
+    }
+  }, [inviteMentorsCohort]);
+
+  useEffect(() => {
+    if (inviteMentorsDialogOpen) {
+      loadInviteMentors();
+    }
+  }, [inviteMentorsDialogOpen, loadInviteMentors]);
+
+  const handleOpenInviteMentorsDialog = (cohort: Cohort) => {
+    setInviteMentorsCohort(cohort);
+    setSelectedInviteMentor(null);
+    setInviteMentorsDialogOpen(true);
+    setMenuAnchor(null);
+  };
+
+  const handleCloseInviteMentorsDialog = () => {
+    setInviteMentorsDialogOpen(false);
+    setInviteMentorsCohort(null);
+    setSelectedInviteMentor(null);
+  };
+
+  const handleAddInviteMentor = async () => {
+    if (!selectedInviteMentor || !inviteMentorsCohort) return;
+    try {
+      const { error } = await supabase
+        .from('cohort_invite_mentors')
+        .insert({
+          cohort_id: inviteMentorsCohort.id,
+          mentor_id: selectedInviteMentor.id,
+          assigned_by: userProfile?.id
+        });
+      if (error && error.code !== '23505') throw error;
+      setSelectedInviteMentor(null);
+      loadInviteMentors();
+    } catch (err) {
+      console.error('Error adding invite mentor:', err);
+    }
+  };
+
+  const handleRemoveInviteMentor = async (mentorId: string) => {
+    if (!inviteMentorsCohort) return;
+    try {
+      await supabase
+        .from('cohort_invite_mentors')
+        .delete()
+        .eq('cohort_id', inviteMentorsCohort.id)
+        .eq('mentor_id', mentorId);
+      loadInviteMentors();
+    } catch (err) {
+      console.error('Error removing invite mentor:', err);
+    }
+  };
 
   const handleOpenCreateDialog = () => {
     setEditingCohort(null);
@@ -704,6 +798,10 @@ const AdminCohortsPage: React.FC = () => {
           <ListItemIcon><AssignIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Manage Managers</ListItemText>
         </MenuItem>
+        <MenuItem onClick={() => menuAnchor && handleOpenInviteMentorsDialog(menuAnchor.cohort)}>
+          <ListItemIcon><AssignIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Mentors who can invite to this cohort</ListItemText>
+        </MenuItem>
         <MenuItem 
           onClick={() => menuAnchor && handleDeleteClick(menuAnchor.cohort)}
           sx={{ color: 'error.main' }}
@@ -854,8 +952,92 @@ const AdminCohortsPage: React.FC = () => {
             </Box>
           )}
         </DialogContent>
+<DialogActions>
+        <Button onClick={handleCloseAssignDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Mentors who can invite to this cohort */}
+      <Dialog open={inviteMentorsDialogOpen} onClose={handleCloseInviteMentorsDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Mentors who can invite PECCs to {inviteMentorsCohort?.name}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Only mentors listed here will see this cohort when inviting a PECC (e.g. from Hospital Contacts or Send Invitation). Add mentors who should be able to invite PECCs to this cohort.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+            <Autocomplete
+              options={allMentors.filter(m => !inviteMentorAssignments.some(a => a.mentor_id === m.id))}
+              value={selectedInviteMentor}
+              onChange={(_, value) => setSelectedInviteMentor(value)}
+              getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.email})`}
+              loading={loadingInviteMentors}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Select mentor"
+                  placeholder="Search mentors..."
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {loadingInviteMentors ? <CircularProgress size={20} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+              renderOption={(props, option) => (
+                <li {...props} key={option.id}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                      {option.first_name?.charAt(0) || '?'}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="body1">{option.first_name} {option.last_name}</Typography>
+                      <Typography variant="body2" color="text.secondary">{option.email}</Typography>
+                    </Box>
+                  </Box>
+                </li>
+              )}
+              sx={{ flex: 1 }}
+            />
+            <Button variant="contained" onClick={handleAddInviteMentor} disabled={!selectedInviteMentor}>
+              Add
+            </Button>
+          </Box>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Mentors who can invite to this cohort ({inviteMentorAssignments.length})
+          </Typography>
+          {inviteMentorAssignments.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No mentors assigned. Add mentors above; only they will see this cohort when inviting a PECC.
+            </Typography>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {inviteMentorAssignments.map((a) => (
+                <Paper key={a.id} sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar sx={{ bgcolor: 'primary.main' }}>
+                    {a.mentor?.first_name?.charAt(0) || '?'}
+                  </Avatar>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body1">
+                      {a.mentor?.first_name} {a.mentor?.last_name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">{a.mentor?.email}</Typography>
+                  </Box>
+                  <Tooltip title="Remove">
+                    <IconButton size="small" onClick={() => handleRemoveInviteMentor(a.mentor_id)} color="error">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Paper>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseAssignDialog}>Close</Button>
+          <Button onClick={handleCloseInviteMentorsDialog}>Close</Button>
         </DialogActions>
       </Dialog>
 

@@ -89,7 +89,7 @@ const CohortsPage: React.FC = () => {
             .select('*')
             .eq('cohort_id', cohort.id)
             .eq('user_id', userProfile.id)
-            .single();
+            .maybeSingle();
 
           // Get unread announcements
           let unreadAnnouncements = 0;
@@ -124,7 +124,7 @@ const CohortsPage: React.FC = () => {
             .eq('cohort_id', cohort.id)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           const { data: lastTopic } = await supabase
             .from('cohort_discussion_topics')
@@ -132,7 +132,7 @@ const CohortsPage: React.FC = () => {
             .eq('cohort_id', cohort.id)
             .order('last_reply_at', { ascending: false, nullsFirst: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           const lastActivityDates = [
             lastAnnouncement?.created_at,
@@ -185,7 +185,7 @@ const CohortsPage: React.FC = () => {
   // Determine permissions based on role
   const canInvite = userRole === UserRole.MENTOR;
   const canManage = false; // PECCs and Mentors cannot manage cohorts from this page
-  const canAnnounce = false; // Only admins/managers can post announcements
+  const canAnnounce = userRole === UserRole.MENTOR; // Mentors can post announcements and start discussions
 
   if (selectedCohort) {
     return (

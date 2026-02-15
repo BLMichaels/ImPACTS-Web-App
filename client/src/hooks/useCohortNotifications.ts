@@ -37,7 +37,7 @@ export const useCohortNotifications = () => {
             .select('last_read_announcements, last_read_discussions')
             .eq('cohort_id', cohortId)
             .eq('user_id', userProfile.id)
-            .single();
+            .maybeSingle();
 
           // Count unread announcements
           let unreadAnns = 0;

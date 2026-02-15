@@ -122,7 +122,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
           .select('*')
           .eq('cohort_id', cohort.id)
           .eq('user_id', userProfile.id)
-          .single();
+          .maybeSingle();
 
         if (readStatus) {
           // Count unread announcements

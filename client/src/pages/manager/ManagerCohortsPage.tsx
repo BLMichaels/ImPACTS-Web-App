@@ -122,7 +122,7 @@ const ManagerCohortsPage: React.FC = () => {
             .eq('cohort_id', cohort.id)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           const { data: lastTopic } = await supabase
             .from('cohort_discussion_topics')
@@ -130,7 +130,7 @@ const ManagerCohortsPage: React.FC = () => {
             .eq('cohort_id', cohort.id)
             .order('last_reply_at', { ascending: false, nullsFirst: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           const lastActivityDates = [
             lastAnnouncement?.created_at,
