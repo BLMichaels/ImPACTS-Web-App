@@ -413,7 +413,7 @@ const AdminProgramsPage: React.FC = () => {
             </IconButton>
           </Box>
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers aria-describedby={undefined}>
           <TextField
             autoFocus
             margin="normal"

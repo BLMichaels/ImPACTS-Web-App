@@ -637,7 +637,7 @@ export default function ScormPackagesSection(props: ScormPackagesSectionProps) {
 
       <Dialog open={open} onClose={() => (!uploading ? setOpen(false) : null)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingId ? 'Edit Learning Module' : 'Add Learning Module (SCORM)'}</DialogTitle>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <Box sx={{ mt: 1, display: 'grid', gap: 2 }}>
             <TextField
               label="Title"

@@ -70,7 +70,7 @@ interface PermissionState {
   [role: string]: { [permission: string]: boolean };
 }
 const PERMISSION_GROUPS: Record<string, string[]> = {
-  'Tool & Views': [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_AGGREGATED_DATA, PERMISSIONS.VIEW_SNAPSHOT, PERMISSIONS.EXPORT_DATA],
+  'Dashboard & Views': [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_AGGREGATED_DATA, PERMISSIONS.VIEW_SNAPSHOT, PERMISSIONS.EXPORT_DATA],
   'Activities': [PERMISSIONS.VIEW_OWN_ACTIVITIES, PERMISSIONS.VIEW_TEAM_ACTIVITIES, PERMISSIONS.VIEW_ALL_ACTIVITIES, PERMISSIONS.MANAGE_OWN_ACTIVITIES],
   'Hospitals': [PERMISSIONS.VIEW_OWN_HOSPITALS, PERMISSIONS.VIEW_ALL_HOSPITALS, PERMISSIONS.MANAGE_HOSPITALS],
   'Contacts & CRM': [PERMISSIONS.VIEW_CONTACTS, PERMISSIONS.MANAGE_CONTACTS],
@@ -151,6 +151,7 @@ export default function AdminSettingsPage() {
   // Education Questions state
   interface EducationQuestion {
     questionId: string;
+    category: string;
     question: string;
     why: string;
     background: string;
@@ -163,6 +164,7 @@ export default function AdminSettingsPage() {
   const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
   const [educationForm, setEducationForm] = useState<EducationQuestion>({
     questionId: '',
+    category: '',
     question: '',
     why: '',
     background: '',
@@ -286,54 +288,28 @@ export default function AdminSettingsPage() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Filter out any incomplete entries and normalize questionIds to strings
-          const validQuestions = parsed
-            .filter((q: any) => {
-              const questionId = String(q.questionId || '').trim();
-              return questionId && 
-                     q.question && q.question.trim() &&
-                     q.why && q.why.trim() &&
-                     q.background && q.background.trim() &&
-                     q.example && q.example.trim() &&
-                     q.sustainability && q.sustainability.trim();
-            })
-            .map((q: any) => ({
-              ...q,
-              questionId: String(q.questionId).trim() // Ensure questionId is always a string
-            }));
-          
-          setEducationQuestions(validQuestions);
-          
-          // If we filtered out any invalid entries, save the cleaned version
-          if (validQuestions.length !== parsed.length) {
-            localStorage.setItem('education_questions', JSON.stringify(validQuestions));
-            console.log(`Cleaned education questions: removed ${parsed.length - validQuestions.length} invalid entries`);
-          }
+          setEducationQuestions(parsed.map((q: any) => ({ ...q, category: q.category ?? '' })));
         } else {
-          // Empty array - clear any old data
           setEducationQuestions([]);
-          localStorage.setItem('education_questions', JSON.stringify([]));
         }
       } catch (e) {
         console.error('Error loading education questions:', e);
         setEducationQuestions([]);
-        localStorage.setItem('education_questions', JSON.stringify([]));
       }
     } else {
-      // No saved data - ensure empty state
       setEducationQuestions([]);
-      localStorage.setItem('education_questions', JSON.stringify([]));
     }
   }, []);
   
   const handleOpenEducationDialog = (question?: EducationQuestion) => {
     if (question) {
       setEditingEducationId(question.questionId);
-      setEducationForm({ ...question });
+      setEducationForm({ ...question, category: question.category ?? '' });
     } else {
       setEditingEducationId(null);
       setEducationForm({
         questionId: '',
+        category: '',
         question: '',
         why: '',
         background: '',
@@ -347,41 +323,22 @@ export default function AdminSettingsPage() {
   };
   
   const handleSaveEducationQuestion = () => {
-    // Normalize questionId to string and trim
-    const normalizedQuestionId = String(educationForm.questionId).trim();
-    
-    if (!normalizedQuestionId || !educationForm.question.trim()) {
-      setSnackbar({ open: true, message: 'Question ID and Question text are required', severity: 'error' });
-      return;
+    const form = { ...educationForm };
+    if (!form.questionId.trim()) {
+      form.questionId = `_${Date.now()}`;
     }
-    
-    // Validate all required fields
-    if (!educationForm.why?.trim() || !educationForm.background?.trim() || 
-        !educationForm.example?.trim() || !educationForm.sustainability?.trim()) {
-      setSnackbar({ open: true, message: 'All fields (Why, Background, Example, Sustainability) are required', severity: 'error' });
-      return;
-    }
-    
-    // Create normalized form with string questionId
-    const normalizedForm = {
-      ...educationForm,
-      questionId: normalizedQuestionId
-    };
-    
     const updated = editingEducationId
-      ? educationQuestions.map(q => String(q.questionId) === String(editingEducationId) ? normalizedForm : q)
-      : [...educationQuestions, normalizedForm];
-    
+      ? educationQuestions.map(q => q.questionId === editingEducationId ? form : q)
+      : [...educationQuestions, form];
     setEducationQuestions(updated);
     localStorage.setItem('education_questions', JSON.stringify(updated));
     setEducationDialogOpen(false);
-    setSnackbar({ open: true, message: 'Education question saved successfully', severity: 'success' });
+    setSnackbar({ open: true, message: 'Education question saved', severity: 'success' });
   };
   
   const handleDeleteEducationQuestion = (questionId: string) => {
     if (!window.confirm(`Delete education content for Question ${questionId}?`)) return;
-    const normalizedId = String(questionId);
-    const updated = educationQuestions.filter(q => String(q.questionId) !== normalizedId);
+    const updated = educationQuestions.filter(q => q.questionId !== questionId);
     setEducationQuestions(updated);
     localStorage.setItem('education_questions', JSON.stringify(updated));
     setSnackbar({ open: true, message: 'Education question deleted', severity: 'success' });
@@ -685,7 +642,7 @@ export default function AdminSettingsPage() {
       {/* Granular Permissions */}
       {tabIndex === 2 && (
         <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
-          <GranularPermissionsManager mode="admin" />
+          <GranularPermissionsManager mode="admin" initialSelectedUserId={searchParams.get('userId') || undefined} />
         </Suspense>
       )}
 
@@ -954,7 +911,7 @@ export default function AdminSettingsPage() {
                     <TableRow key={eq.questionId}>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                          Question {eq.questionId}
+                          {eq.category?.trim() ? `Question ${eq.questionId}: ${eq.category}` : `Question ${eq.questionId}`}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -965,7 +922,7 @@ export default function AdminSettingsPage() {
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: 'vertical'
                         }}>
-                          {eq.question}
+                          {eq.question || '—'}
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
@@ -996,7 +953,7 @@ export default function AdminSettingsPage() {
         <DialogTitle>
           {editingEducationId ? `Edit Question ${editingEducationId}` : 'Add Education Question'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <Box sx={{ pt: 2 }}>
             <TextField
               fullWidth
@@ -1004,19 +961,26 @@ export default function AdminSettingsPage() {
               value={educationForm.questionId}
               onChange={(e) => setEducationForm(prev => ({ ...prev, questionId: e.target.value }))}
               margin="normal"
-              required
-              helperText="The question number (e.g., 22, 23, etc.)"
+              helperText="Question number (e.g., 22, 23). Shown next to category on the Gaps & Education tab."
             />
             <TextField
               fullWidth
-              label="Question"
+              label="Category"
+              value={educationForm.category}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, category: e.target.value }))}
+              margin="normal"
+              placeholder="e.g., Coordination, Staffing"
+              helperText="Shown next to the question number on the Gaps & Education tab."
+            />
+            <TextField
+              fullWidth
+              label="Assessment question (Learn more page)"
               value={educationForm.question}
               onChange={(e) => setEducationForm(prev => ({ ...prev, question: e.target.value }))}
               margin="normal"
-              required
               multiline
               rows={3}
-              helperText="The full question text"
+              helperText="The actual question from the assessment. Shown at the top when users click Learn more."
             />
             <Box sx={{ mt: 2, mb: 1 }}>
               <EducationRichTextEditor
@@ -1105,7 +1069,7 @@ export default function AdminSettingsPage() {
         <DialogTitle>
           {editingCategoryIndex !== null ? 'Edit Category' : 'Add Category'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           {categoryType === 'pecc' ? (
             <TextField
               fullWidth
@@ -1187,7 +1151,7 @@ export default function AdminSettingsPage() {
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingId ? 'Edit question' : 'Add question'}</DialogTitle>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <TextField fullWidth margin="normal" label="Label" value={formLabel} onChange={e => setFormLabel(e.target.value)} required />
           <FormControl fullWidth margin="normal">
             <InputLabel>Type</InputLabel>
