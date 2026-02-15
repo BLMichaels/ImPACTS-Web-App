@@ -149,9 +149,19 @@ export default function ScormPackagesSection(props: ScormPackagesSectionProps) {
       if (placementProp) {
         query = query.eq('placement', placementProp);
       }
-      const { data, error: err } = await query.order('display_order', { ascending: true }).order('updated_at', { ascending: false });
+      // Order by updated_at only (display_order may not exist if placement migration not run)
+      const { data, error: err } = await query.order('updated_at', { ascending: false });
       if (err) throw err;
       let list = (data as unknown as ScormPackage[]) ?? [];
+      // Client-side sort by display_order then updated_at when available
+      list = [...list].sort((a, b) => {
+        const orderA = a.display_order ?? 0;
+        const orderB = b.display_order ?? 0;
+        if (orderA !== orderB) return orderA - orderB;
+        const tA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+        const tB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+        return tB - tA;
+      });
       if (placementProp === 'cohort' && cohortId) {
         list = list.filter(
           (p) =>
