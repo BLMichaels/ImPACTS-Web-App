@@ -76,6 +76,10 @@ const formatUrl = (url: string): string => {
   return `https://${url}`;
 };
 
+// Check if HTML/rich text has any visible content (strip tags and trim)
+const hasHtmlContent = (html: string | undefined): boolean =>
+  Boolean(html && (html.replace(/<[^>]*>/g, '').trim().length > 0));
+
 const GAP_PLANS_STORAGE_KEY = (uid: string) => `gapPlans_${uid}`;
 export const GAP_PLANS_UPDATED_EVENT = 'impacts:gapPlansUpdated';
 
@@ -275,7 +279,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
             )}
           </Box>
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, ml: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1, ml: 2, flexShrink: 0 }}>
             <Button
               variant="outlined"
               size="small"
@@ -357,78 +361,102 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
         <DialogContent>
           {selectedEducationContent ? (
             <Box>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
-                Assessment Question:
-              </Typography>
-              <Typography variant="body1" sx={{ mb: 3 }}>
-                {selectedEducationContent.question || '—'}
-              </Typography>
+              {selectedEducationContent.question?.trim() ? (
+                <>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+                    Assessment Question:
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 3 }}>
+                    {selectedEducationContent.question}
+                  </Typography>
+                </>
+              ) : null}
 
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#2e7d32' }}>
-                Why:
-              </Typography>
-              <Box
-                sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                dangerouslySetInnerHTML={{ __html: selectedEducationContent.why || '' }}
-              />
+              {hasHtmlContent(selectedEducationContent.why) ? (
+                <>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#2e7d32' }}>
+                    Why:
+                  </Typography>
+                  <Box
+                    sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
+                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.why }}
+                  />
+                </>
+              ) : null}
 
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1976d2' }}>
-                Background:
-              </Typography>
-              <Box
-                sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                dangerouslySetInnerHTML={{ __html: selectedEducationContent.background || '' }}
-              />
+              {hasHtmlContent(selectedEducationContent.background) ? (
+                <>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1976d2' }}>
+                    Background:
+                  </Typography>
+                  <Box
+                    sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
+                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.background }}
+                  />
+                </>
+              ) : null}
 
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#f57c00' }}>
-                Example:
-              </Typography>
-              <Box
-                sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                dangerouslySetInnerHTML={{ __html: selectedEducationContent.example || '' }}
-              />
+              {hasHtmlContent(selectedEducationContent.example) ? (
+                <>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#f57c00' }}>
+                    Example:
+                  </Typography>
+                  <Box
+                    sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
+                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.example }}
+                  />
+                </>
+              ) : null}
 
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#7b1fa2' }}>
-                Sustainability Practices for PECC:
-              </Typography>
-              <Box
-                sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                dangerouslySetInnerHTML={{ __html: selectedEducationContent.sustainability || '' }}
-              />
+              {hasHtmlContent(selectedEducationContent.sustainability) ? (
+                <>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#7b1fa2' }}>
+                    Sustainability Practices for PECC:
+                  </Typography>
+                  <Box
+                    sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
+                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.sustainability }}
+                  />
+                </>
+              ) : null}
 
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#d32f2f' }}>
-                Additional Resources:
-              </Typography>
-              <Box component="ul" sx={{ mb: 2, pl: 3, m: 0, listStyle: 'disc', '& li': { mb: 0.5 } }}>
-                {selectedEducationContent.resources.map((resource, index) => {
-                  const parsed = parseResource(resource);
-                  const url = formatUrl(parsed.url);
-                  const linkBlue = '#0000EE';
-                  return (
-                    <Box component="li" key={index}>
-                      {url ? (
-                        <Link
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          variant="body2"
-                          sx={{
-                            color: linkBlue,
-                            textDecoration: 'underline',
-                            '&:hover': { color: '#551A8B' }
-                          }}
-                        >
-                          {parsed.title || resource}
-                        </Link>
-                      ) : (
-                        <Typography variant="body2" component="span" sx={{ color: linkBlue }}>
-                          {parsed.title || resource}
-                        </Typography>
-                      )}
-                    </Box>
-                  );
-                })}
-              </Box>
+              {selectedEducationContent.resources?.length > 0 && selectedEducationContent.resources.some((r) => r && String(r).trim()) ? (
+                <>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#d32f2f' }}>
+                    Additional Resources:
+                  </Typography>
+                  <Box component="ul" sx={{ mb: 2, pl: 3, m: 0, listStyle: 'disc', '& li': { mb: 0.5 } }}>
+                    {selectedEducationContent.resources.filter((r) => r && String(r).trim()).map((resource, index) => {
+                      const parsed = parseResource(resource);
+                      const url = formatUrl(parsed.url);
+                      const linkBlue = '#0000EE';
+                      return (
+                        <Box component="li" key={index}>
+                          {url ? (
+                            <Link
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              variant="body2"
+                              sx={{
+                                color: linkBlue,
+                                textDecoration: 'underline',
+                                '&:hover': { color: '#551A8B' }
+                              }}
+                            >
+                              {parsed.title || resource}
+                            </Link>
+                          ) : (
+                            <Typography variant="body2" component="span" sx={{ color: linkBlue }}>
+                              {parsed.title || resource}
+                            </Typography>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                </>
+              ) : null}
 
               <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 'bold', color: '#1565c0', display: 'flex', alignItems: 'center', gap: 1 }}>
                 <AssignmentIcon fontSize="small" />

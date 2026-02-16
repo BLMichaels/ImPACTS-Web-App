@@ -31,7 +31,7 @@ import {
   AccordionSummary,
   AccordionDetails
 } from '@mui/material';
-import { FileDownload as DownloadIcon, Upload as UploadIcon, Image as ImageIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, School as SchoolIcon } from '@mui/icons-material';
+import { FileDownload as DownloadIcon, Upload as UploadIcon, Image as ImageIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, School as SchoolIcon, DragIndicator as DragIndicatorIcon } from '@mui/icons-material';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
@@ -40,6 +40,7 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
 import EducationPage from './EducationPage';
+import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
 
 interface GapPlan {
   id: string;
@@ -74,10 +75,13 @@ const GapPlanPage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterPriority, setFilterPriority] = useState<string>('');
   const [filterOwner, setFilterOwner] = useState<string>('');
-  const [sortBy, setSortBy] = useState<string>('rank');
+  const [sortBy, setSortBy] = useState<string>('questionId');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [rankInputValues, setRankInputValues] = useState<{ [key: string]: string }>({});
   const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [draggedPlanId, setDraggedPlanId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [educationCategories, setEducationCategories] = useState<Record<string, string>>({});
+  const [openEducationAccordion, setOpenEducationAccordion] = useState(true); // PECC: Education Resources accordion defaults to open
   const [editingPlan, setEditingPlan] = useState<GapPlan | null>(null);
   const [editFormData, setEditFormData] = useState({
     action: '',
@@ -88,7 +92,6 @@ const GapPlanPage: React.FC = () => {
     notes: '',
     dueDate: '',
     completionDate: '',
-    rank: '' as GapPlan['rank'],
     attachments: [] as GapPlanAttachment[]
   });
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +101,36 @@ const GapPlanPage: React.FC = () => {
     if (currentUser?.uid) {
       loadGapPlans();
     }
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('education_questions');
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        const map: Record<string, string> = {};
+        parsed.forEach((q: { questionId?: string; category?: string }) => {
+          if (q.questionId != null) map[String(q.questionId)] = q.category || '';
+        });
+        setEducationCategories(map);
+      }
+    } catch {
+      setEducationCategories({});
+    }
+  }, []);
+
+  // Reload when gap plans updated (e.g. added from Education) or user returns to this tab
+  useEffect(() => {
+    const onGapPlansUpdated = () => { if (currentUser?.uid) loadGapPlans(); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && currentUser?.uid) loadGapPlans();
+    };
+    window.addEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [currentUser?.uid]);
 
   useEffect(() => {
@@ -123,9 +156,6 @@ const GapPlanPage: React.FC = () => {
         }));
         
         setGapPlans(fixedPlans);
-        
-        // Check for duplicate ranks and fix them
-        setTimeout(() => validateAndFixRanks(), 100);
       } else {
         console.log('GapPlanPage: No saved plans found');
       }
@@ -173,30 +203,17 @@ const GapPlanPage: React.FC = () => {
     filtered.sort((a, b) => {
       let comparison = 0;
       switch (sortBy) {
-        case 'rank':
-          // Handle blank ranks by treating them as highest value
-          if (a.rank === '' && b.rank === '') comparison = 0;
-          else if (a.rank === '') comparison = 1;
-          else if (b.rank === '') comparison = -1;
-          else comparison = (a.rank as number) - (b.rank as number);
+        case 'order':
+          comparison = gapPlans.findIndex(p => p.id === a.id) - gapPlans.findIndex(p => p.id === b.id);
           break;
         case 'questionId':
-          comparison = parseInt(a.questionId) - parseInt(b.questionId);
+          comparison = (parseInt(a.questionId, 10) || 0) - (parseInt(b.questionId, 10) || 0);
           break;
         case 'status':
-          comparison = a.status.localeCompare(b.status);
-          break;
-        case 'priority':
-          comparison = a.priority.localeCompare(b.priority);
-          break;
-        case 'owner':
-          comparison = a.owner.localeCompare(b.owner);
+          comparison = (a.status || '').localeCompare(b.status || '');
           break;
         case 'dueDate':
           comparison = new Date(a.dueDate || '9999-12-31').getTime() - new Date(b.dueDate || '9999-12-31').getTime();
-          break;
-        case 'completionDate':
-          comparison = new Date(a.completionDate || '9999-12-31').getTime() - new Date(b.completionDate || '9999-12-31').getTime();
           break;
         default:
           comparison = 0;
@@ -209,7 +226,6 @@ const GapPlanPage: React.FC = () => {
 
   const handleEdit = (plan: GapPlan) => {
     try {
-      console.log('Opening edit dialog for plan:', plan);
       setEditingPlan(plan);
       setEditFormData({
         action: plan.action,
@@ -220,11 +236,9 @@ const GapPlanPage: React.FC = () => {
         notes: plan.notes,
         dueDate: plan.dueDate,
         completionDate: plan.completionDate,
-        rank: typeof plan.rank === 'number' ? plan.rank + 1 : plan.rank,
         attachments: plan.attachments || []
       });
       setOpenEditDialog(true);
-      console.log('Edit dialog opened successfully');
     } catch (error) {
       console.error('Error opening edit dialog:', error);
       setError('Failed to open edit dialog. Please try again.');
@@ -238,15 +252,9 @@ const GapPlanPage: React.FC = () => {
     }
     trackClick?.('Gap Plan - Update');
 
-    // Convert display rank back to internal rank if it's a number
-    const editDataToSave = {
-      ...editFormData,
-      rank: typeof editFormData.rank === 'number' ? editFormData.rank - 1 : editFormData.rank
-    };
-
-    const updatedPlans = gapPlans.map(plan => 
-      plan.id === editingPlan!.id 
-        ? { ...plan, ...editDataToSave }
+    const updatedPlans = gapPlans.map(plan =>
+      plan.id === editingPlan!.id
+        ? { ...plan, ...editFormData, rank: plan.rank }
         : plan
     );
 
@@ -337,165 +345,61 @@ const GapPlanPage: React.FC = () => {
 
 
 
-  // Function to reassign all ranks sequentially (1, 2, 3, 4...)
-  const reassignRanksSequentially = () => {
-    // Get all plans that have a rank (not empty string)
-    const rankedPlans = gapPlans.filter(plan => typeof plan.rank === 'number');
-    
-    if (rankedPlans.length === 0) return; // No ranked plans to reassign
-    
-    // Sort ranked plans by current rank to maintain relative order
-    rankedPlans.sort((a, b) => (a.rank as number) - (b.rank as number));
-    
-    // Reassign ranks sequentially starting from 0 (displays as 1)
-    const updatedPlans = gapPlans.map(plan => {
-      if (plan.rank === '') {
-        return plan; // Keep unranked plans as is
-      }
-      
-      // Find the position of this plan in the sorted ranked list
-      const rankIndex = rankedPlans.findIndex(p => p.id === plan.id);
-      if (rankIndex === -1) return plan; // Shouldn't happen
-      
-      return { ...plan, rank: rankIndex };
-    });
-    
-    setGapPlans(updatedPlans);
-    saveGapPlans(updatedPlans);
-    
-    // Update the local input values to reflect new ranks
-    // Use a small delay to ensure the state updates are processed
-    setTimeout(() => {
-      const newRankInputValues: { [key: string]: string } = { ...rankInputValues };
-      updatedPlans.forEach(plan => {
-        if (typeof plan.rank === 'number') {
-          newRankInputValues[plan.id] = (plan.rank + 1).toString();
-        }
-      });
-      setRankInputValues(newRankInputValues);
-    }, 50);
-  };
-
-  // Function to validate and fix duplicate ranks
-  const validateAndFixRanks = () => {
-    const rankedPlans = gapPlans.filter(plan => typeof plan.rank === 'number');
-    
-    // Check for duplicate ranks
-    const rankCounts = new Map<number, number>();
-    rankedPlans.forEach(plan => {
-      const rank = plan.rank as number;
-      rankCounts.set(rank, (rankCounts.get(rank) || 0) + 1);
-    });
-    
-    // If there are duplicate ranks, fix them
-    const hasDuplicates = Array.from(rankCounts.values()).some(count => count > 1);
-    if (hasDuplicates) {
-      console.log('GapPlanPage: Found duplicate ranks, fixing...');
-      reassignRanksSequentially();
-    }
-  };
-
-  const handleRankChange = (planId: string, newRank: number | '') => {
-    const currentPlan = gapPlans.find(p => p.id === planId);
-    if (!currentPlan) return;
-    
-    // If setting to blank, just clear the rank
-    if (newRank === '') {
-      const updatedPlans = gapPlans.map(plan => 
-        plan.id === planId ? { ...plan, rank: '' as GapPlan['rank'] } : plan
-      );
-      setGapPlans(updatedPlans);
-      saveGapPlans(updatedPlans);
-      // Clear the local input value
-      setRankInputValues(prev => ({ ...prev, [planId]: '' }));
-      // Always reassign to ensure sequential ranking
-      setTimeout(() => reassignRanksSequentially(), 100);
-      return;
-    }
-    
-    // Ensure new rank is a valid number
-    if (typeof newRank !== 'number' || newRank < 1) return;
-    
-    // Convert display rank (1-based) to internal rank (0-based)
-    let internalNewRank = newRank - 1;
-    
-    const currentRank = currentPlan.rank;
-    
-    // Handle case where current plan has no rank (empty string)
-    if (currentRank === '') {
-      // Set the new rank
-      const updatedPlans = gapPlans.map(plan => 
-        plan.id === planId ? { ...plan, rank: internalNewRank } : plan
-      );
-      setGapPlans(updatedPlans);
-      saveGapPlans(updatedPlans);
-      // Update the local input value immediately
-      setRankInputValues(prev => ({ ...prev, [planId]: (internalNewRank + 1).toString() }));
-      // Always reassign to ensure sequential ranking
-      setTimeout(() => reassignRanksSequentially(), 100);
-      return;
-    }
-    
-    // Ensure current rank is a valid number for existing ranked plans
-    if (typeof currentRank !== 'number' || currentRank < 0) return;
-    
-    // If no change, do nothing
-    if (internalNewRank === currentRank) return;
-    
-    // Handle rank swapping - this is the key improvement
-    const updatedPlans = [...gapPlans];
-    
-    if (internalNewRank < currentRank) {
-      // Moving to a lower rank (e.g., from rank 2 to rank 1)
-      // Shift all plans between new rank and current rank up by 1
-      updatedPlans.forEach(plan => {
-        if (typeof plan.rank === 'number' && plan.rank >= internalNewRank && plan.rank < currentRank) {
-          plan.rank = plan.rank + 1;
-        }
-      });
-    } else {
-      // Moving to a higher rank (e.g., from rank 1 to rank 3)
-      // Shift all plans between current rank and new rank down by 1
-      updatedPlans.forEach(plan => {
-        if (typeof plan.rank === 'number' && plan.rank > currentRank && plan.rank <= internalNewRank) {
-          plan.rank = plan.rank - 1;
-        }
-      });
-    }
-    
-    // Set the target plan's new rank
-    updatedPlans.forEach(plan => {
-      if (plan.id === planId) {
-        plan.rank = internalNewRank;
-      }
-    });
-    
-    setGapPlans(updatedPlans);
-    saveGapPlans(updatedPlans);
-    
-    // Update the local input value immediately
-    setRankInputValues(prev => ({ ...prev, [planId]: (internalNewRank + 1).toString() }));
-    
-    // Update input values for all affected plans
-    setTimeout(() => {
-      const newRankInputValues = { ...rankInputValues };
-      updatedPlans.forEach(plan => {
-        if (typeof plan.rank === 'number') {
-          newRankInputValues[plan.id] = (plan.rank + 1).toString();
-        }
-      });
-      setRankInputValues(newRankInputValues);
-    }, 50);
-  };
-
-
-
   const clearFilters = () => {
     setFilterStatus('');
     setFilterPriority('');
     setFilterOwner('');
-    setSortBy('rank');
+    setSortBy('questionId');
     setSortOrder('asc');
+  };
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+    else setSortBy(field);
+  };
+
+  const handleDragStart = (e: React.DragEvent, planId: string) => {
+    setDraggedPlanId(planId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', planId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => setDragOverIndex(null);
+
+  const handleDrop = (e: React.DragEvent, toIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+    const planId = e.dataTransfer.getData('text/plain');
+    if (!planId || !draggedPlanId) return;
+    const fromIndex = filteredPlans.findIndex(p => p.id === planId);
+    if (fromIndex === -1 || fromIndex === toIndex) return;
+    const reordered = [...filteredPlans];
+    const [removed] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, removed);
+    const idToNewIndex = new Map(reordered.map((p, i) => [p.id, i]));
+    const filteredIds = new Set(reordered.map(p => p.id));
+    const newGapPlans = [...gapPlans].sort((a, b) => {
+      const aIn = filteredIds.has(a.id);
+      const bIn = filteredIds.has(b.id);
+      if (aIn && bIn) return (idToNewIndex.get(a.id) ?? 0) - (idToNewIndex.get(b.id) ?? 0);
+      if (aIn) return 1;
+      if (bIn) return -1;
+      return gapPlans.indexOf(a) - gapPlans.indexOf(b);
+    });
+    setGapPlans(newGapPlans);
+    saveGapPlans(newGapPlans);
+    setDraggedPlanId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPlanId(null);
+    setDragOverIndex(null);
   };
 
   const exportToPDF = () => {
@@ -542,13 +446,14 @@ const GapPlanPage: React.FC = () => {
   const exportToExcel = () => {
     const exportData = filteredPlans.map(plan => ({
       'Ques. #': plan.questionId,
-      'Question Text': plan.questionText,
+      'Category': educationCategories[plan.questionId] || '',
       'Action': plan.action,
       'Owner': plan.owner,
       'Status': plan.status,
       'Priority': plan.priority,
       'Difficulty': plan.difficulty,
       'Notes': plan.notes,
+      'Due Date': plan.dueDate,
       'Completion Date': plan.completionDate
     }));
     
@@ -702,13 +607,10 @@ const GapPlanPage: React.FC = () => {
                 label="Sort By"
                 onChange={(e: SelectChangeEvent) => setSortBy(e.target.value)}
               >
-                <MenuItem value="rank">Rank</MenuItem>
-                <MenuItem value="questionId">Ques. #</MenuItem>
+                <MenuItem value="order">Order (drag to reorder)</MenuItem>
+                <MenuItem value="questionId">Question #</MenuItem>
                 <MenuItem value="status">Status</MenuItem>
-                <MenuItem value="priority">Priority</MenuItem>
-                <MenuItem value="owner">Owner</MenuItem>
                 <MenuItem value="dueDate">Due Date</MenuItem>
-                <MenuItem value="completionDate">Completion Date</MenuItem>
               </Select>
             </FormControl>
 
@@ -777,65 +679,42 @@ const GapPlanPage: React.FC = () => {
             <Table stickyHeader>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 80, backgroundColor: 'primary.main', color: 'white' }}>Rank</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 100, backgroundColor: 'primary.main', color: 'white' }}>Ques. #</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 500, backgroundColor: 'primary.main', color: 'white' }}>Question</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: 40, minWidth: 40, backgroundColor: 'primary.main', color: 'white' }} />
+                  <TableCell sx={{ fontWeight: 'bold', minWidth: 100, backgroundColor: 'primary.main', color: 'white', cursor: 'pointer' }} onClick={() => handleSort('questionId')}>Ques. # {sortBy === 'questionId' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', minWidth: 200, backgroundColor: 'primary.main', color: 'white' }}>Category</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 300, backgroundColor: 'primary.main', color: 'white' }}>Action</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 120, backgroundColor: 'primary.main', color: 'white' }}>Owner</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 150, backgroundColor: 'primary.main', color: 'white' }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', minWidth: 150, backgroundColor: 'primary.main', color: 'white', cursor: 'pointer' }} onClick={() => handleSort('status')}>Status {sortBy === 'status' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 200, backgroundColor: 'primary.main', color: 'white' }}>Priority</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 200, backgroundColor: 'primary.main', color: 'white' }}>Difficulty</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 120, backgroundColor: 'primary.main', color: 'white' }}>Due Date</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', minWidth: 120, backgroundColor: 'primary.main', color: 'white', cursor: 'pointer' }} onClick={() => handleSort('dueDate')}>Due Date {sortBy === 'dueDate' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 150, backgroundColor: 'primary.main', color: 'white' }}>Attachments</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredPlans.map((plan) => (
-                  <TableRow key={plan.id}>
-                    <TableCell sx={{ minWidth: 80 }}>
-                      <TextField
-                        type="number"
-                        size="small"
-                        value={rankInputValues[plan.id] !== undefined ? rankInputValues[plan.id] : (typeof plan.rank === 'number' ? plan.rank + 1 : plan.rank)}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setRankInputValues(prev => ({ ...prev, [plan.id]: value }));
-                        }}
-                        onBlur={(e) => {
-                          const value = e.target.value;
-                          if (value === '') {
-                            handleRankChange(plan.id, '');
-                          } else {
-                            const numValue = parseInt(value);
-                            if (!isNaN(numValue) && numValue >= 0) {
-                              handleRankChange(plan.id, numValue);
-                            } else {
-                              // Reset to original value if invalid
-                              setRankInputValues(prev => ({ ...prev, [plan.id]: (typeof plan.rank === 'number' ? plan.rank + 1 : plan.rank).toString() }));
-                            }
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.currentTarget.blur(); // Trigger onBlur
-                          }
-                        }}
-                        onFocus={(e) => {
-                          // Store the current value when focusing to restore it if needed
-                          const currentValue = typeof plan.rank === 'number' ? plan.rank + 1 : plan.rank;
-                          setRankInputValues(prev => ({ ...prev, [plan.id]: currentValue.toString() }));
-                        }}
-                        sx={{ width: 60 }}
-                        placeholder=""
-                        inputProps={{ min: 0 }}
-                      />
+                {filteredPlans.map((plan, index) => (
+                  <TableRow
+                    key={plan.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, plan.id)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, index)}
+                    onDragEnd={handleDragEnd}
+                    sx={{
+                      opacity: draggedPlanId === plan.id ? 0.5 : 1,
+                      bgcolor: dragOverIndex === index ? 'action.hover' : undefined
+                    }}
+                  >
+                    <TableCell sx={{ width: 40, minWidth: 40, cursor: 'grab', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
+                      <DragIndicatorIcon fontSize="small" color="action" />
                     </TableCell>
                     <TableCell sx={{ minWidth: 100 }}>{plan.questionId}</TableCell>
-                    <TableCell 
-                      sx={{ 
-                        minWidth: 500, 
-                        maxWidth: 500,
-                        overflow: 'hidden', 
+                    <TableCell
+                      sx={{
+                        minWidth: 200,
+                        maxWidth: 280,
+                        overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         cursor: 'pointer',
                         '&:hover': { textDecoration: 'underline' },
@@ -844,7 +723,7 @@ const GapPlanPage: React.FC = () => {
                       }}
                       onClick={() => handleEdit(plan)}
                     >
-                      {plan.questionText}
+                      {educationCategories[plan.questionId]?.trim() || '—'}
                     </TableCell>
                     <TableCell sx={{ 
                       minWidth: 300, 
@@ -912,7 +791,7 @@ const GapPlanPage: React.FC = () => {
 
       {/* Education Section - Collapsible */}
       <Box sx={{ mt: 4 }}>
-        <Accordion defaultExpanded={false} sx={{ boxShadow: 2 }}>
+        <Accordion expanded={openEducationAccordion} onChange={() => setOpenEducationAccordion(!openEducationAccordion)} sx={{ boxShadow: 2 }}>
           <AccordionSummary
             expandIcon={<ExpandMoreIcon />}
             sx={{ bgcolor: 'primary.main', color: 'white', '& .MuiAccordionSummary-expandIconWrapper': { color: 'white' } }}
@@ -923,7 +802,7 @@ const GapPlanPage: React.FC = () => {
             </Box>
           </AccordionSummary>
           <AccordionDetails sx={{ p: 0 }}>
-            <EducationPage />
+            <EducationPage onGapPlanSaved={loadGapPlans} />
           </AccordionDetails>
         </Accordion>
       </Box>
@@ -1010,29 +889,6 @@ const GapPlanPage: React.FC = () => {
                 value={editFormData.dueDate}
                 onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
                 InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Rank"
-                type="number"
-                value={editFormData.rank}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value === '') {
-                    setEditFormData({ ...editFormData, rank: '' });
-                  } else {
-                    const numValue = parseInt(value);
-                    if (!isNaN(numValue) && numValue >= 1) {
-                      setEditFormData({ ...editFormData, rank: numValue });
-                    }
-                  }
-                }}
-                placeholder="Leave blank for no rank"
-                InputProps={{
-                  inputProps: { min: 1 }
-                }}
               />
             </Grid>
             {editFormData.status === 'Completed' && (
