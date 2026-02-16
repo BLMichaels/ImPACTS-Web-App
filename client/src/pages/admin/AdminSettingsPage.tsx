@@ -532,7 +532,8 @@ export default function AdminSettingsPage() {
   const handleRegSave = async () => {
     if (!formLabel.trim()) { setRegError('Label is required.'); return; }
     const options = formOptionsText.trim() ? formOptionsText.split('\n').map(s => s.trim()).filter(Boolean) : [];
-    if ((formType === 'radio' || formType === 'select') && options.length === 0) {
+    const linkedHospital = formLinkedCrmField === 'hospital';
+    if ((formType === 'radio' || formType === 'select') && options.length === 0 && !linkedHospital) {
       setRegError('Radio and Select need at least one option (one per line).');
       return;
     }
