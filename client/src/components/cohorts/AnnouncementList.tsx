@@ -72,6 +72,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [isPinned, setIsPinned] = useState(false);
+  const [visibleUntil, setVisibleUntil] = useState<string>(''); // YYYY-MM-DD or empty = no end date
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; announcement: CohortAnnouncement } | null>(null);
@@ -84,11 +85,13 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
       setTitle(announcement.title);
       setContent(announcement.content);
       setIsPinned(announcement.is_pinned);
+      setVisibleUntil(announcement.visible_until ? announcement.visible_until.slice(0, 10) : '');
     } else {
       setEditingAnnouncement(null);
       setTitle('');
       setContent('');
       setIsPinned(false);
+      setVisibleUntil('');
     }
     setError(null);
     setDialogOpen(true);
@@ -100,6 +103,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
     setTitle('');
     setContent('');
     setIsPinned(false);
+    setVisibleUntil('');
     setError(null);
   };
 
@@ -121,6 +125,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
             title: title.trim(),
             content: content.trim(),
             is_pinned: isPinned,
+            visible_until: visibleUntil.trim() || null,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingAnnouncement.id)
@@ -143,6 +148,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
             title: title.trim(),
             content: content.trim(),
             is_pinned: isPinned,
+            visible_until: visibleUntil.trim() || null,
             created_by: userProfile?.id
           })
           .select(`
@@ -358,6 +364,16 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
               />
             }
             label="Pin this announcement"
+          />
+          <TextField
+            label="Visible until (optional)"
+            type="date"
+            fullWidth
+            value={visibleUntil}
+            onChange={(e) => setVisibleUntil(e.target.value)}
+            helperText="Leave empty to show until you remove it. Set a date to hide automatically after that day."
+            sx={{ mt: 2 }}
+            InputLabelProps={{ shrink: true }}
           />
         </DialogContent>
         <DialogActions>

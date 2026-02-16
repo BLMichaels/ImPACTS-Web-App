@@ -178,7 +178,7 @@ const Navbar: React.FC = () => {
   const getDashboardPath = (): string => {
     switch (userRole) {
       case UserRole.ADMIN: return '/admin/dashboard';
-      case UserRole.MANAGER: return '/manager/overview';
+      case UserRole.MANAGER: return '/manager/snapshot';
       case UserRole.MENTOR: return '/mentor/dashboard';
       default: return '/dashboard';
     }

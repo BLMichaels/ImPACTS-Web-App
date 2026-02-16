@@ -1,28 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../../supabase';
-import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import {
   Box,
   Typography,
+  Grid,
   Paper,
+  Button,
   Tabs,
   Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   InputAdornment,
-  Chip,
+  Card,
+  CardContent,
   Avatar,
-  IconButton,
-  Button,
-  Menu,
-  MenuItem,
-  Grid,
-  Drawer,
+  Chip,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -30,786 +20,1298 @@ import {
   FormControl,
   InputLabel,
   Select,
-  Checkbox,
-  Tooltip,
-  alpha,
-  useTheme,
-  Skeleton,
-  Divider,
+  MenuItem,
   List,
   ListItem,
-  ListItemIcon,
   ListItemText,
-  Alert
+  ListItemAvatar,
+  Divider,
+  Alert,
+  Snackbar,
+  CircularProgress,
+  Switch,
+  FormControlLabel,
+  IconButton,
+  Checkbox,
+  FormGroup,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow
 } from '@mui/material';
 import {
-  Search as SearchIcon,
-  FilterList as FilterIcon,
-  MoreVert as MoreIcon,
   LocalHospital as HospitalIcon,
+  Add as AddIcon,
   Person as PersonIcon,
-  Business as BusinessIcon,
-  Close as CloseIcon,
-  Sort as SortIcon,
+  Search as SearchIcon,
+  Settings as SettingsIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Edit as EditIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  Clear as ClearIcon,
-  Add as AddIcon,
-  Download as DownloadIcon,
-  ViewModule as GridIcon,
-  ViewList as TableIcon,
-  ViewColumn as ViewColumnIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Contacts as ContactsIcon
+  Delete as DeleteIcon
 } from '@mui/icons-material';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { useUserProfile } from '../../context/UserProfileContext';
+import { supabase } from '../../supabase';
 
-type ManagerContactType = 'hospital' | 'mentor' | 'pecc';
-
-interface Contact {
-  id: string;
-  type: ManagerContactType;
-  name: string;
-  organization: string;
-  email: string;
-  phone: string;
-  status: string;
-  lastContact: string;
-  assignedTo: string;
-  notes?: string;
-  /** Hospital UUID for type 'hospital' (for usage by site) */
-  hospitalId?: string;
-}
-
-type SortField = 'name' | 'organization' | 'status' | 'lastContact' | 'assignedTo' | 'type';
-type SortOrder = 'asc' | 'desc';
-
-const TYPE_LABELS: Record<ManagerContactType, string> = {
-  hospital: 'Hospital',
-  mentor: 'Mentor',
-  pecc: 'PECC'
-};
-
-const TYPE_COLORS: Record<ManagerContactType, string> = {
-  hospital: '#1976d2',
-  mentor: '#388e3c',
-  pecc: '#7b1fa2'
-};
-
-const COLUMNS: { id: string; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
-  { id: 'type', label: 'Type', sortable: true, defaultVisible: true },
-  { id: 'name', label: 'Name', sortable: true, defaultVisible: true },
-  { id: 'organization', label: 'Organization', sortable: true, defaultVisible: true },
-  { id: 'email', label: 'Email', sortable: false, defaultVisible: true },
-  { id: 'phone', label: 'Phone', sortable: false, defaultVisible: true },
-  { id: 'status', label: 'Status', sortable: true, defaultVisible: true },
-  { id: 'assignedTo', label: 'Assigned To', sortable: true, defaultVisible: true },
-  { id: 'lastContact', label: 'Last Contact', sortable: true, defaultVisible: true },
-  { id: 'actions', label: '', sortable: false, defaultVisible: true }
+const CONTACT_STATUSES = [
+  'ED Employee (general contact)',
+  'Pediatric Champion (NOT A PECC)',
+  'New PECC',
+  'Already a PECC'
 ];
 
-const CRM_PREFS_KEY = 'managerCrm_prefs';
-const PAGE_SIZE_OPTIONS = [25, 50, 100, 250, 1000, 'all'] as const;
-type PageSize = number | 'all';
+interface HospitalData {
+  id: string;
+  name: string;
+  city: string;
+  state: string;
+  traumaLevel: string;
+  mentorCount: number;
+  peccCount: number;
+  contactCount: number;
+}
+
+interface ContactData {
+  id: string;
+  hospital_id: string;
+  hospitalName: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  contact_status: string;
+  role_at_hospital: string | null;
+  is_primary_contact: boolean;
+  is_actively_engaged: boolean;
+  notes: string | null;
+}
+
+interface MentorOption {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+}
+
+interface TabVisibilitySettings {
+  userId: string;
+  userName: string;
+  userRole: string;
+  visibleTabs: {
+    snapshot: boolean;
+    activities: boolean;
+    milestones: boolean;
+    gapPlan: boolean;
+    simulation: boolean;
+  };
+}
 
 const ManagerCRMPage: React.FC = () => {
-  const theme = useTheme();
-  const { trackClick } = useUsageAnalytics();
-  const [tabValue, setTabValue] = useState(0);
+  const { currentUser } = useAuth();
+  const { userProfile } = useUserProfile();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  const [activeTab, setActiveTab] = useState(0);
+  const [hospitals, setHospitals] = useState<HospitalData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pageSize, setPageSize] = useState<PageSize>(() => {
-    try {
-      const s = localStorage.getItem(CRM_PREFS_KEY);
-      if (s) {
-        const p = JSON.parse(s);
-        const v = p.pageSize as unknown;
-        if (v === 'all') return 'all';
-        if (typeof v === 'number' && [25, 50, 100, 250, 1000].includes(v)) return v as PageSize;
-      }
-    } catch {}
-    return 25;
-  });
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
-    try {
-      const s = localStorage.getItem(CRM_PREFS_KEY);
-      if (s) { const p = JSON.parse(s); if (p.viewMode === 'grid' || p.viewMode === 'table') return p.viewMode; }
-    } catch {}
-    return 'table';
-  });
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
-    try {
-      const s = localStorage.getItem(CRM_PREFS_KEY);
-      if (s) {
-        const p = JSON.parse(s);
-        if (p.visibleColumns && Array.isArray(p.visibleColumns)) {
-          const valid = new Set((p.visibleColumns as string[]).filter((id: string) => COLUMNS.some(c => c.id === id)));
-          if (valid.size > 0) return valid;
-        }
-      }
-    } catch {}
-    return new Set(COLUMNS.filter(c => c.defaultVisible).map(c => c.id));
-  });
-  const [sortField, setSortField] = useState<SortField>('name');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [detailContact, setDetailContact] = useState<Contact | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingContact, setEditingContact] = useState<Contact | null>(null);
-  const [formData, setFormData] = useState({
-    type: 'hospital' as ManagerContactType,
+  const [selectedHospital, setSelectedHospital] = useState<HospitalData | null>(null);
+  
+  // Add Hospital Dialog: default = select from existing CRM list; option = add unlisted site
+  const [addHospitalDialog, setAddHospitalDialog] = useState(false);
+  const [addHospitalMode, setAddHospitalMode] = useState<'existing' | 'unlisted'>('existing');
+  const [allHospitalsFromDb, setAllHospitalsFromDb] = useState<Array<{ id: string; name: string; city: string; state: string }>>([]);
+  const [mentorsList, setMentorsList] = useState<MentorOption[]>([]);
+  const [addHospitalState, setAddHospitalState] = useState('');
+  const [addHospitalCity, setAddHospitalCity] = useState('');
+  const [selectedExistingHospital, setSelectedExistingHospital] = useState<{ id: string; name: string; city: string; state: string } | null>(null);
+  const [assignToMentorId, setAssignToMentorId] = useState('');
+  const [addHospitalForm, setAddHospitalForm] = useState({
     name: '',
-    organization: '',
+    city: '',
+    state: '',
+    address: '',
+    phone: '',
+    traumaLevel: 'Non-Designated',
+    edSize: ''
+  });
+
+  // Contacts
+  const [contacts, setContacts] = useState<ContactData[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactHospitalFilter, setContactHospitalFilter] = useState('');
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<ContactData | null>(null);
+  const [contactForm, setContactForm] = useState({
+    hospitalId: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
-    status: 'Active',
-    assignedTo: '',
-    lastContact: '',
+    contactStatus: 'ED Employee (general contact)',
+    roleAtHospital: '',
+    isPrimaryContact: false,
+    isActivelyEngaged: true,
     notes: ''
   });
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
-  const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null);
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ single?: string; bulk?: Set<string> } | null>(null);
-  const [bulkStatusAnchor, setBulkStatusAnchor] = useState<null | HTMLElement>(null);
-  const [contactUsage, setContactUsage] = useState<{ logins: number; pageViews: number } | null>(null);
-  const [contactUsageLoading, setContactUsageLoading] = useState(false);
-  const [contactUsagePeriod, setContactUsagePeriod] = useState<'7' | '30' | '90' | 'all'>('30');
+  
+  // Tab Visibility Dialog
+  const [visibilityDialog, setVisibilityDialog] = useState(false);
+  const [visibilitySettings, setVisibilitySettings] = useState<TabVisibilitySettings[]>([]);
+  const [visibilityFilter, setVisibilityFilter] = useState({ role: '', search: '' });
+  const [massAction, setMassAction] = useState<{ tab: string; visible: boolean } | null>(null);
+  
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
   useEffect(() => {
-    let mounted = true;
-    setLoading(true);
+    loadHospitals();
+  }, [userProfile?.id]);
+
+  useEffect(() => {
+    const hospitalId = searchParams.get('hospital');
+    if (hospitalId && hospitals.length > 0) {
+      const hospital = hospitals.find(h => h.id === hospitalId);
+      if (hospital) {
+        setSelectedHospital(hospital);
+        setActiveTab(0);
+      }
+    }
+  }, [searchParams, hospitals]);
+
+  // Load all hospitals from DB and mentors when opening Add Hospital dialog
+  useEffect(() => {
+    if (!addHospitalDialog) return;
     (async () => {
-      const list: Contact[] = [];
-      try {
-        const { data: hospitalsData, error: hospitalsError } = await supabase.from('hospitals').select('id, facility_id, name, company_name, phone, region, created_at');
-        if (mounted && !hospitalsError && hospitalsData?.length) {
-          for (const row of hospitalsData as { id: string; facility_id?: string; name: string; company_name?: string; phone?: string; region?: string; created_at?: string }[]) {
-            const id = String(row.facility_id ?? row.id ?? '');
-            list.push({
-              id,
-              type: 'hospital',
-              name: String(row.name ?? 'Unknown'),
-              organization: String(row.company_name ?? ''),
-              email: '',
-              phone: String(row.phone ?? ''),
-              status: 'Active',
-              lastContact: '',
-              assignedTo: 'Unassigned',
-              notes: '',
-              hospitalId: row.id
-            });
-          }
-        }
-        if (mounted) {
-          const { data: usersData, error: usersError } = await supabase.from('users').select('id, email, first_name, last_name, phone, role, is_active, created_at');
-          if (!usersError && usersData?.length) {
-            const userRows = usersData as { id: string; email: string; first_name?: string; last_name?: string; phone?: string; role: string; is_active: boolean; created_at?: string }[];
-            const crmRoles = ['mentor', 'pecc'];
-            for (const u of userRows) {
-              const role = (u.role && typeof u.role === 'string' ? u.role.toLowerCase() : '') as string;
-              if (!crmRoles.includes(role)) continue;
-              const roleType = role as 'mentor' | 'pecc';
-              const displayName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || '—';
-              list.push({
-                id: u.id,
-                type: roleType,
-                name: displayName,
-                organization: '',
-                email: u.email ?? '',
-                phone: u.phone ?? '',
-                status: u.is_active ? 'Active' : 'Inactive',
-                lastContact: '',
-                assignedTo: 'Unassigned',
-                notes: ''
-              });
-            }
-          }
-        }
-      } catch (_) {
-        if (mounted) list.length = 0;
-      }
-      if (mounted) {
-        setContacts(list);
-        setLoading(false);
-      }
+      const [hRes, mRes] = await Promise.all([
+        supabase.from('hospitals').select('id, name, city, state').eq('is_active', true).order('name').range(0, 99999),
+        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'mentor').eq('is_active', true).order('first_name').range(0, 99999)
+      ]);
+      if (hRes.data) setAllHospitalsFromDb(hRes.data as any);
+      if (mRes.data) setMentorsList(mRes.data as MentorOption[]);
     })();
-    return () => { mounted = false; };
-  }, []);
+  }, [addHospitalDialog]);
 
-  // Load usage for the selected contact – by user_id for person (mentor/pecc), by hospital_id for hospital; period = 7/30/90 days or all
+  // Load contacts when on Contacts tab or when hospitals change
   useEffect(() => {
-    const c = detailContact;
-    if (!c) {
-      setContactUsage(null);
-      return;
-    }
-    const isPerson = c.type === 'mentor' || c.type === 'pecc';
-    const hospitalId = c.type === 'hospital' ? c.hospitalId : null;
-    if (!isPerson && !hospitalId) {
-      setContactUsage(null);
-      return;
-    }
-    let cancelled = false;
-    setContactUsageLoading(true);
-    let q = supabase.from('usage_events').select('id, event_type');
-    if (contactUsagePeriod !== 'all') {
-      const days = parseInt(contactUsagePeriod, 10);
-      const since = new Date();
-      since.setDate(since.getDate() - days);
-      q = q.gte('created_at', since.toISOString());
-    }
-    const query = isPerson ? q.eq('user_id', c.id) : q.eq('hospital_id', hospitalId);
-    query.then(({ data, error }) => {
-      if (cancelled) return;
-      setContactUsageLoading(false);
-      if (error || !data) {
-        setContactUsage(null);
-        return;
-      }
-      const events = data as { event_type: string }[];
-      const logins = events.filter((e) => e.event_type === 'login').length;
-      const pageViews = events.filter((e) => e.event_type === 'page_view').length;
-      setContactUsage({ logins, pageViews });
-    });
-    return () => { cancelled = true; };
-  }, [detailContact?.id, detailContact?.type, detailContact?.hospitalId, contactUsagePeriod]);
+    if (activeTab === 1 && hospitals.length > 0) loadContacts();
+  }, [activeTab, hospitals]);
 
-  useEffect(() => {
+  const loadHospitals = async () => {
+    if (!userProfile?.id) return;
+    
     try {
-      localStorage.setItem(CRM_PREFS_KEY, JSON.stringify({ viewMode, visibleColumns: Array.from(visibleColumns), pageSize }));
-    } catch {}
-  }, [viewMode, visibleColumns, pageSize]);
+      setLoading(true);
 
-  const filteredAndSortedContacts = useMemo(() => {
-    let list = contacts.filter(contact => {
-      const matchesSearch =
-        !searchQuery ||
-        contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        contact.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (contact.organization || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (contact.assignedTo || '').toLowerCase().includes(searchQuery.toLowerCase());
-      if (!matchesSearch) return false;
-      if (tabValue === 4) return contact.status === 'Pending';
-      if (tabValue === 1 && contact.type !== 'hospital') return false;
-      if (tabValue === 2 && contact.type !== 'mentor') return false;
-      if (tabValue === 3 && contact.type !== 'pecc') return false;
-      if (statusFilter.length && !statusFilter.includes(contact.status)) return false;
-      return true;
-    });
-    list = [...list].sort((a, b) => {
-      let av: string | number = (a[sortField as keyof Contact] ?? '') as string;
-      let bv: string | number = (b[sortField as keyof Contact] ?? '') as string;
-      if (sortField === 'lastContact') {
-        av = new Date(av).getTime();
-        bv = new Date(bv).getTime();
+      // Get all hospitals from mentor assignments
+      const { data: assignments, error: assignmentError } = await supabase
+        .from('mentor_hospital_assignments')
+        .select(`
+          hospital:hospital_id(id, name, city, state, trauma_level)
+        `)
+        .eq('is_active', true);
+
+      if (assignmentError) throw assignmentError;
+
+      // Get unique hospitals
+      const uniqueHospitalIds = new Set();
+      const hospitalList: HospitalData[] = [];
+
+      (assignments || []).forEach((a: any) => {
+        const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
+        if (hospital && !uniqueHospitalIds.has(hospital.id)) {
+          uniqueHospitalIds.add(hospital.id);
+          hospitalList.push({
+            id: hospital.id,
+            name: hospital.name,
+            city: hospital.city || '',
+            state: hospital.state || '',
+            traumaLevel: hospital.trauma_level || 'Non-Designated',
+            mentorCount: 0,
+            peccCount: 0,
+            contactCount: 0
+          });
+        }
+      });
+
+      // Count mentors and PECCs for each hospital
+      for (const hospital of hospitalList) {
+        const { count: mentorCount } = await supabase
+          .from('mentor_hospital_assignments')
+          .select('*', { count: 'exact', head: true })
+          .eq('hospital_id', hospital.id)
+          .eq('is_active', true);
+
+        const { count: peccCount } = await supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'pecc')
+          .eq('hospital_facility_id', hospital.id);
+
+        hospital.mentorCount = mentorCount || 0;
+        hospital.peccCount = peccCount || 0;
       }
-      if (typeof av === 'string') av = av.toLowerCase();
-      if (typeof bv === 'string') bv = bv.toLowerCase();
-      if (av < bv) return sortOrder === 'asc' ? -1 : 1;
-      if (av > bv) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-    return list;
-  }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter]);
 
-  const displayedContacts = useMemo(() => {
-    if (pageSize === 'all') return filteredAndSortedContacts;
-    return filteredAndSortedContacts.slice(0, pageSize);
-  }, [filteredAndSortedContacts, pageSize]);
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
-    else setSortField(field);
-  };
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) setSelectedIds(new Set(displayedContacts.map(c => c.id)));
-    else setSelectedIds(new Set());
-  };
-
-  const handleSelectOne = (id: string, checked: boolean) => {
-    setSelectedIds(prev => { const n = new Set(prev); if (checked) n.add(id); else n.delete(id); return n; });
-  };
-
-  const openDetail = (c: Contact) => {
-    setDetailContact(c);
-    setDrawerOpen(true);
-  };
-
-  const handleSaveContact = () => {
-    trackClick?.(editingContact ? 'Manager CRM - Save contact (edit)' : 'Manager CRM - Save contact (add)');
-    const payload: Contact = {
-      id: editingContact?.id ?? `contact_${Date.now()}`,
-      type: formData.type,
-      name: formData.name,
-      organization: formData.organization,
-      email: formData.email,
-      phone: formData.phone,
-      status: formData.status,
-      assignedTo: formData.assignedTo || 'Unassigned',
-      lastContact: formData.lastContact || '',
-      notes: formData.notes
-    };
-    if (editingContact) {
-      setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
-    } else {
-      setContacts(prev => [...prev, payload]);
+      setHospitals(hospitalList.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) {
+      console.error('Error loading hospitals:', err);
+      setSnackbar({ open: true, message: 'Error loading hospitals', severity: 'error' });
+    } finally {
+      setLoading(false);
     }
-    setDialogOpen(false);
+  };
+
+  const loadContacts = async () => {
+    if (hospitals.length === 0) {
+      setContacts([]);
+      return;
+    }
+    setContactsLoading(true);
+    try {
+      const hospitalIds = hospitals.map(h => h.id);
+      const { data: rows, error } = await supabase
+        .from('hospital_contacts')
+        .select('id, hospital_id, first_name, last_name, email, phone, contact_status, role_at_hospital, is_primary_contact, is_actively_engaged, notes')
+        .in('hospital_id', hospitalIds)
+        .order('last_name');
+
+      if (error) throw error;
+      const hospitalNames = new Map(hospitals.map(h => [h.id, h.name]));
+      setContacts((rows || []).map((r: any) => ({
+        id: r.id,
+        hospital_id: r.hospital_id,
+        hospitalName: hospitalNames.get(r.hospital_id) || 'Unknown',
+        first_name: r.first_name,
+        last_name: r.last_name,
+        email: r.email,
+        phone: r.phone,
+        contact_status: r.contact_status,
+        role_at_hospital: r.role_at_hospital,
+        is_primary_contact: r.is_primary_contact,
+        is_actively_engaged: r.is_actively_engaged,
+        notes: r.notes
+      })));
+    } catch (err) {
+      console.error('Error loading contacts:', err);
+      setSnackbar({ open: true, message: 'Error loading contacts', severity: 'error' });
+    } finally {
+      setContactsLoading(false);
+    }
+  };
+
+  const loadTabVisibilitySettings = async () => {
+    try {
+      // Get all PECCs and Mentors (live from DB; exclude admins/managers so only pecc/mentor show in tab visibility)
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, role')
+        .eq('is_active', true)
+        .in('role', ['pecc', 'mentor'])
+        .range(0, 99999);
+
+      if (error) throw error;
+
+      // Load visibility settings from localStorage (or database if implemented)
+      const settings: TabVisibilitySettings[] = (users || []).map(user => {
+        const savedSettings = localStorage.getItem(`tab_visibility_${user.id}`);
+        const defaults = {
+          snapshot: true,
+          activities: true,
+          milestones: true,
+          gapPlan: true,
+          simulation: true
+        };
+        
+        return {
+          userId: user.id,
+          userName: `${user.first_name} ${user.last_name}`,
+          userRole: user.role,
+          visibleTabs: savedSettings ? JSON.parse(savedSettings) : defaults
+        };
+      });
+
+      setVisibilitySettings(settings);
+    } catch (err) {
+      console.error('Error loading tab visibility settings:', err);
+      setSnackbar({ open: true, message: 'Error loading visibility settings', severity: 'error' });
+    }
+  };
+
+  const handleAddHospital = async () => {
+    if (!assignToMentorId) {
+      setSnackbar({ open: true, message: 'Please assign the site to a mentor', severity: 'error' });
+      return;
+    }
+
+    try {
+      let hospitalId: string;
+
+      if (addHospitalMode === 'existing') {
+        if (!selectedExistingHospital) {
+          setSnackbar({ open: true, message: 'Please select a hospital from the list', severity: 'error' });
+          return;
+        }
+        hospitalId = selectedExistingHospital.id;
+      } else {
+        if (!addHospitalForm.name?.trim() || !addHospitalForm.city?.trim() || !addHospitalForm.state?.trim()) {
+          setSnackbar({ open: true, message: 'Name, city, and state are required for a new site', severity: 'error' });
+          return;
+        }
+        const { data: newHospital, error: insertError } = await supabase
+          .from('hospitals')
+          .insert({
+            name: addHospitalForm.name.trim(),
+            city: addHospitalForm.city.trim(),
+            state: addHospitalForm.state.trim(),
+            address: addHospitalForm.address.trim() || null,
+            phone: addHospitalForm.phone.trim() || null,
+            trauma_level: addHospitalForm.traumaLevel,
+            ed_size: addHospitalForm.edSize.trim() || null
+          })
+          .select('id')
+          .single();
+        if (insertError) throw insertError;
+        hospitalId = (newHospital as any).id;
+      }
+
+      const { error: assignError } = await supabase
+        .from('mentor_hospital_assignments')
+        .insert({
+          mentor_id: assignToMentorId,
+          hospital_id: hospitalId,
+          is_active: true
+        });
+      if (assignError) throw assignError;
+
+      setSnackbar({ open: true, message: 'Hospital added to CRM successfully', severity: 'success' });
+      setAddHospitalDialog(false);
+      setAddHospitalMode('existing');
+      setSelectedExistingHospital(null);
+      setAssignToMentorId('');
+      setAddHospitalForm({ name: '', city: '', state: '', address: '', phone: '', traumaLevel: 'Non-Designated', edSize: '' });
+      loadHospitals();
+    } catch (err: any) {
+      console.error('Error adding hospital:', err);
+      setSnackbar({ open: true, message: err.message || 'Error adding hospital', severity: 'error' });
+    }
+  };
+
+  const handleOpenAddHospital = () => {
+    setAddHospitalMode('existing');
+    setAddHospitalState('');
+    setAddHospitalCity('');
+    setSelectedExistingHospital(null);
+    setAssignToMentorId('');
+    setAddHospitalForm({ name: '', city: '', state: '', address: '', phone: '', traumaLevel: 'Non-Designated', edSize: '' });
+    setAddHospitalDialog(true);
+  };
+
+  // State → City → Hospital dropdown options (existing list)
+  const addHospitalStateOptions = useMemo(() => {
+    const s = new Set<string>();
+    allHospitalsFromDb.forEach(h => {
+      const v = (h.state ?? '').trim();
+      if (v) s.add(v);
+    });
+    return Array.from(s).sort();
+  }, [allHospitalsFromDb]);
+
+  const addHospitalCityOptions = useMemo(() => {
+    if (!addHospitalState) return [];
+    const s = new Set<string>();
+    allHospitalsFromDb.forEach(h => {
+      if ((h.state ?? '').trim() !== addHospitalState) return;
+      const v = (h.city ?? '').trim();
+      if (v) s.add(v);
+    });
+    return Array.from(s).sort();
+  }, [allHospitalsFromDb, addHospitalState]);
+
+  const addHospitalHospitalOptions = useMemo(() => {
+    if (!addHospitalState || !addHospitalCity) return [];
+    return allHospitalsFromDb.filter(
+      h => (h.state ?? '').trim() === addHospitalState && (h.city ?? '').trim() === addHospitalCity
+    );
+  }, [allHospitalsFromDb, addHospitalState, addHospitalCity]);
+
+  const handleSaveContact = async () => {
+    if (!contactForm.firstName?.trim() || !contactForm.lastName?.trim()) {
+      setSnackbar({ open: true, message: 'First and last name are required', severity: 'error' });
+      return;
+    }
+    if (!contactForm.email?.trim()) {
+      setSnackbar({ open: true, message: 'Email is required', severity: 'error' });
+      return;
+    }
+    if (!contactForm.hospitalId) {
+      setSnackbar({ open: true, message: 'Please select a hospital', severity: 'error' });
+      return;
+    }
+    try {
+      const payload = {
+        hospital_id: contactForm.hospitalId,
+        first_name: contactForm.firstName.trim(),
+        last_name: contactForm.lastName.trim(),
+        email: contactForm.email.trim(),
+        phone: contactForm.phone?.trim() || null,
+        contact_status: contactForm.contactStatus,
+        role_at_hospital: contactForm.roleAtHospital?.trim() || null,
+        is_primary_contact: contactForm.isPrimaryContact,
+        is_actively_engaged: contactForm.isActivelyEngaged,
+        notes: contactForm.notes?.trim() || null
+      };
+      if (editingContact) {
+        const { error } = await supabase.from('hospital_contacts').update(payload).eq('id', editingContact.id);
+        if (error) throw error;
+        setSnackbar({ open: true, message: 'Contact updated', severity: 'success' });
+      } else {
+        const { error } = await supabase.from('hospital_contacts').insert(payload);
+        if (error) throw error;
+        setSnackbar({ open: true, message: 'Contact added', severity: 'success' });
+      }
+      setContactDialogOpen(false);
+      setEditingContact(null);
+      loadContacts();
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err?.message || 'Failed to save contact', severity: 'error' });
+    }
+  };
+
+  const handleDeleteContact = async (contact: ContactData) => {
+    if (!window.confirm(`Remove ${contact.first_name} ${contact.last_name} from contacts?`)) return;
+    try {
+      const { error } = await supabase.from('hospital_contacts').delete().eq('id', contact.id);
+      if (error) throw error;
+      setSnackbar({ open: true, message: 'Contact removed', severity: 'success' });
+      loadContacts();
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err?.message || 'Failed to remove contact', severity: 'error' });
+    }
+  };
+
+  const openAddContact = () => {
     setEditingContact(null);
-    setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' });
+    setContactForm({
+      hospitalId: contactHospitalFilter || (hospitals[0]?.id ?? ''),
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      contactStatus: 'ED Employee (general contact)',
+      roleAtHospital: '',
+      isPrimaryContact: false,
+      isActivelyEngaged: true,
+      notes: ''
+    });
+    setContactDialogOpen(true);
   };
 
-  const handleExport = () => {
-    trackClick?.('Manager CRM - Export');
-    const headers = ['Type', 'Name', 'Organization', 'Email', 'Phone', 'Status', 'Assigned To', 'Last Contact'];
-    const rows = (selectedIds.size ? filteredAndSortedContacts.filter(c => selectedIds.has(c.id)) : filteredAndSortedContacts)
-      .map(c => [TYPE_LABELS[c.type], c.name, c.organization || '', c.email, c.phone || '', c.status, c.assignedTo || '', c.lastContact || '']);
-    const csv = [headers.join(','), ...rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `manager-crm-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+  const openEditContact = (c: ContactData) => {
+    setEditingContact(c);
+    setContactForm({
+      hospitalId: c.hospital_id,
+      firstName: c.first_name,
+      lastName: c.last_name,
+      email: c.email,
+      phone: c.phone || '',
+      contactStatus: c.contact_status,
+      roleAtHospital: c.role_at_hospital || '',
+      isPrimaryContact: c.is_primary_contact,
+      isActivelyEngaged: c.is_actively_engaged,
+      notes: c.notes || ''
+    });
+    setContactDialogOpen(true);
   };
 
-  const handleDeleteContact = (id: string) => {
-    setContacts(prev => prev.filter(c => c.id !== id));
-    setDeleteConfirmOpen(false);
-    setDeleteTarget(null);
-    if (detailContact?.id === id) { setDrawerOpen(false); setDetailContact(null); }
-    setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+  const filteredContacts = useMemo(() => {
+    let list = contacts;
+    const q = (contactSearch || '').toLowerCase().trim();
+    if (q) {
+      list = list.filter(c =>
+        `${c.first_name} ${c.last_name}`.toLowerCase().includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
+        (c.hospitalName || '').toLowerCase().includes(q)
+      );
+    }
+    if (contactHospitalFilter) {
+      list = list.filter(c => c.hospital_id === contactHospitalFilter);
+    }
+    return list.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
+  }, [contacts, contactSearch, contactHospitalFilter]);
+
+  const handleToggleTabVisibility = (userId: string, tab: keyof TabVisibilitySettings['visibleTabs']) => {
+    setVisibilitySettings(prev => {
+      const updated = prev.map(setting => {
+        if (setting.userId === userId) {
+          const newVisibleTabs = {
+            ...setting.visibleTabs,
+            [tab]: !setting.visibleTabs[tab]
+          };
+          localStorage.setItem(`tab_visibility_${userId}`, JSON.stringify(newVisibleTabs));
+          return { ...setting, visibleTabs: newVisibleTabs };
+        }
+        return setting;
+      });
+      return updated;
+    });
   };
 
-  const handleBulkDelete = () => {
-    if (!deleteTarget?.bulk) return;
-    setContacts(prev => prev.filter(c => !deleteTarget.bulk!.has(c.id)));
-    setDeleteConfirmOpen(false);
-    setDeleteTarget(null);
-    setSelectedIds(new Set());
-    if (detailContact && deleteTarget.bulk.has(detailContact.id)) { setDrawerOpen(false); setDetailContact(null); }
+  const handleMassToggle = (tab: keyof TabVisibilitySettings['visibleTabs'], visible: boolean, roleFilter?: string) => {
+    setVisibilitySettings(prev => {
+      const updated = prev.map(setting => {
+        if (!roleFilter || setting.userRole === roleFilter) {
+          const newVisibleTabs = {
+            ...setting.visibleTabs,
+            [tab]: visible
+          };
+          localStorage.setItem(`tab_visibility_${setting.userId}`, JSON.stringify(newVisibleTabs));
+          return { ...setting, visibleTabs: newVisibleTabs };
+        }
+        return setting;
+      });
+      return updated;
+    });
+    setSnackbar({ 
+      open: true, 
+      message: `${tab} tab ${visible ? 'shown' : 'hidden'} for ${roleFilter || 'all users'}`, 
+      severity: 'success' 
+    });
   };
 
-  const handleBulkStatusChange = (status: string) => {
-    setContacts(prev => prev.map(c => selectedIds.has(c.id) ? { ...c, status } : c));
-    setBulkStatusAnchor(null);
-  };
+  const filteredHospitals = useMemo(() => {
+    return hospitals.filter(h =>
+      h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      h.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      h.state.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [hospitals, searchQuery]);
 
-  const hasActiveFilters = searchQuery || statusFilter.length > 0;
-  const clearFilters = () => {
-    setSearchQuery('');
-    setStatusFilter([]);
-    setFilterMenuAnchor(null);
-  };
+  const filteredVisibilitySettings = useMemo(() => {
+    return visibilitySettings.filter(setting => {
+      const matchesRole = !visibilityFilter.role || setting.userRole === visibilityFilter.role;
+      const matchesSearch = !visibilityFilter.search || 
+        setting.userName.toLowerCase().includes(visibilityFilter.search.toLowerCase());
+      return matchesRole && matchesSearch;
+    });
+  }, [visibilitySettings, visibilityFilter]);
 
-  const summaryCounts = useMemo(() => ({
-    all: contacts.length,
-    hospital: contacts.filter(c => c.type === 'hospital').length,
-    mentor: contacts.filter(c => c.type === 'mentor').length,
-    pecc: contacts.filter(c => c.type === 'pecc').length,
-    pending: contacts.filter(c => c.status === 'Pending').length
-  }), [contacts]);
+  if (loading) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
-    <Box sx={{ py: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Typography variant="h4" fontWeight={600}>CRM</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Manage hospitals, mentors, and PECCs for your team
+          <Typography variant="h4" color="primary" fontWeight={600}>
+            CRM
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Manage hospitals, contacts, and user tab visibility settings
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Button startIcon={<DownloadIcon />} onClick={handleExport} size="medium">Export</Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('Manager CRM - Add contact'); setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); setDialogOpen(true); }}>
-            Add Contact
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={() => {
+              loadTabVisibilitySettings();
+              setVisibilityDialog(true);
+            }}
+          >
+            Tab Visibility
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleOpenAddHospital}
+          >
+            Add Hospital
           </Button>
         </Box>
       </Box>
 
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {[
-          { key: 'all', label: 'All', count: summaryCounts.all },
-          { key: 'hospital', label: 'Hospitals', count: summaryCounts.hospital },
-          { key: 'mentor', label: 'Mentors', count: summaryCounts.mentor },
-          { key: 'pecc', label: 'PECCs', count: summaryCounts.pecc },
-          { key: 'pending', label: 'Pending', count: summaryCounts.pending }
-        ].map(({ key, label, count }) => {
-          const isPending = key === 'pending';
-          const isAll = key === 'all';
-          const tabForKey = isAll ? 0 : isPending ? 4 : ['hospital', 'mentor', 'pecc'].indexOf(key) + 1;
-          const isActive = tabValue === tabForKey;
-          const borderColor = isPending ? theme.palette.warning.main : isAll ? theme.palette.primary.main : TYPE_COLORS[key as ManagerContactType];
-          return (
-            <Grid item xs={6} sm={4} md={2} key={key}>
-              <Paper
-                onClick={() => setTabValue(tabForKey)}
-                sx={{
-                  p: 2,
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  borderTop: 3,
-                  borderColor,
-                  bgcolor: isActive ? alpha(theme.palette.primary.main, 0.04) : 'background.paper',
-                  '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) }
-                }}
-              >
-                {loading ? (
-                  <Skeleton variant="text" width={40} height={36} sx={{ mx: 'auto' }} />
-                ) : (
-                  <Typography variant="h5" fontWeight={700} sx={{ color: isPending ? 'warning.main' : isAll ? 'primary.main' : TYPE_COLORS[key as ManagerContactType] }}>
-                    {count}
-                  </Typography>
-                )}
-                <Typography variant="body2" color="text.secondary">{label}</Typography>
-              </Paper>
-            </Grid>
-          );
-        })}
-      </Grid>
-
-      <Paper sx={{ mb: 2 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2, pt: 1 }}>
-          <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
-            <Tab label="All" />
-            <Tab label="Hospitals" />
-            <Tab label="Mentors" />
-            <Tab label="PECCs" />
-            <Tab label="Pending" />
-          </Tabs>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, p: 2 }}>
-          <TextField
-            size="small"
-            placeholder="Search name, email, organization..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
-            sx={{ minWidth: 260 }}
-          />
-          <Button
-            size="small"
-            startIcon={<FilterIcon />}
-            onClick={(e) => setFilterMenuAnchor(e.currentTarget)}
-            color={hasActiveFilters ? 'primary' : 'inherit'}
-            variant={hasActiveFilters ? 'contained' : 'outlined'}
-          >
-            Filters {hasActiveFilters ? `(${statusFilter.length})` : ''}
-          </Button>
-          <Menu anchorEl={filterMenuAnchor} open={Boolean(filterMenuAnchor)} onClose={() => setFilterMenuAnchor(null)}>
-            <ListItem dense><ListItemText primary="Status" secondary={statusFilter.join(', ') || 'Any'} /></ListItem>
-            {['Active', 'Pending', 'Inactive'].map(s => (
-              <MenuItem key={s} onClick={() => setStatusFilter(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}>
-                <Checkbox checked={statusFilter.includes(s)} size="small" />
-                <ListItemText primary={s} />
-              </MenuItem>
-            ))}
-            <MenuItem onClick={clearFilters}><ClearIcon fontSize="small" sx={{ mr: 1 }} /> Clear filters</MenuItem>
-          </Menu>
-          <Button size="small" startIcon={<ViewColumnIcon />} onClick={(e) => setColumnMenuAnchor(e.currentTarget)} variant="outlined">Columns</Button>
-          <Menu anchorEl={columnMenuAnchor} open={Boolean(columnMenuAnchor)} onClose={() => setColumnMenuAnchor(null)}>
-            {COLUMNS.filter(c => c.id !== 'actions').map((col) => (
-              <MenuItem key={col.id} onClick={() => setVisibleColumns(prev => { const n = new Set(prev); if (n.has(col.id)) n.delete(col.id); else n.add(col.id); return n; })}>
-                <Checkbox checked={visibleColumns.has(col.id)} size="small" />
-                <ListItemText primary={col.label} />
-              </MenuItem>
-            ))}
-          </Menu>
-          <Button size="small" startIcon={<TableIcon />} onClick={() => setViewMode('table')} variant={viewMode === 'table' ? 'contained' : 'outlined'}>Table</Button>
-          <Button size="small" startIcon={<GridIcon />} onClick={() => setViewMode('grid')} variant={viewMode === 'grid' ? 'contained' : 'outlined'}>Cards</Button>
-          <FormControl size="small" sx={{ minWidth: 100 }}>
-            <Select value={pageSize} onChange={(e) => setPageSize(e.target.value as PageSize)} displayEmpty variant="outlined">
-              {PAGE_SIZE_OPTIONS.map((n) => (
-                <MenuItem key={String(n)} value={n}>{n === 'all' ? 'All' : n}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Box sx={{ flexGrow: 1 }} />
-          {selectedIds.size > 0 && <Chip label={`${selectedIds.size} selected`} onDelete={() => setSelectedIds(new Set())} sx={{ mr: 1 }} />}
-          <Typography variant="body2" color="text.secondary">
-            {filteredAndSortedContacts.length === 0 ? '0 contacts' : pageSize === 'all' ? `${filteredAndSortedContacts.length} contact${filteredAndSortedContacts.length !== 1 ? 's' : ''}` : `Showing 1–${displayedContacts.length} of ${filteredAndSortedContacts.length}`}
-          </Typography>
-        </Box>
+      {/* Tabs */}
+      <Paper sx={{ mb: 3 }}>
+        <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
+          <Tab label="Hospitals" icon={<HospitalIcon />} iconPosition="start" />
+          <Tab label="Contacts" icon={<PersonIcon />} iconPosition="start" />
+        </Tabs>
       </Paper>
 
-      {/* Bulk actions bar */}
-      {selectedIds.size > 0 && (
-        <Paper sx={{ mb: 2, py: 1.5, px: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', bgcolor: alpha(theme.palette.primary.main, 0.06), border: '1px solid', borderColor: 'primary.main' }}>
-          <Chip label={`${selectedIds.size} selected`} color="primary" onDelete={() => setSelectedIds(new Set())} />
-          <Button size="small" variant="outlined" startIcon={<FilterIcon />} onClick={(e) => setBulkStatusAnchor(e.currentTarget)}>Change status</Button>
-          <Menu anchorEl={bulkStatusAnchor} open={Boolean(bulkStatusAnchor)} onClose={() => setBulkStatusAnchor(null)}>
-            {['Active', 'Pending', 'Inactive'].map(s => <MenuItem key={s} onClick={() => handleBulkStatusChange(s)}>{s}</MenuItem>)}
-          </Menu>
-          <Button size="small" variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { setDeleteTarget({ bulk: new Set(selectedIds) }); setDeleteConfirmOpen(true); }}>Delete selected</Button>
-          <Button size="small" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
-        </Paper>
-      )}
+      {/* Tab Content */}
+      {activeTab === 0 && (
+        <Box>
+          {/* Search */}
+          <TextField
+            fullWidth
+            placeholder="Search hospitals..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mb: 3, maxWidth: 500 }}
+          />
 
-      {loading ? (
-        <Paper sx={{ p: 4 }}>
-          <Grid container spacing={2}>
-            {[1, 2, 3, 4, 5].map(i => <Grid item xs={12} key={i}><Skeleton variant="rectangular" height={52} /></Grid>)}
-          </Grid>
-        </Paper>
-      ) : viewMode === 'grid' ? (
-        <Grid container spacing={2}>
-          {filteredAndSortedContacts.length === 0 ? (
-            <Grid item xs={12}>
-              <Paper sx={{ py: 10, px: 3, textAlign: 'center' }}>
-                <ContactsIcon sx={{ fontSize: 80, color: 'action.disabled', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" gutterBottom>
-                  {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
-                  {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add hospitals, mentors, and PECCs to manage your team.'}
-                </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('Manager CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); }} variant="contained" size="large">
-                  {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
+          {/* Hospitals Grid */}
+          {filteredHospitals.length === 0 ? (
+            <Paper sx={{ p: 6, textAlign: 'center' }}>
+              <HospitalIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+              <Typography variant="h6" color="textSecondary" gutterBottom>
+                {searchQuery ? 'No hospitals match your search' : 'No hospitals yet'}
+              </Typography>
+              <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
+                {searchQuery ? 'Try adjusting your search' : 'Add hospitals to start managing your team\'s work'}
+              </Typography>
+              {!searchQuery && (
+                <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenAddHospital}>
+                  Add First Hospital
                 </Button>
-              </Paper>
-            </Grid>
-          ) : (
-            displayedContacts.map((contact) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={contact.id}>
-                <Paper
-                  sx={{ p: 2, cursor: 'pointer', '&:hover': { boxShadow: 2 }, borderLeft: 4, borderColor: TYPE_COLORS[contact.type] }}
-                  onClick={() => openDetail(contact)}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                    <Avatar sx={{ bgcolor: TYPE_COLORS[contact.type], width: 40, height: 40 }}>
-                      {contact.type === 'hospital' ? <HospitalIcon fontSize="small" /> : (contact.name || '?')[0].toUpperCase()}
-                    </Avatar>
-                    <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: alpha(TYPE_COLORS[contact.type], 0.2), color: TYPE_COLORS[contact.type] }} />
-                  </Box>
-                  <Typography variant="subtitle1" fontWeight={600} noWrap>{contact.name}</Typography>
-                  <Typography variant="body2" color="text.secondary" noWrap>{contact.organization || '—'}</Typography>
-                  <Typography variant="body2" noWrap sx={{ mt: 0.5 }}>{contact.email}</Typography>
-                  <Chip label={contact.status} size="small" color={contact.status === 'Active' ? 'success' : 'default'} sx={{ mt: 1 }} />
-                </Paper>
-              </Grid>
-            ))
-          )}
-        </Grid>
-      ) : (
-        <TableContainer component={Paper}>
-          <Table size="medium">
-            <TableHead>
-              <TableRow>
-                <TableCell padding="checkbox">
-                  <Checkbox
-                    checked={displayedContacts.length > 0 && selectedIds.size === displayedContacts.length}
-                    indeterminate={selectedIds.size > 0 && selectedIds.size < displayedContacts.length}
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                  />
-                </TableCell>
-                {COLUMNS.filter(c => c.id !== 'actions' && visibleColumns.has(c.id)).map((col) => (
-                  <TableCell key={col.id}>
-                    {col.sortable ? (
-                      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleSort(col.id as SortField)}>
-                        {col.label}
-                        <SortIcon sx={{ fontSize: 16, ml: 0.5, opacity: sortField === col.id ? 1 : 0.4 }} />
-                        {sortField === col.id && <Typography component="span" variant="caption" sx={{ ml: 0.25 }}>({sortOrder})</Typography>}
-                      </Box>
-                    ) : col.label}
-                  </TableCell>
-                ))}
-                {visibleColumns.has('actions') && <TableCell align="right">Actions</TableCell>}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredAndSortedContacts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 10 }}>
-                    <ContactsIcon sx={{ fontSize: 64, color: 'action.disabled', display: 'block', mx: 'auto', mb: 1 }} />
-                    <Typography variant="h6" color="text.secondary">
-                      {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
-                    </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('Manager CRM - Add contact'); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'hospital', name: '', organization: '', email: '', phone: '', status: 'Active', assignedTo: '', lastContact: '', notes: '' }); }} variant="contained" sx={{ mt: 2 }}>
-                      {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                displayedContacts.map((contact) => (
-                  <TableRow key={contact.id} hover sx={{ cursor: 'pointer' }} onClick={() => openDetail(contact)}>
-                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox checked={selectedIds.has(contact.id)} onChange={(e) => handleSelectOne(contact.id, e.target.checked)} />
-                    </TableCell>
-                    {visibleColumns.has('type') && (
-                      <TableCell>
-                        <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[contact.type], color: 'white' }} />
-                      </TableCell>
-                    )}
-                    {visibleColumns.has('name') && <TableCell><Typography fontWeight={500}>{contact.name}</Typography></TableCell>}
-                    {visibleColumns.has('organization') && <TableCell>{contact.organization || '—'}</TableCell>}
-                    {visibleColumns.has('email') && <TableCell>{contact.email}</TableCell>}
-                    {visibleColumns.has('phone') && <TableCell>{contact.phone || '—'}</TableCell>}
-                    {visibleColumns.has('status') && (
-                      <TableCell>
-                        <Chip label={contact.status} size="small" color={contact.status === 'Active' ? 'success' : contact.status === 'Pending' ? 'warning' : 'default'} variant="outlined" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.has('assignedTo') && (
-                      <TableCell>
-                        <Typography variant="body2" color={contact.assignedTo === 'Unassigned' ? 'error.main' : 'text.primary'}>{contact.assignedTo || '—'}</Typography>
-                      </TableCell>
-                    )}
-                    {visibleColumns.has('lastContact') && <TableCell>{contact.lastContact || '—'}</TableCell>}
-                    {visibleColumns.has('actions') && (
-                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); setAnchorEl(e.currentTarget); setDetailContact(contact); }}><MoreIcon /></IconButton>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))
               )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            </Paper>
+          ) : (
+            <Grid container spacing={3}>
+              {filteredHospitals.map((hospital) => (
+                <Grid item xs={12} md={6} lg={4} key={hospital.id}>
+                  <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { boxShadow: 6 } }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Avatar sx={{ bgcolor: 'primary.main' }}>
+                          <HospitalIcon />
+                        </Avatar>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="h6" fontWeight={600} noWrap>
+                            {hospital.name}
+                          </Typography>
+                          <Typography variant="body2" color="textSecondary">
+                            {hospital.city}, {hospital.state}
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Divider sx={{ my: 2 }} />
+
+                      <Grid container spacing={2}>
+                        <Grid item xs={6}>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="h5" color="primary">
+                              {hospital.mentorCount}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              Mentors
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="h5" color="success.main">
+                              {hospital.peccCount}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              PECCs
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      </Grid>
+
+                      <Box sx={{ mt: 2 }}>
+                        <Chip
+                          size="small"
+                          label={hospital.traumaLevel}
+                          variant="outlined"
+                          sx={{ mr: 1 }}
+                        />
+                      </Box>
+
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        sx={{ mt: 2 }}
+                        onClick={() => navigate(`/manager/overview`)}
+                      >
+                        View Details
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Box>
       )}
 
-      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
-        <MenuItem onClick={() => { if (detailContact) openDetail(detailContact); setAnchorEl(null); }}>View details</MenuItem>
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, assignedTo: detailContact.assignedTo || '', lastContact: detailContact.lastContact || '', notes: detailContact.notes || '' }); setDialogOpen(true); } setAnchorEl(null); }}>
-          <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
-        </MenuItem>
-        <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Send email</MenuItem>
-        <MenuItem onClick={() => setAnchorEl(null)}>Assign to mentor</MenuItem>
-        <MenuItem onClick={() => { if (detailContact) { setDeleteTarget({ single: detailContact.id }); setDeleteConfirmOpen(true); } setAnchorEl(null); }} sx={{ color: 'error.main' }}>
-          <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete
-        </MenuItem>
-      </Menu>
-
-      <Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)} PaperProps={{ sx: { width: { xs: '100%', sm: 400 } } }}>
-        {detailContact && (
-          <Box sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">Contact</Typography>
-              <IconButton onClick={() => setDrawerOpen(false)}><CloseIcon /></IconButton>
-            </Box>
-            <Avatar sx={{ width: 64, height: 64, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.5rem', mb: 2 }}>
-              {detailContact.type === 'hospital' ? <HospitalIcon /> : (detailContact.name || '?')[0].toUpperCase()}
-            </Avatar>
-            <Typography variant="h6">{detailContact.name}</Typography>
-            <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', my: 1 }} />
-            <List dense>
-              <ListItem><ListItemIcon><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
-              <ListItem><ListItemIcon><EmailIcon fontSize="small" /></ListItemIcon><ListItemText primary="Email" secondary={detailContact.email} /></ListItem>
-              <ListItem><ListItemIcon><PhoneIcon fontSize="small" /></ListItemIcon><ListItemText primary="Phone" secondary={detailContact.phone || '—'} /></ListItem>
-              <ListItem><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
-              <ListItem><ListItemText primary="Assigned to" secondary={detailContact.assignedTo || '—'} /></ListItem>
-              <ListItem><ListItemText primary="Last contact" secondary={detailContact.lastContact || '—'} /></ListItem>
-              {(detailContact.type === 'mentor' || detailContact.type === 'pecc' || (detailContact.type === 'hospital' && detailContact.hospitalId)) && (
-                <ListItem sx={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <ListItemText primary="Usage" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
-                    <FormControl size="small" variant="outlined" sx={{ minWidth: 120 }}>
-                      <Select
-                        value={contactUsagePeriod}
-                        onChange={(e) => setContactUsagePeriod(e.target.value as '7' | '30' | '90' | 'all')}
-                        sx={{ height: 28, fontSize: '0.875rem' }}
-                      >
-                        <MenuItem value="7">Last 7 days</MenuItem>
-                        <MenuItem value="30">Last 30 days</MenuItem>
-                        <MenuItem value="90">Last 90 days</MenuItem>
-                        <MenuItem value="all">All time</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  <ListItemText
-                    secondary={contactUsageLoading ? 'Loading…' : contactUsage != null ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s)` : '—'}
-                    secondaryTypographyProps={{ variant: 'body2' }}
-                  />
-                </ListItem>
-              )}
-            </List>
-            {detailContact.notes && (
-              <>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="subtitle2" color="text.secondary">Notes</Typography>
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{detailContact.notes}</Typography>
-              </>
-            )}
-            <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
-              <Button fullWidth variant="outlined" startIcon={<EditIcon />} onClick={() => { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, assignedTo: detailContact.assignedTo || '', lastContact: detailContact.lastContact || '', notes: detailContact.notes || '' }); setDrawerOpen(false); setDialogOpen(true); }}>Edit</Button>
-              <Button fullWidth variant="contained" startIcon={<EmailIcon />}>Email</Button>
-            </Box>
+      {activeTab === 1 && (
+        <Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', mb: 3 }}>
+            <TextField
+              size="small"
+              placeholder="Search contacts..."
+              value={contactSearch}
+              onChange={(e) => setContactSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ minWidth: 220 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Hospital</InputLabel>
+              <Select
+                value={contactHospitalFilter}
+                onChange={(e) => setContactHospitalFilter(e.target.value)}
+                label="Hospital"
+              >
+                <MenuItem value="">All hospitals</MenuItem>
+                {hospitals.map(h => (
+                  <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openAddContact} disabled={hospitals.length === 0}>
+              Add Contact
+            </Button>
           </Box>
-        )}
-      </Drawer>
 
-      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditingContact(null); }} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingContact ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
+          {contactsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : filteredContacts.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: 'center' }}>
+              <PersonIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+              <Typography variant="h6" color="textSecondary" gutterBottom>
+                {contacts.length === 0 ? 'No contacts yet' : 'No contacts match your filters'}
+              </Typography>
+              <Typography variant="body2" color="text.disabled" sx={{ mb: 2 }}>
+                Add contacts for your CRM hospitals. Select a hospital and enter their details.
+              </Typography>
+              {hospitals.length > 0 && (
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openAddContact}>
+                  Add first contact
+                </Button>
+              )}
+            </Paper>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Hospital</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Phone</TableCell>
+                    <TableCell>Role / Status</TableCell>
+                    <TableCell align="center">Primary</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredContacts.map((c) => (
+                    <TableRow key={c.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>
+                          {c.first_name} {c.last_name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{c.hospitalName}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <EmailIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                          {c.email}
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        {c.phone ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <PhoneIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                            {c.phone}
+                          </Box>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" display="block">{c.role_at_hospital || '—'}</Typography>
+                        <Chip size="small" label={c.contact_status} sx={{ mt: 0.5 }} />
+                      </TableCell>
+                      <TableCell align="center">
+                        {c.is_primary_contact ? <Chip size="small" color="primary" label="Primary" /> : '—'}
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton size="small" onClick={() => openEditContact(c)} title="Edit">
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleDeleteContact(c)} title="Remove" color="error">
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
+      )}
+
+      {/* Add/Edit Contact Dialog */}
+      <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingContact ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
+            Do not include PHI or patient data in contact details or notes.
           </Alert>
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Type</InputLabel>
-                <Select value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as ManagerContactType }))} label="Type">
-                  {Object.entries(TYPE_LABELS).map(([val, label]) => <MenuItem key={val} value={val}>{label}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField label="Name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField label="Organization" value={formData.organization} onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))} fullWidth size="small" />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField label="Email" type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} fullWidth size="small" />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth size="small" />
-            </Grid>
-            <Grid item xs={6}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Status</InputLabel>
-                <Select value={formData.status} onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))} label="Status">
-                  <MenuItem value="Active">Active</MenuItem>
-                  <MenuItem value="Inactive">Inactive</MenuItem>
-                  <MenuItem value="Pending">Pending</MenuItem>
+              <FormControl fullWidth required>
+                <InputLabel>Hospital</InputLabel>
+                <Select
+                  value={contactForm.hospitalId}
+                  onChange={(e) => setContactForm(prev => ({ ...prev, hospitalId: e.target.value }))}
+                  label="Hospital"
+                  disabled={!!editingContact}
+                >
+                  {hospitals.map(h => (
+                    <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={6}>
-              <TextField label="Assigned to" value={formData.assignedTo} onChange={(e) => setFormData(prev => ({ ...prev, assignedTo: e.target.value }))} fullWidth size="small" placeholder="Mentor name" />
+              <TextField
+                label="First Name"
+                fullWidth
+                required
+                value={contactForm.firstName}
+                onChange={(e) => setContactForm(prev => ({ ...prev, firstName: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                label="Last Name"
+                fullWidth
+                required
+                value={contactForm.lastName}
+                onChange={(e) => setContactForm(prev => ({ ...prev, lastName: e.target.value }))}
+              />
             </Grid>
             <Grid item xs={12}>
-              <TextField label="Last contact" value={formData.lastContact} onChange={(e) => setFormData(prev => ({ ...prev, lastContact: e.target.value }))} fullWidth size="small" placeholder="YYYY-MM-DD" />
+              <TextField
+                label="Email"
+                type="email"
+                fullWidth
+                required
+                value={contactForm.email}
+                onChange={(e) => setContactForm(prev => ({ ...prev, email: e.target.value }))}
+              />
             </Grid>
             <Grid item xs={12}>
-              <TextField label="Notes" value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} fullWidth size="small" multiline rows={3} />
+              <TextField
+                label="Phone"
+                fullWidth
+                value={contactForm.phone}
+                onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Contact Status</InputLabel>
+                <Select
+                  value={contactForm.contactStatus}
+                  onChange={(e) => setContactForm(prev => ({ ...prev, contactStatus: e.target.value }))}
+                  label="Contact Status"
+                >
+                  {CONTACT_STATUSES.map(s => (
+                    <MenuItem key={s} value={s}>{s}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Role at Hospital"
+                fullWidth
+                value={contactForm.roleAtHospital}
+                onChange={(e) => setContactForm(prev => ({ ...prev, roleAtHospital: e.target.value }))}
+                placeholder="Job title or role"
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={contactForm.isPrimaryContact}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, isPrimaryContact: e.target.checked }))}
+                  />
+                }
+                label="Primary site contact"
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={contactForm.isActivelyEngaged}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, isActivelyEngaged: e.target.checked }))}
+                  />
+                }
+                label="Actively engaged"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Notes"
+                fullWidth
+                multiline
+                rows={2}
+                value={contactForm.notes}
+                onChange={(e) => setContactForm(prev => ({ ...prev, notes: e.target.value }))}
+              />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setDialogOpen(false); setEditingContact(null); }}>Cancel</Button>
-          <Button onClick={handleSaveContact} variant="contained">{editingContact ? 'Save changes' : 'Save contact'}</Button>
+          <Button onClick={() => setContactDialogOpen(false)}>Cancel</Button>
+          {editingContact && (
+            <Button color="error" onClick={() => handleDeleteContact(editingContact)}>
+              Remove
+            </Button>
+          )}
+          <Button onClick={handleSaveContact} variant="contained">
+            {editingContact ? 'Save changes' : 'Add contact'}
+          </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={deleteConfirmOpen} onClose={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); }}>
-        <DialogTitle>{deleteTarget?.bulk ? `Delete ${deleteTarget.bulk.size} contacts?` : 'Delete contact?'}</DialogTitle>
+      {/* Add Hospital Dialog: default = select from existing list; option = add unlisted site */}
+      <Dialog open={addHospitalDialog} onClose={() => setAddHospitalDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Hospital to CRM</DialogTitle>
         <DialogContent>
-          <Typography>
-            {deleteTarget?.bulk ? 'These contacts will be removed. This cannot be undone.' : 'This contact will be removed. This cannot be undone.'}
-          </Typography>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Choose a site from the existing list, or add an unlisted site. Assign the site to a mentor so it appears in your CRM.
+          </Alert>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Assign to mentor</InputLabel>
+            <Select
+              value={assignToMentorId}
+              onChange={(e) => setAssignToMentorId(e.target.value)}
+              label="Assign to mentor"
+            >
+              {mentorsList.map(m => (
+                <MenuItem key={m.id} value={m.id}>{m.first_name} {m.last_name}</MenuItem>
+              ))}
+              {mentorsList.length === 0 && <MenuItem value="" disabled>No mentors found</MenuItem>}
+            </Select>
+          </FormControl>
+
+          <Tabs value={addHospitalMode === 'existing' ? 0 : 1} onChange={(_, v) => setAddHospitalMode(v === 0 ? 'existing' : 'unlisted')} sx={{ mb: 2 }}>
+            <Tab label="Select from existing list" />
+            <Tab label="Add unlisted site" />
+          </Tabs>
+
+          {addHospitalMode === 'existing' && (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>State</InputLabel>
+                  <Select
+                    value={addHospitalState}
+                    onChange={(e) => {
+                      setAddHospitalState(e.target.value);
+                      setAddHospitalCity('');
+                      setSelectedExistingHospital(null);
+                    }}
+                    label="State"
+                  >
+                    <MenuItem value="">Select state</MenuItem>
+                    {addHospitalStateOptions.map(st => (
+                      <MenuItem key={st} value={st}>{st}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth size="small" disabled={!addHospitalState}>
+                  <InputLabel>City</InputLabel>
+                  <Select
+                    value={addHospitalCity}
+                    onChange={(e) => {
+                      setAddHospitalCity(e.target.value);
+                      setSelectedExistingHospital(null);
+                    }}
+                    label="City"
+                  >
+                    <MenuItem value="">Select city</MenuItem>
+                    {addHospitalCityOptions.map(ct => (
+                      <MenuItem key={ct} value={ct}>{ct}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth size="small" disabled={!addHospitalCity}>
+                  <InputLabel>Hospital</InputLabel>
+                  <Select
+                    value={selectedExistingHospital?.id ?? ''}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const found = addHospitalHospitalOptions.find(h => h.id === id);
+                      setSelectedExistingHospital(found || null);
+                    }}
+                    label="Hospital"
+                  >
+                    <MenuItem value="">Select hospital</MenuItem>
+                    {addHospitalHospitalOptions.map(h => (
+                      <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          )}
+
+          {addHospitalMode === 'unlisted' && (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <TextField
+                  label="Hospital Name"
+                  fullWidth
+                  required
+                  value={addHospitalForm.name}
+                  onChange={(e) => setAddHospitalForm(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Address"
+                  fullWidth
+                  value={addHospitalForm.address}
+                  onChange={(e) => setAddHospitalForm(prev => ({ ...prev, address: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="City"
+                  fullWidth
+                  required
+                  value={addHospitalForm.city}
+                  onChange={(e) => setAddHospitalForm(prev => ({ ...prev, city: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="State"
+                  fullWidth
+                  required
+                  value={addHospitalForm.state}
+                  onChange={(e) => setAddHospitalForm(prev => ({ ...prev, state: e.target.value }))}
+                  placeholder="e.g., CA, TX"
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="Phone"
+                  fullWidth
+                  value={addHospitalForm.phone}
+                  onChange={(e) => setAddHospitalForm(prev => ({ ...prev, phone: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Trauma Level</InputLabel>
+                  <Select
+                    value={addHospitalForm.traumaLevel}
+                    onChange={(e) => setAddHospitalForm(prev => ({ ...prev, traumaLevel: e.target.value }))}
+                    label="Trauma Level"
+                  >
+                    <MenuItem value="Level I">Level I</MenuItem>
+                    <MenuItem value="Level II">Level II</MenuItem>
+                    <MenuItem value="Level III">Level III</MenuItem>
+                    <MenuItem value="Level IV">Level IV</MenuItem>
+                    <MenuItem value="Critical Access">Critical Access</MenuItem>
+                    <MenuItem value="Non-Designated">Non-Designated</MenuItem>
+                    <MenuItem value="Free-Standing ED">Free-Standing ED</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="ED Size (optional)"
+                  fullWidth
+                  value={addHospitalForm.edSize}
+                  onChange={(e) => setAddHospitalForm(prev => ({ ...prev, edSize: e.target.value }))}
+                  placeholder="e.g., Small (<20k visits/yr)"
+                />
+              </Grid>
+            </Grid>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); }}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => deleteTarget?.single ? handleDeleteContact(deleteTarget.single) : handleBulkDelete()}>Delete</Button>
+          <Button onClick={() => setAddHospitalDialog(false)}>Cancel</Button>
+          <Button
+            onClick={handleAddHospital}
+            variant="contained"
+            disabled={
+              !assignToMentorId ||
+              (addHospitalMode === 'existing' ? !selectedExistingHospital : !addHospitalForm.name?.trim() || !addHospitalForm.city?.trim() || !addHospitalForm.state?.trim())
+            }
+          >
+            {addHospitalMode === 'existing' ? 'Add to CRM' : 'Add unlisted site'}
+          </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Tab Visibility Dialog */}
+      <Dialog 
+        open={visibilityDialog} 
+        onClose={() => setVisibilityDialog(false)} 
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">User Tab Visibility Settings</Typography>
+            <IconButton onClick={() => setVisibilityDialog(false)}>
+              <SettingsIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Control which tabs are visible for each user. Hide tabs to simplify the interface or restrict access to certain features.
+          </Alert>
+
+          {/* Mass Actions */}
+          <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+              Mass Actions
+            </Typography>
+            <Typography variant="caption" color="textSecondary" display="block" sx={{ mb: 2 }}>
+              Quickly show or hide tabs for all users or specific roles
+            </Typography>
+            <Grid container spacing={2}>
+              {['snapshot', 'activities', 'milestones', 'gapPlan', 'simulation'].map(tab => (
+                <Grid item xs={12} sm={6} key={tab}>
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ flex: 1, textTransform: 'capitalize' }}>
+                      {tab.replace(/([A-Z])/g, ' $1').trim()}:
+                    </Typography>
+                    <Button
+                      size="small"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => handleMassToggle(tab as any, true)}
+                    >
+                      Show All
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<VisibilityOffIcon />}
+                      onClick={() => handleMassToggle(tab as any, false)}
+                    >
+                      Hide All
+                    </Button>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Paper>
+
+          {/* Filters */}
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Filter by Role</InputLabel>
+              <Select
+                value={visibilityFilter.role}
+                onChange={(e) => setVisibilityFilter(prev => ({ ...prev, role: e.target.value }))}
+                label="Filter by Role"
+              >
+                <MenuItem value="">All Roles</MenuItem>
+                <MenuItem value="pecc">PECCs</MenuItem>
+                <MenuItem value="mentor">Mentors</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              size="small"
+              placeholder="Search by name..."
+              value={visibilityFilter.search}
+              onChange={(e) => setVisibilityFilter(prev => ({ ...prev, search: e.target.value }))}
+              sx={{ flex: 1 }}
+            />
+          </Box>
+
+          {/* User List */}
+          <List sx={{ maxHeight: 400, overflow: 'auto' }}>
+            {filteredVisibilitySettings.map((setting, index) => (
+              <React.Fragment key={setting.userId}>
+                {index > 0 && <Divider />}
+                <ListItem>
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: setting.userRole === 'pecc' ? 'primary.main' : 'secondary.main' }}>
+                      {setting.userName.charAt(0)}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={setting.userName}
+                    secondary={
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                        {Object.entries(setting.visibleTabs).map(([tab, visible]) => (
+                          <FormControlLabel
+                            key={tab}
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={visible}
+                                onChange={() => handleToggleTabVisibility(setting.userId, tab as any)}
+                              />
+                            }
+                            label={
+                              <Typography variant="caption">
+                                {tab.replace(/([A-Z])/g, ' $1').trim()}
+                              </Typography>
+                            }
+                          />
+                        ))}
+                      </Box>
+                    }
+                  />
+                </ListItem>
+              </React.Fragment>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVisibilityDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+      >
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

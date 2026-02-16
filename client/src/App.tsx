@@ -33,9 +33,11 @@ const MentorActivitiesPage = lazy(() => import('./pages/mentor/MentorActivitiesP
 const MentorHospitalContactsPage = lazy(() => import('./pages/mentor/MentorHospitalContactsPage'));
 const MentorSiteMilestonesPage = lazy(() => import('./pages/mentor/MentorSiteMilestonesPage'));
 const MentorWagesExpensesPage = lazy(() => import('./pages/mentor/MentorWagesExpensesPage'));
+const MentorSnapshotPage = lazy(() => import('./pages/mentor/MentorSnapshotPage'));
 
 // Manager Pages (lazy loaded)
-const ManagerDashboardPage = lazy(() => import('./pages/manager/ManagerDashboardPage'));
+const ManagerSnapshotPage = lazy(() => import('./pages/manager/ManagerSnapshotPage'));
+const ManagerOverviewPage = lazy(() => import('./pages/manager/ManagerOverviewPage'));
 const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
 const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
 const ManagerWagesExpensesPage = lazy(() => import('./pages/manager/ManagerWagesExpensesPage'));
@@ -100,12 +102,12 @@ const getDefaultDashboard = (role: UserRole): string => {
     case UserRole.ADMIN:
       return '/admin/dashboard';
     case UserRole.MANAGER:
-      return '/manager/dashboard';
+      return '/manager/snapshot';
     case UserRole.MENTOR:
       return '/mentor/dashboard';
     case UserRole.PECC:
     default:
-      return '/tool';
+      return '/dashboard';
   }
 };
 
@@ -195,8 +197,7 @@ function App() {
                   <Route path="/invite/:code" element={<InvitationPage />} />
                   
                   {/* PECC Routes */}
-                  <Route path="/tool" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><DashboardPage /></ProtectedRoute>} />
-                  <Route path="/dashboard" element={<Navigate to="/tool" replace />} />
+                  <Route path="/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><DashboardPage /></ProtectedRoute>} />
                   <Route path="/snapshot" element={<ProtectedRoute><SnapshotPage /></ProtectedRoute>} />
                   <Route path="/simulation" element={<ProtectedRoute><SimulationPage /></ProtectedRoute>} />
                   <Route path="/milestones" element={<ProtectedRoute><MilestonesPage /></ProtectedRoute>} />
@@ -213,17 +214,22 @@ function App() {
                   <Route path="/mentor/hospitals" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorHospitalContactsPage /></ProtectedRoute>} />
                   <Route path="/mentor/milestones" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSiteMilestonesPage /></ProtectedRoute>} />
                   <Route path="/mentor/wages" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorWagesExpensesPage /></ProtectedRoute>} />
-                  <Route path="/mentor/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><SnapshotPage /></ProtectedRoute>} />
+                  <Route path="/mentor/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSnapshotPage /></ProtectedRoute>} />
                   <Route path="/mentor/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><CohortsPage /></ProtectedRoute>} />
-                  <Route path="/mentor/programs" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><ProgramsPage /></ProtectedRoute>} />
+                  <Route path="/mentor/programs" element={<Navigate to="/mentor/dashboard" replace />} />
                   
                   {/* Manager Routes */}
-                  <Route path="/manager/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerDashboardPage /></ProtectedRoute>} />
+                  <Route path="/manager/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerSnapshotPage /></ProtectedRoute>} />
+                  <Route path="/manager/overview" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerOverviewPage /></ProtectedRoute>} />
+                  <Route path="/manager/dashboard" element={<Navigate to="/manager/snapshot" replace />} />
                   <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />
+                  <Route path="/manager/activities" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><MentorActivitiesPage /></ProtectedRoute>} />
+                  <Route path="/manager/hospitals" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><MentorHospitalContactsPage /></ProtectedRoute>} />
+                  <Route path="/manager/milestones" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><MentorSiteMilestonesPage /></ProtectedRoute>} />
                   <Route path="/manager/crm" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCRMPage /></ProtectedRoute>} />
-                  <Route path="/manager/wages" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerWagesExpensesPage /></ProtectedRoute>} />
+                  <Route path="/manager/wages" element={<Navigate to="/manager/mentors" replace />} />
                   <Route path="/manager/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCohortsPage /></ProtectedRoute>} />
-                  <Route path="/manager/programs" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerProgramsPage /></ProtectedRoute>} />
+                  <Route path="/manager/programs" element={<Navigate to="/manager/snapshot" replace />} />
                   <Route path="/manager/permissions" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerPermissionsPage /></ProtectedRoute>} />
                   
                   {/* Admin Routes */}
@@ -233,8 +239,8 @@ function App() {
                   <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSettingsPage /></ProtectedRoute>} />
                   <Route path="/admin/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSnapshotPage /></ProtectedRoute>} />
                   <Route path="/admin/pipeline" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProjectPipelinePage /></ProtectedRoute>} />
-                  {/* Programs and Cohorts are now tabs in Settings - redirect old URLs */}
-                  <Route path="/admin/cohorts" element={<Navigate to="/admin/settings?tab=cohorts" replace />} />
+                  <Route path="/admin/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCohortsPage /></ProtectedRoute>} />
+                  {/* Programs is a tab in Settings - redirect old URL */}
                   <Route path="/admin/programs" element={<Navigate to="/admin/settings?tab=programs" replace />} />
                   
                   {/* Common Routes */}

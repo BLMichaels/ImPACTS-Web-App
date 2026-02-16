@@ -59,6 +59,17 @@ const DEFAULT_CATEGORIES = [
   { value: 'DM', label: 'DM - Domain Implementation' }
 ];
 
+// Consistent chip colors per category (PE, TR, SC, etc.)
+const CATEGORY_CHIP_COLOR: Record<string, 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'default'> = {
+  PE: 'primary',
+  TR: 'info',
+  AD: 'default',
+  RA: 'warning',
+  SC: 'secondary',
+  DM: 'success'
+};
+const getCategoryChipColor = (value: string) => CATEGORY_CHIP_COLOR[value] ?? 'default';
+
 // Simulation cases
 const SIMULATION_CASES = [
   'Bronchiolitis/Respiratory Distress',
@@ -165,7 +176,12 @@ const MentorActivitiesPage: React.FC = () => {
       // Load hospitals from localStorage or Supabase assignments; start empty if none
       const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser.id}`);
       if (savedHospitals) {
-        setHospitals(JSON.parse(savedHospitals));
+        const parsedHospitals = JSON.parse(savedHospitals);
+        // Sort hospitals alphabetically by name
+        const sortedHospitals = [...parsedHospitals].sort((a, b) => 
+          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+        );
+        setHospitals(sortedHospitals);
       } else {
         setHospitals([]);
       }
@@ -746,10 +762,10 @@ const MentorActivitiesPage: React.FC = () => {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip 
+<Chip 
                         label={activity.category} 
-                        size="small" 
-                        color={activity.category === 'SC' ? 'secondary' : 'default'}
+                        size="small"
+                        color={getCategoryChipColor(activity.category)}
                       />
                     </TableCell>
                     <TableCell>{activity.hours}</TableCell>
@@ -800,10 +816,10 @@ const MentorActivitiesPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="textSecondary">Category</Typography>
-                  <Chip 
+<Chip 
                     label={getCategoryLabel(viewingActivity.category)} 
-                    size="small" 
-                    color={viewingActivity.category === 'SC' ? 'secondary' : 'default'}
+                    size="small"
+                    color={getCategoryChipColor(viewingActivity.category)}
                   />
                 </Grid>
                 <Grid item xs={12}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -69,6 +69,12 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   const [loading, setLoading] = useState(true);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadDiscussions, setUnreadDiscussions] = useState(0);
+
+  // Only show announcements that are still visible (no visible_until or visible_until >= today)
+  const visibleAnnouncements = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return announcements.filter(a => !a.visible_until || a.visible_until >= today);
+  }, [announcements]);
 
   // Load cohort data
   const loadData = useCallback(async () => {
@@ -321,7 +327,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
           </Typography>
           <AnnouncementList
             cohortId={cohort.id}
-            announcements={announcements}
+            announcements={visibleAnnouncements}
             canPost={canAnnounce}
             canModerate={canManage}
             onAnnouncementCreated={handleAnnouncementCreated}
@@ -399,7 +405,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
               return (
                 <AnnouncementList
                   cohortId={cohort.id}
-                  announcements={announcements}
+                  announcements={visibleAnnouncements}
                   canPost={canAnnounce}
                   canModerate={canManage}
                   onAnnouncementCreated={handleAnnouncementCreated}

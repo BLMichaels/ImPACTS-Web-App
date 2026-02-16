@@ -520,6 +520,7 @@ export interface CohortAnnouncement {
   content: string;
   created_by: string | null;
   is_pinned: boolean;
+  visible_until?: string | null; // DATE: hide after this date; null = show until removed
   created_at: string;
   updated_at: string;
   // Joined fields
