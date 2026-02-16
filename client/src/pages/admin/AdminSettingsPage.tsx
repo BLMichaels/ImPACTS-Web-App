@@ -526,29 +526,40 @@ export default function AdminSettingsPage() {
           ...(formShowWhenOperator === 'in' && formShowWhenValue.trim() ? { value: formShowWhenValue.split(',').map(s => s.trim()).filter(Boolean) } : {})
         }
       : null;
-    const payload = {
+    const basePayload = {
       label: formLabel.trim(),
       question_type: formType,
       required: formRequired,
       options,
       sort_order: formSortOrder,
       is_active: true,
-      updated_at: new Date().toISOString(),
-      target_roles: targetRoles,
-      display_condition: displayCondition
+      updated_at: new Date().toISOString()
     };
+    const fullPayload = { ...basePayload, target_roles: targetRoles, display_condition: displayCondition };
     try {
       if (editingId) {
-        const { error: err } = await supabase.from('registration_questions').update(payload).eq('id', editingId);
+        const { error: err } = await supabase.from('registration_questions').update(fullPayload).eq('id', editingId);
         if (err) throw err;
       } else {
-        const { error: err } = await supabase.from('registration_questions').insert(payload);
-        if (err) throw err;
+        const { data: inserted, error: insertErr } = await supabase
+          .from('registration_questions')
+          .insert(basePayload)
+          .select('id')
+          .single();
+        if (insertErr) throw insertErr;
+        if (inserted?.id && (targetRoles?.length > 0 || displayCondition != null)) {
+          await supabase
+            .from('registration_questions')
+            .update({ target_roles: targetRoles, display_condition: displayCondition, updated_at: new Date().toISOString() })
+            .eq('id', inserted.id);
+        }
       }
       setDialogOpen(false);
       loadQuestions();
-    } catch (e) {
-      setRegError(e instanceof Error ? e.message : 'Failed to save');
+    } catch (e: unknown) {
+      const err = e as { message?: string; details?: string; hint?: string };
+      const msg = err?.message || (e instanceof Error ? e.message : 'Failed to save');
+      setRegError(msg);
     }
   };
   const handleRegDelete = async (id: string) => {
