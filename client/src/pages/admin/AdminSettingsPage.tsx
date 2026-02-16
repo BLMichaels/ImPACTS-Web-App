@@ -65,6 +65,22 @@ const QUESTION_TYPES: { value: RegistrationQuestionType; label: string }[] = [
   { value: 'phone', label: 'Phone' }
 ];
 
+const CRM_FIELD_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'None' },
+  { value: 'first_name', label: 'First Name' },
+  { value: 'last_name', label: 'Last Name' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'email', label: 'Email' },
+  { value: 'job_title', label: 'Job Title' },
+  { value: 'department', label: 'Department' },
+  { value: 'hospital_system', label: 'Hospital System' },
+  { value: 'nprqi_participant', label: 'NPRQI Participant' },
+  { value: 'additional_contact_name', label: 'Additional Contact Name' },
+  { value: 'additional_contact_email', label: 'Additional Contact Email' },
+  { value: 'additional_contact_job_title', label: 'Additional Contact Job Title' },
+  { value: 'hospital', label: 'Hospital (State, City, Name from CRM)' }
+];
+
 // ---- Permissions section constants ----
 interface PermissionState {
   [role: string]: { [permission: string]: boolean };
@@ -207,6 +223,7 @@ export default function AdminSettingsPage() {
   const [formShowWhenQuestionId, setFormShowWhenQuestionId] = useState<string>('');
   const [formShowWhenOperator, setFormShowWhenOperator] = useState<'equals' | 'not_empty' | 'in'>('equals');
   const [formShowWhenValue, setFormShowWhenValue] = useState('');
+  const [formLinkedCrmField, setFormLinkedCrmField] = useState<string>('');
 
   // ---- Permissions state ----
   const [permissions, setPermissions] = useState<PermissionState>({});
@@ -233,7 +250,8 @@ export default function AdminSettingsPage() {
           created_at: r.created_at as string | undefined,
           updated_at: r.updated_at as string | undefined,
           target_roles: targetRoles,
-          display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null
+          display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null,
+          linked_crm_field: r.linked_crm_field != null ? String(r.linked_crm_field) : null
         };
       });
       setQuestions(rows);
@@ -493,6 +511,7 @@ export default function AdminSettingsPage() {
     setFormShowWhenQuestionId('');
     setFormShowWhenOperator('equals');
     setFormShowWhenValue('');
+    setFormLinkedCrmField('');
     setDialogOpen(true);
   };
   const openEdit = (q: RegistrationQuestion) => {
@@ -507,6 +526,7 @@ export default function AdminSettingsPage() {
     setFormShowWhenQuestionId(dc?.question_id ?? '');
     setFormShowWhenOperator(dc?.operator ?? 'equals');
     setFormShowWhenValue(Array.isArray(dc?.value) ? ((dc?.value) as string[]).join(', ') : (dc?.value ?? ''));
+    setFormLinkedCrmField(q.linked_crm_field ?? '');
     setDialogOpen(true);
   };
   const handleRegSave = async () => {
@@ -533,7 +553,8 @@ export default function AdminSettingsPage() {
       options,
       sort_order: formSortOrder,
       is_active: true,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      linked_crm_field: formLinkedCrmField.trim() || null
     };
     const fullPayload = { ...basePayload, target_roles: targetRoles, display_condition: displayCondition };
     try {
@@ -553,6 +574,7 @@ export default function AdminSettingsPage() {
             .update({ target_roles: targetRoles, display_condition: displayCondition, updated_at: new Date().toISOString() })
             .eq('id', inserted.id);
         }
+        // linked_crm_field is already in basePayload so no second update needed
       }
       setDialogOpen(false);
       loadQuestions();
@@ -655,6 +677,7 @@ export default function AdminSettingsPage() {
                     <TableCell>Order</TableCell>
                     <TableCell>Label</TableCell>
                     <TableCell>Type</TableCell>
+                    <TableCell>CRM field</TableCell>
                     <TableCell>Target Roles</TableCell>
                     <TableCell>Required</TableCell>
                     <TableCell>Options</TableCell>
@@ -673,6 +696,7 @@ export default function AdminSettingsPage() {
                       <TableCell>{q.sort_order}</TableCell>
                       <TableCell>{q.label}</TableCell>
                       <TableCell>{QUESTION_TYPES.find(t => t.value === q.question_type)?.label ?? q.question_type}</TableCell>
+                      <TableCell>{q.linked_crm_field ? (CRM_FIELD_OPTIONS.find(o => o.value === q.linked_crm_field)?.label ?? q.linked_crm_field) : '—'}</TableCell>
                       <TableCell>
                         {q.target_roles && q.target_roles.length > 0 ? (
                           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
@@ -1353,10 +1377,23 @@ export default function AdminSettingsPage() {
             </Select>
           </FormControl>
           <FormControlLabel control={<Checkbox checked={formRequired} onChange={e => setFormRequired(e.target.checked)} />} label="Required" />
-          {(formType === 'radio' || formType === 'select') && (
+          {(formType === 'radio' || formType === 'select') && formLinkedCrmField !== 'hospital' && (
             <TextField fullWidth margin="normal" label="Options (one per line)" value={formOptionsText} onChange={e => setFormOptionsText(e.target.value)} multiline rows={4} placeholder="One option per line" />
           )}
+          {formLinkedCrmField === 'hospital' && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>Registrants will choose from CRM hospitals: State → City → Hospital name. No options needed.</Typography>
+          )}
           <TextField fullWidth margin="normal" type="number" label="Sort order" value={formSortOrder} onChange={e => setFormSortOrder(Number(e.target.value) || 0)} inputProps={{ min: 0 }} />
+
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Link to CRM / User field</InputLabel>
+            <Select value={formLinkedCrmField} label="Link to CRM / User field" onChange={e => setFormLinkedCrmField(e.target.value)}>
+              {CRM_FIELD_OPTIONS.map(opt => (
+                <MenuItem key={opt.value || 'none'} value={opt.value}>{opt.label}</MenuItem>
+              ))}
+            </Select>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Answer is saved to the user profile and CRM. Use &quot;Hospital&quot; for state/city/hospital picker from CRM.</Typography>
+          </FormControl>
 
           <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show for roles (select all that apply)</Typography>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>

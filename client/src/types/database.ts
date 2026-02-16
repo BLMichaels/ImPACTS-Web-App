@@ -446,6 +446,8 @@ export interface RegistrationQuestion {
   target_roles?: string[] | null;
   /** Show only when the referenced question's answer satisfies the operator/value. */
   display_condition?: RegistrationQuestionDisplayCondition | null;
+  /** If set, answer is written to users / CRM: first_name, last_name, phone, email, job_title, department, hospital_system, nprqi_participant, additional_contact_*, or hospital (CRM picker). */
+  linked_crm_field?: string | null;
 }
 
 // ============================================

@@ -152,7 +152,8 @@ export default function RegisterPage() {
                 created_at: r.created_at as string | undefined,
                 updated_at: r.updated_at as string | undefined,
                 target_roles: targetRoles,
-                display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null
+                display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null,
+                linked_crm_field: r.linked_crm_field != null ? String(r.linked_crm_field) : null
               } as RegistrationQuestion;
             })
             .filter((q) => !q.target_roles?.length || q.target_roles.includes(role));
@@ -167,7 +168,6 @@ export default function RegisterPage() {
 
   const isOtherHospital = hospitalValue?.id === OTHER_HOSPITAL_ID;
   const selectedHospitalFromCrm = hospitalValue && hospitalValue.id !== OTHER_HOSPITAL_ID ? hospitalValue : null;
-  const effectiveHospitalSystem = selectedHospitalFromCrm?.hospitalSystem ?? hospitalSystem;
 
   const satisfiesDisplayCondition = (q: RegistrationQuestion, answers: Record<string, string | boolean | string[]>): boolean => {
     const dc = q.display_condition;
@@ -182,51 +182,106 @@ export default function RegisterPage() {
 
   const visibleQuestions = registrationQuestions.filter((q) => satisfiesDisplayCondition(q, dynamicAnswers));
 
+  const hasLinkedField = (field: string) => visibleQuestions.some((q) => q.linked_crm_field === field);
+  const getLinkedAnswer = (field: string): string | boolean | string[] | undefined => {
+    const q = visibleQuestions.find((q) => q.linked_crm_field === field);
+    if (!q) return undefined;
+    return dynamicAnswers[q.id];
+  };
+  const getLinkedHospital = (): { facilityId: string | null; other: string | null } => {
+    const q = visibleQuestions.find((q) => q.linked_crm_field === 'hospital');
+    if (!q) return { facilityId: null, other: null };
+    const id = dynamicAnswers[q.id] as string | undefined;
+    const other = (dynamicAnswers[`${q.id}_other`] as string | undefined) ?? '';
+    if (!id) return { facilityId: null, other: null };
+    if (id === OTHER_HOSPITAL_ID) return { facilityId: null, other: other.trim() || null };
+    return { facilityId: id, other: null };
+  };
+
+  const linkedHospitalFacilityId = (() => {
+    const q = visibleQuestions.find((q) => q.linked_crm_field === 'hospital');
+    return q ? (dynamicAnswers[q.id] as string | undefined) : undefined;
+  })();
+  const linkedHospitalOption = linkedHospitalFacilityId && linkedHospitalFacilityId !== OTHER_HOSPITAL_ID ? hospitals.find((h) => h.id === linkedHospitalFacilityId) ?? null : null;
+  const effectiveHospitalSystem = linkedHospitalOption?.hospitalSystem ?? selectedHospitalFromCrm?.hospitalSystem ?? hospitalSystem;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    const effectiveFirstName = (hasLinkedField('first_name') ? String(getLinkedAnswer('first_name') ?? '').trim() : firstName.trim()) || '';
+    const effectiveLastName = (hasLinkedField('last_name') ? String(getLinkedAnswer('last_name') ?? '').trim() : lastName.trim()) || '';
+    const effectiveEmail = (hasLinkedField('email') ? String(getLinkedAnswer('email') ?? '').trim() : email.trim()) || '';
+    const effectiveNprqi = hasLinkedField('nprqi_participant') ? getLinkedAnswer('nprqi_participant') : nprqiParticipant;
+
     if (password !== confirmPassword) return setError('Passwords do not match');
     if (!termsAccepted) return setError('You must accept the Terms of Service to register.');
-    if (!firstName.trim()) return setError('First name is required.');
-    if (!lastName.trim()) return setError('Last name is required.');
-    if (!email.trim()) return setError('Email is required.');
-    if (nprqiParticipant === '') return setError('Please indicate if you are participating in NPRQI.');
 
-    if (!hospitalValue) return setError('Please select your hospital or choose "Other" and enter it.');
-    if (hospitalValue.id === OTHER_HOSPITAL_ID && !hospitalOtherText.trim()) return setError('Please enter your hospital name when selecting "Other".');
+    if (!effectiveFirstName) return setError('First name is required.');
+    if (!effectiveLastName) return setError('Last name is required.');
+    if (!effectiveEmail) return setError('Email is required.');
+    if (effectiveNprqi === '' || effectiveNprqi === undefined) return setError('Please indicate if you are participating in NPRQI.');
+
+    let hospitalFacilityId: string | null;
+    let hospitalOther: string | null;
+    if (hasLinkedField('hospital')) {
+      const linked = getLinkedHospital();
+      hospitalFacilityId = linked.facilityId;
+      hospitalOther = linked.other;
+      if (!hospitalFacilityId && !(hospitalOther && hospitalOther.trim())) return setError('Please select your hospital or choose "Other" and enter it.');
+      if (hospitalFacilityId === null && hospitalOther !== null && !hospitalOther.trim()) return setError('Please enter your hospital name when selecting "Other".');
+    } else {
+      if (!hospitalValue) return setError('Please select your hospital or choose "Other" and enter it.');
+      if (hospitalValue.id === OTHER_HOSPITAL_ID && !hospitalOtherText.trim()) return setError('Please enter your hospital name when selecting "Other".');
+      hospitalFacilityId = hospitalValue!.id === OTHER_HOSPITAL_ID ? null : hospitalValue!.id;
+      hospitalOther = hospitalValue!.id === OTHER_HOSPITAL_ID ? hospitalOtherText.trim() : null;
+    }
 
     const requiredQuestions = registrationQuestions.filter((q) => q.required && satisfiesDisplayCondition(q, dynamicAnswers));
     for (const q of requiredQuestions) {
-      const v = dynamicAnswers[q.id];
-      if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) {
-        return setError(`"${q.label}" is required.`);
+      if (q.linked_crm_field === 'hospital') {
+        const linked = getLinkedHospital();
+        if (!linked.facilityId && !(linked.other && linked.other.trim())) return setError(`"${q.label}" is required.`);
+        if (!linked.facilityId && linked.other !== null && !linked.other.trim()) return setError(`"${q.label}": please enter your hospital name when selecting "Other".`);
+      } else {
+        const v = dynamicAnswers[q.id];
+        if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) {
+          return setError(`"${q.label}" is required.`);
+        }
       }
     }
 
     try {
       setLoading(true);
-      const { data, error: signUpError } = await supabase.auth.signUp({ email: email.trim(), password });
+      const { data, error: signUpError } = await supabase.auth.signUp({ email: effectiveEmail.trim().toLowerCase(), password });
       if (signUpError) throw signUpError;
       if (!data?.user) throw new Error('Sign up failed.');
 
       const userId = data.user.id;
-      const hospitalFacilityId = hospitalValue!.id === OTHER_HOSPITAL_ID ? null : hospitalValue!.id;
-      const hospitalOther = hospitalValue!.id === OTHER_HOSPITAL_ID ? hospitalOtherText.trim() : null;
+      const effectivePhone = hasLinkedField('phone') ? String(getLinkedAnswer('phone') ?? '').trim() : phone.trim();
+      const effectiveJobTitle = hasLinkedField('job_title') ? String(getLinkedAnswer('job_title') ?? '').trim() : jobTitle.trim();
+      const effectiveDepartment = hasLinkedField('department') ? String(getLinkedAnswer('department') ?? '').trim() : department.trim();
+      const effectiveHospitalSystemVal = hasLinkedField('hospital_system') ? String(getLinkedAnswer('hospital_system') ?? '').trim() : effectiveHospitalSystem.trim();
+      const effectiveNprqiBool = hasLinkedField('nprqi_participant')
+        ? (getLinkedAnswer('nprqi_participant') === true || getLinkedAnswer('nprqi_participant') === 'yes')
+        : nprqiParticipant === true;
+      const effectiveAdditionalName = hasLinkedField('additional_contact_name') ? String(getLinkedAnswer('additional_contact_name') ?? '').trim() : additionalContactName.trim();
+      const effectiveAdditionalEmail = hasLinkedField('additional_contact_email') ? String(getLinkedAnswer('additional_contact_email') ?? '').trim() : additionalContactEmail.trim();
+      const effectiveAdditionalJobTitle = hasLinkedField('additional_contact_job_title') ? String(getLinkedAnswer('additional_contact_job_title') ?? '').trim() : additionalContactJobTitle.trim();
 
       const { error: updateError } = await supabase.from('users').update({
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        phone: phone.trim() || null,
+        first_name: effectiveFirstName,
+        last_name: effectiveLastName,
+        phone: effectivePhone || null,
         hospital_facility_id: hospitalFacilityId,
         hospital_other: hospitalOther,
-        job_title: jobTitle.trim() || null,
-        department: department.trim() || null,
-        nprqi_participant: nprqiParticipant === true,
-        additional_contact_name: additionalContactName.trim() || null,
-        additional_contact_email: additionalContactEmail.trim() || null,
-        additional_contact_job_title: additionalContactJobTitle.trim() || null,
-        hospital_system: effectiveHospitalSystem.trim() || null,
+        job_title: effectiveJobTitle || null,
+        department: effectiveDepartment || null,
+        nprqi_participant: effectiveNprqiBool,
+        additional_contact_name: effectiveAdditionalName || null,
+        additional_contact_email: effectiveAdditionalEmail || null,
+        additional_contact_job_title: effectiveAdditionalJobTitle || null,
+        hospital_system: effectiveHospitalSystemVal || null,
         registration_answers: dynamicAnswers,
         updated_at: new Date().toISOString()
       }).eq('id', userId);
@@ -250,12 +305,12 @@ export default function RegisterPage() {
             {
               hospital_id: hospitalId,
               user_id: userId,
-              first_name: firstName.trim(),
-              last_name: lastName.trim(),
-              email: email.trim(),
-              phone: phone.trim() || null,
+              first_name: effectiveFirstName,
+              last_name: effectiveLastName,
+              email: effectiveEmail,
+              phone: effectivePhone || null,
               contact_status: 'New PECC',
-              role_at_hospital: jobTitle.trim() || null,
+              role_at_hospital: effectiveJobTitle || null,
               is_primary_contact: false,
               is_actively_engaged: true,
               updated_at: new Date().toISOString()
@@ -290,6 +345,92 @@ export default function RegisterPage() {
   };
 
   const renderQuestion = (q: RegistrationQuestion) => {
+    if (q.linked_crm_field === 'hospital') {
+      const linkState = (dynamicAnswers[`${q.id}_state`] as string) ?? '';
+      const linkCity = (dynamicAnswers[`${q.id}_city`] as string) ?? '';
+      const linkHospitalId = (dynamicAnswers[q.id] as string) ?? '';
+      const linkOther = (dynamicAnswers[`${q.id}_other`] as string) ?? '';
+      const states = [...new Set(hospitals.map((h) => h.state).filter(Boolean))].sort();
+      const cities = linkState ? [...new Set(hospitals.filter((h) => h.state === linkState).map((h) => h.city).filter(Boolean))].sort() : [];
+      const hospitalsInStateCity = linkState && linkCity ? hospitals.filter((h) => h.state === linkState && h.city === linkCity) : [];
+      const hospitalOptionsForLink: HospitalOption[] = [
+        ...hospitalsInStateCity,
+        { id: OTHER_HOSPITAL_ID, name: 'Other', state: '', city: '', label: 'Other (type below)' }
+      ];
+      const selectedHospital = linkHospitalId ? hospitalOptionsForLink.find((o) => o.id === linkHospitalId) ?? null : null;
+      return (
+        <Box key={q.id} sx={{ mt: 2, mb: 2 }}>
+          <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>{q.label}{q.required ? ' *' : ''}</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <FormControl fullWidth size="small" required={q.required}>
+              <InputLabel>State</InputLabel>
+              <Select
+                value={linkState}
+                label="State"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDynamicAnswers((prev) => ({ ...prev, [`${q.id}_state`]: v, [`${q.id}_city`]: '', [q.id]: '', [`${q.id}_other`]: '' }));
+                }}
+              >
+                <MenuItem value="">—</MenuItem>
+                {states.map((s) => (
+                  <MenuItem key={s} value={s}>{s}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {linkState && (
+              <FormControl fullWidth size="small" required={q.required}>
+                <InputLabel>City</InputLabel>
+                <Select
+                  value={linkCity}
+                  label="City"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDynamicAnswers((prev) => ({ ...prev, [`${q.id}_city`]: v, [q.id]: '', [`${q.id}_other`]: '' }));
+                  }}
+                >
+                  <MenuItem value="">—</MenuItem>
+                  {cities.map((c) => (
+                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            {linkState && linkCity && (
+              <>
+                <Autocomplete
+                  options={hospitalOptionsForLink}
+                  getOptionLabel={(opt) => opt.label}
+                  value={selectedHospital}
+                  onChange={(_, v) => {
+                    setDynamicAnswers((prev) => ({
+                      ...prev,
+                      [q.id]: v?.id ?? '',
+                      [`${q.id}_other`]: v?.id === OTHER_HOSPITAL_ID ? (prev[`${q.id}_other`] as string) ?? '' : ''
+                    }));
+                  }}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Hospital" required={q.required} placeholder="Search by name" />
+                  )}
+                />
+                {linkHospitalId === OTHER_HOSPITAL_ID && (
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Hospital name (Other)"
+                    required={q.required}
+                    value={linkOther}
+                    onChange={(e) => setDynamicAnswer(`${q.id}_other`, e.target.value)}
+                    placeholder="Enter your hospital or facility name"
+                  />
+                )}
+              </>
+            )}
+          </Box>
+        </Box>
+      );
+    }
+
     const value = dynamicAnswers[q.id];
     const opts = q.options || [];
 
@@ -420,65 +561,78 @@ export default function RegisterPage() {
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         <Box component="form" onSubmit={handleSubmit}>
-          <Typography variant="subtitle1" color="primary" sx={{ mt: 2, mb: 1 }}>Hospital</Typography>
-          {hospitalsLoading ? (
-            <Box sx={{ py: 2 }}><CircularProgress size={24} /></Box>
-          ) : (
+          {!hasLinkedField('hospital') && (
             <>
-              <Autocomplete
-                options={hospitalOptions}
-                getOptionLabel={(opt) => opt.label}
-                value={hospitalValue}
-                onChange={(_, v) => setHospitalValue(v)}
-                renderInput={(params) => (
-                  <TextField {...params} label="Hospital (or Other)" required placeholder="Search by state, city, or name" />
-                )}
-              />
-              {isOtherHospital && (
-                <TextField
-                  fullWidth
-                  label="Hospital name (Other)"
-                  required
-                  value={hospitalOtherText}
-                  onChange={(e) => setHospitalOtherText(e.target.value)}
-                  margin="normal"
-                  placeholder="Enter your hospital or facility name"
-                />
+              <Typography variant="subtitle1" color="primary" sx={{ mt: 2, mb: 1 }}>Hospital</Typography>
+              {hospitalsLoading ? (
+                <Box sx={{ py: 2 }}><CircularProgress size={24} /></Box>
+              ) : (
+                <>
+                  <Autocomplete
+                    options={hospitalOptions}
+                    getOptionLabel={(opt) => opt.label}
+                    value={hospitalValue}
+                    onChange={(_, v) => setHospitalValue(v)}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Hospital (or Other)" required placeholder="Search by state, city, or name" />
+                    )}
+                  />
+                  {isOtherHospital && (
+                    <TextField
+                      fullWidth
+                      label="Hospital name (Other)"
+                      required
+                      value={hospitalOtherText}
+                      onChange={(e) => setHospitalOtherText(e.target.value)}
+                      margin="normal"
+                      placeholder="Enter your hospital or facility name"
+                    />
+                  )}
+                </>
               )}
+              <Divider sx={{ my: 3 }} />
             </>
           )}
 
-          <Divider sx={{ my: 3 }} />
-          <Typography variant="subtitle1" color="primary" sx={{ mb: 1 }}>Contact information</Typography>
-          <TextField margin="normal" required fullWidth label="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-          <TextField margin="normal" required fullWidth label="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          <TextField margin="normal" required fullWidth type="email" label="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-          <TextField margin="normal" fullWidth label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <TextField margin="normal" required fullWidth label="Job title" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-          <TextField margin="normal" required fullWidth label="Department" value={department} onChange={(e) => setDepartment(e.target.value)} />
-
-          <TextField
-            margin="normal"
-            fullWidth
-            label="Hospital system (if applicable)"
-            value={effectiveHospitalSystem}
-            onChange={(e) => setHospitalSystem(e.target.value)}
-            placeholder={selectedHospitalFromCrm?.hospitalSystem ? `Pre-filled from CRM: ${selectedHospitalFromCrm.hospitalSystem}` : ''}
-            helperText={selectedHospitalFromCrm?.hospitalSystem ? 'Pre-filled from your selected hospital. You can edit if needed.' : undefined}
-          />
-
-          <FormControl component="fieldset" required sx={{ mt: 2, display: 'block' }}>
-            <FormLabel component="legend">Are you participating in NPRQI?</FormLabel>
-            <RadioGroup row value={nprqiParticipant === true ? 'yes' : nprqiParticipant === false ? 'no' : ''} onChange={(_, v) => setNprqiParticipant(v === 'yes')}>
-              <FormControlLabel value="yes" control={<Radio />} label="Yes" />
-              <FormControlLabel value="no" control={<Radio />} label="No" />
-            </RadioGroup>
-          </FormControl>
-
-          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Additional contact from your department</Typography>
-          <TextField margin="normal" fullWidth label="Name" value={additionalContactName} onChange={(e) => setAdditionalContactName(e.target.value)} />
-          <TextField margin="normal" fullWidth type="email" label="Email" value={additionalContactEmail} onChange={(e) => setAdditionalContactEmail(e.target.value)} />
-          <TextField margin="normal" fullWidth label="Job title" value={additionalContactJobTitle} onChange={(e) => setAdditionalContactJobTitle(e.target.value)} />
+          {(!hasLinkedField('first_name') || !hasLinkedField('last_name') || !hasLinkedField('email') || !hasLinkedField('phone') || !hasLinkedField('job_title') || !hasLinkedField('department') || !hasLinkedField('hospital_system') || !hasLinkedField('nprqi_participant') || !hasLinkedField('additional_contact_name') || !hasLinkedField('additional_contact_email') || !hasLinkedField('additional_contact_job_title')) && (
+            <>
+              <Typography variant="subtitle1" color="primary" sx={{ mb: 1, mt: hasLinkedField('hospital') ? 2 : 0 }}>Contact information</Typography>
+              {!hasLinkedField('first_name') && <TextField margin="normal" required fullWidth label="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />}
+              {!hasLinkedField('last_name') && <TextField margin="normal" required fullWidth label="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />}
+              {!hasLinkedField('email') && <TextField margin="normal" required fullWidth type="email" label="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />}
+              {!hasLinkedField('phone') && <TextField margin="normal" fullWidth label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />}
+              {!hasLinkedField('job_title') && <TextField margin="normal" required fullWidth label="Job title" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />}
+              {!hasLinkedField('department') && <TextField margin="normal" required fullWidth label="Department" value={department} onChange={(e) => setDepartment(e.target.value)} />}
+              {!hasLinkedField('hospital_system') && (
+                <TextField
+                  margin="normal"
+                  fullWidth
+                  label="Hospital system (if applicable)"
+                  value={effectiveHospitalSystem}
+                  onChange={(e) => setHospitalSystem(e.target.value)}
+                  placeholder={selectedHospitalFromCrm?.hospitalSystem || linkedHospitalOption?.hospitalSystem ? `Pre-filled from CRM: ${selectedHospitalFromCrm?.hospitalSystem || linkedHospitalOption?.hospitalSystem}` : ''}
+                  helperText={selectedHospitalFromCrm?.hospitalSystem || linkedHospitalOption?.hospitalSystem ? 'Pre-filled from your selected hospital. You can edit if needed.' : undefined}
+                />
+              )}
+              {!hasLinkedField('nprqi_participant') && (
+                <FormControl component="fieldset" required sx={{ mt: 2, display: 'block' }}>
+                  <FormLabel component="legend">Are you participating in NPRQI?</FormLabel>
+                  <RadioGroup row value={nprqiParticipant === true ? 'yes' : nprqiParticipant === false ? 'no' : ''} onChange={(_, v) => setNprqiParticipant(v === 'yes')}>
+                    <FormControlLabel value="yes" control={<Radio />} label="Yes" />
+                    <FormControlLabel value="no" control={<Radio />} label="No" />
+                  </RadioGroup>
+                </FormControl>
+              )}
+              {(!hasLinkedField('additional_contact_name') || !hasLinkedField('additional_contact_email') || !hasLinkedField('additional_contact_job_title')) && (
+                <>
+                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Additional contact from your department</Typography>
+                  {!hasLinkedField('additional_contact_name') && <TextField margin="normal" fullWidth label="Name" value={additionalContactName} onChange={(e) => setAdditionalContactName(e.target.value)} />}
+                  {!hasLinkedField('additional_contact_email') && <TextField margin="normal" fullWidth type="email" label="Email" value={additionalContactEmail} onChange={(e) => setAdditionalContactEmail(e.target.value)} />}
+                  {!hasLinkedField('additional_contact_job_title') && <TextField margin="normal" fullWidth label="Job title" value={additionalContactJobTitle} onChange={(e) => setAdditionalContactJobTitle(e.target.value)} />}
+                </>
+              )}
+            </>
+          )}
 
           {questionsLoading ? (
             <Box sx={{ py: 2 }}><CircularProgress size={24} /></Box>
