@@ -31,6 +31,7 @@ interface HospitalOption {
   name: string;
   state: string;
   city: string;
+  county: string;
   hospitalSystem?: string;
   label: string;
 }
@@ -73,43 +74,58 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Load hospitals from CRM (state, city, name)
+  // Load all hospitals from CRM (state, county, city, name) for dropdown selection
   useEffect(() => {
     let mounted = true;
     setHospitalsLoading(true);
     (async () => {
       try {
-        const { data, error: err } = await supabase
-          .from('hospitals')
-          .select('facility_id, id, name, state, city, hospital_system')
-          .limit(2000);
-        if (!mounted) return;
-        if (err || !data) {
-          setHospitals([]);
-          setHospitalsLoading(false);
-          return;
+        const list: HospitalOption[] = [];
+        const chunk = 1000;
+        let offset = 0;
+        let hasMore = true;
+        while (mounted && hasMore) {
+          const { data, error: err } = await supabase
+            .from('hospitals')
+            .select('facility_id, id, name, state, city, county, hospital_system')
+            .range(offset, offset + chunk - 1)
+            .order('state', { ascending: true })
+            .order('county', { ascending: true, nullsFirst: false })
+            .order('city', { ascending: true })
+            .order('name', { ascending: true });
+          if (!mounted) return;
+          if (err || !data) {
+            setHospitals([]);
+            setHospitalsLoading(false);
+            return;
+          }
+          for (const row of data as Record<string, unknown>[]) {
+            const id = String(row.facility_id ?? row.id ?? '');
+            const name = normalizeHospitalOrOrgName(String(row.name ?? 'Unknown'));
+            const state = String(row.state ?? '');
+            const city = String(row.city ?? '');
+            const county = String(row.county ?? '');
+            const hospitalSystem = row.hospital_system != null ? String(row.hospital_system) : undefined;
+            list.push({
+              id,
+              name,
+              state,
+              city,
+              county,
+              hospitalSystem,
+              label: [state, county, city, name].filter(Boolean).join(' – ') || name
+            });
+          }
+          hasMore = data.length >= chunk;
+          offset += chunk;
         }
-        const list: HospitalOption[] = (data as Record<string, unknown>[]).map((row) => {
-          const id = String(row.facility_id ?? row.id ?? '');
-          const name = normalizeHospitalOrOrgName(String(row.name ?? 'Unknown'));
-          const state = String(row.state ?? '');
-          const city = String(row.city ?? '');
-          const hospitalSystem = row.hospital_system != null ? String(row.hospital_system) : undefined;
-          return {
-            id,
-            name,
-            state,
-            city,
-            hospitalSystem,
-            label: [state, city, name].filter(Boolean).join(' – ') || name
-          };
-        });
+        if (!mounted) return;
         list.sort((a, b) => {
-          const sa = a.state || '';
-          const sb = b.state || '';
+          const sa = a.state || '', sb = b.state || '';
           if (sa !== sb) return sa.localeCompare(sb);
-          const ca = a.city || '';
-          const cb = b.city || '';
+          const coa = a.county || '', cob = b.county || '';
+          if (coa !== cob) return coa.localeCompare(cob);
+          const ca = a.city || '', cb = b.city || '';
           if (ca !== cb) return ca.localeCompare(cb);
           return (a.name || '').localeCompare(b.name || '');
         });
@@ -337,7 +353,7 @@ export default function RegisterPage() {
 
   const hospitalOptions: HospitalOption[] = [
     ...hospitals,
-    { id: OTHER_HOSPITAL_ID, name: 'Other', state: '', city: '', label: 'Other (type below)' }
+    { id: OTHER_HOSPITAL_ID, name: 'Other', state: '', city: '', county: '', label: 'Other (type below)' }
   ];
 
   const setDynamicAnswer = (questionId: string, value: string | boolean | string[]) => {
@@ -347,20 +363,25 @@ export default function RegisterPage() {
   const renderQuestion = (q: RegistrationQuestion) => {
     if (q.linked_crm_field === 'hospital') {
       const linkState = (dynamicAnswers[`${q.id}_state`] as string) ?? '';
+      const linkCounty = (dynamicAnswers[`${q.id}_county`] as string) ?? '';
       const linkCity = (dynamicAnswers[`${q.id}_city`] as string) ?? '';
       const linkHospitalId = (dynamicAnswers[q.id] as string) ?? '';
       const linkOther = (dynamicAnswers[`${q.id}_other`] as string) ?? '';
       const states = [...new Set(hospitals.map((h) => h.state).filter(Boolean))].sort();
-      const cities = linkState ? [...new Set(hospitals.filter((h) => h.state === linkState).map((h) => h.city).filter(Boolean))].sort() : [];
-      const hospitalsInStateCity = linkState && linkCity ? hospitals.filter((h) => h.state === linkState && h.city === linkCity) : [];
+      const counties = linkState ? [...new Set(hospitals.filter((h) => h.state === linkState).map((h) => h.county || ''))].sort((a, b) => (a || '').localeCompare(b || '')) : [];
+      const matchCounty = (h: HospitalOption) => linkCounty === '' ? !h.county : h.county === linkCounty;
+      const cities = linkState ? [...new Set(hospitals.filter((h) => h.state === linkState && matchCounty(h)).map((h) => h.city).filter(Boolean))].sort() : [];
+      const hospitalsInStateCountyCity = linkState && linkCity
+        ? hospitals.filter((h) => h.state === linkState && matchCounty(h) && h.city === linkCity)
+        : [];
       const hospitalOptionsForLink: HospitalOption[] = [
-        ...hospitalsInStateCity,
-        { id: OTHER_HOSPITAL_ID, name: 'Other', state: '', city: '', label: 'Other (type below)' }
+        ...hospitalsInStateCountyCity,
+        { id: OTHER_HOSPITAL_ID, name: 'Other', state: '', city: '', county: '', label: 'Other (type below)' }
       ];
-      const selectedHospital = linkHospitalId ? hospitalOptionsForLink.find((o) => o.id === linkHospitalId) ?? null : null;
       return (
         <Box key={q.id} sx={{ mt: 2, mb: 2 }}>
           <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>{q.label}{q.required ? ' *' : ''}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Choose from the CRM list: State → County → City → Hospital</Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <FormControl fullWidth size="small" required={q.required}>
               <InputLabel>State</InputLabel>
@@ -369,16 +390,34 @@ export default function RegisterPage() {
                 label="State"
                 onChange={(e) => {
                   const v = e.target.value;
-                  setDynamicAnswers((prev) => ({ ...prev, [`${q.id}_state`]: v, [`${q.id}_city`]: '', [q.id]: '', [`${q.id}_other`]: '' }));
+                  setDynamicAnswers((prev) => ({ ...prev, [`${q.id}_state`]: v, [`${q.id}_county`]: '', [`${q.id}_city`]: '', [q.id]: '', [`${q.id}_other`]: '' }));
                 }}
               >
-                <MenuItem value="">—</MenuItem>
+                <MenuItem value="">— Select state —</MenuItem>
                 {states.map((s) => (
                   <MenuItem key={s} value={s}>{s}</MenuItem>
                 ))}
               </Select>
             </FormControl>
             {linkState && (
+              <FormControl fullWidth size="small" required={q.required}>
+                <InputLabel>County</InputLabel>
+                <Select
+                  value={linkCounty}
+                  label="County"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDynamicAnswers((prev) => ({ ...prev, [`${q.id}_county`]: v, [`${q.id}_city`]: '', [q.id]: '', [`${q.id}_other`]: '' }));
+                  }}
+                >
+                  <MenuItem value="">— Select county —</MenuItem>
+                  {counties.map((c) => (
+                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            {linkState && linkCounty && (
               <FormControl fullWidth size="small" required={q.required}>
                 <InputLabel>City</InputLabel>
                 <Select
@@ -389,30 +428,35 @@ export default function RegisterPage() {
                     setDynamicAnswers((prev) => ({ ...prev, [`${q.id}_city`]: v, [q.id]: '', [`${q.id}_other`]: '' }));
                   }}
                 >
-                  <MenuItem value="">—</MenuItem>
+                  <MenuItem value="">— Select city —</MenuItem>
                   {cities.map((c) => (
                     <MenuItem key={c} value={c}>{c}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
             )}
-            {linkState && linkCity && (
+            {linkState && linkCounty && linkCity && (
               <>
-                <Autocomplete
-                  options={hospitalOptionsForLink}
-                  getOptionLabel={(opt) => opt.label}
-                  value={selectedHospital}
-                  onChange={(_, v) => {
-                    setDynamicAnswers((prev) => ({
-                      ...prev,
-                      [q.id]: v?.id ?? '',
-                      [`${q.id}_other`]: v?.id === OTHER_HOSPITAL_ID ? (prev[`${q.id}_other`] as string) ?? '' : ''
-                    }));
-                  }}
-                  renderInput={(params) => (
-                    <TextField {...params} label="Hospital" required={q.required} placeholder="Search by name" />
-                  )}
-                />
+                <FormControl fullWidth size="small" required={q.required}>
+                  <InputLabel>Hospital</InputLabel>
+                  <Select
+                    value={linkHospitalId}
+                    label="Hospital"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDynamicAnswers((prev) => ({
+                        ...prev,
+                        [q.id]: v,
+                        [`${q.id}_other`]: v === OTHER_HOSPITAL_ID ? (prev[`${q.id}_other`] as string) ?? '' : ''
+                      }));
+                    }}
+                  >
+                    <MenuItem value="">— Select hospital —</MenuItem>
+                    {hospitalOptionsForLink.map((opt) => (
+                      <MenuItem key={opt.id} value={opt.id}>{opt.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
                 {linkHospitalId === OTHER_HOSPITAL_ID && (
                   <TextField
                     fullWidth
