@@ -198,7 +198,7 @@ const MemberList: React.FC<MemberListProps> = ({
                             </Typography>
                           }
                         />
-                        {canManage && member.user_id !== userProfile?.id && (
+                        {canManage && member.user_id !== userProfile?.id && !String(member.id).startsWith('manager-') && (
                           <ListItemSecondaryAction>
                             <Tooltip title="Remove from cohort">
                               <IconButton 

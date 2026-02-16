@@ -107,18 +107,45 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         .order('created_at', { ascending: false });
 
       // Load members with user info (skip for PECC & Mentor - they don't see the Members list)
+      // Include both cohort_members (active) and cohort_managers so Managers, Mentors, PECCs, and Admins all show
       let membersData: CohortMember[] | null = null;
       if (userProfile?.role !== UserRole.PECC && userProfile?.role !== UserRole.MENTOR) {
-        const { data: m } = await supabase
-          .from('cohort_members')
-          .select(`
-            *,
-            user:user_id(id, first_name, last_name, email, role)
-          `)
-          .eq('cohort_id', cohort.id)
-          .eq('status', 'active')
-          .order('added_at', { ascending: false });
-        membersData = m as CohortMember[] | null;
+        const [membersRes, managersRes] = await Promise.all([
+          supabase
+            .from('cohort_members')
+            .select(`
+              *,
+              user:user_id(id, first_name, last_name, email, role)
+            `)
+            .eq('cohort_id', cohort.id)
+            .eq('status', 'active')
+            .order('added_at', { ascending: false }),
+          supabase
+            .from('cohort_managers')
+            .select(`
+              manager_id,
+              assigned_at,
+              manager:manager_id(id, first_name, last_name, email, role)
+            `)
+            .eq('cohort_id', cohort.id)
+        ]);
+        const fromMembers = (membersRes.data || []) as CohortMember[];
+        const memberUserIds = new Set(fromMembers.map(m => m.user_id));
+        const fromManagers = (managersRes.data || []).map((cm: any) => {
+          const manager = Array.isArray(cm.manager) ? cm.manager[0] : cm.manager;
+          if (!manager || memberUserIds.has(manager.id)) return null;
+          memberUserIds.add(manager.id);
+          return {
+            id: `manager-${cm.manager_id}`,
+            cohort_id: cohort.id,
+            user_id: cm.manager_id,
+            added_by: null,
+            status: 'active' as const,
+            added_at: cm.assigned_at || new Date().toISOString(),
+            user: { id: manager.id, first_name: manager.first_name, last_name: manager.last_name, email: manager.email, role: manager.role }
+          } as CohortMember;
+        }).filter(Boolean) as CohortMember[];
+        membersData = [...fromMembers, ...fromManagers];
       }
 
       // Load read status
