@@ -224,6 +224,11 @@ export default function AdminSettingsPage() {
   const [formShowWhenOperator, setFormShowWhenOperator] = useState<'equals' | 'not_empty' | 'in'>('equals');
   const [formShowWhenValue, setFormShowWhenValue] = useState('');
   const [formLinkedCrmField, setFormLinkedCrmField] = useState<string>('');
+  const [formTargetProgramIds, setFormTargetProgramIds] = useState<string[]>([]);
+  const [formTargetCohortIds, setFormTargetCohortIds] = useState<string[]>([]);
+  const [formDisplayInCrm, setFormDisplayInCrm] = useState(false);
+  const [programsList, setProgramsList] = useState<{ id: string; name: string }[]>([]);
+  const [cohortsList, setCohortsList] = useState<{ id: string; name: string }[]>([]);
 
   // ---- Permissions state ----
   const [permissions, setPermissions] = useState<PermissionState>({});
@@ -239,6 +244,8 @@ export default function AdminSettingsPage() {
       const rows = (data || []).map((r: Record<string, unknown>) => {
         const targetRoles = r.target_roles != null && Array.isArray(r.target_roles) ? (r.target_roles as unknown[]).map(x => String(x)) : null;
         const dc = r.display_condition as RegistrationQuestionDisplayCondition | null | undefined;
+        const targetProgramIds = r.target_program_ids != null && Array.isArray(r.target_program_ids) ? (r.target_program_ids as unknown[]).map(x => String(x)) : null;
+        const targetCohortIds = r.target_cohort_ids != null && Array.isArray(r.target_cohort_ids) ? (r.target_cohort_ids as unknown[]).map(x => String(x)) : null;
         return {
           id: String(r.id),
           label: String(r.label),
@@ -251,7 +258,10 @@ export default function AdminSettingsPage() {
           updated_at: r.updated_at as string | undefined,
           target_roles: targetRoles,
           display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null,
-          linked_crm_field: r.linked_crm_field != null ? String(r.linked_crm_field) : null
+          linked_crm_field: r.linked_crm_field != null ? String(r.linked_crm_field) : null,
+          target_program_ids: targetProgramIds,
+          target_cohort_ids: targetCohortIds,
+          display_in_crm: Boolean(r.display_in_crm)
         };
       });
       setQuestions(rows);
@@ -264,6 +274,17 @@ export default function AdminSettingsPage() {
   };
 
   useEffect(() => { loadQuestions(); }, []);
+
+  useEffect(() => {
+    (async () => {
+      const [pRes, cRes] = await Promise.all([
+        supabase.from('programs').select('id, name').order('name'),
+        supabase.from('cohorts').select('id, name').order('name')
+      ]);
+      setProgramsList((pRes.data || []).map((r: { id: string; name: string }) => ({ id: r.id, name: r.name || '' })));
+      setCohortsList((cRes.data || []).map((r: { id: string; name: string }) => ({ id: r.id, name: r.name || '' })));
+    })();
+  }, []);
 
   const loadSimulations = async () => {
     setSimulationsLoading(true);
@@ -512,6 +533,9 @@ export default function AdminSettingsPage() {
     setFormShowWhenOperator('equals');
     setFormShowWhenValue('');
     setFormLinkedCrmField('');
+    setFormTargetProgramIds([]);
+    setFormTargetCohortIds([]);
+    setFormDisplayInCrm(false);
     setDialogOpen(true);
   };
   const openEdit = (q: RegistrationQuestion) => {
@@ -527,6 +551,9 @@ export default function AdminSettingsPage() {
     setFormShowWhenOperator(dc?.operator ?? 'equals');
     setFormShowWhenValue(Array.isArray(dc?.value) ? ((dc?.value) as string[]).join(', ') : (dc?.value ?? ''));
     setFormLinkedCrmField(q.linked_crm_field ?? '');
+    setFormTargetProgramIds(Array.isArray(q.target_program_ids) ? q.target_program_ids.slice() : []);
+    setFormTargetCohortIds(Array.isArray(q.target_cohort_ids) ? q.target_cohort_ids.slice() : []);
+    setFormDisplayInCrm(Boolean(q.display_in_crm));
     setDialogOpen(true);
   };
   const handleRegSave = async () => {
@@ -555,7 +582,10 @@ export default function AdminSettingsPage() {
       sort_order: formSortOrder,
       is_active: true,
       updated_at: new Date().toISOString(),
-      linked_crm_field: formLinkedCrmField.trim() || null
+      linked_crm_field: formLinkedCrmField.trim() || null,
+      target_program_ids: formTargetProgramIds.length ? formTargetProgramIds : null,
+      target_cohort_ids: formTargetCohortIds.length ? formTargetCohortIds : null,
+      display_in_crm: formDisplayInCrm
     };
     const fullPayload = { ...basePayload, target_roles: targetRoles, display_condition: displayCondition };
     try {
@@ -575,7 +605,7 @@ export default function AdminSettingsPage() {
             .update({ target_roles: targetRoles, display_condition: displayCondition, updated_at: new Date().toISOString() })
             .eq('id', inserted.id);
         }
-        // linked_crm_field is already in basePayload so no second update needed
+        // target_program_ids, target_cohort_ids, display_in_crm are in basePayload
       }
       setDialogOpen(false);
       loadQuestions();
@@ -679,6 +709,8 @@ export default function AdminSettingsPage() {
                     <TableCell>Label</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>CRM field</TableCell>
+                    <TableCell>Programs / Cohorts</TableCell>
+                    <TableCell>In CRM</TableCell>
                     <TableCell>Target Roles</TableCell>
                     <TableCell>Required</TableCell>
                     <TableCell>Options</TableCell>
@@ -697,7 +729,22 @@ export default function AdminSettingsPage() {
                       <TableCell>{q.sort_order}</TableCell>
                       <TableCell>{q.label}</TableCell>
                       <TableCell>{QUESTION_TYPES.find(t => t.value === q.question_type)?.label ?? q.question_type}</TableCell>
-                      <TableCell>{q.linked_crm_field ? (CRM_FIELD_OPTIONS.find(o => o.value === q.linked_crm_field)?.label ?? q.linked_crm_field) : '—'}</TableCell>
+                      <TableCell>{q.linked_crm_field ? (CRM_FIELD_OPTIONS.find(o => o.value === q.linked_crm_field)?.label ?? q.linked_crm_field) : (q.display_in_crm ? '—' : '—')}</TableCell>
+                      <TableCell>
+                        {((q.target_program_ids?.length ?? 0) + (q.target_cohort_ids?.length ?? 0)) > 0 ? (
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 160 }}>
+                            {(q.target_program_ids || []).map(pid => (
+                              <Chip key={pid} label={programsList.find(p => p.id === pid)?.name || pid} size="small" variant="outlined" />
+                            ))}
+                            {(q.target_cohort_ids || []).map(cid => (
+                              <Chip key={cid} label={cohortsList.find(c => c.id === cid)?.name || cid} size="small" variant="outlined" color="primary" />
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary">All</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>{q.display_in_crm ? 'Yes' : '—'}</TableCell>
                       <TableCell>
                         {q.target_roles && q.target_roles.length > 0 ? (
                           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
@@ -1394,6 +1441,44 @@ export default function AdminSettingsPage() {
               ))}
             </Select>
             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Answer is saved to the user profile and CRM. Use &quot;Hospital&quot; for state/city/hospital picker from CRM.</Typography>
+          </FormControl>
+          <FormControlLabel
+            control={<Checkbox checked={formDisplayInCrm} onChange={e => setFormDisplayInCrm(e.target.checked)} />}
+            label="Create new CRM field (show this question's answer in CRM contact view)"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Use when the question is not linked to an existing user/CRM column above. Answer is stored and shown in the contact detail view.</Typography>
+
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show only for programs (optional)</Typography>
+          <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+            <InputLabel>Programs</InputLabel>
+            <Select
+              multiple
+              value={formTargetProgramIds}
+              label="Programs"
+              onChange={e => setFormTargetProgramIds(typeof e.target.value === 'string' ? [] : e.target.value)}
+              renderValue={selected => (selected as string[]).map(id => programsList.find(p => p.id === id)?.name || id).join(', ')}
+            >
+              {programsList.map(p => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </Select>
+            <Typography variant="caption" color="text.secondary">Leave empty to show for all. When set, only users invited to one of these programs see this question.</Typography>
+          </FormControl>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show only for cohorts (optional)</Typography>
+          <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+            <InputLabel>Cohorts</InputLabel>
+            <Select
+              multiple
+              value={formTargetCohortIds}
+              label="Cohorts"
+              onChange={e => setFormTargetCohortIds(typeof e.target.value === 'string' ? [] : e.target.value)}
+              renderValue={selected => (selected as string[]).map(id => cohortsList.find(c => c.id === id)?.name || id).join(', ')}
+            >
+              {cohortsList.map(c => (
+                <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+              ))}
+            </Select>
+            <Typography variant="caption" color="text.secondary">Leave empty to show for all. When set, only users invited to one of these cohorts see this question (e.g. LA Peds Ready).</Typography>
           </FormControl>
 
           <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Show for roles (select all that apply)</Typography>

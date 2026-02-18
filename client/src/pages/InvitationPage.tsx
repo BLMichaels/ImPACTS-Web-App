@@ -9,13 +9,22 @@ import {
   Alert,
   CircularProgress,
   Divider,
-  Chip
+  Chip,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  InputLabel,
+  Select,
+  MenuItem,
+  RadioGroup,
+  Radio
 } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
+import type { RegistrationQuestion } from '../types/database';
 
 interface InvitationData {
   code: string;
@@ -47,6 +56,9 @@ const InvitationPage: React.FC = () => {
     confirmPassword: '',
     phone: ''
   });
+  const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
+  const [registrationAnswers, setRegistrationAnswers] = useState<Record<string, string | boolean | string[]>>({});
+  const [questionsLoading, setQuestionsLoading] = useState(false);
 
   useEffect(() => {
     validateInvitation();
@@ -131,12 +143,58 @@ const InvitationPage: React.FC = () => {
       
       setInvitation(invitation);
       setFormData(prev => ({ ...prev, email: invitationData.email }));
+
+      const cohortIds = Array.isArray((invitationData as { cohort_ids?: string[] }).cohort_ids)
+        ? (invitationData as { cohort_ids: string[] }).cohort_ids
+        : [];
+      let programIds: string[] = [];
+      if (cohortIds.length > 0) {
+        const { data: cohorts } = await supabase.from('cohorts').select('program_id').in('id', cohortIds);
+        programIds = [...new Set((cohorts || []).map((c: { program_id: string | null }) => c.program_id).filter(Boolean) as string[])];
+      }
+      setQuestionsLoading(true);
+      try {
+        const { data: qData } = await supabase
+          .from('registration_questions')
+          .select('*')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true });
+        const role = invitationData.role as string;
+        const rows = (qData || []).map((r: Record<string, unknown>) => ({
+          id: String(r.id),
+          label: String(r.label),
+          question_type: (r.question_type as RegistrationQuestion['question_type']) || 'short_answer',
+          required: Boolean(r.required),
+          options: Array.isArray(r.options) ? (r.options as unknown[]).map((x) => String(x)) : [],
+          sort_order: Number(r.sort_order) || 0,
+          target_roles: r.target_roles != null && Array.isArray(r.target_roles) ? (r.target_roles as unknown[]).map((x) => String(x)) : null,
+          target_program_ids: r.target_program_ids != null && Array.isArray(r.target_program_ids) ? (r.target_program_ids as unknown[]).map((x) => String(x)) : null,
+          target_cohort_ids: r.target_cohort_ids != null && Array.isArray(r.target_cohort_ids) ? (r.target_cohort_ids as unknown[]).map((x) => String(x)) : null
+        } as RegistrationQuestion));
+        const filtered = rows
+          .filter((q) => !q.target_roles?.length || q.target_roles.includes(role))
+          .filter((q) => {
+            const hasProgram = q.target_program_ids != null && q.target_program_ids.length > 0;
+            const hasCohort = q.target_cohort_ids != null && q.target_cohort_ids.length > 0;
+            if (!hasProgram && !hasCohort) return true;
+            const programMatch = !hasProgram || (programIds.length > 0 && q.target_program_ids!.some((pid) => programIds.includes(pid)));
+            const cohortMatch = !hasCohort || (cohortIds.length > 0 && q.target_cohort_ids!.some((cid) => cohortIds.includes(cid)));
+            return programMatch && cohortMatch;
+          });
+        setRegistrationQuestions(filtered);
+      } finally {
+        setQuestionsLoading(false);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to validate invitation. Please try again.');
       setInvitation(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  const setRegistrationAnswer = (questionId: string, value: string | boolean | string[]) => {
+    setRegistrationAnswers((prev) => ({ ...prev, [questionId]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -169,6 +227,16 @@ const InvitationPage: React.FC = () => {
       setError('Passwords do not match');
       return;
     }
+    for (const q of registrationQuestions) {
+      if (q.required) {
+        const v = registrationAnswers[q.id];
+        const empty = v === undefined || v === null || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
+        if (empty) {
+          setError(`Please answer: ${q.label}`);
+          return;
+        }
+      }
+    }
 
     setSubmitting(true);
 
@@ -199,11 +267,18 @@ const InvitationPage: React.FC = () => {
 
       if (data.user) {
         // Update user record with role and assignments
+        const dynamicAnswers: Record<string, string | boolean | string[]> = {};
+        Object.entries(registrationAnswers).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && (typeof v !== 'string' || v.trim() !== '')) {
+            dynamicAnswers[k] = v;
+          }
+        });
         const updatePayload: any = {
           first_name: formData.firstName.trim(),
           last_name: formData.lastName.trim(),
           phone: formData.phone.trim() || null,
           role: invitation.role,
+          registration_answers: Object.keys(dynamicAnswers).length ? dynamicAnswers : {},
           updated_at: new Date().toISOString()
         };
         
@@ -244,6 +319,15 @@ const InvitationPage: React.FC = () => {
             await supabase.from('cohort_members').upsert(
               { cohort_id: cohortId, user_id: data.user.id, added_by: invitedBy },
               { onConflict: 'cohort_id,user_id' }
+            );
+          }
+        }
+        // For mentor: add to cohort_invite_mentors so they can invite PECCs to these cohorts
+        if (invitation.role === 'mentor' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
+          for (const cohortId of cohortIds) {
+            await supabase.from('cohort_invite_mentors').upsert(
+              { cohort_id: cohortId, mentor_id: data.user.id, assigned_by: invitedBy },
+              { onConflict: 'cohort_id,mentor_id' }
             );
           }
         }
@@ -395,6 +479,61 @@ const InvitationPage: React.FC = () => {
             disabled={submitting}
             sx={{ mb: 2 }}
           />
+
+          {questionsLoading ? (
+            <Box sx={{ py: 2, textAlign: 'center' }}><CircularProgress size={24} /></Box>
+          ) : registrationQuestions.length > 0 ? (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ mb: 2 }}>Additional questions</Typography>
+              {registrationQuestions.map((q) => {
+                const value = registrationAnswers[q.id];
+                const opts = q.options || [];
+                if (q.question_type === 'paragraph') {
+                  return (
+                    <TextField key={q.id} fullWidth multiline rows={3} label={q.label} required={q.required} value={(value as string) ?? ''} onChange={(e) => setRegistrationAnswer(q.id, e.target.value)} margin="normal" />
+                  );
+                }
+                if (q.question_type === 'checkbox') {
+                  return (
+                    <FormControlLabel key={q.id} control={<Checkbox checked={value === true} onChange={(e) => setRegistrationAnswer(q.id, e.target.checked)} />} label={q.label + (q.required ? ' *' : '')} sx={{ display: 'block', mb: 1 }} />
+                  );
+                }
+                if (q.question_type === 'radio') {
+                  return (
+                    <FormControl key={q.id} fullWidth margin="normal" required={q.required}>
+                      <FormLabel>{q.label}</FormLabel>
+                      <RadioGroup value={typeof value === 'string' ? value : ''} onChange={(_, v) => setRegistrationAnswer(q.id, v)}>
+                        {opts.map((opt) => (
+                          <FormControlLabel key={opt} value={opt} control={<Radio />} label={opt} />
+                        ))}
+                      </RadioGroup>
+                    </FormControl>
+                  );
+                }
+                if (q.question_type === 'select') {
+                  return (
+                    <FormControl key={q.id} fullWidth margin="normal" required={q.required}>
+                      <InputLabel>{q.label}</InputLabel>
+                      <Select value={(value as string) ?? ''} label={q.label} onChange={(e) => setRegistrationAnswer(q.id, e.target.value)}>
+                        <MenuItem value="">—</MenuItem>
+                        {opts.map((opt) => (
+                          <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  );
+                }
+                if (q.question_type === 'date') {
+                  return (
+                    <TextField key={q.id} fullWidth type="date" label={q.label} required={q.required} value={(value as string) ?? ''} onChange={(e) => setRegistrationAnswer(q.id, e.target.value)} margin="normal" InputLabelProps={{ shrink: true }} />
+                  );
+                }
+                return (
+                  <TextField key={q.id} fullWidth label={q.label} required={q.required} value={(value as string) ?? ''} onChange={(e) => setRegistrationAnswer(q.id, e.target.value)} margin="normal" type={q.question_type === 'email' ? 'email' : q.question_type === 'number' ? 'number' : 'text'} />
+                );
+              })}
+            </Box>
+          ) : null}
 
           <TextField
             label="Password"

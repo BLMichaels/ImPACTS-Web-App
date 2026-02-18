@@ -169,10 +169,17 @@ export default function RegisterPage() {
                 updated_at: r.updated_at as string | undefined,
                 target_roles: targetRoles,
                 display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null,
-                linked_crm_field: r.linked_crm_field != null ? String(r.linked_crm_field) : null
+                linked_crm_field: r.linked_crm_field != null ? String(r.linked_crm_field) : null,
+                target_program_ids: r.target_program_ids != null && Array.isArray(r.target_program_ids) ? (r.target_program_ids as unknown[]).map((x) => String(x)) : null,
+                target_cohort_ids: r.target_cohort_ids != null && Array.isArray(r.target_cohort_ids) ? (r.target_cohort_ids as unknown[]).map((x) => String(x)) : null
               } as RegistrationQuestion;
             })
-            .filter((q) => !q.target_roles?.length || q.target_roles.includes(role));
+            .filter((q) => !q.target_roles?.length || q.target_roles.includes(role))
+            .filter((q) => {
+              const hasProgramTarget = q.target_program_ids != null && q.target_program_ids.length > 0;
+              const hasCohortTarget = q.target_cohort_ids != null && q.target_cohort_ids.length > 0;
+              return !hasProgramTarget && !hasCohortTarget;
+            });
           setRegistrationQuestions(rows);
         }
       } finally {

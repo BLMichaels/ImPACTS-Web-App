@@ -448,6 +448,12 @@ export interface RegistrationQuestion {
   display_condition?: RegistrationQuestionDisplayCondition | null;
   /** If set, answer is written to users / CRM: first_name, last_name, phone, email, job_title, department, hospital_system, nprqi_participant, additional_contact_*, or hospital (CRM picker). */
   linked_crm_field?: string | null;
+  /** Show this question only when invite/context includes one of these program IDs. Null/empty = show for all. */
+  target_program_ids?: string[] | null;
+  /** Show this question only when invite/context includes one of these cohort IDs. Null/empty = show for all. */
+  target_cohort_ids?: string[] | null;
+  /** When true, show this question's answer in CRM contact view (from registration_answers). Used for "Create new CRM field". */
+  display_in_crm?: boolean;
 }
 
 // ============================================
