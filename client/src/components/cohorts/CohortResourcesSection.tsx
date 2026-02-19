@@ -28,7 +28,7 @@ import { CohortResource } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
-import { RichTextEditor, sanitizeHtml } from './RichTextEditor';
+import RichTextEditor, { sanitizeHtml } from './RichTextEditor';
 
 interface CohortResourcesSectionProps {
   cohortId: string;
