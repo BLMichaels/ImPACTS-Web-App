@@ -230,8 +230,8 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       return;
     }
     
-    // Validate role-specific requirements
-    if (role === UserRole.PECC && !mentorId && !managerIdForPECC) {
+    // Validate role-specific requirements (admins may send PECC without mentor/manager)
+    if (role === UserRole.PECC && !mentorId && !managerIdForPECC && actualRole !== UserRole.ADMIN) {
       setError('PECC invitations require either a mentor or direct manager assignment');
       return;
     }
@@ -400,7 +400,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                     No mentors or managers in the app yet. Add users with Manager or Mentor role, then click Refresh in the title bar for live updates.
                   </Alert>
                 )}
-                {!mentorId && !managerIdForPECC && (mentors.length > 0 || managers.length > 0) && (
+                {!mentorId && !managerIdForPECC && (mentors.length > 0 || managers.length > 0) && actualRole !== UserRole.ADMIN && (
                   <Alert severity="warning" sx={{ mb: 2 }}>
                     Please assign either a mentor or a direct manager for this PECC.
                   </Alert>
