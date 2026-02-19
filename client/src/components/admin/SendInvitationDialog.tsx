@@ -114,9 +114,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setHospitals(hospitalsData.map(h => ({ id: h.id, name: normalizeHospitalOrOrgName(h.name) })));
     }
 
-    // Load mentors and managers: use RPC first (avoids RLS blocking), then fallback to direct query
+    // Load mentors and managers: use RPC first (includes users + CRM contacts by email), then fallback to direct query
     const { data: rpcData, error: rpcError } = await supabase.rpc('get_mentors_and_managers_for_invite');
-    if (!rpcError && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
+    if (!rpcError && Array.isArray(rpcData)) {
       const mentorsList = (rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[])
         .filter((r) => r.role === 'mentor')
         .map(mapUserToOption);
