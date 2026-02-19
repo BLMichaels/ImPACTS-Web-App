@@ -372,17 +372,7 @@ interface ReadinessScore {
         </Grid>
       </Grid>
 
-      {/* Pediatric Readiness Score Section - Hidden by default until user clicks Show */}
-      {prsSectionAllowed && userPrsSectionVisible !== true && (
-        <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            Pediatric Readiness Scores section is hidden.
-          </Typography>
-          <Button size="small" variant="text" onClick={() => setPrsSectionVisiblePref(true)} sx={{ mt: 1, p: 0 }}>
-            Show Pediatric Readiness Scores
-          </Button>
-        </Box>
-      )}
+      {/* Pediatric Readiness Score Section - only shown when user has opted in (no placeholder on dashboard) */}
       {prsSectionVisible && (
         <Box sx={{ mb: 6 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
