@@ -537,6 +537,23 @@ export interface CohortAnnouncement {
   };
 }
 
+// Resource/education item in a cohort (managers and admins can add; everyone sees below discussions)
+export interface CohortResource {
+  id: string;
+  cohort_id: string;
+  title: string;
+  content: string;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  author?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+}
+
 // Discussion topic in a cohort
 export interface CohortDiscussionTopic {
   id: string;

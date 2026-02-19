@@ -17,6 +17,7 @@ import {
   Campaign as AnnouncementIcon,
   Forum as DiscussionIcon,
   Group as GroupIcon,
+  MenuBook as ResourcesIcon,
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import { 
@@ -33,6 +34,7 @@ import AnnouncementList from './AnnouncementList';
 import DiscussionTopicList from './DiscussionTopicList';
 import DiscussionTopicView from './DiscussionTopicView';
 import MemberList from './MemberList';
+import CohortResourcesSection from './CohortResourcesSection';
 import ScormPackagesSection from '../ScormPackagesSection';
 
 interface CohortDetailProps {
@@ -378,6 +380,11 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             canPost={true}
           />
           <Divider sx={{ my: 4 }} />
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <ResourcesIcon fontSize="small" /> Cohort Resources &amp; Education
+          </Typography>
+          <CohortResourcesSection cohortId={cohort.id} canManage={canManage} loading={loading} />
+          <Divider sx={{ my: 4 }} />
           <ScormPackagesSection title="Cohort learning modules" placement="cohort" cohortId={cohort.id} />
         </Box>
       ) : useManagerStackedTabs ? (
@@ -427,6 +434,11 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                 canManage={canManage}
                 canPost={true}
               />
+              <Divider sx={{ my: 4 }} />
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <ResourcesIcon fontSize="small" /> Cohort Resources &amp; Education
+              </Typography>
+              <CohortResourcesSection cohortId={cohort.id} canManage={canManage} loading={loading} />
             </Box>
           ) : (
             <MemberList
@@ -525,6 +537,11 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             }
             return null;
           })()}
+          <Divider sx={{ my: 4 }} />
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <ResourcesIcon fontSize="small" /> Cohort Resources &amp; Education
+          </Typography>
+          <CohortResourcesSection cohortId={cohort.id} canManage={canManage} loading={loading} />
           <Divider sx={{ my: 4 }} />
           <ScormPackagesSection title="Cohort learning modules" placement="cohort" cohortId={cohort.id} />
         </>
