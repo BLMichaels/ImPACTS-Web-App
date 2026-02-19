@@ -24,16 +24,20 @@ const EducationRichTextEditor: React.FC<EducationRichTextEditorProps> = ({
   label
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const lastSentRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value;
-    }
+    if (!editorRef.current) return;
+    if (lastSentRef.current === value) return;
+    lastSentRef.current = value;
+    editorRef.current.innerHTML = value;
   }, [value]);
 
   const handleInput = () => {
     if (editorRef.current) {
-      onChange(editorRef.current.innerHTML);
+      const html = editorRef.current.innerHTML;
+      lastSentRef.current = html;
+      onChange(html);
     }
   };
 
@@ -103,17 +107,19 @@ const EducationRichTextEditor: React.FC<EducationRichTextEditorProps> = ({
           </Tooltip>
         </Box>
 
-        {/* Editor */}
+        {/* Editor - dir="ltr" and no dangerouslySetInnerHTML to prevent backwards typing / caret jump */}
         <Box
           ref={editorRef}
           contentEditable
           onInput={handleInput}
-          dangerouslySetInnerHTML={{ __html: value }}
+          dir="ltr"
           style={{
             minHeight: `${minHeight}px`,
             padding: '12px',
             outline: 'none',
-            overflowY: 'auto'
+            overflowY: 'auto',
+            direction: 'ltr',
+            textAlign: 'left'
           }}
           data-placeholder={placeholder}
           sx={{

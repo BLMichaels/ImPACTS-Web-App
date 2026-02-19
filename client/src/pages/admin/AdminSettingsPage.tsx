@@ -1229,14 +1229,14 @@ export default function AdminSettingsPage() {
       <Dialog open={simDialogOpen} onClose={() => setSimDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingSimId ? 'Edit simulation' : 'Add simulation'}</DialogTitle>
         <DialogContent>
-          <TextField fullWidth label="Name" value={simForm.name} onChange={e => setSimForm(prev => ({ ...prev, name: e.target.value }))} margin="normal" placeholder="Optional" />
-          <TextField fullWidth label="URL" value={simForm.url} onChange={e => setSimForm(prev => ({ ...prev, url: e.target.value }))} margin="normal" placeholder="Optional — name will link here" />
-          <TextField fullWidth label="Learning objectives" value={simForm.learning_objectives} onChange={e => setSimForm(prev => ({ ...prev, learning_objectives: e.target.value }))} margin="normal" multiline rows={4} placeholder="Optional — one per line (shown as bullets)" />
+          <TextField fullWidth label="Name" value={simForm.name} onChange={e => setSimForm(prev => ({ ...prev, name: e.target.value }))} margin="normal" placeholder="Optional" inputProps={{ dir: 'ltr' }} />
+          <TextField fullWidth label="URL" value={simForm.url} onChange={e => setSimForm(prev => ({ ...prev, url: e.target.value }))} margin="normal" placeholder="Optional — name will link here" inputProps={{ dir: 'ltr' }} />
+          <TextField fullWidth label="Learning objectives" value={simForm.learning_objectives} onChange={e => setSimForm(prev => ({ ...prev, learning_objectives: e.target.value }))} margin="normal" multiline rows={4} placeholder="Optional — one per line (shown as bullets)" inputProps={{ dir: 'ltr' }} />
           <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Additional resources (optional)</Typography>
           {simForm.additional_resources.map((res, idx) => (
             <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
-              <TextField size="small" label="Name" value={res.name} onChange={e => setSimForm(prev => ({ ...prev, additional_resources: prev.additional_resources.map((r, i) => i === idx ? { ...r, name: e.target.value } : r) }))} placeholder="Label" sx={{ flex: 1 }} />
-              <TextField size="small" label="URL" value={res.url} onChange={e => setSimForm(prev => ({ ...prev, additional_resources: prev.additional_resources.map((r, i) => i === idx ? { ...r, url: e.target.value } : r) }))} placeholder="https://…" sx={{ flex: 1 }} />
+              <TextField size="small" label="Name" value={res.name} onChange={e => setSimForm(prev => ({ ...prev, additional_resources: prev.additional_resources.map((r, i) => i === idx ? { ...r, name: e.target.value } : r) }))} placeholder="Label" sx={{ flex: 1 }} inputProps={{ dir: 'ltr' }} />
+              <TextField size="small" label="URL" value={res.url} onChange={e => setSimForm(prev => ({ ...prev, additional_resources: prev.additional_resources.map((r, i) => i === idx ? { ...r, url: e.target.value } : r) }))} placeholder="https://…" sx={{ flex: 1 }} inputProps={{ dir: 'ltr' }} />
               <IconButton size="small" onClick={() => setSimForm(prev => ({ ...prev, additional_resources: prev.additional_resources.filter((_, i) => i !== idx) }))}><DeleteIcon fontSize="small" /></IconButton>
             </Box>
           ))}
@@ -1264,6 +1264,7 @@ export default function AdminSettingsPage() {
               onChange={(e) => setEducationForm(prev => ({ ...prev, questionId: e.target.value }))}
               margin="normal"
               helperText="Question number (e.g., 22, 23). Shown next to category on the Gaps & Education tab."
+              inputProps={{ dir: 'ltr' }}
             />
             <TextField
               fullWidth
@@ -1273,6 +1274,7 @@ export default function AdminSettingsPage() {
               margin="normal"
               placeholder="e.g., Coordination, Staffing"
               helperText="Shown next to the question number on the Gaps & Education tab."
+              inputProps={{ dir: 'ltr' }}
             />
             <TextField
               fullWidth
@@ -1283,6 +1285,7 @@ export default function AdminSettingsPage() {
               multiline
               rows={3}
               helperText="The actual question from the assessment. Shown at the top when users click Learn more."
+              inputProps={{ dir: 'ltr' }}
             />
             <Box sx={{ mt: 2, mb: 1 }}>
               <EducationRichTextEditor
@@ -1335,6 +1338,7 @@ export default function AdminSettingsPage() {
                   placeholder='e.g., "EIIC PECC Toolkit (https://emscimprovement.center/domains/pecc/)"'
                   value={newResource}
                   onChange={(e) => setNewResource(e.target.value)}
+                  inputProps={{ dir: 'ltr' }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
