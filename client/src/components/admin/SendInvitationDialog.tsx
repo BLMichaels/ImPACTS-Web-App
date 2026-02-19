@@ -15,8 +15,11 @@ import {
   Autocomplete,
   Chip,
   Box,
-  Typography
+  Typography,
+  IconButton,
+  Tooltip
 } from '@mui/material';
+import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -95,6 +98,12 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
     }
   };
 
+  const mapUserToOption = (u: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null }) => ({
+    id: u.id,
+    name: [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || '',
+    email: u.email || ''
+  });
+
   const loadOptionsInner = async () => {
     // Load hospitals
     const { data: hospitalsData } = await supabase
@@ -104,33 +113,30 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
     if (hospitalsData) {
       setHospitals(hospitalsData.map(h => ({ id: h.id, name: normalizeHospitalOrOrgName(h.name) })));
     }
-    
-    // Load mentors
-    const { data: mentorsData } = await supabase
-      .from('users')
-      .select('id, first_name, last_name, email')
-      .eq('role', 'mentor')
-      .eq('is_active', true);
-    if (mentorsData) {
-      setMentors(mentorsData.map(m => ({
-        id: m.id,
-        name: [m.first_name, m.last_name].filter(Boolean).join(' ') || m.email,
-        email: m.email
-      })));
-    }
-    
-    // Load managers
-    const { data: managersData } = await supabase
-      .from('users')
-      .select('id, first_name, last_name, email')
-      .eq('role', 'manager')
-      .eq('is_active', true);
-    if (managersData) {
-      setManagers(managersData.map(m => ({
-        id: m.id,
-        name: [m.first_name, m.last_name].filter(Boolean).join(' ') || m.email,
-        email: m.email
-      })));
+
+    // Load mentors and managers: use RPC first (avoids RLS blocking), then fallback to direct query
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_mentors_and_managers_for_invite');
+    if (!rpcError && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
+      const mentorsList = (rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[])
+        .filter((r) => r.role === 'mentor')
+        .map(mapUserToOption);
+      const managersList = (rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[])
+        .filter((r) => r.role === 'manager')
+        .map(mapUserToOption);
+      setMentors(mentorsList);
+      setManagers(managersList);
+    } else {
+      // Fallback: direct queries (may be empty if RLS blocks)
+      const [mentorsRes, managersRes] = await Promise.all([
+        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'mentor').eq('is_active', true),
+        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'manager').eq('is_active', true)
+      ]);
+      if (mentorsRes.data) {
+        setMentors(mentorsRes.data.map(mapUserToOption));
+      }
+      if (managersRes.data) {
+        setManagers(managersRes.data.map(mapUserToOption));
+      }
     }
     
     // Load cohorts (for PECC pre-designation). Mentors only see cohorts they're allowed to invite to.
@@ -277,12 +283,28 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        Send Account Invitation
-        {contactName && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            For: {contactName}
-          </Typography>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+        <Box>
+          Send Account Invitation
+          {contactName && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              For: {contactName}
+            </Typography>
+          )}
+        </Box>
+        {!success && (
+          <Tooltip title="Refresh mentor and manager list">
+            <span>
+              <IconButton
+                onClick={() => loadOptions()}
+                disabled={optionsLoading}
+                size="small"
+                aria-label="Refresh mentor and manager list"
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
         )}
       </DialogTitle>
       <DialogContent>
@@ -373,7 +395,12 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                   disabled={loading}
                 />
                 
-                {!mentorId && !managerIdForPECC && (
+                {!optionsLoading && mentors.length === 0 && managers.length === 0 && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    No mentors or managers in the app yet. Add users with Manager or Mentor role, then click Refresh in the title bar for live updates.
+                  </Alert>
+                )}
+                {!mentorId && !managerIdForPECC && (mentors.length > 0 || managers.length > 0) && (
                   <Alert severity="warning" sx={{ mb: 2 }}>
                     Please assign either a mentor or a direct manager for this PECC.
                   </Alert>
