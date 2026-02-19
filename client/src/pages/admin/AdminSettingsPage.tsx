@@ -403,7 +403,7 @@ export default function AdminSettingsPage() {
     setEducationDialogOpen(true);
   };
   
-  const handleSaveEducationQuestion = () => {
+  const handleSaveEducationQuestion = async () => {
     const form = { ...educationForm };
     if (!form.questionId.trim()) {
       form.questionId = `_${Date.now()}`;
