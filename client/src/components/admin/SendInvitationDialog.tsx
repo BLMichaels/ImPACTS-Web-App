@@ -147,14 +147,54 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       }
     }
     
-    // Load programs (for pre-designation on invitation)
-    const { data: programsData } = await supabase
-      .from('programs')
-      .select('id, name')
-      .eq('is_active', true)
-      .order('name');
-    if (programsData) {
-      setPrograms(programsData.map(p => ({ id: p.id, name: p.name })));
+    // Load programs (for pre-designation on invitation). Mentors and Managers only see programs they're part of.
+    if (actualRole === UserRole.ADMIN) {
+      const { data: programsData } = await supabase
+        .from('programs')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      if (programsData) {
+        setPrograms(programsData.map(p => ({ id: p.id, name: p.name })));
+      }
+    } else if ((actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR) && userProfile?.id) {
+      let allowedProgramIds: string[] = [];
+      if (actualRole === UserRole.MANAGER) {
+        const { data: managingData } = await supabase
+          .from('program_managers')
+          .select('program_id')
+          .eq('manager_id', userProfile.id);
+        const { data: memberData } = await supabase
+          .from('program_members')
+          .select('program_id')
+          .eq('user_id', userProfile.id)
+          .eq('status', 'active');
+        const managingIds = (managingData || []).map((m: { program_id: string }) => m.program_id);
+        const memberIds = (memberData || []).map((m: { program_id: string }) => m.program_id);
+        allowedProgramIds = [...new Set([...managingIds, ...memberIds])];
+      } else {
+        const { data: memberData } = await supabase
+          .from('program_members')
+          .select('program_id')
+          .eq('user_id', userProfile.id)
+          .eq('status', 'active');
+        allowedProgramIds = (memberData || []).map((m: { program_id: string }) => m.program_id);
+      }
+      if (allowedProgramIds.length === 0) {
+        setPrograms([]);
+      } else {
+        const { data: programsData } = await supabase
+          .from('programs')
+          .select('id, name')
+          .eq('is_active', true)
+          .in('id', allowedProgramIds)
+          .order('name');
+        if (programsData) {
+          setPrograms(programsData.map(p => ({ id: p.id, name: p.name })));
+        }
+      }
+    } else {
+      setPrograms([]);
     }
   };
   
