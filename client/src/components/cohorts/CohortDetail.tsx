@@ -55,7 +55,9 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   const { userProfile, userRole } = useUserProfile();
   const isPECC = userRole === UserRole.PECC;
   const isMentor = userRole === UserRole.MENTOR;
-  const useStackedLayout = isPECC || isMentor; // Both PECCs and Mentors use stacked layout
+  const isManager = userRole === UserRole.MANAGER;
+  const useStackedLayout = isPECC || isMentor; // PECC and Mentor: single page stacked (no Members tab)
+  const useManagerStackedTabs = isManager; // Manager: Announcements + Discussions stacked on one tab, Members on second tab
   const [tabValue, setTabValue] = useState(0);
   
   // Check tab visibility permissions
@@ -378,40 +380,96 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
           <Divider sx={{ my: 4 }} />
           <ScormPackagesSection title="Cohort learning modules" placement="cohort" cohortId={cohort.id} />
         </Box>
+      ) : useManagerStackedTabs ? (
+        <>
+          {/* Manager: Announcements & Discussions stacked on one tab, Members on second */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+            <Tabs value={tabValue} onChange={handleTabChange}>
+              <Tab
+                icon={
+                  <Badge badgeContent={(unreadAnnouncements || 0) + (unreadDiscussions || 0)} color="error" max={99}>
+                    <AnnouncementIcon />
+                  </Badge>
+                }
+                iconPosition="start"
+                label="Announcements & Discussions"
+              />
+              {showMembersTab && (
+                <Tab icon={<GroupIcon />} iconPosition="start" label="Members" />
+              )}
+            </Tabs>
+          </Box>
+          {tabValue === 0 ? (
+            <Box>
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <AnnouncementIcon fontSize="small" /> Announcements
+              </Typography>
+              <AnnouncementList
+                cohortId={cohort.id}
+                announcements={visibleAnnouncements}
+                canPost={canAnnounce}
+                canModerate={canManage}
+                onAnnouncementCreated={handleAnnouncementCreated}
+                onAnnouncementDeleted={handleAnnouncementDeleted}
+                loading={loading}
+              />
+              <Divider sx={{ my: 4 }} />
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <DiscussionIcon fontSize="small" /> Discussions
+              </Typography>
+              <DiscussionTopicList
+                cohortId={cohort.id}
+                topics={topics}
+                onTopicClick={handleTopicClick}
+                onTopicCreated={handleTopicCreated}
+                onTopicDeleted={handleTopicDeleted}
+                loading={loading}
+                canManage={canManage}
+                canPost={true}
+              />
+            </Box>
+          ) : (
+            <MemberList
+              cohortId={cohort.id}
+              members={members}
+              canManage={canManage}
+              canInvite={canInvite}
+              onMemberAdded={handleMemberAdded}
+              onMemberRemoved={handleMemberRemoved}
+              loading={loading}
+            />
+          )}
+        </>
       ) : (
         <>
-          {/* Tabs for Mentors, Managers, Admins */}
+          {/* Admin: separate tabs for Announcements, Discussions, Members */}
           {(showAnnouncementsTab || showDiscussionsTab || showMembersTab) && (
             <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
               <Tabs value={tabValue} onChange={handleTabChange}>
                 {showAnnouncementsTab && (
-                  <Tab 
+                  <Tab
                     icon={
                       <Badge badgeContent={unreadAnnouncements} color="error" max={99}>
                         <AnnouncementIcon />
                       </Badge>
                     }
                     iconPosition="start"
-                    label="Announcements" 
+                    label="Announcements"
                   />
                 )}
                 {showDiscussionsTab && (
-                  <Tab 
+                  <Tab
                     icon={
                       <Badge badgeContent={unreadDiscussions} color="error" max={99}>
                         <DiscussionIcon />
                       </Badge>
                     }
                     iconPosition="start"
-                    label="Discussions" 
+                    label="Discussions"
                   />
                 )}
                 {showMembersTab && (
-                  <Tab 
-                    icon={<GroupIcon />}
-                    iconPosition="start"
-                    label="Members" 
-                  />
+                  <Tab icon={<GroupIcon />} iconPosition="start" label="Members" />
                 )}
               </Tabs>
             </Box>
@@ -419,15 +477,12 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
 
           {/* Tab Content */}
           {(() => {
-            // Calculate which tab index corresponds to which content
             const visibleTabs = [
               showAnnouncementsTab ? 'announcements' : null,
               showDiscussionsTab ? 'discussions' : null,
               showMembersTab ? 'members' : null
             ].filter(Boolean);
-            
             const activeTab = visibleTabs[tabValue];
-            
             if (activeTab === 'announcements') {
               return (
                 <AnnouncementList
