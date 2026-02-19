@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import { usePrsSectionVisible } from '../hooks/usePermissions';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -67,34 +68,34 @@ const SnapshotPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [renderError, setRenderError] = useState(false);
-  const [prsSectionVisible, setPrsSectionVisible] = useState(true);
+  const prsSectionAllowed = usePrsSectionVisible();
+  const [userPrsSectionVisible, setUserPrsSectionVisible] = useState<boolean | null>(null);
+  const prsSectionVisible = prsSectionAllowed && (userPrsSectionVisible === true);
+  const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
   const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
-  
-  // Check if PRS section should be visible (admin can override via Granular Permissions > Tab Visibility > snapshot_prs_section)
+
   useEffect(() => {
     if (!userId) return;
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from('view_tabs')
-        .select('is_visible')
-        .eq('user_id', userId)
-        .eq('tab_key', 'snapshot_prs_section')
-        .maybeSingle();
-      if (cancelled) return;
-      if (data !== null && data !== undefined) {
-        setPrsSectionVisible(data.is_visible);
-        return;
-      }
-      const saved = await getUserData<boolean>(userId, 'pecc_prs_section_visible');
-      if (saved !== null && saved !== undefined) setPrsSectionVisible(saved);
-      else await migrateFromLocalStorage(userId, 'pecc_prs_section_visible', `pecc_prs_section_visible_${userId}`, (v) => {
-        setPrsSectionVisible(v === true || v === 'true');
-      });
-    })();
-    return () => { cancelled = true; };
+    Promise.all([
+      getUserData<boolean>(userId, 'pecc_prs_section_visible'),
+      getUserData<boolean>(userId, 'snapshot_readiness_charts_visible')
+    ]).then(([prs, charts]) => {
+      setUserPrsSectionVisible(prs === true);
+      setSnapshotReadinessChartsVisible(charts === true);
+    });
   }, [userId]);
+
+  const setPrsSectionVisiblePref = async (visible: boolean) => {
+    if (!userId) return;
+    await setUserData(userId, 'pecc_prs_section_visible', visible);
+    setUserPrsSectionVisible(visible);
+  };
+  const setReadinessChartsVisiblePref = async (visible: boolean) => {
+    if (!userId) return;
+    await setUserData(userId, 'snapshot_readiness_charts_visible', visible);
+    setSnapshotReadinessChartsVisible(visible);
+  };
 
   // Calculate domain scores from PRS questions (loaded from user_data)
   const domainScores = useMemo(() => {
@@ -232,20 +233,25 @@ const SnapshotPage = () => {
     window.print();
   };
 
-  // Load all data for snapshot
+  // Load all data for snapshot. When PRS section is hidden, do not load readiness scores or PRS questions.
   useEffect(() => {
     const loadData = async () => {
       if (!userId) return;
       try {
         setIsLoading(true);
         setHasError(false);
-        const [activitiesVal, milestonesVal, gapPlansVal, scoresVal, questionsVal] = await Promise.all([
+        const prsPromises = prsSectionVisible
+          ? [getUserData<any[]>(userId, 'readinessScores'), getUserData<any[]>(userId, 'prsQuestions')]
+          : [Promise.resolve(null), Promise.resolve(null)];
+        const [activitiesVal, milestonesVal, gapPlansVal, ...prsVals] = await Promise.all([
           getUserData<any[]>(userId, 'activities'),
           getUserData<any[]>(userId, 'milestones'),
           getUserData<any[]>(userId, 'gapPlans'),
-          getUserData<any[]>(userId, 'readinessScores'),
-          getUserData<any[]>(userId, 'prsQuestions')
+          ...prsPromises
         ]);
+        const scoresVal = prsSectionVisible ? (prsVals[0] as any[] | null) : null;
+        const questionsVal = prsSectionVisible ? (prsVals[1] as any[] | null) : null;
+
         if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
         else await migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
 
@@ -262,14 +268,18 @@ const SnapshotPage = () => {
           } catch {}
         }
 
-        if (scoresVal != null && Array.isArray(scoresVal)) setReadinessScores(scoresVal);
-        else {
-          await migrateFromLocalStorage(userId, 'readinessScores', `readinessScores_${userId}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
-          await migrateFromLocalStorage(userId, 'prsReadinessScores', 'prsReadinessScores', (v) => setReadinessScores(Array.isArray(v) ? v : []));
+        if (!prsSectionVisible) {
+          setReadinessScores([]);
+          setPrsQuestions(null);
+        } else {
+          if (scoresVal != null && Array.isArray(scoresVal)) setReadinessScores(scoresVal);
+          else {
+            await migrateFromLocalStorage(userId, 'readinessScores', `readinessScores_${userId}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
+            await migrateFromLocalStorage(userId, 'prsReadinessScores', 'prsReadinessScores', (v) => setReadinessScores(Array.isArray(v) ? v : []));
+          }
+          if (questionsVal != null && Array.isArray(questionsVal)) setPrsQuestions(questionsVal);
+          else await migrateFromLocalStorage(userId, 'prsQuestions', 'prsQuestions', (v) => setPrsQuestions(Array.isArray(v) ? v : null));
         }
-        if (questionsVal != null && Array.isArray(questionsVal)) setPrsQuestions(questionsVal);
-        else await migrateFromLocalStorage(userId, 'prsQuestions', 'prsQuestions', (v) => setPrsQuestions(Array.isArray(v) ? v : null));
-        
       } catch (err) {
         console.error('Error loading snapshot data:', err);
         setHasError(true);
@@ -279,7 +289,7 @@ const SnapshotPage = () => {
     };
 
     loadData();
-  }, [userId]);
+  }, [userId, prsSectionVisible]);
 
   const exportToComprehensivePDF = () => {
     try {
@@ -473,8 +483,8 @@ const SnapshotPage = () => {
         // Key Performance Indicators Section (like the KPI cards on the page)
         let currentY = addSectionHeader('Key Performance Indicators (KPIs) - Most Critical Metrics', sectionY + 40);
         
-        // Calculate metrics exactly like the page does
-        const currentScore = readinessScores.length > 0 ? readinessScores[readinessScores.length - 1]?.score || 0 : 0;
+        // Calculate metrics exactly like the page does (no PRS data when section hidden)
+        const currentScore = prsSectionVisible && readinessScores.length > 0 ? readinessScores[readinessScores.length - 1]?.score || 0 : 0;
         const completedItems = milestones.filter(m => m.status === 'completed').length;
         const totalItems = milestones.length;
         const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
@@ -482,14 +492,19 @@ const SnapshotPage = () => {
         const totalGapPlans = gapPlans.length;
         const gapCompletionRate = totalGapPlans > 0 ? Math.round((completedGapPlans / totalGapPlans) * 100) : 0;
         
-        // Add KPI metric boxes in a grid (like the page layout) - scaled to fit
-        const boxWidth = Math.min(45, (pageWidth - margin * 2 - 30) / 4); // Ensure 4 boxes fit
-        const spacing = (pageWidth - margin * 2 - boxWidth * 4) / 3;
-        
-        addMetricBox('Current Score', currentScore.toString(), 'Latest readiness assessment score', margin, currentY, boxWidth);
-        addMetricBox('Completion Rate', `${completionRate}%`, 'Checklist items completed', margin + boxWidth + spacing, currentY, boxWidth);
-        addMetricBox('Gap Plans', `${completedGapPlans}/${totalGapPlans}`, 'Completed vs. total gap plans', margin + (boxWidth + spacing) * 2, currentY, boxWidth);
-        addMetricBox('Activities', activities.length.toString(), 'Total activities logged', margin + (boxWidth + spacing) * 3, currentY, boxWidth);
+        const kpiCount = prsSectionVisible ? 4 : 3;
+        const boxWidth = Math.min(45, (pageWidth - margin * 2 - 30) / kpiCount);
+        const spacing = (pageWidth - margin * 2 - boxWidth * kpiCount) / (kpiCount - 1);
+        let kpiX = margin;
+        if (prsSectionVisible) {
+          addMetricBox('Current Score', currentScore.toString(), 'Latest readiness assessment score', kpiX, currentY, boxWidth);
+          kpiX += boxWidth + spacing;
+        }
+        addMetricBox('Completion Rate', `${completionRate}%`, 'Checklist items completed', kpiX, currentY, boxWidth);
+        kpiX += boxWidth + spacing;
+        addMetricBox('Gap Plans', `${completedGapPlans}/${totalGapPlans}`, 'Completed vs. total gap plans', kpiX, currentY, boxWidth);
+        kpiX += boxWidth + spacing;
+        addMetricBox('Activities', activities.length.toString(), 'Total activities logged', kpiX, currentY, boxWidth);
         
         currentY += 50;
         
@@ -727,8 +742,8 @@ const SnapshotPage = () => {
           }
         }
         
-        // Page 5: Readiness Score Trends & Analysis (like the readiness score sections)
-        if (readinessScores.length > 0) {
+        // Page 5: Readiness Score Trends & Analysis (only when PRS section is visible)
+        if (prsSectionVisible && readinessScores.length > 0) {
           doc.addPage();
           currentY = titleY;
           
@@ -909,7 +924,7 @@ const SnapshotPage = () => {
         if (activities.length < 5) {
           recommendations.push('Increase activity logging to track progress, demonstrate engagement, and provide evidence of ongoing work');
         }
-        if (readinessScores.length < 2) {
+        if (prsSectionVisible && readinessScores.length < 2) {
           recommendations.push('Complete additional readiness assessments to establish baseline, track progress, and identify trends');
         }
         if (totalGapPlans === 0) {
@@ -921,8 +936,8 @@ const SnapshotPage = () => {
           recommendations.push('Focus on sustainability and long-term maintenance of pediatric readiness standards');
         }
         
-        // Add specific recommendations based on data patterns
-        if (readinessScores.length > 1) {
+        // Add specific recommendations based on data patterns (only when PRS section is visible)
+        if (prsSectionVisible && readinessScores.length > 1) {
           const firstScore = readinessScores[0]?.score || 0;
           const lastScore = readinessScores[readinessScores.length - 1]?.score || 0;
           const improvement = lastScore - firstScore;
@@ -1052,6 +1067,17 @@ const SnapshotPage = () => {
             </Button>
           </Box>
           
+          {/* Pediatric Readiness Scores section hidden by default */}
+          {prsSectionAllowed && userPrsSectionVisible !== true && (
+            <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Pediatric Readiness Scores section is hidden.
+              </Typography>
+              <Button size="small" variant="text" onClick={() => setPrsSectionVisiblePref(true)} sx={{ mt: 1, p: 0 }}>
+                Show Pediatric Readiness Scores
+              </Button>
+            </Box>
+          )}
           {/* Quick Stats Banner - Only show if PRS section is visible */}
           {prsSectionVisible && readinessScores.length > 0 && (
             <Alert 
@@ -1099,6 +1125,13 @@ const SnapshotPage = () => {
         </Box>
 
         {/* Key Performance Indicators (KPIs) - Enhanced with better visuals */}
+        {prsSectionVisible && (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <Button size="small" variant="outlined" onClick={() => setPrsSectionVisiblePref(false)}>
+              Hide Pediatric Readiness Scores
+            </Button>
+          </Box>
+        )}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           {prsSectionVisible && (
             <Grid item xs={12} sm={6} md={3}>
@@ -1302,8 +1335,26 @@ const SnapshotPage = () => {
         </Grid>
       </Grid>
 
-      {/* Readiness Assessment Progress - Core Mission Metrics - Only show if PRS section is visible */}
-      {prsSectionVisible && (
+      {/* Readiness Score Trend & Progress - hidden by default; user can show */}
+      {prsSectionVisible && snapshotReadinessChartsVisible !== true && (
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Readiness Score Trend and Readiness Score Progress Over Time are hidden.
+          </Typography>
+          <Button size="small" variant="text" onClick={() => setReadinessChartsVisiblePref(true)} sx={{ mt: 1, p: 0 }}>
+            Show Readiness Score Trend &amp; Progress
+          </Button>
+        </Box>
+      )}
+      {prsSectionVisible && snapshotReadinessChartsVisible === true && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+          <Button size="small" variant="outlined" onClick={() => setReadinessChartsVisiblePref(false)}>
+            Hide Readiness Score Trend &amp; Progress
+          </Button>
+        </Box>
+      )}
+      {/* Readiness Assessment Progress - Core Mission Metrics - Only show if PRS and charts visible */}
+      {prsSectionVisible && snapshotReadinessChartsVisible === true && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12}>
             <Card>
@@ -1423,8 +1474,8 @@ const SnapshotPage = () => {
         </Grid>
       )}
 
-        {/* Readiness Score Progress Chart - Enhanced - Only show if PRS section is visible */}
-        {prsSectionVisible && (
+        {/* Readiness Score Progress Chart - Enhanced - Only show if PRS and charts visible */}
+        {prsSectionVisible && snapshotReadinessChartsVisible === true && (
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
               <Card>
@@ -1782,8 +1833,8 @@ const SnapshotPage = () => {
         </Grid>
       )}
 
-      {/* Readiness Score Progress Over Time - Detailed List View - Only show if PRS section is visible */}
-      {prsSectionVisible && (
+      {/* Readiness Score Progress Over Time - Detailed List View - Only show if PRS and charts visible */}
+      {prsSectionVisible && snapshotReadinessChartsVisible === true && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12}>
             <Card>

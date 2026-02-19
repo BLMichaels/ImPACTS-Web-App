@@ -31,6 +31,7 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import { usePrsSectionVisible } from '../hooks/usePermissions';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -80,20 +81,22 @@ interface ReadinessScore {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
-    // Check if PRS section should be visible (from user_data)
-    const [prsSectionVisible, setPrsSectionVisible] = useState(true);
+    const prsSectionAllowed = usePrsSectionVisible(); // permission: can user see PRS at all
     const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+    const [userPrsSectionVisible, setUserPrsSectionVisible] = useState<boolean | null>(null); // null = not loaded yet
+    const prsSectionVisible = prsSectionAllowed && (userPrsSectionVisible === true);
+
     useEffect(() => {
       if (!uid) return;
-      let cancelled = false;
-      getUserData<boolean>(uid, 'pecc_prs_section_visible').then((saved) => {
-        if (cancelled) return;
-        if (saved !== null && saved !== undefined) setPrsSectionVisible(!!saved);
-        else migrateFromLocalStorage(uid, 'pecc_prs_section_visible', `pecc_prs_section_visible_${uid}`, (v) => setPrsSectionVisible(v === true || v === 'true'));
-      });
-      return () => { cancelled = true; };
+      getUserData<boolean>(uid, 'pecc_prs_section_visible').then((v) => setUserPrsSectionVisible(v === true));
     }, [uid]);
-    
+
+    const setPrsSectionVisiblePref = async (visible: boolean) => {
+      if (!uid) return;
+      await setUserData(uid, 'pecc_prs_section_visible', visible);
+      setUserPrsSectionVisible(visible);
+    };
+
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [readinessScoreDialogOpen, setReadinessScoreDialogOpen] = useState(false);
   const [readinessScoreForm, setReadinessScoreForm] = useState({ date: new Date(), score: '' });
@@ -134,9 +137,13 @@ interface ReadinessScore {
     direction: 'asc' | 'desc';
   } | null>(null);
 
-  // Load readiness scores from user_data
+  // Load readiness scores only when PRS section is visible (granular permission)
   useEffect(() => {
     if (!uid) return;
+    if (!prsSectionVisible) {
+      setReadinessScores([]);
+      return;
+    }
     let mounted = true;
     getUserData<ReadinessScore[]>(uid, 'readinessScores').then((val) => {
       if (!mounted) return;
@@ -144,7 +151,7 @@ interface ReadinessScore {
       else migrateFromLocalStorage(uid, 'readinessScores', `readinessScores_${uid}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
     });
     return () => { mounted = false; };
-  }, [uid]);
+  }, [uid, prsSectionVisible]);
 
   const saveReadinessScores = async (scores: ReadinessScore[]) => {
     setReadinessScores(scores);
@@ -365,21 +372,36 @@ interface ReadinessScore {
         </Grid>
       </Grid>
 
-      {/* Pediatric Readiness Score Section - Conditionally rendered */}
+      {/* Pediatric Readiness Score Section - Hidden by default until user clicks Show */}
+      {prsSectionAllowed && userPrsSectionVisible !== true && (
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Pediatric Readiness Scores section is hidden.
+          </Typography>
+          <Button size="small" variant="text" onClick={() => setPrsSectionVisiblePref(true)} sx={{ mt: 1, p: 0 }}>
+            Show Pediatric Readiness Scores
+          </Button>
+        </Box>
+      )}
       {prsSectionVisible && (
         <Box sx={{ mb: 6 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h4" color="primary">
               Pediatric Readiness Scores
             </Typography>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleAddReadinessScore}
-              sx={{ fontSize: '0.875rem' }}
-            >
-              Add Score
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" variant="outlined" onClick={() => setPrsSectionVisiblePref(false)}>
+                Hide section
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleAddReadinessScore}
+                sx={{ fontSize: '0.875rem' }}
+              >
+                Add Score
+              </Button>
+            </Box>
           </Box>
           <Card>
             <CardContent>
