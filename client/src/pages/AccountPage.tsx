@@ -33,7 +33,9 @@ import {
   Business as BusinessIcon,
   Person as PersonIcon,
   Security as SecurityIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  Feedback as FeedbackIcon,
+  Email as EmailIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile, UserProfile } from '../context/UserProfileContext';
@@ -130,6 +132,7 @@ const AccountPage = () => {
   });
   const [showTerms, setShowTerms] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
   const [editingNotifications, setEditingNotifications] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState({
     gapPlanReminders: {
@@ -533,6 +536,51 @@ const AccountPage = () => {
                     </Typography>
                   </Box>
                 </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Feedback & Report Technical Issues - PECC, Mentor, Manager (and Admin) */}
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <FeedbackIcon color="primary" sx={{ mr: 1 }} />
+                  <Typography variant="h5" component="h2">
+                    Feedback &amp; technical issues
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  Send feedback or report a technical issue. Your message will open in your email client addressed to support.
+                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  label="Your message (optional)"
+                  placeholder="Describe your feedback or the technical issue..."
+                  value={feedbackMessage}
+                  onChange={(e) => setFeedbackMessage(e.target.value)}
+                  size="small"
+                  sx={{ mb: 2 }}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<EmailIcon />}
+                  href={(() => {
+                    const to = 'BenjaminLMichaels@gmail.com';
+                    const subject = encodeURIComponent('ImPACTS – Feedback / Technical issue');
+                    const role = actualRole || getTier() || 'User';
+                    const email = currentUser?.email || userProfile?.email || '';
+                    const body = encodeURIComponent(
+                      `Role: ${role}\nEmail: ${email}\n\nMessage:\n${feedbackMessage.trim() || '(No additional message)'}`
+                    );
+                    return `mailto:${to}?subject=${subject}&body=${body}`;
+                  })()}
+                  sx={{ py: 1 }}
+                >
+                  Email feedback to support
+                </Button>
               </CardContent>
             </Card>
           </Grid>
