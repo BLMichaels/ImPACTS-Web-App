@@ -61,6 +61,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   const [programs, setPrograms] = useState<Array<{ id: string; name: string }>>([]);
   const [programIds, setProgramIds] = useState<string[]>([]);
   const [customMessage, setCustomMessage] = useState('');
+  const [optionsLoading, setOptionsLoading] = useState(false);
   
   useEffect(() => {
     if (open) {
@@ -76,11 +77,25 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setCohortIds([]);
       setProgramIds([]);
       setCustomMessage('');
+      setMentors([]);
+      setManagers([]);
+      setHospitals([]);
+      setCohorts([]);
+      setPrograms([]);
       loadOptions();
     }
   }, [open, contactEmail]);
   
   const loadOptions = async () => {
+    setOptionsLoading(true);
+    try {
+      await loadOptionsInner();
+    } finally {
+      setOptionsLoading(false);
+    }
+  };
+
+  const loadOptionsInner = async () => {
     // Load hospitals
     const { data: hospitalsData } = await supabase
       .from('hospitals')
@@ -336,8 +351,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                     setMentorId(value?.id || null);
                     if (value) setManagerIdForPECC(null); // Clear direct manager if mentor is selected
                   }}
+                  loading={optionsLoading}
                   renderInput={(params) => (
-                    <TextField {...params} label="Mentor (optional)" sx={{ mb: 2 }} />
+                    <TextField {...params} label="Mentor (optional)" placeholder={optionsLoading ? 'Loading mentors…' : undefined} sx={{ mb: 2 }} />
                   )}
                   disabled={loading}
                 />
@@ -350,8 +366,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                     setManagerIdForPECC(value?.id || null);
                     if (value) setMentorId(null); // Clear mentor if direct manager is selected
                   }}
+                  loading={optionsLoading}
                   renderInput={(params) => (
-                    <TextField {...params} label="Direct Manager (optional, bypasses mentor)" sx={{ mb: 2 }} />
+                    <TextField {...params} label="Direct Manager (optional, bypasses mentor)" placeholder={optionsLoading ? 'Loading managers…' : undefined} sx={{ mb: 2 }} />
                   )}
                   disabled={loading}
                 />
@@ -406,8 +423,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                 getOptionLabel={(option) => option.name}
                 value={managers.find(m => m.id === managerId) || null}
                 onChange={(_, value) => setManagerId(value?.id || null)}
+                loading={optionsLoading}
                 renderInput={(params) => (
-                  <TextField {...params} label="Manager (required)" required sx={{ mb: 2 }} />
+                  <TextField {...params} label="Manager (required)" required placeholder={optionsLoading ? 'Loading managers…' : undefined} sx={{ mb: 2 }} />
                 )}
                 disabled={loading}
               />
