@@ -1,8 +1,16 @@
 /**
  * Per-user key/value storage in Supabase (replaces localStorage for user data).
  * All reads/writes go to public.user_data so data syncs across devices.
+ * When the user_data table is missing (404), we fall back to localStorage so
+ * Activities, Gap Plans, Simulation, Milestones, Snapshot, etc. still persist across refresh.
  */
 import { supabase } from '../supabase';
+
+const LS_PREFIX = 'ud_';
+
+function localStorageKey(userId: string, dataKey: string): string {
+  return `${LS_PREFIX}${userId}_${dataKey}`;
+}
 
 export async function getUserData<T = unknown>(userId: string, dataKey: string): Promise<T | null> {
   if (!userId || !dataKey) return null;
@@ -12,11 +20,19 @@ export async function getUserData<T = unknown>(userId: string, dataKey: string):
     .eq('user_id', userId)
     .eq('data_key', dataKey)
     .maybeSingle();
-  if (error) {
-    console.error('userData get error:', error);
-    return null;
+  if (!error && (data != null || data === null)) {
+    return (data?.value as T) ?? null;
   }
-  return (data?.value as T) ?? null;
+  // Table missing or RLS error: fall back to localStorage so data persists across refresh
+  if (error) {
+    try {
+      const raw = localStorage.getItem(localStorageKey(userId, dataKey));
+      if (raw !== null) return JSON.parse(raw) as T;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
 }
 
 export async function setUserData(userId: string, dataKey: string, value: unknown): Promise<void> {
@@ -32,7 +48,15 @@ export async function setUserData(userId: string, dataKey: string, value: unknow
       },
       { onConflict: 'user_id,data_key' }
     );
-  if (error) console.error('userData set error:', error);
+  if (error) {
+    console.error('userData set error:', error);
+    // Persist to localStorage so data survives refresh when user_data table is missing
+    try {
+      localStorage.setItem(localStorageKey(userId, dataKey), JSON.stringify(value));
+    } catch {
+      // ignore
+    }
+  }
 }
 
 /** Migrate one key from localStorage to Supabase (call once on load if Supabase returns null). */
