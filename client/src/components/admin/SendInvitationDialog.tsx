@@ -58,6 +58,8 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   const [managers, setManagers] = useState<Array<{ id: string; name: string; email: string }>>([]);
   const [cohorts, setCohorts] = useState<Array<{ id: string; name: string }>>([]);
   const [cohortIds, setCohortIds] = useState<string[]>([]);
+  const [programs, setPrograms] = useState<Array<{ id: string; name: string }>>([]);
+  const [programIds, setProgramIds] = useState<string[]>([]);
   const [customMessage, setCustomMessage] = useState('');
   
   useEffect(() => {
@@ -72,6 +74,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setSuccess(false);
       setInvitationCode('');
       setCohortIds([]);
+      setProgramIds([]);
       setCustomMessage('');
       loadOptions();
     }
@@ -143,6 +146,16 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         setCohorts(cohortsData.map(c => ({ id: c.id, name: c.name })));
       }
     }
+    
+    // Load programs (for pre-designation on invitation)
+    const { data: programsData } = await supabase
+      .from('programs')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
+    if (programsData) {
+      setPrograms(programsData.map(p => ({ id: p.id, name: p.name })));
+    }
   };
   
   const handleSend = async () => {
@@ -180,6 +193,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         managerId: role === UserRole.MENTOR ? (managerId || null) : null,
         managerIdForPECC: role === UserRole.PECC ? (managerIdForPECC || null) : null,
         cohortIds: role === UserRole.PECC && cohortIds.length > 0 ? cohortIds : undefined,
+        programIds: programIds.length > 0 ? programIds : undefined,
         customMessage: customMessage.trim() || undefined
       });
       
@@ -307,6 +321,18 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                     Please assign either a mentor or a direct manager for this PECC.
                   </Alert>
                 )}
+                
+                <Autocomplete
+                  multiple
+                  options={programs}
+                  getOptionLabel={(option) => option.name}
+                  value={programs.filter(p => programIds.includes(p.id))}
+                  onChange={(_, value) => setProgramIds(value.map(p => p.id))}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Program (optional)" placeholder="Select programs" sx={{ mb: 2 }} />
+                  )}
+                  disabled={loading}
+                />
                 
                 <Autocomplete
                   multiple

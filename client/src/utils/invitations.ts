@@ -10,6 +10,7 @@ export interface CreateInvitationParams {
   managerId?: string | null;
   managerIdForPECC?: string | null;  // For direct Manager-PECC assignment
   cohortIds?: string[];   // Pre-designate cohorts for PECC (added on accept)
+  programIds?: string[];  // Pre-designate programs for invitee (added on accept)
   customMessage?: string | null;  // Optional message from inviter
 }
 
@@ -29,7 +30,7 @@ function generateInvitationCode(): string {
  * Create an invitation and send email
  */
 export async function createAndSendInvitation(params: CreateInvitationParams): Promise<{ code: string; invitationId: string }> {
-  const { email, role, invitedBy, hospitalId, mentorId, managerId, managerIdForPECC, cohortIds, customMessage } = params;
+  const { email, role, invitedBy, hospitalId, mentorId, managerId, managerIdForPECC, cohortIds, programIds, customMessage } = params;
   
   // Generate unique code
   let code: string;
@@ -71,6 +72,7 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
       expires_at: expiresAt.toISOString()
     };
   if (cohortIds?.length) insertPayload.cohort_ids = cohortIds;
+  if (programIds?.length) insertPayload.program_ids = programIds;
   if (customMessage != null && customMessage.trim() !== '') insertPayload.custom_message = customMessage.trim();
 
   const { data: invitation, error: insertError } = await supabase
