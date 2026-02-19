@@ -26,7 +26,7 @@ import { supabase } from '../supabase';
 import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
-import type { RegistrationQuestion } from '../types/database';
+import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface InvitationData {
   code: string;
@@ -171,17 +171,21 @@ const InvitationPage: React.FC = () => {
           .eq('is_active', true)
           .order('sort_order', { ascending: true });
         const role = invitationData.role as string;
-        const rows = (qData || []).map((r: Record<string, unknown>) => ({
-          id: String(r.id),
-          label: String(r.label),
-          question_type: (r.question_type as RegistrationQuestion['question_type']) || 'short_answer',
-          required: Boolean(r.required),
-          options: Array.isArray(r.options) ? (r.options as unknown[]).map((x) => String(x)) : [],
-          sort_order: Number(r.sort_order) || 0,
-          target_roles: r.target_roles != null && Array.isArray(r.target_roles) ? (r.target_roles as unknown[]).map((x) => String(x)) : null,
-          target_program_ids: r.target_program_ids != null && Array.isArray(r.target_program_ids) ? (r.target_program_ids as unknown[]).map((x) => String(x)) : null,
-          target_cohort_ids: r.target_cohort_ids != null && Array.isArray(r.target_cohort_ids) ? (r.target_cohort_ids as unknown[]).map((x) => String(x)) : null
-        } as RegistrationQuestion));
+        const rows = (qData || []).map((r: Record<string, unknown>) => {
+          const dc = r.display_condition as RegistrationQuestionDisplayCondition | null | undefined;
+          return {
+            id: String(r.id),
+            label: String(r.label),
+            question_type: (r.question_type as RegistrationQuestion['question_type']) || 'short_answer',
+            required: Boolean(r.required),
+            options: Array.isArray(r.options) ? (r.options as unknown[]).map((x) => String(x)) : [],
+            sort_order: Number(r.sort_order) || 0,
+            target_roles: r.target_roles != null && Array.isArray(r.target_roles) ? (r.target_roles as unknown[]).map((x) => String(x)) : null,
+            target_program_ids: r.target_program_ids != null && Array.isArray(r.target_program_ids) ? (r.target_program_ids as unknown[]).map((x) => String(x)) : null,
+            target_cohort_ids: r.target_cohort_ids != null && Array.isArray(r.target_cohort_ids) ? (r.target_cohort_ids as unknown[]).map((x) => String(x)) : null,
+            display_condition: dc && typeof dc === 'object' && dc.question_id ? dc : null
+          } as RegistrationQuestion;
+        });
         const filtered = rows
           .filter((q) => !q.target_roles?.length || q.target_roles.includes(role))
           .filter((q) => {
@@ -207,6 +211,19 @@ const InvitationPage: React.FC = () => {
   const setRegistrationAnswer = (questionId: string, value: string | boolean | string[]) => {
     setRegistrationAnswers((prev) => ({ ...prev, [questionId]: value }));
   };
+
+  const satisfiesDisplayCondition = (q: RegistrationQuestion, answers: Record<string, string | boolean | string[]>): boolean => {
+    const dc = q.display_condition;
+    if (!dc || !dc.question_id) return true;
+    const val = answers[dc.question_id];
+    const str = val === true ? 'true' : val === false ? 'false' : Array.isArray(val) ? val.join(',') : String(val ?? '');
+    if (dc.operator === 'not_empty') return str.trim() !== '';
+    if (dc.operator === 'equals') return dc.value !== undefined && str.trim() === String(dc.value).trim();
+    if (dc.operator === 'in') return Array.isArray(dc.value) && dc.value.some((v) => String(v).trim() === str.trim());
+    return true;
+  };
+
+  const visibleQuestions = registrationQuestions.filter((q) => satisfiesDisplayCondition(q, registrationAnswers));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -238,14 +255,14 @@ const InvitationPage: React.FC = () => {
       setError('Passwords do not match');
       return;
     }
-    for (const q of registrationQuestions) {
-      if (q.required) {
-        const v = registrationAnswers[q.id];
-        const empty = v === undefined || v === null || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
-        if (empty) {
-          setError(`Please answer: ${q.label}`);
-          return;
-        }
+    // Only require answers for required questions that are visible (question logic may hide some)
+    const requiredVisible = registrationQuestions.filter((q) => q.required && satisfiesDisplayCondition(q, registrationAnswers));
+    for (const q of requiredVisible) {
+      const v = registrationAnswers[q.id];
+      const empty = v === undefined || v === null || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
+      if (empty) {
+        setError(`Please answer: ${q.label}`);
+        return;
       }
     }
 
@@ -490,10 +507,10 @@ const InvitationPage: React.FC = () => {
 
           {questionsLoading ? (
             <Box sx={{ py: 2, textAlign: 'center' }}><CircularProgress size={24} /></Box>
-          ) : registrationQuestions.length > 0 ? (
+          ) : visibleQuestions.length > 0 ? (
             <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle1" sx={{ mb: 2 }}>Additional questions</Typography>
-              {registrationQuestions.map((q) => {
+              {visibleQuestions.map((q) => {
                 const value = registrationAnswers[q.id];
                 const opts = q.options || [];
                 if (q.question_type === 'paragraph') {
