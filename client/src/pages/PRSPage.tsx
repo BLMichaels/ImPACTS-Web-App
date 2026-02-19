@@ -1412,7 +1412,6 @@ const PRSPage: React.FC = () => {
       if (!mounted) return;
       if (questionsVal != null && Array.isArray(questionsVal)) setQuestions(questionsVal);
       else await migrateFromLocalStorage(prsUserId, 'prsQuestions', 'prsQuestions', (v) => setQuestions(Array.isArray(v) ? v : ASSESSMENT_QUESTIONS));
-      }
       if (scoresVal != null && Array.isArray(scoresVal)) setReadinessScores(scoresVal);
       else await migrateFromLocalStorage(prsUserId, 'prsReadinessScores', 'prsReadinessScores', (v) => setReadinessScores(Array.isArray(v) ? v : []));
       if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
