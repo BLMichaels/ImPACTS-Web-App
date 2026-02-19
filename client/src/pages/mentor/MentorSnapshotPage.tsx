@@ -33,6 +33,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+import { getUserData } from '../../utils/userData';
 
 interface MentorActivity {
   id: string;
@@ -87,8 +88,8 @@ const MentorSnapshotPage = () => {
         setIsLoading(true);
         setHasError(false);
 
-        // Load mentor's own activities (unified: mentorActivities_ or mentor_activities_)
-        const parsedMentorActivities = getMentorActivitiesForUser(userProfile.id);
+        // Load mentor's own activities from Supabase (user_data)
+        const parsedMentorActivities = await getMentorActivitiesForUser(userProfile.id);
         setActivities(parsedMentorActivities);
 
         // Load assigned hospitals and PECCs from Supabase
@@ -139,30 +140,22 @@ const MentorSnapshotPage = () => {
             const completedTasks = (checklistData || []).filter(t => t.completed).length;
             const checklistProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-            // Get activity count from localStorage (PECCs store activities locally)
-            const peccActivities = localStorage.getItem(`activities_${pecc.id}`);
-            const activityCount = peccActivities ? JSON.parse(peccActivities).length : 0;
-            
-            const activities = peccActivities ? JSON.parse(peccActivities) : [];
-            const lastActivity = activities.length > 0 
+            // Get PECC data from Supabase (user_data)
+            const [peccActivitiesVal, peccGapPlansVal, prsScoresVal, readinessVal] = await Promise.all([
+              getUserData<any[]>(pecc.id, 'activities'),
+              getUserData<any[]>(pecc.id, 'gapPlans'),
+              getUserData<any[]>(pecc.id, 'prsReadinessScores'),
+              getUserData<any[]>(pecc.id, 'readinessScores')
+            ]);
+            const activities = Array.isArray(peccActivitiesVal) ? peccActivitiesVal : [];
+            const activityCount = activities.length;
+            const lastActivity = activities.length > 0
               ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
               : null;
-
-            // Get gap plan count
-            const peccGapPlans = localStorage.getItem(`gapPlans_${pecc.id}`);
-            const gapPlanCount = peccGapPlans ? JSON.parse(peccGapPlans).length : 0;
-
-            // Get PRS readiness scores
+            const gapPlanCount = Array.isArray(peccGapPlansVal) ? peccGapPlansVal.length : 0;
             let readinessScores: Array<{ id: string; score: number; date: string }> = [];
-            const prsScores = localStorage.getItem(`prsReadinessScores_${pecc.id}`) 
-              || localStorage.getItem(`readinessScores_${pecc.id}`);
-            if (prsScores) {
-              try {
-                readinessScores = JSON.parse(prsScores);
-              } catch (e) {
-                console.error('Error parsing PRS scores for PECC', pecc.id, e);
-              }
-            }
+            const scoresRaw = Array.isArray(prsScoresVal) ? prsScoresVal : (Array.isArray(readinessVal) ? readinessVal : []);
+            if (scoresRaw.length > 0) readinessScores = scoresRaw as Array<{ id: string; score: number; date: string }>;
 
             return {
               id: pecc.id,

@@ -11,18 +11,11 @@ import {
   Alert,
   Container,
   Divider,
-  Paper,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-  SelectChangeEvent
+  Paper
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../supabase';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -32,8 +25,6 @@ import SlideshowIcon from '@mui/icons-material/Slideshow';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import RemoveIcon from '@mui/icons-material/Remove';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import FilterListIcon from '@mui/icons-material/FilterList';
 import { format } from 'date-fns';
 
 // Type definitions for PRS questions
@@ -66,14 +57,6 @@ const DOMAIN_MAX_POINTS: Record<string, number> = {
   'Equipment': 33
 };
 
-const PERIODS = [
-  { value: 'all', label: 'All Time' },
-  { value: '7', label: 'Last 7 Days' },
-  { value: '30', label: 'Last 30 Days' },
-  { value: '90', label: 'Last 90 Days' },
-  { value: 'custom', label: 'Custom Range' },
-];
-
 const SnapshotPage = () => {
   const { currentUser } = useAuth();
   
@@ -85,132 +68,39 @@ const SnapshotPage = () => {
   const [hasError, setHasError] = useState(false);
   const [renderError, setRenderError] = useState(false);
   const [prsSectionVisible, setPrsSectionVisible] = useState(true);
+  const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
+  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
   
-  // Date filter state
-  const [dateFilterPeriod, setDateFilterPeriod] = useState<string>('all');
-  const [customDateStart, setCustomDateStart] = useState<string>('');
-  const [customDateEnd, setCustomDateEnd] = useState<string>('');
-  
-  // Check if PRS section should be visible
+  // Check if PRS section should be visible (admin can override via Granular Permissions > Tab Visibility > snapshot_prs_section)
   useEffect(() => {
-    if (currentUser?.uid) {
-      const saved = localStorage.getItem(`pecc_prs_section_visible_${currentUser.uid}`);
-      // Default to true if not set
-      setPrsSectionVisible(saved === null ? true : saved === 'true');
-    }
-  }, [currentUser]);
-
-  // Helper function to filter data by date range
-  const getDateFilteredData = useMemo(() => {
-    const getFilterDate = () => {
-      if (dateFilterPeriod === 'all') return null;
-      if (dateFilterPeriod === 'custom' && customDateStart && customDateEnd) {
-        return {
-          start: new Date(customDateStart + 'T00:00:00.000Z'),
-          end: new Date(customDateEnd + 'T23:59:59.999Z')
-        };
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('view_tabs')
+        .select('is_visible')
+        .eq('user_id', userId)
+        .eq('tab_key', 'snapshot_prs_section')
+        .maybeSingle();
+      if (cancelled) return;
+      if (data !== null && data !== undefined) {
+        setPrsSectionVisible(data.is_visible);
+        return;
       }
-      if (['7', '30', '90'].includes(dateFilterPeriod)) {
-        const days = parseInt(dateFilterPeriod, 10);
-        const start = new Date();
-        start.setDate(start.getDate() - days);
-        return { start, end: new Date() };
-      }
-      return null;
-    };
+      const saved = await getUserData<boolean>(userId, 'pecc_prs_section_visible');
+      if (saved !== null && saved !== undefined) setPrsSectionVisible(saved);
+      else await migrateFromLocalStorage(userId, 'pecc_prs_section_visible', `pecc_prs_section_visible_${userId}`, (v) => {
+        setPrsSectionVisible(v === true || v === 'true');
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
 
-    const dateRange = getFilterDate();
-    if (!dateRange) {
-      return {
-        activities,
-        milestones,
-        gapPlans,
-        readinessScores
-      };
-    }
-
-    return {
-      activities: activities.filter(a => {
-        const activityDate = new Date(a.date);
-        return activityDate >= dateRange.start && activityDate <= dateRange.end;
-      }),
-      milestones: milestones.filter(m => {
-        const milestoneDate = m.date ? new Date(m.date) : new Date(m.createdAt || Date.now());
-        return milestoneDate >= dateRange.start && milestoneDate <= dateRange.end;
-      }),
-      gapPlans: gapPlans.filter(g => {
-        const gapDate = g.createdAt ? new Date(g.createdAt) : new Date(g.dueDate || Date.now());
-        return gapDate >= dateRange.start && gapDate <= dateRange.end;
-      }),
-      readinessScores: readinessScores.filter(r => {
-        const scoreDate = new Date(r.date);
-        return scoreDate >= dateRange.start && scoreDate <= dateRange.end;
-      })
-    };
-  }, [activities, milestones, gapPlans, readinessScores, dateFilterPeriod, customDateStart, customDateEnd]);
-
-  const filteredData = getDateFilteredData;
-
-  // Map activity categories to domains
-  const categoryToDomainMap: Record<string, string[]> = {
-    'PECC role education and advancement': ['Administration & Coordination'],
-    'Collaborative work with PECC counterpart, EMS, or other EDs': ['Administration & Coordination'],
-    'Staffing competency evaluations': ['Care Team Competencies'],
-    'Ensuring all Pediatric Policies and Procedures are implemented and updated': ['Policies, Procedures, & Protocols'],
-    'Promoting pediatric disaster preparedness': ['Policies, Procedures, & Protocols'],
-    'Ensuring ED staff are prepared to care for all children, including those with special health needs': ['Policies, Procedures, & Protocols'],
-    'Ensuring equipment, medication, and supplies are available to all ED staff': ['Equipment, Supplies, & Medication'],
-    'Promoting patient and family education in injury prevention': ['Pediatric Patient & Medication Safety'],
-    'Facilitating and participating in ED pediatric QI/PI activities': ['Quality & Process Improvement']
-  };
-
-  // Calculate domain statistics from activities (based on category mapping)
-  const domainStats = useMemo(() => {
-    const stats: Record<string, { count: number; hours: number }> = {};
-    const allDomains = [
-      'Administration & Coordination',
-      'Care Team Competencies',
-      'Policies, Procedures, & Protocols',
-      'Equipment, Supplies, & Medication',
-      'Pediatric Patient & Medication Safety',
-      'Quality & Process Improvement'
-    ];
-    
-    // Initialize all domains
-    allDomains.forEach(domain => {
-      stats[domain] = { count: 0, hours: 0 };
-    });
-    
-    // Process activities from filtered data
-    filteredData.activities.forEach((activity: any) => {
-      const category = activity.category || '';
-      const domains = categoryToDomainMap[category] || [];
-      
-      // If activity has explicit domain tags, use those; otherwise use category mapping
-      const activityDomains = activity.readinessDomains && Array.isArray(activity.readinessDomains) && activity.readinessDomains.length > 0
-        ? activity.readinessDomains
-        : domains;
-      
-      if (activityDomains.length > 0) {
-        activityDomains.forEach((domain: string) => {
-          if (stats[domain]) {
-            stats[domain].count += 1;
-            stats[domain].hours += activity.hours || 0;
-          }
-        });
-      }
-    });
-    
-    return stats;
-  }, [filteredData.activities]);
-
-  // Calculate domain scores from PRS questions (keeping for backward compatibility but not used in charts)
+  // Calculate domain scores from PRS questions (loaded from user_data)
   const domainScores = useMemo(() => {
     try {
-      const prsQuestions = localStorage.getItem('prsQuestions');
-      if (!prsQuestions) return null;
-      
-      const questions = JSON.parse(prsQuestions);
+      const questions = prsQuestions;
+      if (!questions || !Array.isArray(questions)) return null;
       const domainData: Record<string, { earned: number; total: number; percentage: number }> = {};
       
       // Helper function to calculate points for a question
@@ -279,15 +169,13 @@ const SnapshotPage = () => {
       console.error('Error calculating domain scores:', error);
       return null;
     }
-  }, []);
+  }, [prsQuestions]);
 
   // Calculate current PRS score
   const currentPRSScore = useMemo(() => {
     try {
-      const prsQuestions = localStorage.getItem('prsQuestions');
-      if (!prsQuestions) return null;
-      
-      const questions = JSON.parse(prsQuestions);
+      const questions = prsQuestions;
+      if (!questions || !Array.isArray(questions)) return null;
       let totalPoints = 0;
       let earnedPoints = 0;
 
@@ -336,7 +224,7 @@ const SnapshotPage = () => {
     } catch (error) {
       return null;
     }
-  }, []);
+  }, [prsQuestions]);
 
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
@@ -347,77 +235,40 @@ const SnapshotPage = () => {
   // Load all data for snapshot
   useEffect(() => {
     const loadData = async () => {
+      if (!userId) return;
       try {
         setIsLoading(true);
         setHasError(false);
-        console.log('SnapshotPage: Loading data from localStorage...');
-        
-        // Load activities (try both user-specific and generic keys)
-        let savedActivities = null;
-        if (currentUser?.uid) {
-          savedActivities = localStorage.getItem(`activities_${currentUser.uid}`);
-        }
-        if (!savedActivities) {
-          savedActivities = localStorage.getItem('activities');
-        }
-        if (savedActivities) {
-          setActivities(JSON.parse(savedActivities));
-        }
+        const [activitiesVal, milestonesVal, gapPlansVal, scoresVal, questionsVal] = await Promise.all([
+          getUserData<any[]>(userId, 'activities'),
+          getUserData<any[]>(userId, 'milestones'),
+          getUserData<any[]>(userId, 'gapPlans'),
+          getUserData<any[]>(userId, 'readinessScores'),
+          getUserData<any[]>(userId, 'prsQuestions')
+        ]);
+        if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
+        else await migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
 
-        // Load milestones (try both user-specific and generic keys)
-        let savedMilestones = null;
-        if (currentUser?.uid) {
-          savedMilestones = localStorage.getItem(`milestones_${currentUser.uid}`);
-        }
-        if (!savedMilestones) {
-          savedMilestones = localStorage.getItem('milestones');
-        }
-        if (savedMilestones) {
-          setMilestones(JSON.parse(savedMilestones));
-        }
+        if (milestonesVal != null && Array.isArray(milestonesVal)) setMilestones(milestonesVal);
+        else await migrateFromLocalStorage(userId, 'milestones', `milestones_${userId}`, (v) => setMilestones(Array.isArray(v) ? v : []));
 
         // Load gap plans (try both user-specific and generic keys)
-        let savedGapPlans = null;
-        if (currentUser?.uid) {
-          savedGapPlans = localStorage.getItem(`gapPlans_${currentUser.uid}`);
-        }
-        if (!savedGapPlans) {
-          savedGapPlans = localStorage.getItem(`gapPlans`);
-        }
-        if (!savedGapPlans) {
-          savedGapPlans = localStorage.getItem(`prsGapPlans`);
-        }
-        if (savedGapPlans) {
-          setGapPlans(JSON.parse(savedGapPlans));
+        if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
+        else {
+          await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (v) => setGapPlans(Array.isArray(v) ? v : []));
+          try {
+            const prsGap = localStorage.getItem('prsGapPlans');
+            if (prsGap) { const p = JSON.parse(prsGap); if (Array.isArray(p)) { await setUserData(userId, 'gapPlans', p); setGapPlans(p); localStorage.removeItem('prsGapPlans'); } }
+          } catch {}
         }
 
-        // Load readiness scores (try both user-specific and generic keys)
-        let savedScores = null;
-        if (currentUser?.uid) {
-          savedScores = localStorage.getItem(`readinessScores_${currentUser.uid}`);
+        if (scoresVal != null && Array.isArray(scoresVal)) setReadinessScores(scoresVal);
+        else {
+          await migrateFromLocalStorage(userId, 'readinessScores', `readinessScores_${userId}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
+          await migrateFromLocalStorage(userId, 'prsReadinessScores', 'prsReadinessScores', (v) => setReadinessScores(Array.isArray(v) ? v : []));
         }
-        if (!savedScores) {
-          savedScores = localStorage.getItem('readinessScores');
-        }
-        if (!savedScores) {
-          savedScores = localStorage.getItem('prsReadinessScores');
-        }
-        if (savedScores) {
-          setReadinessScores(JSON.parse(savedScores));
-        }
-
-        // Log the loaded data using the parsed values
-        const loadedActivities = savedActivities ? JSON.parse(savedActivities) : [];
-        const loadedMilestones = savedMilestones ? JSON.parse(savedMilestones) : [];
-        const loadedGapPlans = savedGapPlans ? JSON.parse(savedGapPlans) : [];
-        const loadedScores = savedScores ? JSON.parse(savedScores) : [];
-        
-        console.log('SnapshotPage: Data loaded:', {
-          activities: loadedActivities.length,
-          milestones: loadedMilestones.length,
-          gapPlans: loadedGapPlans.length,
-          readinessScores: loadedScores.length
-        });
+        if (questionsVal != null && Array.isArray(questionsVal)) setPrsQuestions(questionsVal);
+        else await migrateFromLocalStorage(userId, 'prsQuestions', 'prsQuestions', (v) => setPrsQuestions(Array.isArray(v) ? v : null));
         
       } catch (err) {
         console.error('Error loading snapshot data:', err);
@@ -428,7 +279,7 @@ const SnapshotPage = () => {
     };
 
     loadData();
-  }, [currentUser?.uid]);
+  }, [userId]);
 
   const exportToComprehensivePDF = () => {
     try {
@@ -1150,6 +1001,25 @@ const SnapshotPage = () => {
     );
   }
 
+  // Show render error state (e.g. after catch in render)
+  if (renderError) {
+    return (
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h4" gutterBottom color="error">
+            Something went wrong
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+            There was an error rendering the snapshot page. Please try refreshing.
+          </Typography>
+          <Button variant="contained" onClick={() => window.location.reload()}>
+            Refresh Page
+          </Button>
+        </Box>
+      </Container>
+    );
+  }
+
   // Calculate trend
   const scoreTrend = readinessScores.length >= 2 
     ? readinessScores[readinessScores.length - 1].score - readinessScores[0].score
@@ -1181,62 +1051,6 @@ const SnapshotPage = () => {
               Export PDF
             </Button>
           </Box>
-          
-          {/* Date Filter Section */}
-          <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <FilterListIcon color="action" />
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  Filter by Date Range:
-                </Typography>
-              </Box>
-              <FormControl size="small" sx={{ minWidth: 180 }}>
-                <InputLabel>Time Period</InputLabel>
-                <Select
-                  value={dateFilterPeriod}
-                  label="Time Period"
-                  onChange={(e: SelectChangeEvent) => setDateFilterPeriod(e.target.value)}
-                >
-                  {PERIODS.map((period) => (
-                    <MenuItem key={period.value} value={period.value}>
-                      {period.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              {dateFilterPeriod === 'custom' && (
-                <>
-                  <TextField
-                    size="small"
-                    label="Start Date"
-                    type="date"
-                    value={customDateStart}
-                    onChange={(e) => setCustomDateStart(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ minWidth: 160 }}
-                  />
-                  <TextField
-                    size="small"
-                    label="End Date"
-                    type="date"
-                    value={customDateEnd}
-                    onChange={(e) => setCustomDateEnd(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ minWidth: 160 }}
-                  />
-                </>
-              )}
-              {dateFilterPeriod !== 'all' && (
-                <Chip
-                  label={`Showing ${filteredData.activities.length} activities, ${filteredData.milestones.length} milestones, ${filteredData.gapPlans.length} gap plans`}
-                  size="small"
-                  color="primary"
-                  variant="outlined"
-                />
-              )}
-            </Box>
-          </Paper>
           
           {/* Quick Stats Banner - Only show if PRS section is visible */}
           {prsSectionVisible && readinessScores.length > 0 && (
@@ -1410,14 +1224,9 @@ const SnapshotPage = () => {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  Overall Checklist Progress
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                  Overall completion percentage across all checklist milestones. Calculated from completed vs. total milestones on your Checklist page.
-                </Typography>
-              </Box>
+              <Typography variant="h6" gutterBottom>
+                Overall Checklist Progress
+              </Typography>
               <Box sx={{ mt: 2 }}>
                 {milestones.length > 0 ? (
                   <>
@@ -1451,14 +1260,9 @@ const SnapshotPage = () => {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  Gap Plan Completion Overview
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                  Count of gap plans by status category. Shows how many plans are in progress, completed, need updates, or need to be developed. Data from your Gaps & Education page.
-                </Typography>
-              </Box>
+              <Typography variant="h6" gutterBottom>
+                Gap Plan Completion Overview
+              </Typography>
               <Box sx={{ mt: 2 }}>
                 {gapPlans.length > 0 ? (
                   <>
@@ -1504,14 +1308,9 @@ const SnapshotPage = () => {
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Readiness Score Trend
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    Summary of your PRS assessment scores showing latest, average, highest, and current live score. Based on saved assessments and your current PRS responses.
-                  </Typography>
-                </Box>
+                <Typography variant="h6" gutterBottom>
+                  Readiness Score Trend
+                </Typography>
               <Box sx={{ mt: 2 }}>
                 {readinessScores.length > 0 ? (
                   <>
@@ -1544,9 +1343,8 @@ const SnapshotPage = () => {
                       <Typography variant="body2" color="warning.main" sx={{ fontWeight: 'bold' }}>
                         {(() => {
                           try {
-                            const prsQuestions = localStorage.getItem('prsQuestions');
-                            if (prsQuestions) {
-                              const questions = JSON.parse(prsQuestions);
+                            const questions = prsQuestions;
+                            if (questions && Array.isArray(questions)) {
                               
                               // Use the same scoring logic as the PRS page
                               let totalPoints = 0;
@@ -1632,14 +1430,9 @@ const SnapshotPage = () => {
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Box>
-                      <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                        Readiness Score Progress Over Time
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                        Shows your Pediatric Readiness Score (PRS) assessments over time. Data comes from saved PRS assessments on your Tool page and your current live assessment score.
-                      </Typography>
-                    </Box>
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                      Readiness Score Progress Over Time
+                    </Typography>
                     {readinessScores.length > 0 && (
                       <Chip 
                         label={`${readinessScores.length} Assessment${readinessScores.length !== 1 ? 's' : ''}`}
@@ -1787,9 +1580,8 @@ const SnapshotPage = () => {
                             // Get current PRS score from localStorage using proper scoring logic
                             let currentPRSScore = null;
                             try {
-                              const prsQuestions = localStorage.getItem('prsQuestions');
-                              if (prsQuestions) {
-                                const questions = JSON.parse(prsQuestions);
+                              const questions = prsQuestions;
+                              if (questions && Array.isArray(questions)) {
                                 
                                 // Use the same scoring logic as the PRS page
                                 let totalPoints = 0;
@@ -1990,19 +1782,91 @@ const SnapshotPage = () => {
         </Grid>
       )}
 
+      {/* Readiness Score Progress Over Time - Detailed List View - Only show if PRS section is visible */}
+      {prsSectionVisible && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Readiness Score Progress Over Time
+                </Typography>
+              <Box sx={{ mt: 2 }}>
+                {readinessScores.length > 0 ? (
+                  <>
+                    <Box sx={{ mb: 3 }}>
+                      {readinessScores
+                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                        .map((score, index) => (
+                          <Box key={score.id} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                Assessment #{index + 1}
+                              </Typography>
+                              <Typography variant="h6" color="primary.main">
+                                {score.score}
+                              </Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                {new Date(score.date).toLocaleDateString()}
+                              </Typography>
+                              {index > 0 && (
+                                <Typography 
+                                  variant="caption" 
+                                  color={score.score > readinessScores[index - 1].score ? 'success.main' : 'error.main'}
+                                  sx={{ fontWeight: 500 }}
+                                >
+                                  {score.score > readinessScores[index - 1].score ? '↗' : '↘'} 
+                                  {Math.abs(score.score - readinessScores[index - 1].score).toFixed(1)} pts
+                                </Typography>
+                              )}
+                            </Box>
+                            {score.notes && (
+                              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                                Notes: {score.notes}
+                              </Typography>
+                            )}
+                          </Box>
+                        ))}
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
+                      <Typography variant="body2" color="primary.main">
+                        Progress Trend: {(() => {
+                          if (readinessScores.length < 2) return 'Insufficient data';
+                          const firstScore = readinessScores[0].score;
+                          const lastScore = readinessScores[readinessScores.length - 1].score;
+                          const improvement = lastScore - firstScore;
+                          if (improvement > 0) return `+${improvement.toFixed(1)} points improvement`;
+                          if (improvement < 0) return `${improvement.toFixed(1)} points decline`;
+                          return 'No change';
+                        })()}
+                      </Typography>
+                      <Typography variant="body2" color="primary.main">
+                        Total Assessments: {readinessScores.length}
+                      </Typography>
+                    </Box>
+                  </>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No readiness scores available
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        </Grid>
+      )}
+
       {/* Checklist Progress by Stage - Detailed Progress Breakdown */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  Checklist Progress by Stage
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                  Progress through the 4 PECC stages (Establish, Implement, Lead, Sustain). Shows completed tasks vs. total tasks for each stage from your Checklist page.
-                </Typography>
-              </Box>
+              <Typography variant="h6" gutterBottom>
+                Checklist Progress by Stage
+              </Typography>
               <Box sx={{ mt: 2 }}>
                 {milestones && milestones.length > 0 ? (
                   <Grid container spacing={2}>
@@ -2047,14 +1911,9 @@ const SnapshotPage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Simulations by Type
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Distribution of simulation activities by type (e.g., Mock Codes, Drills, etc.). Data pulled from Activities logged with category "Simulation Facilitation".
-                    </Typography>
-                  </Box>
+                  <Typography variant="h6" gutterBottom>
+                    Simulations by Type
+                  </Typography>
                   <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
                     {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
                       <>
@@ -2124,14 +1983,9 @@ const SnapshotPage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Simulation Participants
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Total participants and average participants per simulation type. Calculated from participant counts entered when logging simulation activities.
-                    </Typography>
-                  </Box>
+                  <Typography variant="h6" gutterBottom>
+                    Simulation Participants
+                  </Typography>
                   <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
                     {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
                       <>
@@ -2232,14 +2086,9 @@ const SnapshotPage = () => {
             <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Gap Plan Status Distribution
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Breakdown of gap plans by their current status (Completed, In Progress, Needs Update, etc.). Data from your Gaps & Education page.
-                    </Typography>
-                  </Box>
+                  <Typography variant="h6" gutterBottom>
+                    Gap Plan Status Distribution
+                  </Typography>
                   <Box sx={{ mt: 2 }}>
                     {gapPlans.length > 0 ? (
                       <>
@@ -2298,14 +2147,9 @@ const SnapshotPage = () => {
             <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Gap Plan Priority Breakdown
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Distribution of gap plans by priority level (High/Low Importance and Urgency combinations). Helps identify which gaps need immediate attention.
-                    </Typography>
-                  </Box>
+                  <Typography variant="h6" gutterBottom>
+                    Gap Plan Priority Breakdown
+                  </Typography>
                   <Box sx={{ mt: 2 }}>
                     {gapPlans.length > 0 ? (
                       <>
@@ -2360,17 +2204,53 @@ const SnapshotPage = () => {
 
       {/* Activity Analysis - Work Tracking and Insights */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  PECC Work Hours Analysis
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                  Total hours logged across different time periods. Calculated from hours entered when logging activities on your Activities page.
-                </Typography>
+              <Typography variant="h6" gutterBottom>
+                Activity Categories
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {activities.length > 0 ? (
+                  <>
+                    {Array.from(new Set(activities.map(a => a.category))).map(category => {
+                      const count = activities.filter(a => a.category === category).length;
+                      const percentage = (count / activities.length) * 100;
+                      return (
+                        <Box key={category} sx={{ mb: 2 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography variant="body2">
+                              {category.length > 30 ? category.substring(0, 30) + '...' : category}
+                            </Typography>
+                            <Typography variant="body2">
+                              {count} ({Math.round(percentage)}%)
+                            </Typography>
+                          </Box>
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={percentage}
+                            sx={{ height: 6, borderRadius: 3 }}
+                          />
+                        </Box>
+                      );
+                    })}
+                  </>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No activities data available
+                  </Typography>
+                )}
               </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                PECC Work Hours Analysis
+              </Typography>
               <Box sx={{ mt: 2 }}>
                 {activities.length > 0 ? (
                   <Grid container spacing={2}>
@@ -2464,19 +2344,61 @@ const SnapshotPage = () => {
         </Grid>
       </Grid>
 
+      {/* Checklist Progress by Stage */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Checklist Progress by Stage
+                  </Typography>
+                  <Box sx={{ mt: 2 }}>
+                    {milestones && milestones.length > 0 ? (
+                      <Grid container spacing={2}>
+                        {milestones.map((stage: any) => {
+                          const totalTasks = stage.tasks?.length || 0;
+                          const completedTasks = stage.tasks?.filter((task: any) => task.completed)?.length || 0;
+                          const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                          
+                          return (
+                            <Grid item xs={12} sm={6} md={3} key={stage.id}>
+                              <Typography variant="h6" color="primary.main" gutterBottom>
+                                {stage.title}
+                              </Typography>
+                              <Typography variant="h4" color="success.main">
+                                {progress}%
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {completedTasks} of {totalTasks} tasks
+                              </Typography>
+                              <LinearProgress 
+                                variant="determinate" 
+                                value={progress}
+                                sx={{ mt: 1, height: 6, borderRadius: 3 }}
+                              />
+                            </Grid>
+                          );
+                        })}
+                      </Grid>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No checklist data available
+                      </Typography>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
           {/* Activity Category Distribution */}
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Activity Category Distribution
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Breakdown of activities by category showing both count and total hours. Sorted by total hours. Data from all activities logged on your Activities page.
-                    </Typography>
-                  </Box>
+                  <Typography variant="h6" gutterBottom>
+                    Activity Category Distribution
+                  </Typography>
                   <Box sx={{ mt: 2 }}>
                     {activities.length > 0 ? (
                       <>
@@ -2538,482 +2460,306 @@ const SnapshotPage = () => {
             </Grid>
           </Grid>
 
-        {/* Activity Domain Analysis - Based on Activity Tagging */}
-        {(() => {
-          const hasDomainData = Object.values(domainStats).some(stat => stat.count > 0 || stat.hours > 0);
-          
-          return (
-            <>
-              {/* Activity Count by Domain */}
-              <Grid container spacing={3} sx={{ mb: 4 }}>
-                <Grid item xs={12}>
-                  <Card>
-                    <CardContent>
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                          Activity Count by Domain
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                          Number of activities in each pediatric readiness domain. Activities are automatically mapped to domains based on their category (e.g., "PECC role education" maps to Administration & Coordination).
-                        </Typography>
-                      </Box>
+        {/* Domain Performance Analysis - Only show if PRS section is visible */}
+        {prsSectionVisible && domainScores && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                      Domain Performance Analysis
+                    </Typography>
+                    <Chip 
+                      label="Based on Current PRS Assessment" 
+                      color="primary" 
+                      size="small"
+                      variant="outlined"
+                    />
+                  </Box>
+                  
+                  <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+                    {/* Header Row */}
+                    <Box sx={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr 1fr' },
+                      bgcolor: 'primary.main',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      '& > div': { p: 2 }
+                    }}>
+                      <Box>Domain of Pediatric Readiness</Box>
+                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Your Points</Box>
+                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Total Possible</Box>
+                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Percentage</Box>
+                    </Box>
+                    
+                    {/* Data Rows */}
+                    {Object.entries(domainScores).map(([domain, data], index) => {
+                      const getColorForPercentage = (pct: number) => {
+                        if (pct >= 80) return 'success.main';
+                        if (pct >= 60) return 'warning.main';
+                        return 'error.main';
+                      };
                       
-                      {hasDomainData ? (
-                        <Box sx={{ 
-                          position: 'relative', 
-                          height: 450,
-                          pl: 6,
-                          pr: 2,
-                          pt: 2,
-                          pb: 8
-                        }}>
-                          {/* Chart area - bars will be positioned here */}
-                          <Box sx={{
-                            position: 'absolute',
-                            left: 50,
-                            right: 0,
-                            top: 2,
-                            bottom: 60,
-                            display: 'flex',
-                            alignItems: 'flex-end',
-                            justifyContent: 'space-between',
-                            gap: 1
-                          }}>
-                            {/* Y-axis labels - aligned with chart area */}
-                            <Box sx={{ 
-                              position: 'absolute', 
-                              left: -50, 
-                              top: 0, 
-                              bottom: 0,
-                              width: 50,
-                              display: 'flex',
-                              flexDirection: 'column',
-                              justifyContent: 'space-between',
-                              alignItems: 'flex-end',
-                              pr: 1
-                            }}>
-                              {(() => {
-                                const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
-                                const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
-                                const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
-                                return steps.map((value) => (
-                                  <Typography 
-                                    key={value} 
-                                    variant="caption" 
-                                    sx={{ 
-                                      fontSize: '0.75rem',
-                                      fontWeight: 500,
-                                      color: 'text.primary'
-                                    }}
-                                  >
-                                    {value}
-                                  </Typography>
-                                ));
-                              })()}
-                            </Box>
-                            
-                            {/* X-axis baseline - at exactly Y=0 (bottom of chart area) */}
-                            <Box
-                              sx={{
-                                position: 'absolute',
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                height: '2px',
-                                bgcolor: 'text.primary',
-                                zIndex: 10
-                              }}
-                            />
-                            
-                            {/* Grid lines */}
-                            {(() => {
-                              const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
-                              const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
-                              const chartAreaHeight = 450 - 60 - 60 - 2; // Total height minus padding
-                              const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
-                              return steps.map((value, idx) => {
-                                const percent = (value / maxValue) * 100;
-                                const bottomPosition = (percent / 100) * chartAreaHeight;
-                                return (
-                                  <Box
-                                    key={value}
-                                    sx={{
-                                      position: 'absolute',
-                                      left: 0,
-                                      right: 0,
-                                      bottom: `${bottomPosition}px`,
-                                      height: '1px',
-                                      bgcolor: idx === steps.length - 1 ? 'transparent' : 'divider',
-                                      opacity: 0.2,
-                                      zIndex: 0
-                                    }}
-                                  />
-                                );
-                              });
-                            })()}
-                            
-                            {/* Bars */}
-                            {Object.entries(domainStats).map(([domain, data], index) => {
-                              const maxCount = Math.max(...Object.values(domainStats).map(s => s.count), 1);
-                              const maxValue = Math.ceil(maxCount / 10) * 10 || 10;
-                              const chartAreaHeight = 450 - 60 - 60 - 2;
-                              const barHeight = maxValue > 0 ? ((data.count / maxValue) * chartAreaHeight) : 0;
-                              
-                              return (
-                                <Box 
-                                  key={domain}
-                                  sx={{ 
-                                    position: 'relative',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    flex: 1,
-                                    height: '100%',
-                                    justifyContent: 'flex-end'
-                                  }}
-                                >
-                                  {/* Bar - starts exactly at baseline (bottom: 0) */}
-                                  <Box
-                                    sx={{
-                                      width: '100%',
-                                      maxWidth: { xs: '50px', md: '70px' },
-                                      height: `${barHeight}px`,
-                                      minHeight: data.count > 0 ? '4px' : '0px',
-                                      bgcolor: 'primary.main',
-                                      borderRadius: '4px 4px 0 0',
-                                      position: 'relative',
-                                      transition: 'all 0.3s ease',
-                                      '&:hover': {
-                                        opacity: 0.8,
-                                        transform: 'translateY(-2px)'
-                                      },
-                                      zIndex: 5,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center'
-                                    }}
-                                  >
-                                    {/* Data label inside bar */}
-                                    {data.count > 0 && barHeight > 20 && (
-                                      <Typography 
-                                        variant="caption" 
-                                        sx={{ 
-                                          fontWeight: 600,
-                                          fontSize: '0.75rem',
-                                          color: 'white',
-                                          textShadow: '0 1px 2px rgba(0,0,0,0.3)'
-                                        }}
-                                      >
-                                        {data.count}
-                                      </Typography>
-                                    )}
-                                  </Box>
-                                  
-                                  {/* Data label above bar if bar is too small */}
-                                  {data.count > 0 && barHeight <= 20 && (
-                                    <Typography 
-                                      variant="caption" 
-                                      sx={{ 
-                                        position: 'absolute',
-                                        bottom: `${barHeight + 4}px`,
-                                        fontWeight: 600,
-                                        fontSize: '0.75rem',
-                                        color: 'text.primary',
-                                        whiteSpace: 'nowrap',
-                                        zIndex: 6
-                                      }}
-                                    >
-                                      {data.count}
-                                    </Typography>
-                                  )}
-                                </Box>
-                              );
-                            })}
+                      return (
+                        <Box 
+                          key={domain}
+                          sx={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr 1fr' },
+                            borderBottom: index < Object.keys(domainScores).length - 1 ? '1px solid' : 'none',
+                            borderColor: 'divider',
+                            '&:hover': { bgcolor: 'action.hover' },
+                            '& > div': { p: 2, display: 'flex', alignItems: 'center' }
+                          }}
+                        >
+                          <Box sx={{ fontWeight: 600 }}>{domain}</Box>
+                          <Box sx={{ justifyContent: 'center', display: { xs: 'none', md: 'flex' } }}>
+                            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                              {data.earned.toFixed(1)}
+                            </Typography>
                           </Box>
-                          
-                          {/* Domain labels - positioned below chart area */}
-                          <Box sx={{
-                            position: 'absolute',
-                            left: 50,
-                            right: 0,
-                            bottom: 0,
-                            height: 60,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            gap: 1,
-                            alignItems: 'flex-start',
-                            pt: 1
-                          }}>
-                            {Object.entries(domainStats).map(([domain, data]) => (
-                              <Typography 
-                                key={domain}
-                                variant="caption" 
+                          <Box sx={{ justifyContent: 'center', display: { xs: 'none', md: 'flex' } }}>
+                            <Typography variant="body2" color="text.secondary">
+                              {data.total}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ justifyContent: 'space-between', flexDirection: { xs: 'column', md: 'row' }, gap: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                              <LinearProgress 
+                                variant="determinate" 
+                                value={data.percentage} 
                                 sx={{ 
-                                  flex: 1,
-                                  textAlign: 'center',
-                                  fontSize: { xs: '0.65rem', md: '0.7rem' },
-                                  lineHeight: 1.3,
-                                  fontWeight: 500,
-                                  color: 'text.primary',
-                                  wordBreak: 'break-word',
-                                  px: 0.5
+                                  flex: 1, 
+                                  height: 8, 
+                                  borderRadius: 4,
+                                  bgcolor: 'grey.200',
+                                  '& .MuiLinearProgress-bar': {
+                                    bgcolor: getColorForPercentage(data.percentage)
+                                  }
+                                }}
+                              />
+                              <Typography 
+                                variant="body1" 
+                                sx={{ 
+                                  fontWeight: 'bold',
+                                  minWidth: '50px',
+                                  textAlign: 'right',
+                                  color: getColorForPercentage(data.percentage)
                                 }}
                               >
-                                {domain.split(' ').map((word, i) => (
-                                  <Box key={i} component="span" sx={{ display: 'block' }}>
-                                    {word}
-                                  </Box>
-                                ))}
+                                {data.percentage}%
                               </Typography>
-                            ))}
+                            </Box>
+                            {/* Mobile view */}
+                            <Box sx={{ display: { xs: 'flex', md: 'none' }, justifyContent: 'space-between', fontSize: '0.875rem', color: 'text.secondary' }}>
+                              <span>{data.earned.toFixed(1)} / {data.total} points</span>
+                            </Box>
                           </Box>
                         </Box>
-                      ) : (
-                        <Alert severity="info" sx={{ mt: 2 }}>
-                          No activities found in the mapped categories. Activities are automatically assigned to domains based on their category (e.g., "PECC role education" → Administration & Coordination).
-                        </Alert>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
+                      );
+                    })}
+                  </Paper>
+                  
+                  {!domainScores && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Complete your PRS assessment to see domain-specific performance breakdown.
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
 
-              {/* Activity Hours by Domain */}
-              <Grid container spacing={3} sx={{ mb: 4 }}>
-                <Grid item xs={12}>
-                  <Card>
-                    <CardContent>
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                          Activity Hours by Domain
+        {/* Domain Performance Bar Chart - Only show if PRS section is visible */}
+        {prsSectionVisible && domainScores && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                    Domain Performance Visualization
+                  </Typography>
+                  
+                  <Box sx={{ 
+                    position: 'relative', 
+                    height: 400, 
+                    display: 'flex', 
+                    alignItems: 'flex-end', 
+                    justifyContent: 'space-around', 
+                    px: { xs: 2, md: 4 },
+                    py: 3,
+                    borderLeft: '2px solid',
+                    borderBottom: '2px solid',
+                    borderColor: 'divider',
+                    minHeight: 350
+                  }}>
+                    {/* Y-axis labels */}
+                    <Box sx={{ 
+                      position: 'absolute', 
+                      left: -30, 
+                      top: 0, 
+                      bottom: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-end',
+                      pr: 1
+                    }}>
+                      {[100, 80, 60, 40, 20, 0].map((percent) => (
+                        <Typography key={percent} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                          {percent}%
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                          Total hours logged for activities in each pediatric readiness domain. Shows where you're spending your time across the 6 domains. Activities are automatically mapped to domains based on their category from your Activities page.
-                        </Typography>
-                      </Box>
+                      ))}
+                    </Box>
+                    
+                    {/* Grid lines */}
+                    {[100, 80, 60, 40, 20, 0].map((percent) => (
+                      <Box
+                        key={percent}
+                        sx={{
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          bottom: `${(percent / 100) * 100}%`,
+                          height: '1px',
+                          bgcolor: 'divider',
+                          opacity: 0.3,
+                          zIndex: 0
+                        }}
+                      />
+                    ))}
+                    
+                    {/* Chart bars */}
+                    {Object.entries(domainScores).map(([domain, data], index) => {
+                      const getColorForPercentage = (pct: number) => {
+                        if (pct >= 80) return '#4caf50';
+                        if (pct >= 60) return '#ff9800';
+                        return '#f44336';
+                      };
                       
-                      {hasDomainData ? (
-                        <Box sx={{ 
-                          position: 'relative', 
-                          height: 450,
-                          pl: 6,
-                          pr: 2,
-                          pt: 2,
-                          pb: 8
-                        }}>
-                          {/* Chart area - bars will be positioned here */}
-                          <Box sx={{
-                            position: 'absolute',
-                            left: 50,
-                            right: 0,
-                            top: 2,
-                            bottom: 60,
+                      const barHeight = `${data.percentage}%`;
+                      const maxLabelLength = Math.max(...Object.keys(domainScores).map(d => d.length));
+                      
+                      return (
+                        <Box 
+                          key={domain}
+                          sx={{ 
+                            position: 'relative',
                             display: 'flex',
-                            alignItems: 'flex-end',
-                            justifyContent: 'space-between',
-                            gap: 1
-                          }}>
-                            {/* Y-axis labels - aligned with chart area */}
-                            <Box sx={{ 
-                              position: 'absolute', 
-                              left: -50, 
-                              top: 0, 
-                              bottom: 0,
-                              width: 50,
-                              display: 'flex',
-                              flexDirection: 'column',
-                              justifyContent: 'space-between',
-                              alignItems: 'flex-end',
-                              pr: 1
-                            }}>
-                              {(() => {
-                                const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
-                                const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
-                                const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
-                                return steps.map((value) => (
-                                  <Typography 
-                                    key={value} 
-                                    variant="caption" 
-                                    sx={{ 
-                                      fontSize: '0.75rem',
-                                      fontWeight: 500,
-                                      color: 'text.primary'
-                                    }}
-                                  >
-                                    {value}h
-                                  </Typography>
-                                ));
-                              })()}
-                            </Box>
-                            
-                            {/* X-axis baseline - at exactly Y=0 (bottom of chart area) */}
-                            <Box
-                              sx={{
-                                position: 'absolute',
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                height: '2px',
-                                bgcolor: 'text.primary',
-                                zIndex: 10
-                              }}
-                            />
-                            
-                            {/* Grid lines */}
-                            {(() => {
-                              const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
-                              const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
-                              const chartAreaHeight = 450 - 60 - 60 - 2; // Total height minus padding
-                              const steps = [maxValue, Math.floor(maxValue * 0.8), Math.floor(maxValue * 0.6), Math.floor(maxValue * 0.4), Math.floor(maxValue * 0.2), 0];
-                              return steps.map((value, idx) => {
-                                const percent = (value / maxValue) * 100;
-                                const bottomPosition = (percent / 100) * chartAreaHeight;
-                                return (
-                                  <Box
-                                    key={value}
-                                    sx={{
-                                      position: 'absolute',
-                                      left: 0,
-                                      right: 0,
-                                      bottom: `${bottomPosition}px`,
-                                      height: '1px',
-                                      bgcolor: idx === steps.length - 1 ? 'transparent' : 'divider',
-                                      opacity: 0.2,
-                                      zIndex: 0
-                                    }}
-                                  />
-                                );
-                              });
-                            })()}
-                            
-                            {/* Bars */}
-                            {Object.entries(domainStats).map(([domain, data], index) => {
-                              const maxHours = Math.max(...Object.values(domainStats).map(s => s.hours), 1);
-                              const maxValue = Math.ceil(maxHours / 10) * 10 || 10;
-                              const chartAreaHeight = 450 - 60 - 60 - 2;
-                              const barHeight = maxValue > 0 ? ((data.hours / maxValue) * chartAreaHeight) : 0;
-                              
-                              return (
-                                <Box 
-                                  key={domain}
-                                  sx={{ 
-                                    position: 'relative',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    flex: 1,
-                                    height: '100%',
-                                    justifyContent: 'flex-end'
-                                  }}
-                                >
-                                  {/* Bar - starts exactly at baseline (bottom: 0) */}
-                                  <Box
-                                    sx={{
-                                      width: '100%',
-                                      maxWidth: { xs: '50px', md: '70px' },
-                                      height: `${barHeight}px`,
-                                      minHeight: data.hours > 0 ? '4px' : '0px',
-                                      bgcolor: 'secondary.main',
-                                      borderRadius: '4px 4px 0 0',
-                                      position: 'relative',
-                                      transition: 'all 0.3s ease',
-                                      '&:hover': {
-                                        opacity: 0.8,
-                                        transform: 'translateY(-2px)'
-                                      },
-                                      zIndex: 5,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center'
-                                    }}
-                                  >
-                                    {/* Data label inside bar */}
-                                    {data.hours > 0 && barHeight > 20 && (
-                                      <Typography 
-                                        variant="caption" 
-                                        sx={{ 
-                                          fontWeight: 600,
-                                          fontSize: '0.75rem',
-                                          color: 'white',
-                                          textShadow: '0 1px 2px rgba(0,0,0,0.3)'
-                                        }}
-                                      >
-                                        {data.hours.toFixed(1)}h
-                                      </Typography>
-                                    )}
-                                  </Box>
-                                  
-                                  {/* Data label above bar if bar is too small */}
-                                  {data.hours > 0 && barHeight <= 20 && (
-                                    <Typography 
-                                      variant="caption" 
-                                      sx={{ 
-                                        position: 'absolute',
-                                        bottom: `${barHeight + 4}px`,
-                                        fontWeight: 600,
-                                        fontSize: '0.75rem',
-                                        color: 'text.primary',
-                                        whiteSpace: 'nowrap',
-                                        zIndex: 6
-                                      }}
-                                    >
-                                      {data.hours.toFixed(1)}h
-                                    </Typography>
-                                  )}
-                                </Box>
-                              );
-                            })}
-                          </Box>
-                          
-                          {/* Domain labels - positioned below chart area */}
-                          <Box sx={{
-                            position: 'absolute',
-                            left: 50,
-                            right: 0,
-                            bottom: 0,
-                            height: 60,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            gap: 1,
-                            alignItems: 'flex-start',
-                            pt: 1
-                          }}>
-                            {Object.entries(domainStats).map(([domain, data]) => (
-                              <Typography 
-                                key={domain}
-                                variant="caption" 
-                                sx={{ 
-                                  flex: 1,
-                                  textAlign: 'center',
-                                  fontSize: { xs: '0.65rem', md: '0.7rem' },
-                                  lineHeight: 1.3,
-                                  fontWeight: 500,
-                                  color: 'text.primary',
-                                  wordBreak: 'break-word',
-                                  px: 0.5
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            flex: 1,
+                            maxWidth: { xs: '80px', md: '120px' },
+                            zIndex: 1
+                          }}
+                        >
+                          {/* Bar */}
+                          <Box
+                            sx={{
+                              width: { xs: '40px', md: '60px' },
+                              height: barHeight,
+                              minHeight: data.percentage > 0 ? '20px' : '4px',
+                              bgcolor: getColorForPercentage(data.percentage),
+                              borderRadius: '4px 4px 0 0',
+                              position: 'relative',
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                opacity: 0.8,
+                                transform: 'scaleY(1.05)',
+                                transformOrigin: 'bottom'
+                              },
+                              mb: 1
+                            }}
+                          >
+                            {/* Value label on bar */}
+                            {data.percentage > 5 && (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  top: -20,
+                                  left: '50%',
+                                  transform: 'translateX(-50%)',
+                                  bgcolor: 'background.paper',
+                                  px: 0.5,
+                                  borderRadius: 1,
+                                  border: '1px solid',
+                                  borderColor: 'divider'
                                 }}
                               >
-                                {domain.split(' ').map((word, i) => (
-                                  <Box key={i} component="span" sx={{ display: 'block' }}>
-                                    {word}
-                                  </Box>
-                                ))}
-                              </Typography>
-                            ))}
+                                <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>
+                                  {data.percentage}%
+                                </Typography>
+                              </Box>
+                            )}
                           </Box>
+                          
+                          {/* Domain label */}
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              textAlign: 'center',
+                              fontSize: { xs: '0.65rem', md: '0.75rem' },
+                              lineHeight: 1.2,
+                              mt: 0.5,
+                              fontWeight: 500,
+                              color: 'text.primary',
+                              wordBreak: 'break-word',
+                              maxWidth: '100%'
+                            }}
+                          >
+                            {domain.split(' ').map((word, i) => (
+                              <Box key={i} component="span" sx={{ display: 'block' }}>
+                                {word}
+                              </Box>
+                            ))}
+                          </Typography>
+                          
+                          {/* Points label */}
+                          <Typography 
+                            variant="caption" 
+                            color="text.secondary"
+                            sx={{ 
+                              fontSize: '0.65rem',
+                              mt: 0.5,
+                              textAlign: 'center'
+                            }}
+                          >
+                            {data.earned.toFixed(1)}/{data.total}
+                          </Typography>
                         </Box>
-                      ) : (
-                        <Alert severity="info" sx={{ mt: 2 }}>
-                          No activities found in the mapped categories. Activities are automatically assigned to domains based on their category (e.g., "PECC role education" → Administration & Coordination).
-                        </Alert>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-            </>
-          );
-        })()}
+                      );
+                    })}
+                  </Box>
+                  
+                  {/* Legend */}
+                  <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mt: 3, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 16, height: 16, bgcolor: '#4caf50', borderRadius: 1 }} />
+                      <Typography variant="caption">Excellent (≥80%)</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 16, height: 16, bgcolor: '#ff9800', borderRadius: 1 }} />
+                      <Typography variant="caption">Good (60-79%)</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 16, height: 16, bgcolor: '#f44336', borderRadius: 1 }} />
+                      <Typography variant="caption">Needs Improvement (&lt;60%)</Typography>
+                    </Box>
+                  </Box>
+                  
+                  {!domainScores && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Complete your PRS assessment to see domain performance visualization.
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
 
 
         </Container>

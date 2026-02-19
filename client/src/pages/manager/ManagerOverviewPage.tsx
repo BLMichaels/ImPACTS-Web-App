@@ -112,22 +112,22 @@ const ManagerOverviewPage: React.FC = () => {
 
       if (peccsError) throw peccsError;
 
-      // Build mentor data
-      const mentorData: MentorData[] = (mentorUsers || []).map(mentor => {
-        const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
-        const hospitals = mentorAssignments.map((a: any) => {
-          const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-          const peccCount = (peccs || []).filter(p => p.hospital_facility_id === hospital?.id).length;
-          return {
-            id: hospital?.id || '',
-            name: hospital?.name || 'Unknown',
-            peccCount
-          };
-        });
+      // Build mentor data (load activities from Supabase per mentor)
+      const mentorData: MentorData[] = await Promise.all(
+        (mentorUsers || []).map(async (mentor) => {
+          const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
+          const hospitals = mentorAssignments.map((a: any) => {
+            const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
+            const peccCount = (peccs || []).filter(p => p.hospital_facility_id === hospital?.id).length;
+            return {
+              id: hospital?.id || '',
+              name: hospital?.name || 'Unknown',
+              peccCount
+            };
+          });
 
-        // Load mentor activities (unified key)
-        const activities = getMentorActivitiesForUser(mentor.id);
-        const totalActivities = activities.length;
+          const activities = await getMentorActivitiesForUser(mentor.id);
+          const totalActivities = activities.length;
 
         // Calculate hours this month
         const now = new Date();
@@ -142,16 +142,17 @@ const ManagerOverviewPage: React.FC = () => {
           : null;
 
         return {
-          id: mentor.id,
-          firstName: mentor.first_name,
-          lastName: mentor.last_name,
-          email: mentor.email,
-          assignedHospitals: hospitals,
-          totalActivities,
-          hoursThisMonth,
-          lastActivity
-        };
-      });
+            id: mentor.id,
+            firstName: mentor.first_name,
+            lastName: mentor.last_name,
+            email: mentor.email,
+            assignedHospitals: hospitals,
+            totalActivities,
+            hoursThisMonth,
+            lastActivity
+          };
+        })
+      );
 
       setMentors(mentorData);
     } catch (err) {

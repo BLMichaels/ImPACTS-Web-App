@@ -54,6 +54,7 @@ interface MentorSnapshotRow {
   hoursThisMonth: number;
   hoursTotal: number;
   lastActivity: string | null;
+  activitiesThisMonthCount?: number;
 }
 
 interface ManagerOwnMentoring {
@@ -158,46 +159,50 @@ const ManagerSnapshotPage: React.FC = () => {
         setPeccProgressSum(progressSum);
         setPeccProgressCount(progressCount);
 
-        // Build mentor snapshot rows (use unified activity helper)
+        // Build mentor snapshot rows (load activities from Supabase per mentor)
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-        const mentorRows: MentorSnapshotRow[] = (mentorUsers || []).map((mentor: any) => {
-          const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
-          const assignedHospitals: AssignedHospital[] = mentorAssignments.map((a: any) => {
-            const h = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-            const hid = h?.id;
-            const peccCount = (peccs || []).filter((p: any) => p.hospital_facility_id === hid).length;
+        const mentorRows: MentorSnapshotRow[] = await Promise.all(
+          (mentorUsers || []).map(async (mentor: any) => {
+            const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
+            const assignedHospitals: AssignedHospital[] = mentorAssignments.map((a: any) => {
+              const h = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
+              const hid = h?.id;
+              const peccCount = (peccs || []).filter((p: any) => p.hospital_facility_id === hid).length;
+              return {
+                id: hid || '',
+                name: hospitalMap.get(hid) || h?.name || 'Unknown',
+                peccCount
+              };
+            }).filter((h: AssignedHospital) => h.id);
+
+            const activities = await getMentorActivitiesForUser(mentor.id);
+            const totalActivities = activities.length;
+            const hoursTotal = activities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
+            const hoursThisMonth = activities
+              .filter((a: any) => new Date(a.date) >= monthStart)
+              .reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
+            const activitiesThisMonthCount = activities.filter((a: any) => new Date(a.date) >= monthStart).length;
+            const lastActivity =
+              activities.length > 0
+                ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
+                : null;
+
             return {
-              id: hid || '',
-              name: hospitalMap.get(hid) || h?.name || 'Unknown',
-              peccCount
+              id: mentor.id,
+              firstName: mentor.first_name,
+              lastName: mentor.last_name,
+              email: mentor.email,
+              assignedHospitals,
+              totalActivities,
+              hoursThisMonth,
+              hoursTotal,
+              lastActivity,
+              activitiesThisMonthCount
             };
-          }).filter((h: AssignedHospital) => h.id);
-
-          const activities = getMentorActivitiesForUser(mentor.id);
-          const totalActivities = activities.length;
-          const hoursTotal = activities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
-          const hoursThisMonth = activities
-            .filter((a: any) => new Date(a.date) >= monthStart)
-            .reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
-          const lastActivity =
-            activities.length > 0
-              ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
-              : null;
-
-          return {
-            id: mentor.id,
-            firstName: mentor.first_name,
-            lastName: mentor.last_name,
-            email: mentor.email,
-            assignedHospitals,
-            totalActivities,
-            hoursThisMonth,
-            hoursTotal,
-            lastActivity
-          };
-        });
+          })
+        );
 
         setMentors(mentorRows);
 
@@ -214,7 +219,7 @@ const ManagerSnapshotPage: React.FC = () => {
           return h?.name || 'Unknown';
         });
 
-        const ownActivities = getMentorActivitiesForUser(userProfile.id);
+        const ownActivities = await getMentorActivitiesForUser(userProfile.id);
         const ownMonthStart = startOfMonth(now);
         const ownMonthEnd = endOfMonth(now);
         const ownHoursThisMonth = ownActivities
@@ -256,13 +261,7 @@ const ManagerSnapshotPage: React.FC = () => {
     [mentors]
   );
   const teamActivitiesThisMonth = useMemo(
-    () =>
-      mentors.reduce((sum, m) => {
-        const activities = getMentorActivitiesForUser(m.id);
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        return sum + activities.filter((a: any) => new Date(a.date) >= monthStart).length;
-      }, 0),
+    () => mentors.reduce((sum, m) => sum + (m.activitiesThisMonthCount ?? 0), 0),
     [mentors]
   );
   const teamTotalHours = useMemo(() => mentors.reduce((sum, m) => sum + m.hoursTotal, 0), [mentors]);

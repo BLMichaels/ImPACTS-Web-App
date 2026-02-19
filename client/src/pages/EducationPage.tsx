@@ -24,6 +24,8 @@ import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon } fr
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
+import { supabase } from '../supabase';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface EducationContent {
@@ -80,7 +82,6 @@ const formatUrl = (url: string): string => {
 const hasHtmlContent = (html: string | undefined): boolean =>
   Boolean(html && (html.replace(/<[^>]*>/g, '').trim().length > 0));
 
-const GAP_PLANS_STORAGE_KEY = (uid: string) => `gapPlans_${uid}`;
 export const GAP_PLANS_UPDATED_EVENT = 'impacts:gapPlansUpdated';
 
 interface EducationPageProps {
@@ -109,32 +110,32 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
     rank: '',
     attachments: []
   });
+  const [gapPlansList, setGapPlansList] = useState<GapPlan[]>([]);
   
-  // Load education content from localStorage
+  // Load education content from Supabase (app_settings) so it syncs across devices
   useEffect(() => {
-    const saved = localStorage.getItem('education_questions');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const contentMap: Record<string, EducationContent> = {};
-          parsed.forEach((eq: any) => {
-            contentMap[eq.questionId] = {
-              category: eq.category ?? '',
-              question: eq.question ?? '',
-              why: eq.why ?? '',
-              background: eq.background ?? '',
-              example: eq.example ?? '',
-              sustainability: eq.sustainability ?? '',
-              resources: eq.resources || []
-            };
-          });
-          setEducationContent(contentMap);
-        }
-      } catch (e) {
-        console.error('Error loading education content:', e);
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'education_questions').maybeSingle();
+      if (!mounted) return;
+      const parsed = (data as { value?: unknown } | null)?.value;
+      if (parsed != null && Array.isArray(parsed) && parsed.length > 0) {
+        const contentMap: Record<string, EducationContent> = {};
+        (parsed as any[]).forEach((eq: any) => {
+          contentMap[eq.questionId] = {
+            category: eq.category ?? '',
+            question: eq.question ?? '',
+            why: eq.why ?? '',
+            background: eq.background ?? '',
+            example: eq.example ?? '',
+            sustainability: eq.sustainability ?? '',
+            resources: eq.resources || []
+          };
+        });
+        setEducationContent(contentMap);
       }
-    }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
@@ -142,6 +143,23 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
     window.addEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
     return () => window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
   }, []);
+
+  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      let plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+      if (plans == null || !Array.isArray(plans)) {
+        await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
+          if (mounted) setGapPlansList(Array.isArray(raw) ? raw : []);
+        });
+        return;
+      }
+      if (mounted) setGapPlansList(plans);
+    })();
+    return () => { mounted = false; };
+  }, [userId, gapPlansRefreshKey]);
 
   const handleQuestionClick = (questionId: string) => {
     setSelectedQuestion(questionId);
@@ -173,8 +191,8 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
     setGapPlanDialogOpen(true);
   };
   
-  const handleSaveGapPlan = () => {
-    if (!currentUser?.uid || !gapPlanQuestionId) return;
+  const handleSaveGapPlan = async () => {
+    if (!userId || !gapPlanQuestionId) return;
 
     if (!gapPlanFormData.action?.trim() || !gapPlanFormData.owner?.trim()) {
       alert('Please fill in "What is the action/plan to resolve?" and "Owner(s) Name" fields.');
@@ -184,10 +202,6 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
     const content = educationContent[gapPlanQuestionId];
     const questionText = content?.question || `Question ${gapPlanQuestionId}`;
 
-    // Load existing gap plans
-    const existingGapPlans = JSON.parse(localStorage.getItem(`gapPlans_${currentUser.uid}`) || '[]');
-
-    // Create new gap plan
     const newGapPlan: GapPlan = {
       id: Date.now().toString(),
       questionId: gapPlanQuestionId,
@@ -203,10 +217,10 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
       rank: gapPlanFormData.rank || '',
       attachments: gapPlanFormData.attachments || []
     };
-    
-    // Save to localStorage
-    const updatedPlans = [...existingGapPlans, newGapPlan];
-    localStorage.setItem(`gapPlans_${currentUser.uid}`, JSON.stringify(updatedPlans));
+
+    const updatedPlans = [...gapPlansList, newGapPlan];
+    await setUserData(userId, 'gapPlans', updatedPlans);
+    setGapPlansList(updatedPlans);
 
     onGapPlanSaved?.();
     window.dispatchEvent(new CustomEvent(GAP_PLANS_UPDATED_EVENT));
@@ -216,18 +230,10 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
     navigate('/gap-plan');
   };
 
-  // All gap plans for current user (from Gaps & Education only; exclude activity-shaped data)
+  // All gap plans for current user (from Supabase; filtered to real gap plans only)
   const allGapPlans = useMemo(() => {
-    if (!currentUser?.uid) return [];
-    try {
-      const raw = localStorage.getItem(GAP_PLANS_STORAGE_KEY(currentUser.uid));
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter((p: any) => p && typeof p.questionId !== 'undefined' && typeof p.action === 'string');
-    } catch {
-      return [];
-    }
-  }, [currentUser?.uid, gapPlansRefreshKey]);
+    return gapPlansList.filter((p: any) => p && typeof p.questionId !== 'undefined' && typeof p.action === 'string');
+  }, [gapPlansList]);
 
   // Only show actual gap plans (have questionId + action), not activity-shaped items
   const gapPlansForSelectedQuestion = useMemo(() => {

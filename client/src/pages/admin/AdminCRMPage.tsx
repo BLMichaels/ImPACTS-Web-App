@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
+import { getUserData, setUserData } from '../../utils/userData';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { UserRole, PECC_TAB_KEYS } from '../../types/database';
@@ -244,6 +245,10 @@ const EXPORT_COLUMNS: { id: string; label: string }[] = [
 const CRM_PREFS_KEY = 'adminCrm_prefs';
 const CRM_CUSTOM_FIELD_DEFS_KEY = 'adminCrm_customFieldDefinitions';
 
+// user_data keys for CRM prefs (replaces localStorage)
+const USER_DATA_CRM_PREFS = 'crm_prefs';
+const USER_DATA_CRM_CUSTOM_FIELDS = 'crm_custom_field_defs';
+
 export type CustomFieldType = 'checkbox' | 'radio' | 'date' | 'numeric' | 'short_answer' | 'paragraph' | 'dropdown' | 'dropdown_csv';
 type CustomFieldDefinition = {
   id: string;
@@ -350,28 +355,8 @@ const AdminCRMPage: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [usersLoadError, setUsersLoadError] = useState<string | null>(null);
-  const [pageSize, setPageSize] = useState<PageSize>(() => {
-    try {
-      const s = localStorage.getItem(CRM_PREFS_KEY);
-      if (s) {
-        const p = JSON.parse(s);
-        const v = p.pageSize as unknown;
-        if (v === 'all') return 'all';
-        if (typeof v === 'number' && [25, 50, 100, 250, 1000].includes(v)) return v as PageSize;
-      }
-    } catch {}
-    return 25;
-  });
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
-    try {
-      const s = localStorage.getItem(CRM_PREFS_KEY);
-      if (s) {
-        const p = JSON.parse(s);
-        if (p.viewMode === 'grid' || p.viewMode === 'table') return p.viewMode;
-      }
-    } catch {}
-    return 'table';
-  });
+  const [pageSize, setPageSize] = useState<PageSize>(25);
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [sortField, setSortField] = useState<SortField>('lastName');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -389,34 +374,8 @@ const AdminCRMPage: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
   const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
-    try {
-      const s = localStorage.getItem(CRM_PREFS_KEY);
-      if (s) {
-        const p = JSON.parse(s);
-        if (p.visibleColumns && Array.isArray(p.visibleColumns)) {
-          const valid = new Set((p.visibleColumns as string[]).filter(id => COLUMNS.some(c => c.id === id)));
-          if (valid.size > 0) return valid;
-        }
-      }
-    } catch {}
-    return new Set(COLUMNS.filter(c => c.defaultVisible).map(c => c.id));
-  });
-  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
-    try {
-      const s = localStorage.getItem(CRM_PREFS_KEY);
-      if (s) {
-        const p = JSON.parse(s);
-        const allIds = COLUMNS.map(c => c.id) as string[];
-        if (p.columnOrder && Array.isArray(p.columnOrder) && p.columnOrder.length > 0) {
-          const valid = (p.columnOrder as string[]).filter(id => allIds.includes(id));
-          const missing = allIds.filter((id: string) => !valid.includes(id));
-          if (valid.length > 0) return [...valid, ...missing];
-        }
-      }
-    } catch {}
-    return COLUMNS.map(c => c.id) as string[];
-  });
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => new Set(COLUMNS.filter(c => c.defaultVisible).map(c => c.id)));
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => COLUMNS.map(c => c.id) as string[]);
   const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [regionFilter, setRegionFilter] = useState<string[]>([]);
@@ -463,33 +422,7 @@ const AdminCRMPage: React.FC = () => {
     is_admin: false
   });
 
-  const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>(() => {
-    try {
-      const s = localStorage.getItem(CRM_CUSTOM_FIELD_DEFS_KEY);
-      if (s) {
-        const parsed = JSON.parse(s) as unknown[];
-        if (Array.isArray(parsed)) {
-          return parsed.map((x: unknown) => {
-            const o = x as Record<string, unknown>;
-            if (!o || typeof o !== 'object' || !('id' in o) || !('label' in o)) return null;
-            const def: CustomFieldDefinition = {
-              id: String(o.id),
-              label: String(o.label),
-              applicableTypes: Array.isArray(o.applicableTypes) && o.applicableTypes.length
-                ? (o.applicableTypes as ContactType[]).filter(t => CONTACT_TYPES.includes(t))
-                : (['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'] as ContactType[]),
-              fieldType: (o.fieldType && ['checkbox', 'radio', 'date', 'numeric', 'short_answer', 'paragraph', 'dropdown', 'dropdown_csv'].includes(String(o.fieldType)))
-                ? o.fieldType as CustomFieldType
-                : 'short_answer',
-              options: Array.isArray(o.options) ? (o.options as string[]).filter(Boolean) : undefined
-            };
-            return def;
-          }).filter((d): d is CustomFieldDefinition => d !== null);
-        }
-      }
-    } catch {}
-    return [];
-  });
+  const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldsDialogOpen, setCustomFieldsDialogOpen] = useState(false);
   const [editingDefId, setEditingDefId] = useState<string | null>(null);
   const [newDefLabel, setNewDefLabel] = useState('');
@@ -720,16 +653,103 @@ const AdminCRMPage: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
+  // Load CRM prefs and custom field defs from user_data (and migrate from localStorage once)
   useEffect(() => {
-    try {
-      localStorage.setItem(CRM_PREFS_KEY, JSON.stringify({
+    const uid = currentUser?.id;
+    if (!uid) return;
+    let mounted = true;
+    (async () => {
+      const [prefs, customDefs] = await Promise.all([
+        getUserData<{ viewMode?: string; visibleColumns?: string[]; pageSize?: number | 'all'; columnOrder?: string[] }>(uid, USER_DATA_CRM_PREFS),
+        getUserData<CustomFieldDefinition[]>(uid, USER_DATA_CRM_CUSTOM_FIELDS)
+      ]);
+      if (!mounted) return;
+      if (prefs && typeof prefs === 'object') {
+        if (prefs.pageSize === 'all' || (typeof prefs.pageSize === 'number' && [25, 50, 100, 250, 1000].includes(prefs.pageSize))) setPageSize(prefs.pageSize as PageSize);
+        if (prefs.viewMode === 'grid' || prefs.viewMode === 'table') setViewMode(prefs.viewMode);
+        if (prefs.visibleColumns && Array.isArray(prefs.visibleColumns)) {
+          const valid = new Set(prefs.visibleColumns.filter(id => COLUMNS.some(c => c.id === id)));
+          if (valid.size > 0) setVisibleColumns(valid);
+        }
+        if (prefs.columnOrder && Array.isArray(prefs.columnOrder) && prefs.columnOrder.length > 0) {
+          const allIds = COLUMNS.map(c => c.id) as string[];
+          const valid = prefs.columnOrder.filter(id => allIds.includes(id));
+          const missing = allIds.filter((id: string) => !valid.includes(id));
+          if (valid.length > 0) setColumnOrder([...valid, ...missing]);
+        }
+      } else {
+        try {
+          const s = localStorage.getItem(CRM_PREFS_KEY);
+          if (s) {
+            const p = JSON.parse(s);
+            await setUserData(uid, USER_DATA_CRM_PREFS, p);
+            if (p.pageSize === 'all' || (typeof p.pageSize === 'number' && [25, 50, 100, 250, 1000].includes(p.pageSize))) setPageSize(p.pageSize as PageSize);
+            if (p.viewMode === 'grid' || p.viewMode === 'table') setViewMode(p.viewMode);
+            if (p.visibleColumns && Array.isArray(p.visibleColumns)) {
+              const valid = new Set<string>(p.visibleColumns.filter((id: string) => COLUMNS.some(c => c.id === id)));
+              if (valid.size > 0) setVisibleColumns(valid);
+            }
+            if (p.columnOrder && Array.isArray(p.columnOrder) && p.columnOrder.length > 0) {
+              const allIds = COLUMNS.map(c => c.id) as string[];
+              const valid = (p.columnOrder as string[]).filter(id => allIds.includes(id));
+              const missing = allIds.filter((id: string) => !valid.includes(id));
+              if (valid.length > 0) setColumnOrder([...valid, ...missing]);
+            }
+            localStorage.removeItem(CRM_PREFS_KEY);
+          }
+        } catch {}
+      }
+      if (customDefs != null && Array.isArray(customDefs) && customDefs.length > 0) {
+        const mapped = customDefs.map((x: unknown) => {
+          const o = x as Record<string, unknown>;
+          if (!o || typeof o !== 'object' || !('id' in o) || !('label' in o)) return null;
+          return {
+            id: String(o.id),
+            label: String(o.label),
+            applicableTypes: (Array.isArray(o.applicableTypes) ? o.applicableTypes as ContactType[] : ['hospital']).filter((t): t is ContactType => CONTACT_TYPES.includes(t as ContactType)),
+            fieldType: (o.fieldType && ['checkbox', 'radio', 'date', 'numeric', 'short_answer', 'paragraph', 'dropdown', 'dropdown_csv'].includes(String(o.fieldType)) ? o.fieldType : 'short_answer') as CustomFieldType,
+            options: Array.isArray(o.options) ? (o.options as string[]).filter(Boolean) : undefined,
+            allowMultiple: Boolean(o.allowMultiple)
+          } as CustomFieldDefinition;
+        }).filter((d): d is CustomFieldDefinition => d !== null);
+        if (mapped.length > 0) setCustomFieldDefs(mapped);
+      } else {
+        try {
+          const s = localStorage.getItem(CRM_CUSTOM_FIELD_DEFS_KEY);
+          if (s) {
+            const parsed = JSON.parse(s) as unknown[];
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const mapped = parsed.map((x: unknown) => {
+                const o = x as Record<string, unknown>;
+                if (!o || typeof o !== 'object' || !('id' in o) || !('label' in o)) return null;
+                return {
+                  id: String(o.id),
+                  label: String(o.label),
+                  applicableTypes: (Array.isArray(o.applicableTypes) ? o.applicableTypes as ContactType[] : ['hospital']).filter((t): t is ContactType => CONTACT_TYPES.includes(t as ContactType)),
+                  fieldType: (o.fieldType && ['checkbox', 'radio', 'date', 'numeric', 'short_answer', 'paragraph', 'dropdown', 'dropdown_csv'].includes(String(o.fieldType)) ? o.fieldType : 'short_answer') as CustomFieldType,
+                  options: Array.isArray(o.options) ? (o.options as string[]).filter(Boolean) : undefined,
+                  allowMultiple: Boolean(o.allowMultiple)
+                } as CustomFieldDefinition;
+              }).filter((d): d is CustomFieldDefinition => d !== null);
+              if (mapped.length > 0) { setCustomFieldDefs(mapped); await setUserData(uid, USER_DATA_CRM_CUSTOM_FIELDS, mapped); localStorage.removeItem(CRM_CUSTOM_FIELD_DEFS_KEY); }
+            }
+          }
+        } catch {}
+      }
+    })();
+    return () => { mounted = false; };
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      setUserData(currentUser.id, USER_DATA_CRM_PREFS, {
         viewMode,
         visibleColumns: Array.from(visibleColumns),
         pageSize,
         columnOrder
-      }));
-    } catch {}
-  }, [viewMode, visibleColumns, pageSize, columnOrder]);
+      });
+    }
+  }, [currentUser?.id, viewMode, visibleColumns, pageSize, columnOrder]);
 
   // Load custom field definitions from Supabase (shared for all admins); fallback to localStorage if table missing
   useEffect(() => {
@@ -780,10 +800,8 @@ const AdminCRMPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(CRM_CUSTOM_FIELD_DEFS_KEY, JSON.stringify(customFieldDefs));
-    } catch {}
-  }, [customFieldDefs]);
+    if (currentUser?.id) setUserData(currentUser.id, USER_DATA_CRM_CUSTOM_FIELDS, customFieldDefs);
+  }, [currentUser?.id, customFieldDefs]);
 
   useEffect(() => {
     if (!canSeeReminders || !currentUser?.id) {

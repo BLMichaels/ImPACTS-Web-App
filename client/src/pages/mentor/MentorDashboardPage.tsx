@@ -33,6 +33,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { format } from 'date-fns';
 import { supabase } from '../../supabase';
+import { getUserData } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import DashboardResources from '../../components/DashboardResources';
 
@@ -121,13 +122,14 @@ const MentorDashboardPage: React.FC = () => {
       return;
     }
 
-    const savedActivitiesRaw = localStorage.getItem(`mentorActivities_${uid}`);
-    const savedHospitalsRaw = localStorage.getItem(`mentorHospitals_${uid}`);
-    const savedContactsRaw = localStorage.getItem(`mentorContacts_${uid}`);
-
-    const activities: StoredActivity[] = savedActivitiesRaw ? JSON.parse(savedActivitiesRaw) : [];
-    const hospitals: StoredHospital[] = savedHospitalsRaw ? JSON.parse(savedHospitalsRaw) : [];
-    const contacts: StoredContact[] = savedContactsRaw ? JSON.parse(savedContactsRaw) : [];
+    const [activitiesVal, hospitalsVal, contactsVal] = await Promise.all([
+      getUserData<any[]>(uid, 'mentorActivities'),
+      getUserData<any[]>(uid, 'mentorHospitals'),
+      getUserData<any[]>(uid, 'mentorContacts')
+    ]);
+    const activities: StoredActivity[] = Array.isArray(activitiesVal) ? activitiesVal : [];
+    const hospitals: StoredHospital[] = Array.isArray(hospitalsVal) ? hospitalsVal : [];
+    const contacts: StoredContact[] = Array.isArray(contactsVal) ? contactsVal : [];
 
     const workingHospitals = hospitals.filter((h: StoredHospital) => h.isWorkingWith !== false);
 

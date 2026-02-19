@@ -24,19 +24,15 @@ const EducationRichTextEditor: React.FC<EducationRichTextEditorProps> = ({
   label
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
-  const isInternalChangeRef = useRef(false);
 
   useEffect(() => {
-    // Only update if the change came from outside (prop change, not user input)
-    if (editorRef.current && !isInternalChangeRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value || '';
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value;
     }
-    isInternalChangeRef.current = false;
   }, [value]);
 
   const handleInput = () => {
     if (editorRef.current) {
-      isInternalChangeRef.current = true;
       onChange(editorRef.current.innerHTML);
     }
   };
@@ -50,14 +46,14 @@ const EducationRichTextEditor: React.FC<EducationRichTextEditorProps> = ({
   const handleBold = () => execCommand('bold');
   const handleItalic = () => execCommand('italic');
   const handleUnderline = () => execCommand('underline');
-  
+
   const handleLink = () => {
     const url = prompt('Enter URL:');
     if (url) {
       execCommand('createLink', url);
     }
   };
-  
+
   const handleBulletList = () => {
     execCommand('insertUnorderedList');
   };
@@ -71,11 +67,11 @@ const EducationRichTextEditor: React.FC<EducationRichTextEditorProps> = ({
       )}
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
         {/* Toolbar */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 0.5, 
-          p: 0.5, 
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          p: 0.5,
           bgcolor: 'grey.50',
           borderBottom: 1,
           borderColor: 'divider'
@@ -112,6 +108,7 @@ const EducationRichTextEditor: React.FC<EducationRichTextEditorProps> = ({
           ref={editorRef}
           contentEditable
           onInput={handleInput}
+          dangerouslySetInnerHTML={{ __html: value }}
           style={{
             minHeight: `${minHeight}px`,
             padding: '12px',

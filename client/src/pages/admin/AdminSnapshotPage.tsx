@@ -43,7 +43,19 @@ interface UsageEvent {
   role: string;
   event_type: string;
   path: string;
-  metadata: { time_spent_seconds?: number; target?: string };
+  metadata: {
+    time_spent_seconds?: number;
+    target?: string;
+    url?: string;
+    label?: string;
+    link_context?: string;
+    action?: string;
+    checklist_id?: string;
+    item_id?: string;
+    activity_id?: string;
+    name?: string;
+    [key: string]: unknown;
+  };
   created_at: string;
 }
 
@@ -105,6 +117,9 @@ export default function AdminSnapshotPage() {
     const logins = events.filter((e) => e.event_type === 'login');
     const pageViews = events.filter((e) => e.event_type === 'page_view');
     const clicks = events.filter((e) => e.event_type === 'click');
+    const linkClicks = events.filter((e) => e.event_type === 'link_click');
+    const checklistEvents = events.filter((e) => e.event_type === 'checklist');
+    const activityEvents = events.filter((e) => e.event_type === 'activity');
 
     const uniqueLoginsByRole: Record<string, Set<string>> = {};
     logins.forEach((e) => {
@@ -139,6 +154,24 @@ export default function AdminSnapshotPage() {
       clickCountByRole[e.role] = (clickCountByRole[e.role] || 0) + 1;
     });
 
+    const linkClickCountByLabel: Record<string, number> = {};
+    linkClicks.forEach((e) => {
+      const key = (e.metadata?.label as string) || (e.metadata?.url as string) || e.path || 'unknown';
+      linkClickCountByLabel[key] = (linkClickCountByLabel[key] || 0) + 1;
+    });
+
+    const checklistCountByAction: Record<string, number> = {};
+    checklistEvents.forEach((e) => {
+      const action = (e.metadata?.action as string) || 'unknown';
+      checklistCountByAction[action] = (checklistCountByAction[action] || 0) + 1;
+    });
+
+    const activityCountByAction: Record<string, number> = {};
+    activityEvents.forEach((e) => {
+      const action = (e.metadata?.action as string) || 'unknown';
+      activityCountByAction[action] = (activityCountByAction[action] || 0) + 1;
+    });
+
     const mostUsedPages = Object.entries(pageCountByPath)
       .map(([path, count]) => ({ path, count }))
       .sort((a, b) => b.count - a.count)
@@ -155,6 +188,21 @@ export default function AdminSnapshotPage() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 15);
 
+    const topLinkClicks = Object.entries(linkClickCountByLabel)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
+
+    const topChecklistActions = Object.entries(checklistCountByAction)
+      .map(([action, count]) => ({ action, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    const topActivityActions = Object.entries(activityCountByAction)
+      .map(([action, count]) => ({ action, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
     return {
       totalLogins: logins.length,
       uniqueLoginsByRole,
@@ -164,6 +212,12 @@ export default function AdminSnapshotPage() {
       totalPageViews: pageViews.length,
       totalClicks: clicks.length,
       clickCountByRole,
+      totalLinkClicks: linkClicks.length,
+      topLinkClicks,
+      totalChecklistEvents: checklistEvents.length,
+      topChecklistActions,
+      totalActivityEvents: activityEvents.length,
+      topActivityActions,
     };
   }, [events]);
 
@@ -375,7 +429,7 @@ export default function AdminSnapshotPage() {
                 <CardContent>
                   <Typography variant="subtitle1" fontWeight={600} gutterBottom>Top clickthroughs (tracked actions)</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Buttons/links that use trackClick() appear here. Add more over time to see which actions are used most.
+                    Buttons/links that use trackClick() appear here.
                   </Typography>
                   <TableContainer>
                     <Table size="small">
@@ -392,6 +446,102 @@ export default function AdminSnapshotPage() {
                           metrics.topClicks.map(({ target, count }) => (
                             <TableRow key={target}>
                               <TableCell>{target}</TableCell>
+                              <TableCell align="right">{count}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Link clicks (nav and in-app links) */}
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Link clicks</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Total: {metrics.totalLinkClicks}</Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Link / label</TableCell>
+                          <TableCell align="right">Clicks</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {metrics.topLinkClicks.length === 0 ? (
+                          <TableRow><TableCell colSpan={2} color="text.secondary">No link clicks in period</TableCell></TableRow>
+                        ) : (
+                          metrics.topLinkClicks.map(({ label, count }) => (
+                            <TableRow key={label}>
+                              <TableCell>{label}</TableCell>
+                              <TableCell align="right">{count}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Checklist actions */}
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Checklist actions</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Total: {metrics.totalChecklistEvents}</Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Action</TableCell>
+                          <TableCell align="right">Count</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {metrics.topChecklistActions.length === 0 ? (
+                          <TableRow><TableCell colSpan={2} color="text.secondary">No checklist events in period</TableCell></TableRow>
+                        ) : (
+                          metrics.topChecklistActions.map(({ action, count }) => (
+                            <TableRow key={action}>
+                              <TableCell>{action}</TableCell>
+                              <TableCell align="right">{count}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Activity actions */}
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Activity actions</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Total: {metrics.totalActivityEvents}</Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Action</TableCell>
+                          <TableCell align="right">Count</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {metrics.topActivityActions.length === 0 ? (
+                          <TableRow><TableCell colSpan={2} color="text.secondary">No activity events in period</TableCell></TableRow>
+                        ) : (
+                          metrics.topActivityActions.map(({ action, count }) => (
+                            <TableRow key={action}>
+                              <TableCell>{action}</TableCell>
                               <TableCell align="right">{count}</TableCell>
                             </TableRow>
                           ))

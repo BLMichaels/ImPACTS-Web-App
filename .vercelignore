@@ -1,0 +1,19 @@
+# Only need client for the build; ignore the rest to stay under file limit
+node_modules
+**/node_modules
+server
+functions
+scripts
+*.sql
+*.md
+.git
+.vercel
+.env
+.env.*
+!.env.example
+build
+dist
+*.log
+.DS_Store
+coverage
+.cursor

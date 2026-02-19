@@ -44,6 +44,8 @@ import { format, parseISO, getYear, getMonth } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
+import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+import { getUserData } from '../../utils/userData';
 
 // Constants (same as mentor page)
 const HOURLY_RATE = 30;
@@ -169,36 +171,64 @@ const ManagerWagesExpensesPage: React.FC = () => {
     loadMentors();
   }, [currentUser]);
 
-  // Load selected mentor's wages data
+  // Load selected mentor's wages data from Supabase (user_data)
   useEffect(() => {
-    if (selectedMentor?.id) {
-      const saved = localStorage.getItem(`mentorWages_${selectedMentor.id}`);
-      if (saved) {
-        try {
-          const data = JSON.parse(saved);
-          setMentorWagesData(data);
-          setReceiptsLink(data.receiptsFolderLink || '');
-        } catch {
-          setMentorWagesData({ monthlyData: [], expenses: [], stipends: {} });
-        }
+    if (!selectedMentor?.id) return;
+    let mounted = true;
+    (async () => {
+      const { getUserData } = await import('../../utils/userData');
+      const data = await getUserData<MentorWagesData>(selectedMentor.id, 'mentorWages');
+      if (!mounted) return;
+      if (data) {
+        setMentorWagesData(data);
+        setReceiptsLink(data.receiptsFolderLink || '');
       } else {
         setMentorWagesData({ monthlyData: [], expenses: [], stipends: {} });
       }
-    }
-  }, [selectedMentor]);
+    })();
+    return () => { mounted = false; };
+  }, [selectedMentor?.id]);
 
   // Load activities for selected mentor to calculate hours
   const [activities, setActivities] = useState<any[]>([]);
   useEffect(() => {
-    if (selectedMentor?.id) {
-      const saved = localStorage.getItem(`mentorActivities_${selectedMentor.id}`);
-      if (saved) {
-        setActivities(JSON.parse(saved));
-      } else {
-        setActivities([]);
-      }
+    if (!selectedMentor?.id) {
+      setActivities([]);
+      return;
     }
-  }, [selectedMentor]);
+    let mounted = true;
+    getMentorActivitiesForUser(selectedMentor.id).then((list) => {
+      if (mounted) setActivities(list);
+    });
+    return () => { mounted = false; };
+  }, [selectedMentor?.id]);
+
+  // Per-mentor summary (wages + activities) for the table - load from user_data when mentors list changes
+  const [mentorSummaryMap, setMentorSummaryMap] = useState<Record<string, { wages: MentorWagesData; activities: any[] }>>({});
+  useEffect(() => {
+    if (mentors.length === 0) {
+      setMentorSummaryMap({});
+      return;
+    }
+    let mounted = true;
+    (async () => {
+      const map: Record<string, { wages: MentorWagesData; activities: any[] }> = {};
+      await Promise.all(
+        mentors.map(async (mentor) => {
+          const [wages, activitiesList] = await Promise.all([
+            getUserData<MentorWagesData>(mentor.id, 'mentorWages'),
+            getMentorActivitiesForUser(mentor.id)
+          ]);
+          map[mentor.id] = {
+            wages: wages || { monthlyData: [], expenses: [], stipends: {} },
+            activities: activitiesList
+          };
+        })
+      );
+      if (mounted) setMentorSummaryMap(map);
+    })();
+    return () => { mounted = false; };
+  }, [mentors]);
 
   // Calculate monthly hours
   const calculateMonthlyHours = (month: number, year: number): number => {
@@ -259,10 +289,11 @@ const ManagerWagesExpensesPage: React.FC = () => {
     return months;
   }, [activities, mentorWagesData, currentYear]);
 
-  // Save mentor wages data
-  const saveMentorWagesData = (data: MentorWagesData) => {
+  // Save mentor wages data to Supabase (user_data)
+  const saveMentorWagesData = async (data: MentorWagesData) => {
     if (selectedMentor?.id) {
-      localStorage.setItem(`mentorWages_${selectedMentor.id}`, JSON.stringify(data));
+      const { setUserData } = await import('../../utils/userData');
+      await setUserData(selectedMentor.id, 'mentorWages', data);
       setMentorWagesData(data);
     }
   };
@@ -383,11 +414,9 @@ const ManagerWagesExpensesPage: React.FC = () => {
               </TableHead>
               <TableBody>
                 {mentors.map(mentor => {
-                  // Load each mentor's data for summary
-                  const saved = localStorage.getItem(`mentorWages_${mentor.id}`);
-                  const mentorData: MentorWagesData = saved ? JSON.parse(saved) : { monthlyData: [], expenses: [], stipends: {} };
-                  const mentorActivities = JSON.parse(localStorage.getItem(`mentorActivities_${mentor.id}`) || '[]');
-                  
+                  const summary = mentorSummaryMap[mentor.id];
+                  const mentorData: MentorWagesData = summary?.wages ?? { monthlyData: [], expenses: [], stipends: {} };
+                  const mentorActivities = summary?.activities ?? [];
                   const totalHours = mentorActivities.reduce((sum: number, a: any) => {
                     const activityDate = parseISO(a.date);
                     return getYear(activityDate) === currentYear ? sum + (a.hours || 0) : sum;

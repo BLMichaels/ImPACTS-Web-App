@@ -54,6 +54,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO, isValid } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
+import { getUserData, setUserData } from '../../utils/userData';
 
 /** Safely format a date; returns null if the date is invalid */
 const safeFormatDate = (d: Date | null | undefined, fmt: string): string | null => {
@@ -331,62 +332,60 @@ const AdminProjectPipelinePage: React.FC = () => {
   const [sortField, setSortField] = useState<string>('order');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  // Load data
+  // Load data from user_data
   useEffect(() => {
-    if (currentUser?.id) {
-      const loadData = (key: string) => {
-        const saved = localStorage.getItem(`${key}_${currentUser.id}`);
-        if (saved) {
-          try { return JSON.parse(saved); } catch { return []; }
-        }
-        return [];
-      };
-      setSimboxCases(loadData(PIPELINE_STORAGE_KEY));
-      setScholarshipItems(loadData(PIPELINE_SCHOLARSHIP_KEY));
-      setResearchDisseminationItems(loadData(PIPELINE_RESEARCH_DISSEMINATION_KEY));
-      setAbstractsItems(loadData(PIPELINE_ABSTRACTS_KEY));
+    const uid = currentUser?.id;
+    if (!uid) return;
+    let mounted = true;
+    (async () => {
+      const [simbox, scholarship, research, abstracts, team, coAuthors] = await Promise.all([
+        getUserData<SimBoxCase[]>(uid, PIPELINE_STORAGE_KEY),
+        getUserData<ScholarshipPublication[]>(uid, PIPELINE_SCHOLARSHIP_KEY),
+        getUserData<ResearchDisseminationIdea[]>(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY),
+        getUserData<AbstractsPresentation[]>(uid, PIPELINE_ABSTRACTS_KEY),
+        getUserData<string[]>(uid, PIPELINE_TEAM_MEMBERS_KEY),
+        getUserData<string[]>(uid, PIPELINE_COAUTHORS_KEY)
+      ]);
+      if (!mounted) return;
+      if (Array.isArray(simbox)) setSimboxCases(simbox);
+      else try { const s = localStorage.getItem(`${PIPELINE_STORAGE_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setSimboxCases(p); setUserData(uid, PIPELINE_STORAGE_KEY, p); localStorage.removeItem(`${PIPELINE_STORAGE_KEY}_${uid}`); } } } catch {}
+      if (Array.isArray(scholarship)) setScholarshipItems(scholarship);
+      else try { const s = localStorage.getItem(`${PIPELINE_SCHOLARSHIP_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setScholarshipItems(p); setUserData(uid, PIPELINE_SCHOLARSHIP_KEY, p); localStorage.removeItem(`${PIPELINE_SCHOLARSHIP_KEY}_${uid}`); } } } catch {}
+      if (Array.isArray(research)) setResearchDisseminationItems(research);
+      else try { const s = localStorage.getItem(`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setResearchDisseminationItems(p); setUserData(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY, p); localStorage.removeItem(`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${uid}`); } } } catch {}
+      if (Array.isArray(abstracts)) setAbstractsItems(abstracts);
+      else try { const s = localStorage.getItem(`${PIPELINE_ABSTRACTS_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setAbstractsItems(p); setUserData(uid, PIPELINE_ABSTRACTS_KEY, p); localStorage.removeItem(`${PIPELINE_ABSTRACTS_KEY}_${uid}`); } } } catch {}
+      if (Array.isArray(team)) setTeamMembersList(team);
+      else try { const s = localStorage.getItem(`${PIPELINE_TEAM_MEMBERS_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setTeamMembersList(p); setUserData(uid, PIPELINE_TEAM_MEMBERS_KEY, p); localStorage.removeItem(`${PIPELINE_TEAM_MEMBERS_KEY}_${uid}`); } } } catch {}
+      if (Array.isArray(coAuthors)) setCoAuthorsList(coAuthors);
+      else try { const s = localStorage.getItem(`${PIPELINE_COAUTHORS_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setCoAuthorsList(p); setUserData(uid, PIPELINE_COAUTHORS_KEY, p); localStorage.removeItem(`${PIPELINE_COAUTHORS_KEY}_${uid}`); } } } catch {}
+    })();
+    return () => { mounted = false; };
+  }, [currentUser?.id]);
 
-      // Load team members lists
-      const savedTeam = localStorage.getItem(`${PIPELINE_TEAM_MEMBERS_KEY}_${currentUser.id}`);
-      if (savedTeam) {
-        try { setTeamMembersList(JSON.parse(savedTeam)); } catch { /* use default */ }
-      }
-      const savedCoAuthors = localStorage.getItem(`${PIPELINE_COAUTHORS_KEY}_${currentUser.id}`);
-      if (savedCoAuthors) {
-        try { setCoAuthorsList(JSON.parse(savedCoAuthors)); } catch { /* use default */ }
-      }
-    }
-  }, [currentUser]);
-
-  // Save functions
   const saveSimboxCases = (cases: SimBoxCase[]) => {
     setSimboxCases(cases);
-    if (currentUser?.id) localStorage.setItem(`${PIPELINE_STORAGE_KEY}_${currentUser.id}`, JSON.stringify(cases));
+    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_STORAGE_KEY, cases);
   };
-
   const saveScholarship = (items: ScholarshipPublication[]) => {
     setScholarshipItems(items);
-    if (currentUser?.id) localStorage.setItem(`${PIPELINE_SCHOLARSHIP_KEY}_${currentUser.id}`, JSON.stringify(items));
+    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_SCHOLARSHIP_KEY, items);
   };
-
   const saveResearchDissemination = (items: ResearchDisseminationIdea[]) => {
     setResearchDisseminationItems(items);
-    if (currentUser?.id) localStorage.setItem(`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${currentUser.id}`, JSON.stringify(items));
+    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_RESEARCH_DISSEMINATION_KEY, items);
   };
-
   const saveAbstracts = (items: AbstractsPresentation[]) => {
     setAbstractsItems(items);
-    if (currentUser?.id) localStorage.setItem(`${PIPELINE_ABSTRACTS_KEY}_${currentUser.id}`, JSON.stringify(items));
+    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_ABSTRACTS_KEY, items);
   };
-
   const saveTeamMembersList = (list: string[]) => {
     setTeamMembersList(list);
-    if (currentUser?.id) localStorage.setItem(`${PIPELINE_TEAM_MEMBERS_KEY}_${currentUser.id}`, JSON.stringify(list));
+    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_TEAM_MEMBERS_KEY, list);
   };
-
   const saveCoAuthorsList = (list: string[]) => {
     setCoAuthorsList(list);
-    if (currentUser?.id) localStorage.setItem(`${PIPELINE_COAUTHORS_KEY}_${currentUser.id}`, JSON.stringify(list));
+    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_COAUTHORS_KEY, list);
   };
 
   // CRM search function

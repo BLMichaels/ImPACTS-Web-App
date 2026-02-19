@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
+import { getUserData, migrateFromLocalStorage } from '../utils/userData';
 
 interface GapPlan {
   id: string;
@@ -52,29 +53,32 @@ const GapPlanReminderBanner: React.FC = () => {
   const [reminders, setReminders] = useState<GapPlanReminder[]>([]);
   const [expanded, setExpanded] = useState(false);
 
+  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
   useEffect(() => {
-    if (currentUser?.uid && userProfile?.role === 'pecc') {
-      loadGapPlans();
-    }
-  }, [currentUser?.uid, userProfile?.role]);
+    if (!userId || userProfile?.role !== 'pecc') return;
+    let mounted = true;
+    (async () => {
+      try {
+        let plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+        if (plans == null || !Array.isArray(plans)) {
+          await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
+            if (mounted) setGapPlans(Array.isArray(raw) ? raw : []);
+          });
+          return;
+        }
+        if (mounted) setGapPlans(plans);
+      } catch (err) {
+        console.error('Error loading gap plans:', err);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [userId, userProfile?.role]);
 
   useEffect(() => {
     if (gapPlans.length > 0) {
       generateReminders();
     }
   }, [gapPlans]);
-
-  const loadGapPlans = () => {
-    try {
-      const savedPlans = localStorage.getItem(`gapPlans_${currentUser?.uid}`);
-      if (savedPlans) {
-        const parsedPlans = JSON.parse(savedPlans);
-        setGapPlans(parsedPlans);
-      }
-    } catch (err) {
-      console.error('Error loading gap plans:', err);
-    }
-  };
 
   const generateReminders = () => {
     if (!userProfile || userProfile.role !== 'pecc') return;

@@ -36,7 +36,10 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { supabase } from '../../supabase';
+import { getUserData, setUserData } from '../../utils/userData';
+import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
 // Interfaces matching MilestonesPage
@@ -320,7 +323,8 @@ const renderTaskText = (task: MilestoneTask) => {
 const MentorSiteMilestonesPage: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  
+  const { trackChecklist } = useUsageAnalytics();
+
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [hospitalMilestones, setHospitalMilestones] = useState<Record<string, HospitalMilestones>>({});
   const [hospitalMetrics, setHospitalMetrics] = useState<Record<string, HospitalMetrics>>({});
@@ -332,69 +336,61 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const [hiddenHospitals, setHiddenHospitals] = useState<Set<string>>(new Set());
   const [draggedHospitalId, setDraggedHospitalId] = useState<string | null>(null);
 
-  // Load hospitals (only "working with" ones) and hidden hospitals
+  const uid = currentUser?.id;
+  // Load hospitals, hidden, order from Supabase (user_data)
   useEffect(() => {
-    if (currentUser?.id) {
-      const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser.id}`);
-      const savedHidden = localStorage.getItem(`mentorHiddenHospitals_${currentUser.id}`);
-      const savedOrder = localStorage.getItem(`mentorHospitalOrder_${currentUser.id}`);
-      
-      if (savedHospitals) {
-        const parsed: any[] = JSON.parse(savedHospitals);
-        let workingHospitals: Hospital[] = parsed
+    if (!uid) return;
+    let mounted = true;
+    (async () => {
+      let savedHospitals = await getUserData<any[]>(uid, 'mentorHospitals');
+      if (savedHospitals == null) {
+        try {
+          const raw = localStorage.getItem(`mentorHospitals_${uid}`);
+          if (raw) {
+            savedHospitals = JSON.parse(raw);
+            if (Array.isArray(savedHospitals)) {
+              await setUserData(uid, 'mentorHospitals', savedHospitals);
+              localStorage.removeItem(`mentorHospitals_${uid}`);
+            }
+          }
+        } catch {}
+      }
+      const savedHidden = await getUserData<string[]>(uid, 'mentorHiddenHospitals');
+      const savedOrder = await getUserData<string[]>(uid, 'mentorHospitalOrder');
+      if (!mounted) return;
+      if (savedHospitals != null && Array.isArray(savedHospitals)) {
+        let workingHospitals: Hospital[] = savedHospitals
           .filter((h: any) => h.isWorkingWith !== false)
           .map((h: any) => ({
             id: String(h.id),
-            name: String(h.name ?? ''),
+            name: normalizeHospitalOrOrgName(String(h.name ?? '')),
             facilityId: String(h.id),
             siteId: String(h.id),
             isWorkingWith: Boolean(h.isWorkingWith)
           })) as Hospital[];
-        
-        // Apply saved order if exists
-        if (savedOrder) {
-          try {
-            const order: string[] = JSON.parse(savedOrder);
-            const ordered: Hospital[] = order
-              .map((id) => workingHospitals.find((h) => h.id === id))
-              .filter((h): h is Hospital => Boolean(h));
-            const remaining: Hospital[] = workingHospitals.filter((h) => !order.includes(h.id));
-            workingHospitals = [...ordered, ...remaining];
-          } catch {}
+        if (savedOrder && Array.isArray(savedOrder)) {
+          const ordered = savedOrder.map((id) => workingHospitals.find((h) => h.id === id)).filter((h): h is Hospital => Boolean(h));
+          const remaining = workingHospitals.filter((h) => !savedOrder.includes(h.id));
+          workingHospitals = [...ordered, ...remaining];
         }
-        
         setHospitals(workingHospitals);
       }
-      
-      if (savedHidden) {
-        try {
-          const hidden: string[] = JSON.parse(savedHidden);
-          setHiddenHospitals(new Set(hidden));
-        } catch {}
-      }
-    }
-  }, [currentUser]);
+      if (savedHidden != null && Array.isArray(savedHidden)) setHiddenHospitals(new Set(savedHidden));
+    })();
+    return () => { mounted = false; };
+  }, [uid]);
 
-  // Save hospital order
-  const saveHospitalOrder = (newOrder: Hospital[]) => {
-    if (currentUser?.id) {
-      localStorage.setItem(`mentorHospitalOrder_${currentUser.id}`, JSON.stringify(newOrder.map(h => h.id)));
-      setHospitals(newOrder);
-    }
+  const saveHospitalOrder = async (newOrder: Hospital[]) => {
+    setHospitals(newOrder);
+    if (uid) await setUserData(uid, 'mentorHospitalOrder', newOrder.map(h => h.id));
   };
 
-  // Toggle hospital visibility
-  const toggleHospitalVisibility = (hospitalId: string) => {
+  const toggleHospitalVisibility = async (hospitalId: string) => {
     const newHidden = new Set(hiddenHospitals);
-    if (newHidden.has(hospitalId)) {
-      newHidden.delete(hospitalId);
-    } else {
-      newHidden.add(hospitalId);
-    }
+    if (newHidden.has(hospitalId)) newHidden.delete(hospitalId);
+    else newHidden.add(hospitalId);
     setHiddenHospitals(newHidden);
-    if (currentUser?.id) {
-      localStorage.setItem(`mentorHiddenHospitals_${currentUser.id}`, JSON.stringify(Array.from(newHidden)));
-    }
+    if (uid) await setUserData(uid, 'mentorHiddenHospitals', Array.from(newHidden));
   };
 
   // Handle drag and drop
@@ -450,40 +446,59 @@ const MentorSiteMilestonesPage: React.FC = () => {
           ...(peccUsers?.map(u => u.id) || []),
           ...(siteMembers?.map(sm => sm.user_id) || [])
         ];
+        const peccId = peccUserIds.length > 0 ? peccUserIds[0] : undefined;
 
-        if (peccUserIds.length > 0) {
-          const peccId = peccUserIds[0];
-          const savedMilestones = localStorage.getItem(`milestones_${peccId}`);
-          
-          if (savedMilestones) {
-            try {
-              const parsed: MilestoneStage[] = JSON.parse(savedMilestones);
-              milestones[hospital.id] = {
-                hospitalId: hospital.id,
-                stages: parsed,
-                stageCompletions: {}
-              };
-            } catch {
-              milestones[hospital.id] = {
-                hospitalId: hospital.id,
-                stages: DEFAULT_STAGES.map(s => ({ ...s, tasks: s.tasks.map(t => ({ ...t, completed: false })) })),
-                stageCompletions: {}
-              };
-            }
-          } else {
-            milestones[hospital.id] = {
-              hospitalId: hospital.id,
-              stages: DEFAULT_STAGES.map(s => ({ ...s, tasks: s.tasks.map(t => ({ ...t, completed: false })) })),
-              stageCompletions: {}
-            };
-          }
+        const { data: progressRows } = await supabase
+          .from('site_checklist_progress')
+          .select('task_id, completed, completed_at')
+          .eq('hospital_id', hospital.id);
 
-          const peccActivities = JSON.parse(localStorage.getItem(`activities_${peccId}`) || '[]');
-          const mentorActivities = JSON.parse(localStorage.getItem(`mentorActivities_${currentUser.id}`) || '[]');
-          let readinessScores = JSON.parse(localStorage.getItem(`readinessScores_${peccId}`) || '[]');
-          if (readinessScores.length === 0) {
-            readinessScores = JSON.parse(localStorage.getItem(`readinessScores_${currentUser.id}`) || '[]');
-          }
+        const completedByTask: Record<string, { completed: boolean; completed_at: string | null }> = {};
+        (progressRows || []).forEach((r: { task_id: string; completed: boolean; completed_at: string | null }) => {
+          completedByTask[r.task_id] = { completed: r.completed, completed_at: r.completed_at };
+        });
+
+        const stagesWithProgress = DEFAULT_STAGES.map(s => ({
+          ...s,
+          tasks: s.tasks.map(t => ({
+            ...t,
+            completed: completedByTask[t.id]?.completed ?? false
+          }))
+        }));
+
+        const stageCompletions: Record<string, StageCompletion> = {};
+        DEFAULT_STAGES.forEach(stage => {
+          const taskIds = stage.tasks.map(t => t.id);
+          const allComplete = taskIds.every(tid => completedByTask[tid]?.completed);
+          const dates = taskIds.map(tid => completedByTask[tid]?.completed_at).filter(Boolean) as string[];
+          const completionDate = dates.length > 0 ? dates.sort().pop()!.slice(0, 10) : null;
+          stageCompletions[stage.id] = { completed: allComplete, completionDate };
+        });
+
+        const allCompletions = await getUserData<Record<string, Record<string, StageCompletion>>>(currentUser.id, 'mentorStageCompletions');
+        const savedCompletions = allCompletions?.[hospital.id];
+        if (savedCompletions) {
+          Object.keys(savedCompletions).forEach(sid => {
+            if (savedCompletions[sid].completionDate) stageCompletions[sid] = savedCompletions[sid];
+          });
+        }
+
+        milestones[hospital.id] = {
+          hospitalId: hospital.id,
+          stages: stagesWithProgress,
+          stageCompletions
+        };
+
+        if (peccId) {
+          const [peccActivitiesVal, mentorActivitiesList, readinessPecc, readinessMentor] = await Promise.all([
+            getUserData<any[]>(peccId, 'activities'),
+            getMentorActivitiesForUser(currentUser.id),
+            getUserData<any[]>(peccId, 'readinessScores'),
+            getUserData<any[]>(currentUser.id, 'readinessScores')
+          ]);
+          const peccActivities = Array.isArray(peccActivitiesVal) ? peccActivitiesVal : [];
+          const mentorActivities = mentorActivitiesList;
+          let readinessScores = Array.isArray(readinessPecc) ? readinessPecc : (Array.isArray(readinessMentor) ? readinessMentor : []);
           
           const peccActivityHours = peccActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
           const mentorHours = mentorActivities
@@ -506,11 +521,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
             peccUserId: peccId
           };
         } else {
-          milestones[hospital.id] = {
-            hospitalId: hospital.id,
-            stages: DEFAULT_STAGES.map(s => ({ ...s, tasks: s.tasks.map(t => ({ ...t, completed: false })) })),
-            stageCompletions: {}
-          };
           metrics[hospital.id] = {
             peccActivityHours: 0,
             mentorHours: 0,
@@ -518,13 +528,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
             readinessScoreDate: null,
             simulationCount: 0
           };
-        }
-
-        const savedCompletions = localStorage.getItem(`mentorStageCompletions_${currentUser.id}_${hospital.id}`);
-        if (savedCompletions) {
-          try {
-            milestones[hospital.id].stageCompletions = JSON.parse(savedCompletions);
-          } catch {}
         }
       }
 
@@ -536,23 +539,20 @@ const MentorSiteMilestonesPage: React.FC = () => {
     loadMilestones();
   }, [currentUser, hospitals]);
 
-  const saveStageCompletions = (hospitalId: string, completions: Record<string, StageCompletion>) => {
-    if (currentUser?.id) {
-      localStorage.setItem(`mentorStageCompletions_${currentUser.id}_${hospitalId}`, JSON.stringify(completions));
-      updateStipends(hospitalId, completions);
-    }
+  const saveStageCompletions = async (hospitalId: string, completions: Record<string, StageCompletion>) => {
+    if (!uid) return;
+    const all = await getUserData<Record<string, Record<string, StageCompletion>>>(uid, 'mentorStageCompletions');
+    const updated = { ...(all || {}), [hospitalId]: completions };
+    await setUserData(uid, 'mentorStageCompletions', updated);
+    updateStipends(hospitalId, completions);
   };
 
-  const updateStipends = (hospitalId: string, completions: Record<string, StageCompletion>) => {
-    if (!currentUser?.id) return;
-
-    const wagesDataStr = localStorage.getItem(`mentorWages_${currentUser.id}`);
-    if (!wagesDataStr) return;
-
+  const updateStipends = async (hospitalId: string, completions: Record<string, StageCompletion>) => {
+    if (!uid) return;
+    const wagesData = await getUserData<{ stipends?: Record<string, number>; [k: string]: any }>(uid, 'mentorWages');
+    if (!wagesData) return;
     try {
-      const wagesData = JSON.parse(wagesDataStr);
       const currentYear = new Date().getFullYear();
-      
       const monthsWithStages: Record<number, number> = {};
       Object.entries(completions).forEach(([stageId, completion]) => {
         if (completion.completed && completion.completionDate) {
@@ -563,17 +563,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
           }
         }
       });
-
-      const updatedStipends = { ...wagesData.stipends };
+      const updatedStipends = { ...(wagesData.stipends || {}) };
       Object.entries(monthsWithStages).forEach(([month, amount]) => {
         const key = `${currentYear}-${month}`;
         updatedStipends[key] = (updatedStipends[key] || 0) + amount;
       });
-
-      localStorage.setItem(`mentorWages_${currentUser.id}`, JSON.stringify({
-        ...wagesData,
-        stipends: updatedStipends
-      }));
+      await setUserData(uid, 'mentorWages', { ...wagesData, stipends: updatedStipends });
     } catch (err) {
       console.error('Error updating stipends:', err);
     }
@@ -583,46 +578,45 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const hospital = hospitalMilestones[hospitalId];
     if (!hospital) return;
 
-    const updatedStages = hospital.stages.map(stage => {
-      if (stage.id === stageId) {
-        return {
-          ...stage,
-          tasks: stage.tasks.map(task =>
-            task.id === taskId ? { ...task, completed: !task.completed } : task
-          )
-        };
-      }
-      return stage;
-    });
+    const newCompleted = !hospital.stages.find(s => s.id === stageId)?.tasks.find(t => t.id === taskId)?.completed;
+    const updatedStages = hospital.stages.map(stage =>
+      stage.id === stageId
+        ? {
+            ...stage,
+            tasks: stage.tasks.map(task =>
+              task.id === taskId ? { ...task, completed: newCompleted } : task
+            )
+          }
+        : stage
+    );
 
-    const updated: HospitalMilestones = {
-      ...hospital,
-      stages: updatedStages
-    };
-
-    setHospitalMilestones(prev => ({ ...prev, [hospitalId]: updated }));
-
-    const metrics = hospitalMetrics[hospitalId];
-    if (metrics?.peccUserId) {
-      const peccMilestones = localStorage.getItem(`milestones_${metrics.peccUserId}`);
-      if (peccMilestones) {
-        try {
-          const parsed: MilestoneStage[] = JSON.parse(peccMilestones);
-          const synced = parsed.map(stage => {
-            if (stage.id === stageId) {
-              return {
-                ...stage,
-                tasks: stage.tasks.map(task =>
-                  task.id === taskId ? { ...task, completed: !task.completed } : task
-                )
-              };
-            }
-            return stage;
-          });
-          localStorage.setItem(`milestones_${metrics.peccUserId}`, JSON.stringify(synced));
-        } catch {}
-      }
+    const newStageCompletions = { ...hospital.stageCompletions };
+    const stage = updatedStages.find(s => s.id === stageId);
+    if (stage) {
+      const allComplete = stage.tasks.every(t => t.completed);
+      newStageCompletions[stageId] = {
+        completed: allComplete,
+        completionDate: hospital.stageCompletions[stageId]?.completionDate ?? (allComplete ? format(new Date(), 'yyyy-MM-dd') : null)
+      };
     }
+
+    setHospitalMilestones(prev => ({
+      ...prev,
+      [hospitalId]: { ...hospital, stages: updatedStages, stageCompletions: newStageCompletions }
+    }));
+
+    supabase
+      .from('site_checklist_progress')
+      .upsert({
+        hospital_id: hospitalId,
+        task_id: taskId,
+        completed: newCompleted,
+        completed_at: newCompleted ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'hospital_id,task_id' })
+      .then(({ error }) => { if (error) console.error('Checklist task save error:', error); });
+
+    saveStageCompletions(hospitalId, newStageCompletions);
   };
 
   const handleStageCompletionToggle = (hospitalId: string, stageId: string) => {
@@ -630,17 +624,41 @@ const MentorSiteMilestonesPage: React.FC = () => {
     if (!hospital) return;
 
     const current = hospital.stageCompletions[stageId];
+    const newCompleted = !current?.completed;
+    const stage = DEFAULT_STAGES.find(s => s.id === stageId);
+    trackChecklist(newCompleted ? 'stage_complete' : 'stage_uncomplete', { checklist_id: 'site_milestones', stage_id: stageId, name: stage?.title?.slice(0, 80) });
+    const completionDateStr = newCompleted ? format(new Date(), 'yyyy-MM-dd') : null;
+
     const updated: Record<string, StageCompletion> = {
       ...hospital.stageCompletions,
-      [stageId]: {
-        completed: !current?.completed,
-        completionDate: !current?.completed ? format(new Date(), 'yyyy-MM-dd') : null
-      }
+      [stageId]: { completed: newCompleted, completionDate: completionDateStr }
     };
+
+    const taskIds = stage?.tasks.map(t => t.id) ?? [];
+    const completedAt = newCompleted ? new Date().toISOString() : null;
+
+    taskIds.forEach(taskId => {
+      supabase
+        .from('site_checklist_progress')
+        .upsert({
+          hospital_id: hospitalId,
+          task_id: taskId,
+          completed: newCompleted,
+          completed_at: completedAt,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'hospital_id,task_id' })
+        .then(({ error }) => { if (error) console.error('Checklist stage save error:', error); });
+    });
+
+    const updatedStages = hospital.stages.map(s =>
+      s.id === stageId
+        ? { ...s, tasks: s.tasks.map(t => ({ ...t, completed: newCompleted })) }
+        : s
+    );
 
     setHospitalMilestones(prev => ({
       ...prev,
-      [hospitalId]: { ...hospital, stageCompletions: updated }
+      [hospitalId]: { ...hospital, stages: updatedStages, stageCompletions: updated }
     }));
 
     saveStageCompletions(hospitalId, updated);
@@ -653,17 +671,36 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const hospital = hospitalMilestones[hospitalId];
     if (!hospital) return;
 
+    const completionDateStr = completionDate ? format(completionDate, 'yyyy-MM-dd') : null;
+    const completedAt = completionDate ? completionDate.toISOString() : null;
+
     const updated: Record<string, StageCompletion> = {
       ...hospital.stageCompletions,
-      [stageId]: {
-        completed: true,
-        completionDate: completionDate ? format(completionDate, 'yyyy-MM-dd') : null
-      }
+      [stageId]: { completed: true, completionDate: completionDateStr }
     };
+
+    const stage = DEFAULT_STAGES.find(s => s.id === stageId);
+    const taskIds = stage?.tasks.map(t => t.id) ?? [];
+    taskIds.forEach(taskId => {
+      supabase
+        .from('site_checklist_progress')
+        .upsert({
+          hospital_id: hospitalId,
+          task_id: taskId,
+          completed: true,
+          completed_at: completedAt,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'hospital_id,task_id' })
+        .then(({ error }) => { if (error) console.error('Checklist date save error:', error); });
+    });
+
+    const updatedStages = hospital.stages.map(s =>
+      s.id === stageId ? { ...s, tasks: s.tasks.map(t => ({ ...t, completed: true })) } : s
+    );
 
     setHospitalMilestones(prev => ({
       ...prev,
-      [hospitalId]: { ...hospital, stageCompletions: updated }
+      [hospitalId]: { ...hospital, stages: updatedStages, stageCompletions: updated }
     }));
 
     saveStageCompletions(hospitalId, updated);

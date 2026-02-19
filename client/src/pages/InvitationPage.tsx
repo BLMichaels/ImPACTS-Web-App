@@ -59,10 +59,19 @@ const InvitationPage: React.FC = () => {
   const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
   const [registrationAnswers, setRegistrationAnswers] = useState<Record<string, string | boolean | string[]>>({});
   const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [emailConfirmationMessage, setEmailConfirmationMessage] = useState<string>('');
 
   useEffect(() => {
     validateInvitation();
   }, [code]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'email_confirmation_message').maybeSingle();
+      const v = (data as { value?: string } | null)?.value;
+      if (typeof v === 'string' && v.trim()) setEmailConfirmationMessage(v.trim());
+    })();
+  }, []);
 
   const validateInvitation = async () => {
     if (!code) {
@@ -424,10 +433,7 @@ const InvitationPage: React.FC = () => {
             </Typography>
           )}
           <Alert severity="info" sx={{ mt: 2 }}>
-            {(() => {
-              const savedMessage = localStorage.getItem('email_confirmation_message');
-              return savedMessage || 'After completing registration, you will receive an email to confirm your account. Please check your inbox and click the confirmation link before logging in.';
-            })()}
+            {emailConfirmationMessage || 'After completing registration, you will receive an email to confirm your account. Please check your inbox and click the confirmation link before logging in.'}
           </Alert>
         </Box>
 

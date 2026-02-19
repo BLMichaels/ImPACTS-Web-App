@@ -26,6 +26,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import LinkIcon from '@mui/icons-material/Link';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { getUserData, setUserData } from '../utils/userData';
 
 export interface DashboardResource {
   id: string;
@@ -79,20 +80,31 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
     category: ''
   });
 
-  const storageKey = userId ? `${STORAGE_KEY_PREFIX}${userId}` : null;
-
   useEffect(() => {
     if (!userId) return;
-    const raw = localStorage.getItem(storageKey!);
-    let list: DashboardResource[] = raw ? JSON.parse(raw) : [];
-    list = list.filter((r) => r.type === 'link' || !r.type).map((r) => ({
-      ...r,
-      type: 'link' as const,
-      addedAt: r.addedAt ? new Date(r.addedAt) : new Date()
-    }));
-    setResources(list);
-    setIsLoading(false);
-  }, [userId, storageKey]);
+    let mounted = true;
+    (async () => {
+      let list: DashboardResource[] = (await getUserData<DashboardResource[]>(userId, 'dashboard_resources')) ?? [];
+      if (list.length === 0) {
+        try {
+          const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${userId}`);
+          if (raw) {
+            list = JSON.parse(raw);
+            if (Array.isArray(list)) { await setUserData(userId, 'dashboard_resources', list); localStorage.removeItem(`${STORAGE_KEY_PREFIX}${userId}`); }
+          }
+        } catch {}
+      }
+      if (!mounted) return;
+      list = (Array.isArray(list) ? list : []).filter((r) => r.type === 'link' || !r.type).map((r) => ({
+        ...r,
+        type: 'link' as const,
+        addedAt: r.addedAt ? new Date(r.addedAt) : new Date()
+      }));
+      setResources(list);
+      setIsLoading(false);
+    })();
+    return () => { mounted = false; };
+  }, [userId]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -104,7 +116,7 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
   }, []);
 
   const persist = (list: DashboardResource[]) => {
-    if (storageKey) localStorage.setItem(storageKey, JSON.stringify(list));
+    if (userId) setUserData(userId, 'dashboard_resources', list);
   };
 
   const getCategories = () => {

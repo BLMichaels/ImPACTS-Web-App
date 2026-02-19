@@ -316,81 +316,71 @@ export default function AdminSettingsPage() {
   };
   useEffect(() => { loadSimulations(); }, []);
   
-  // Load email settings
-  useEffect(() => {
-    const saved = localStorage.getItem('email_confirmation_message');
-    if (saved) {
-      setEmailConfirmationMessage(saved);
+  // Default PECC/Mentor categories (used when no value in DB)
+  const DEFAULT_PECC_CATEGORIES = [
+    'General Administration Tasks',
+    'PECC role education and advancement',
+    'Meeting with Pediatric Readiness Mentor',
+    'Simulation Case Preparations',
+    'Simulation Facilitation',
+    'Simulation Debrief & Gap Analysis',
+    'Hospital-based Pediatric Educational Activities (NOT including simulation)',
+    'Ensuring all Pediatric Policies and Procedures are implemented and updated',
+    'Facilitating and participating in ED pediatric QI/PI activities',
+    'Collaborative work with PECC counterpart, EMS, or other EDs',
+    'Staffing competency evaluations',
+    'Promoting pediatric disaster preparedness',
+    'Promoting patient and family education in injury prevention',
+    'Ensuring equipment, medication, and supplies are available to all ED staff',
+    'Ensuring ED staff are prepared to care for all children, including those with special health needs'
+  ];
+  const DEFAULT_MENTOR_CATEGORIES = [
+    { value: 'PE', label: 'PE - PRISM Education & Training' },
+    { value: 'TR', label: 'TR - Training with PECC' },
+    { value: 'AD', label: 'AD - General Administration Tasks' },
+    { value: 'RA', label: 'RA - Readiness Assessment' },
+    { value: 'SC', label: 'SC - Simulation Case Facilitation' },
+    { value: 'DM', label: 'DM - Domain Implementation' }
+  ];
+
+  // Load all app settings from Supabase (syncs across devices)
+  const loadAppSettings = async () => {
+    const keys = ['email_confirmation_message', 'pecc_activity_categories', 'mentor_activity_categories', 'education_questions'];
+    const { data: rows } = await supabase.from('app_settings').select('key, value').in('key', keys);
+    const byKey = new Map((rows || []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
+    if (byKey.has('email_confirmation_message') && byKey.get('email_confirmation_message') != null) {
+      setEmailConfirmationMessage(String(byKey.get('email_confirmation_message')));
     }
-  }, []);
-  
-  // Load activity categories
-  useEffect(() => {
-    // Load PECC categories
-    const savedPeccCategories = localStorage.getItem('pecc_activity_categories');
-    if (savedPeccCategories) {
-      setPeccCategories(JSON.parse(savedPeccCategories));
+    const peccVal = byKey.get('pecc_activity_categories');
+    if (peccVal != null && Array.isArray(peccVal)) {
+      setPeccCategories(peccVal as string[]);
     } else {
-      // Default PECC categories
-      const defaultPecc = [
-        'General Administration Tasks',
-        'PECC role education and advancement',
-        'Meeting with Pediatric Readiness Mentor',
-        'Simulation Case Preparations',
-        'Simulation Facilitation',
-        'Simulation Debrief & Gap Analysis',
-        'Hospital-based Pediatric Educational Activities (NOT including simulation)',
-        'Ensuring all Pediatric Policies and Procedures are implemented and updated',
-        'Facilitating and participating in ED pediatric QI/PI activities',
-        'Collaborative work with PECC counterpart, EMS, or other EDs',
-        'Staffing competency evaluations',
-        'Promoting pediatric disaster preparedness',
-        'Promoting patient and family education in injury prevention',
-        'Ensuring equipment, medication, and supplies are available to all ED staff',
-        'Ensuring ED staff are prepared to care for all children, including those with special health needs'
-      ];
-      setPeccCategories(defaultPecc);
-      localStorage.setItem('pecc_activity_categories', JSON.stringify(defaultPecc));
+      setPeccCategories(DEFAULT_PECC_CATEGORIES);
     }
-    
-    // Load Mentor categories
-    const savedMentorCategories = localStorage.getItem('mentor_activity_categories');
-    if (savedMentorCategories) {
-      setMentorCategories(JSON.parse(savedMentorCategories));
+    const mentorVal = byKey.get('mentor_activity_categories');
+    if (mentorVal != null && Array.isArray(mentorVal)) {
+      setMentorCategories(mentorVal as Array<{ value: string; label: string }>);
     } else {
-      // Default Mentor categories
-      const defaultMentor = [
-        { value: 'PE', label: 'PE - PRISM Education & Training' },
-        { value: 'TR', label: 'TR - Training with PECC' },
-        { value: 'AD', label: 'AD - General Administration Tasks' },
-        { value: 'RA', label: 'RA - Readiness Assessment' },
-        { value: 'SC', label: 'SC - Simulation Case Facilitation' },
-        { value: 'DM', label: 'DM - Domain Implementation' }
-      ];
-      setMentorCategories(defaultMentor);
-      localStorage.setItem('mentor_activity_categories', JSON.stringify(defaultMentor));
+      setMentorCategories(DEFAULT_MENTOR_CATEGORIES);
     }
-  }, []);
-  
-  // Load Education Questions
-  useEffect(() => {
-    const saved = localStorage.getItem('education_questions');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setEducationQuestions(parsed.map((q: any) => ({ ...q, category: q.category ?? '' })));
-        } else {
-          setEducationQuestions([]);
-        }
-      } catch (e) {
-        console.error('Error loading education questions:', e);
-        setEducationQuestions([]);
-      }
+    const eduVal = byKey.get('education_questions');
+    if (eduVal != null && Array.isArray(eduVal)) {
+      setEducationQuestions((eduVal as any[]).map((q: any) => ({ ...q, category: q.category ?? '' })));
     } else {
       setEducationQuestions([]);
     }
+  };
+
+  useEffect(() => {
+    loadAppSettings();
   }, []);
+
+  const saveAppSetting = async (key: string, value: unknown) => {
+    await supabase.from('app_settings').upsert(
+      { key, value: value as any, updated_at: new Date().toISOString() },
+      { onConflict: 'key' }
+    );
+  };
   
   const handleOpenEducationDialog = (question?: EducationQuestion) => {
     if (question) {
@@ -422,16 +412,16 @@ export default function AdminSettingsPage() {
       ? educationQuestions.map(q => q.questionId === editingEducationId ? form : q)
       : [...educationQuestions, form];
     setEducationQuestions(updated);
-    localStorage.setItem('education_questions', JSON.stringify(updated));
+    await saveAppSetting('education_questions', updated);
     setEducationDialogOpen(false);
     setSnackbar({ open: true, message: 'Education question saved', severity: 'success' });
   };
   
-  const handleDeleteEducationQuestion = (questionId: string) => {
+  const handleDeleteEducationQuestion = async (questionId: string) => {
     if (!window.confirm(`Delete education content for Question ${questionId}?`)) return;
     const updated = educationQuestions.filter(q => q.questionId !== questionId);
     setEducationQuestions(updated);
-    localStorage.setItem('education_questions', JSON.stringify(updated));
+    await saveAppSetting('education_questions', updated);
     setSnackbar({ open: true, message: 'Education question deleted', severity: 'success' });
   };
 
@@ -508,8 +498,8 @@ export default function AdminSettingsPage() {
     }));
   };
   
-  const handleSaveEmailSettings = () => {
-    localStorage.setItem('email_confirmation_message', emailConfirmationMessage);
+  const handleSaveEmailSettings = async () => {
+    await saveAppSetting('email_confirmation_message', emailConfirmationMessage);
     setSnackbar({ open: true, message: 'Email settings saved successfully', severity: 'success' });
   };
   useEffect(() => {
@@ -979,7 +969,7 @@ export default function AdminSettingsPage() {
                               if (window.confirm(`Delete "${category}"?`)) {
                                 const updated = peccCategories.filter((_, i) => i !== index);
                                 setPeccCategories(updated);
-                                localStorage.setItem('pecc_activity_categories', JSON.stringify(updated));
+                                saveAppSetting('pecc_activity_categories', updated);
                                 setSnackbar({ open: true, message: 'Category deleted', severity: 'success' });
                               }
                             }}
@@ -1045,7 +1035,7 @@ export default function AdminSettingsPage() {
                               if (window.confirm(`Delete "${category.label}"?`)) {
                                 const updated = mentorCategories.filter((_, i) => i !== index);
                                 setMentorCategories(updated);
-                                localStorage.setItem('mentor_activity_categories', JSON.stringify(updated));
+                                saveAppSetting('mentor_activity_categories', updated);
                                 setSnackbar({ open: true, message: 'Category deleted', severity: 'success' });
                               }
                             }}
@@ -1385,7 +1375,7 @@ export default function AdminSettingsPage() {
                   updated = [...peccCategories, newCategoryValue.trim()];
                 }
                 setPeccCategories(updated);
-                localStorage.setItem('pecc_activity_categories', JSON.stringify(updated));
+                saveAppSetting('pecc_activity_categories', updated);
                 setSnackbar({ open: true, message: 'Category saved', severity: 'success' });
               } else {
                 if (!newCategoryValue.trim() || !newCategoryLabel.trim()) {
@@ -1400,7 +1390,7 @@ export default function AdminSettingsPage() {
                   updated = [...mentorCategories, { value: newCategoryValue.trim().toUpperCase(), label: newCategoryLabel.trim() }];
                 }
                 setMentorCategories(updated);
-                localStorage.setItem('mentor_activity_categories', JSON.stringify(updated));
+                saveAppSetting('mentor_activity_categories', updated);
                 setSnackbar({ open: true, message: 'Category saved', severity: 'success' });
               }
               setCategoryDialogOpen(false);

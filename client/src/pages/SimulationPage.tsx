@@ -57,6 +57,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { supabase } from '../supabase';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 
 interface SimulationCase {
   id: string;
@@ -438,37 +439,44 @@ const SimulationPage: React.FC = () => {
     status: 'identified'
   });
 
-  // Load data from localStorage
-  useEffect(() => {
-    if (currentUser?.uid) {
-      const savedSessions = localStorage.getItem(`simulation_sessions_${currentUser.uid}`);
-      const savedGaps = localStorage.getItem(`simulation_gaps_${currentUser.uid}`);
-      const savedOtherCases = localStorage.getItem(`other_cases_${currentUser.uid}`);
-      
-      if (savedSessions) {
-        setSessions(JSON.parse(savedSessions));
-      }
-      if (savedGaps) {
-        setGaps(JSON.parse(savedGaps));
-      }
-      if (savedOtherCases) {
-        setOtherCases(JSON.parse(savedOtherCases));
-      }
-    }
-  }, [currentUser]);
+  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  // Activities list for linked-activities display and for updating activity–gap links (from user_data)
+  const [activitiesSim, setActivitiesSim] = useState<any[]>([]);
 
-  // Save data to localStorage
+  // Load sessions, gaps, other_cases, activities from Supabase (with migration from localStorage)
   useEffect(() => {
-    if (currentUser?.uid) {
-      localStorage.setItem(`simulation_sessions_${currentUser.uid}`, JSON.stringify(sessions));
-    }
-  }, [sessions, currentUser]);
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      const [sessionsVal, gapsVal, otherVal, activitiesVal] = await Promise.all([
+        getUserData<SimulationSession[]>(userId, 'simulation_sessions'),
+        getUserData<SimulationGap[]>(userId, 'simulation_gaps'),
+        getUserData<string[]>(userId, 'other_cases'),
+        getUserData<any[]>(userId, 'activities')
+      ]);
+      if (!mounted) return;
+      if (sessionsVal != null && Array.isArray(sessionsVal)) setSessions(sessionsVal);
+      else migrateFromLocalStorage(userId, 'simulation_sessions', `simulation_sessions_${userId}`, (v) => setSessions(Array.isArray(v) ? v : []));
+      if (gapsVal != null && Array.isArray(gapsVal)) setGaps(gapsVal);
+      else migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setGaps(Array.isArray(v) ? v : []));
+      if (otherVal != null && Array.isArray(otherVal)) setOtherCases(otherVal);
+      else migrateFromLocalStorage(userId, 'other_cases', `other_cases_${userId}`, (v) => setOtherCases(Array.isArray(v) ? v : []));
+      if (activitiesVal != null && Array.isArray(activitiesVal)) setActivitiesSim(activitiesVal);
+      else migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivitiesSim(Array.isArray(v) ? v : []));
+    })();
+    return () => { mounted = false; };
+  }, [userId]);
+
+  // Persist to Supabase when state changes
+  useEffect(() => {
+    if (!userId) return;
+    setUserData(userId, 'simulation_sessions', sessions);
+  }, [userId, sessions]);
 
   useEffect(() => {
-    if (currentUser?.uid) {
-      localStorage.setItem(`simulation_gaps_${currentUser.uid}`, JSON.stringify(gaps));
-    }
-  }, [gaps, currentUser]);
+    if (!userId) return;
+    setUserData(userId, 'simulation_gaps', gaps);
+  }, [userId, gaps]);
 
   useEffect(() => {
     const load = async () => {
@@ -638,11 +646,7 @@ const SimulationPage: React.FC = () => {
     if (caseGapForm.caseName === 'other' && caseGapForm.otherCaseName && !otherCases.includes(caseGapForm.otherCaseName)) {
       const updatedOtherCases = [...otherCases, caseGapForm.otherCaseName];
       setOtherCases(updatedOtherCases);
-      
-      // Save to localStorage
-      if (currentUser?.uid) {
-        localStorage.setItem(`other_cases_${currentUser.uid}`, JSON.stringify(updatedOtherCases));
-      }
+      if (userId) setUserData(userId, 'other_cases', updatedOtherCases);
     }
 
     const newGap: SimulationGap = {
@@ -663,11 +667,6 @@ const SimulationPage: React.FC = () => {
 
     const updatedGaps = [...gaps, newGap];
     setGaps(updatedGaps);
-
-    // Update localStorage
-    if (currentUser?.uid) {
-      localStorage.setItem(`simulation_gaps_${currentUser.uid}`, JSON.stringify(updatedGaps));
-    }
 
     console.log('✅ Case-related gap created successfully');
     handleCloseCaseGapDialog();
@@ -734,40 +733,27 @@ const SimulationPage: React.FC = () => {
 
     // Update bidirectional linking with activities
     try {
-      if (currentUser?.uid) {
-        const activities = JSON.parse(localStorage.getItem(`activities_${currentUser.uid}`) || '[]');
+      if (userId) {
+        const activities = [...activitiesSim];
         let activitiesUpdated = false;
-
-        // Update activities that reference this gap
-        activities.forEach((activity: any) => {
-          if (activity.associatedSimulationGaps && activity.associatedSimulationGaps.includes(newGap.id)) {
-            // Activity is already linked to this gap, no change needed
-            return;
-          }
-        });
-
-        // Remove this gap from activities that no longer reference it
         activities.forEach((activity: any) => {
           if (activity.associatedSimulationGaps) {
             const originalLength = activity.associatedSimulationGaps.length;
             activity.associatedSimulationGaps = activity.associatedSimulationGaps.filter((gapId: string) => {
               const gap = gaps.find(g => g.id === gapId);
-              return gap && gap.id !== newGap.id; // Keep gap if it still exists and is not the current gap
+              return gap && gap.id !== newGap.id;
             });
-            if (activity.associatedSimulationGaps.length !== originalLength) {
-              activitiesUpdated = true;
-            }
+            if (activity.associatedSimulationGaps.length !== originalLength) activitiesUpdated = true;
           }
         });
-
         if (activitiesUpdated) {
-          localStorage.setItem(`activities_${currentUser.uid}`, JSON.stringify(activities));
+          setActivitiesSim(activities);
+          setUserData(userId, 'activities', activities);
           console.log('✅ Updated activities with bidirectional gap links');
         }
       }
     } catch (linkError) {
       console.error('❌ Failed to update activity links:', linkError);
-      // Don't throw error - this is not critical
     }
 
     console.log('Gap saved successfully');
@@ -858,32 +844,25 @@ const SimulationPage: React.FC = () => {
       }));
       setSessions(updatedSessions);
 
-      // Update localStorage
-      if (currentUser?.uid) {
-        localStorage.setItem(`simulation_gaps_${currentUser.uid}`, JSON.stringify(updatedGaps));
-        localStorage.setItem(`simulation_sessions_${currentUser.uid}`, JSON.stringify(updatedSessions));
-      }
-
       // Remove gap from activities that reference it
       try {
-        const activities = JSON.parse(localStorage.getItem(`activities_${currentUser?.uid}`) || '[]');
-        let activitiesUpdated = false;
-
-        activities.forEach((activity: any) => {
-          if (activity.associatedSimulationGaps) {
-            const originalLength = activity.associatedSimulationGaps.length;
-            activity.associatedSimulationGaps = activity.associatedSimulationGaps.filter(
-              (gapId: string) => gapId !== editingGap.id
-            );
-            if (activity.associatedSimulationGaps.length !== originalLength) {
-              activitiesUpdated = true;
+        if (userId) {
+          const activities = [...activitiesSim];
+          let activitiesUpdated = false;
+          activities.forEach((activity: any) => {
+            if (activity.associatedSimulationGaps) {
+              const originalLength = activity.associatedSimulationGaps.length;
+              activity.associatedSimulationGaps = activity.associatedSimulationGaps.filter(
+                (gapId: string) => gapId !== editingGap.id
+              );
+              if (activity.associatedSimulationGaps.length !== originalLength) activitiesUpdated = true;
             }
+          });
+          if (activitiesUpdated) {
+            setActivitiesSim(activities);
+            setUserData(userId, 'activities', activities);
+            console.log('✅ Removed gap references from activities');
           }
-        });
-
-        if (activitiesUpdated) {
-          localStorage.setItem(`activities_${currentUser?.uid}`, JSON.stringify(activities));
-          console.log('✅ Removed gap references from activities');
         }
       } catch (linkError) {
         console.error('❌ Failed to update activity links:', linkError);
@@ -2027,9 +2006,8 @@ const SimulationPage: React.FC = () => {
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {editingGap.linkedActivities.map((activityId) => {
-                    // Get activity details from localStorage
-                    const activities = JSON.parse(localStorage.getItem(`activities_${currentUser?.uid}`) || '[]');
-                    const activity = activities.find((a: any) => a.id === activityId);
+                    // Get activity details from user_data (activitiesSim)
+                    const activity = activitiesSim.find((a: any) => a.id === activityId);
                     
                     if (!activity) return null;
                     

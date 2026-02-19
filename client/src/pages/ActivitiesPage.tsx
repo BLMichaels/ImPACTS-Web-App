@@ -53,6 +53,8 @@ import { useAuth } from '../context/AuthContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import { supabase } from '../supabase';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 
 interface Activity {
   id: string;
@@ -180,71 +182,54 @@ const ActivitiesPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
-  // Load activities from localStorage
+  // Load activities, gap plans, simulation gaps from Supabase (syncs across devices)
+  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
   useEffect(() => {
-    if (currentUser?.uid) {
-      // Load activities
-      const savedActivities = localStorage.getItem(`activities_${currentUser.uid}`);
-      if (savedActivities) {
-        setActivities(JSON.parse(savedActivities));
-      }
-      
-      // Load gap plans for the associated gaps dropdown
-      const savedGapPlans = localStorage.getItem(`gapPlans_${currentUser.uid}`);
-      if (savedGapPlans) {
-        setGapPlans(JSON.parse(savedGapPlans));
-      }
-
-      // Load simulation gaps for the associated simulation gaps dropdown
-      const savedSimulationGaps = localStorage.getItem(`simulation_gaps_${currentUser.uid}`);
-      if (savedSimulationGaps) {
-        setSimulationGaps(JSON.parse(savedSimulationGaps));
-      }
-    }
-    
-    // Load activity categories from localStorage (managed in Admin Settings)
-    const savedCategories = localStorage.getItem('pecc_activity_categories');
-    if (savedCategories) {
-      try {
-        const parsed = JSON.parse(savedCategories);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setActivityCategories(parsed);
-        }
-      } catch (e) {
-        console.error('Error loading activity categories:', e);
-      }
-    }
-  }, [currentUser]);
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      const [activitiesVal, gapPlansVal, simGapsVal, categoriesRes] = await Promise.all([
+        getUserData<Activity[]>(userId, 'activities'),
+        getUserData<GapPlan[]>(userId, 'gapPlans'),
+        getUserData<unknown[]>(userId, 'simulation_gaps'),
+        supabase.from('app_settings').select('value').eq('key', 'pecc_activity_categories').maybeSingle()
+      ]);
+      if (!mounted) return;
+      if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
+      else migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
+      if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
+      else migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (v) => setGapPlans(Array.isArray(v) ? v : []));
+      if (simGapsVal != null && Array.isArray(simGapsVal)) setSimulationGaps(simGapsVal);
+      else migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setSimulationGaps(Array.isArray(v) ? v : []));
+      const parsed = (categoriesRes.data as { value?: unknown } | null)?.value;
+      if (parsed != null && Array.isArray(parsed) && parsed.length > 0) setActivityCategories(parsed as string[]);
+    })();
+    return () => { mounted = false; };
+  }, [userId]);
 
 
-  const saveActivities = (newActivities: Activity[]) => {
+  const saveActivities = async (newActivities: Activity[]) => {
     try {
       setActivities(newActivities);
-      if (currentUser?.uid) {
-        // Add timestamps to activities before saving
-        const uid = currentUser.uid ?? (currentUser as { id?: string }).id;
+      if (userId) {
+        const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
         const timestampedActivities = newActivities.map(activity => ({
           ...activity,
           created_at: activity.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
           submitted_by: activity.submitted_by ?? uid
         }));
-        
-        localStorage.setItem(`activities_${currentUser.uid}`, JSON.stringify(timestampedActivities));
+        await setUserData(userId, 'activities', timestampedActivities);
 
-        // Update bidirectional linking with simulation gaps
-        const simulationGaps = JSON.parse(localStorage.getItem(`simulation_gaps_${currentUser.uid}`) || '[]');
+        const simulationGaps = await getUserData<unknown[]>(userId, 'simulation_gaps').then((v) => v ?? []);
         let gapsUpdated = false;
-
         timestampedActivities.forEach(activity => {
-          if (activity.associatedSimulationGaps && activity.associatedSimulationGaps.length > 0) {
+          if (activity.associatedSimulationGaps?.length) {
             activity.associatedSimulationGaps.forEach(gapId => {
-              const gapIndex = simulationGaps.findIndex((gap: any) => gap.id === gapId);
+              const gapIndex = simulationGaps.findIndex((g: any) => g.id === gapId);
               if (gapIndex !== -1) {
-                const gap = simulationGaps[gapIndex];
-                if (!gap.linkedActivities) {
-                  gap.linkedActivities = [];
-                }
+                const gap = simulationGaps[gapIndex] as any;
+                if (!gap.linkedActivities) gap.linkedActivities = [];
                 if (!gap.linkedActivities.includes(activity.id)) {
                   gap.linkedActivities.push(activity.id);
                   gapsUpdated = true;
@@ -253,24 +238,17 @@ const ActivitiesPage = () => {
             });
           }
         });
-
-        // Remove activities from gaps that are no longer linked
-        simulationGaps.forEach((gap: any) => {
+        (simulationGaps as any[]).forEach((gap: any) => {
           if (gap.linkedActivities) {
-            const originalLength = gap.linkedActivities.length;
+            const orig = gap.linkedActivities.length;
             gap.linkedActivities = gap.linkedActivities.filter((activityId: string) => {
               const activity = timestampedActivities.find(a => a.id === activityId);
-              return activity && activity.associatedSimulationGaps && activity.associatedSimulationGaps.includes(gap.id);
+              return activity?.associatedSimulationGaps?.includes(gap.id);
             });
-            if (gap.linkedActivities.length !== originalLength) {
-              gapsUpdated = true;
-            }
+            if (gap.linkedActivities.length !== orig) gapsUpdated = true;
           }
         });
-
-        if (gapsUpdated) {
-          localStorage.setItem(`simulation_gaps_${currentUser.uid}`, JSON.stringify(simulationGaps));
-        }
+        if (gapsUpdated) await setUserData(userId, 'simulation_gaps', simulationGaps);
       }
     } catch (err) {
       console.error('Error saving activities:', err);

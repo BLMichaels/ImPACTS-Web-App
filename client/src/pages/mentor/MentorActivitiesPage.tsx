@@ -47,6 +47,8 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../supabase';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
 // Default Mentor categories - will be overridden by localStorage if available
@@ -165,48 +167,39 @@ const MentorActivitiesPage: React.FC = () => {
   
   const [error, setError] = useState<string | null>(null);
 
-  // Load data from localStorage on mount
+  const userId = currentUser?.id ?? (currentUser as { uid?: string })?.uid;
+  // Load mentor activities, hospitals from Supabase (user_data); migrate from localStorage if needed
   useEffect(() => {
-    if (currentUser) {
-      const savedActivities = localStorage.getItem(`mentorActivities_${currentUser.id}`);
-      if (savedActivities) {
-        setActivities(JSON.parse(savedActivities));
-      }
-      
-      // Load hospitals from localStorage or Supabase assignments; start empty if none
-      const savedHospitals = localStorage.getItem(`mentorHospitals_${currentUser.id}`);
-      if (savedHospitals) {
-        const parsedHospitals = JSON.parse(savedHospitals);
-        // Sort hospitals alphabetically by name
-        const sortedHospitals = [...parsedHospitals].sort((a, b) => 
-          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-        );
-        setHospitals(sortedHospitals);
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      const [activitiesVal, hospitalsVal, categoriesRes] = await Promise.all([
+        getUserData<MentorActivity[]>(userId, 'mentorActivities'),
+        getUserData<any[]>(userId, 'mentorHospitals'),
+        supabase.from('app_settings').select('value').eq('key', 'mentor_activity_categories').maybeSingle()
+      ]);
+      if (!mounted) return;
+      if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
+      else migrateFromLocalStorage(userId, 'mentorActivities', `mentorActivities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
+      if (hospitalsVal != null && Array.isArray(hospitalsVal)) {
+        const sorted = [...hospitalsVal].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+        setHospitals(sorted);
       } else {
-        setHospitals([]);
+        if (mounted) setHospitals([]);
+        await migrateFromLocalStorage(userId, 'mentorHospitals', `mentorHospitals_${userId}`, (v) => {
+          const arr = Array.isArray(v) ? v : [];
+          if (mounted) setHospitals([...arr].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })));
+        });
       }
-    }
-    
-    // Load activity categories from localStorage (managed in Admin Settings)
-    const savedCategories = localStorage.getItem('mentor_activity_categories');
-    if (savedCategories) {
-      try {
-        const parsed = JSON.parse(savedCategories);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setCategories(parsed);
-        }
-      } catch (e) {
-        console.error('Error loading mentor activity categories:', e);
-      }
-    }
-  }, [currentUser]);
+      const parsed = (categoriesRes.data as { value?: unknown } | null)?.value;
+      if (parsed != null && Array.isArray(parsed) && parsed.length > 0) setCategories(parsed as Array<{ value: string; label: string }>);
+    })();
+    return () => { mounted = false; };
+  }, [userId]);
 
-  // Save activities to localStorage
-  const saveActivities = (newActivities: MentorActivity[]) => {
-    if (currentUser) {
-      localStorage.setItem(`mentorActivities_${currentUser.id}`, JSON.stringify(newActivities));
-    }
+  const saveActivities = async (newActivities: MentorActivity[]) => {
     setActivities(newActivities);
+    if (userId) await setUserData(userId, 'mentorActivities', newActivities);
   };
 
   // Filter and sort activities

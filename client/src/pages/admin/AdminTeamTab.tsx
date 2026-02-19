@@ -42,8 +42,10 @@ import {
   Send as SendIcon,
   Close as CloseIcon,
   Edit as EditIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
+  Settings as SettingsIcon
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -71,6 +73,7 @@ interface User {
 
 /** Team (user) management content for Admin CRM Team tab. */
 const AdminTeamTab: React.FC = () => {
+  const navigate = useNavigate();
   const { resetPasswordForEmail } = useAuth();
   const { userProfile } = useUserProfile();
   const [users, setUsers] = useState<User[]>([]);
@@ -517,6 +520,12 @@ const AdminTeamTab: React.FC = () => {
         <MenuItem onClick={() => openProfileDrawer(false)}>View Profile</MenuItem>
         <MenuItem onClick={() => openProfileDrawer(true)}><EditIcon sx={{ mr: 1, fontSize: 18 }} /> Edit User</MenuItem>
         <MenuItem onClick={() => openProfileDrawer(true)}>Change Role</MenuItem>
+        <MenuItem onClick={() => {
+          setAnchorEl(null);
+          if (selectedUser?.id) navigate(`/admin/settings?tab=granular-permissions&userId=${selectedUser.id}`);
+        }}>
+          <SettingsIcon sx={{ mr: 1, fontSize: 18 }} /> Manage permissions
+        </MenuItem>
         <MenuItem onClick={handleToggleStatus}>{selectedUser?.status === 'active' ? 'Deactivate' : 'Activate'}</MenuItem>
         {selectedUser?.status === 'pending' && (
           <MenuItem onClick={() => setAnchorEl(null)}><SendIcon sx={{ mr: 1, fontSize: 18 }} /> Resend Invite</MenuItem>

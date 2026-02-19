@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Typography,
@@ -38,6 +38,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile, UserProfile } from '../context/UserProfileContext';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
+import { getUserData } from '../utils/userData';
 import { UserRole } from '../types/database';
 import { useNavigate } from 'react-router-dom';
 import TermsOfService from '../components/TermsOfService';
@@ -69,7 +70,21 @@ interface LegacyProfile {
 }
 
 const AccountPage = () => {
-  const { logout } = useAuth();
+  const { logout, currentUser } = useAuth();
+  const accountUserId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const [termsAcceptedAt, setTermsAcceptedAt] = useState<string | null>(null);
+  useEffect(() => {
+    if (!accountUserId) return;
+    getUserData<string>(accountUserId, 'terms_accepted_at').then((v) => {
+      if (v) setTermsAcceptedAt(v);
+      else {
+        try {
+          const ls = localStorage.getItem('termsAcceptedDate');
+          if (ls) setTermsAcceptedAt(ls);
+        } catch {}
+      }
+    });
+  }, [accountUserId]);
   const { 
     userProfile: rawUserProfile, 
     updateUserProfile, 
@@ -441,8 +456,8 @@ const AccountPage = () => {
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Terms accepted on: {localStorage.getItem('termsAcceptedDate') 
-                      ? new Date(localStorage.getItem('termsAcceptedDate')!).toLocaleDateString()
+                    Terms accepted on: {termsAcceptedAt 
+                      ? new Date(termsAcceptedAt).toLocaleDateString()
                       : 'Not available'
                     }
                   </Typography>

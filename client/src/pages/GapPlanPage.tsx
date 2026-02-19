@@ -36,6 +36,8 @@ import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
+import { supabase } from '../supabase';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -96,6 +98,7 @@ const GapPlanPage: React.FC = () => {
   });
   const [error, setError] = useState<string | null>(null);
   const [renderError, setRenderError] = useState(false);
+  const [activitiesForGapPlan, setActivitiesForGapPlan] = useState<any[]>([]);
 
   useEffect(() => {
     if (currentUser?.uid) {
@@ -104,19 +107,20 @@ const GapPlanPage: React.FC = () => {
   }, [currentUser?.uid]);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('education_questions');
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed)) {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'education_questions').maybeSingle();
+      if (!mounted) return;
+      const parsed = (data as { value?: unknown } | null)?.value;
+      if (parsed != null && Array.isArray(parsed)) {
         const map: Record<string, string> = {};
-        parsed.forEach((q: { questionId?: string; category?: string }) => {
+        (parsed as { questionId?: string; category?: string }[]).forEach((q) => {
           if (q.questionId != null) map[String(q.questionId)] = q.category || '';
         });
         setEducationCategories(map);
       }
-    } catch {
-      setEducationCategories({});
-    }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   // Reload when gap plans updated (e.g. added from Education) or user returns to this tab
@@ -137,37 +141,48 @@ const GapPlanPage: React.FC = () => {
     applyFiltersAndSort();
   }, [gapPlans, filterStatus, filterPriority, filterOwner, sortBy, sortOrder]);
 
-  const loadGapPlans = () => {
+  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const loadGapPlans = async () => {
+    if (!userId) return;
     try {
-      console.log('GapPlanPage: Loading gap plans for user:', currentUser?.uid);
-      const savedPlans = localStorage.getItem(`gapPlans_${currentUser?.uid}`);
-      console.log('GapPlanPage: Found saved plans:', savedPlans);
-      if (savedPlans) {
-        const parsedPlans = JSON.parse(savedPlans);
-        console.log('GapPlanPage: Parsed plans:', parsedPlans);
-        
-        // Fix date objects in attachments
-        const fixedPlans = parsedPlans.map((plan: GapPlan) => ({
-          ...plan,
-          attachments: (plan.attachments || []).map((attachment: GapPlanAttachment) => ({
-            ...attachment,
-            uploadedAt: new Date(attachment.uploadedAt)
-          }))
-        }));
-        
-        setGapPlans(fixedPlans);
-      } else {
-        console.log('GapPlanPage: No saved plans found');
+      let plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+      if (plans == null || !Array.isArray(plans)) {
+        await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
+          const parsed = Array.isArray(raw) ? raw : [];
+          setGapPlans(parsed.map((plan: GapPlan) => ({
+            ...plan,
+            attachments: (plan.attachments || []).map((att: GapPlanAttachment) => ({
+              ...att,
+              uploadedAt: att.uploadedAt instanceof Date ? att.uploadedAt : new Date((att as any).uploadedAt)
+            }))
+          })));
+        });
+        return;
       }
+      const fixedPlans = plans.map((plan: GapPlan) => ({
+        ...plan,
+        attachments: (plan.attachments || []).map((att: GapPlanAttachment) => ({
+          ...att,
+          uploadedAt: att.uploadedAt instanceof Date ? att.uploadedAt : new Date((att as any).uploadedAt)
+        }))
+      }));
+      setGapPlans(fixedPlans);
+      const acts = await getUserData<any[]>(userId, 'activities');
+      if (Array.isArray(acts)) setActivitiesForGapPlan(acts);
     } catch (err) {
       console.error('Error loading gap plans:', err);
       setError('Failed to load gap plans');
     }
   };
 
-  const saveGapPlans = (plans: GapPlan[]) => {
+  useEffect(() => {
+    if (userId) getUserData<any[]>(userId, 'activities').then((v) => { if (Array.isArray(v)) setActivitiesForGapPlan(v); });
+  }, [userId]);
+
+  const saveGapPlans = async (plans: GapPlan[]) => {
+    if (!userId) return;
     try {
-      localStorage.setItem(`gapPlans_${currentUser?.uid}`, JSON.stringify(plans));
+      await setUserData(userId, 'gapPlans', plans);
     } catch (err) {
       console.error('Error saving gap plans:', err);
       setError('Failed to save gap plans');
@@ -921,21 +936,9 @@ const GapPlanPage: React.FC = () => {
                   Related Activities
                 </Typography>
                 {(() => {
-                  // Load activities from localStorage to find related ones
-                  let relatedActivities: any[] = [];
-                  try {
-                    if (currentUser?.uid) {
-                      const savedActivities = localStorage.getItem(`activities_${currentUser.uid}`);
-                      if (savedActivities) {
-                        const activities = JSON.parse(savedActivities);
-                        relatedActivities = activities.filter((activity: any) => 
-                          activity.associatedGaps && activity.associatedGaps.includes(editingPlan?.id)
-                        );
-                      }
-                    }
-                  } catch (err) {
-                    console.error('Error loading activities:', err);
-                  }
+                  const relatedActivities = (activitiesForGapPlan || []).filter((activity: any) =>
+                    activity.associatedGaps && activity.associatedGaps.includes(editingPlan?.id)
+                  );
 
                   if (relatedActivities.length === 0) {
                     return (

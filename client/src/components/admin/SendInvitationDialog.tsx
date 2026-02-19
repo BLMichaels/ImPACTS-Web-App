@@ -40,7 +40,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   contactId,
   onSuccess
 }) => {
-  const { userProfile } = useUserProfile();
+  const { userProfile, actualRole } = useUserProfile();
   const [email, setEmail] = useState(contactEmail);
   const [role, setRole] = useState<UserRole>(UserRole.PECC);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
@@ -115,14 +115,33 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       })));
     }
     
-    // Load cohorts (for PECC pre-designation)
-    const { data: cohortsData } = await supabase
-      .from('cohorts')
-      .select('id, name')
-      .eq('is_active', true)
-      .order('name');
-    if (cohortsData) {
-      setCohorts(cohortsData.map(c => ({ id: c.id, name: c.name })));
+    // Load cohorts (for PECC pre-designation). Mentors only see cohorts they're allowed to invite to.
+    if (actualRole === UserRole.MENTOR && userProfile?.id) {
+      const { data: allowedRows } = await supabase
+        .from('cohort_invite_mentors')
+        .select('cohort_id')
+        .eq('mentor_id', userProfile.id);
+      const allowedIds = (allowedRows || []).map((r: { cohort_id: string }) => r.cohort_id);
+      if (allowedIds.length === 0) {
+        setCohorts([]);
+      } else {
+        const { data: cohortsData } = await supabase
+          .from('cohorts')
+          .select('id, name')
+          .eq('is_active', true)
+          .in('id', allowedIds)
+          .order('name');
+        setCohorts((cohortsData || []).map(c => ({ id: c.id, name: c.name })));
+      }
+    } else {
+      const { data: cohortsData } = await supabase
+        .from('cohorts')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      if (cohortsData) {
+        setCohorts(cohortsData.map(c => ({ id: c.id, name: c.name })));
+      }
     }
   };
   

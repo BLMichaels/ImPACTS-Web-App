@@ -58,6 +58,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
+import { getUserData, setUserData } from '../../utils/userData';
 
 const CONTACT_STATUSES = [
   'ED Employee (general contact)',
@@ -318,26 +319,26 @@ const ManagerCRMPage: React.FC = () => {
 
       if (error) throw error;
 
-      // Load visibility settings from localStorage (or database if implemented)
-      const settings: TabVisibilitySettings[] = (users || []).map(user => {
-        const savedSettings = localStorage.getItem(`tab_visibility_${user.id}`);
-        const defaults = {
-          snapshot: true,
-          activities: true,
-          milestones: true,
-          gapPlan: true,
-          simulation: true
-        };
-        
-        return {
-          userId: user.id,
-          userName: `${user.first_name} ${user.last_name}`,
-          userRole: user.role,
-          visibleTabs: savedSettings ? JSON.parse(savedSettings) : defaults
-        };
-      });
-
-      setVisibilitySettings(settings);
+      // Load visibility settings from Supabase (user_data) per user
+      const defaults = {
+        snapshot: true,
+        activities: true,
+        milestones: true,
+        gapPlan: true,
+        simulation: true
+      };
+      const visibilityList = await Promise.all(
+        (users || []).map(async (user) => {
+          const saved = await getUserData<any>(user.id, 'tab_visibility');
+          return {
+            userId: user.id,
+            userName: `${user.first_name} ${user.last_name}`,
+            userRole: user.role,
+            visibleTabs: saved && typeof saved === 'object' ? { ...defaults, ...saved } : defaults
+          };
+        })
+      );
+      setVisibilitySettings(visibilityList);
     } catch (err) {
       console.error('Error loading tab visibility settings:', err);
       setSnackbar({ open: true, message: 'Error loading visibility settings', severity: 'error' });
@@ -554,7 +555,7 @@ const ManagerCRMPage: React.FC = () => {
             ...setting.visibleTabs,
             [tab]: !setting.visibleTabs[tab]
           };
-          localStorage.setItem(`tab_visibility_${userId}`, JSON.stringify(newVisibleTabs));
+          setUserData(userId, 'tab_visibility', newVisibleTabs);
           return { ...setting, visibleTabs: newVisibleTabs };
         }
         return setting;
@@ -571,7 +572,7 @@ const ManagerCRMPage: React.FC = () => {
             ...setting.visibleTabs,
             [tab]: visible
           };
-          localStorage.setItem(`tab_visibility_${setting.userId}`, JSON.stringify(newVisibleTabs));
+          setUserData(setting.userId, 'tab_visibility', newVisibleTabs);
           return { ...setting, visibleTabs: newVisibleTabs };
         }
         return setting;

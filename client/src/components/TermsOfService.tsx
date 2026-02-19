@@ -15,6 +15,9 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 
+/** Update this date when the Terms of Service and User Agreement content is substantively revised. */
+const TERMS_LAST_UPDATED = 'February 14, 2026';
+
 interface TermsOfServiceProps {
   open: boolean;
   onClose: () => void;
@@ -70,7 +73,7 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
             ImPACTS Pediatric Readiness Assessment Tool
           </Typography>
           <Typography variant="body2" color="text.secondary" paragraph>
-            <strong>Last Updated:</strong> {new Date().toLocaleDateString()}
+            <strong>Last Updated:</strong> {TERMS_LAST_UPDATED}
           </Typography>
         </Paper>
 
@@ -268,14 +271,14 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
         </Typography>
         <Typography variant="body1" paragraph>
           <strong>Governing Law:</strong> This Agreement shall be governed by and construed in 
-          accordance with the laws of the State of [State], United States, without regard to 
+          accordance with the laws of the State of Connecticut, United States, without regard to 
           conflict of law principles.
         </Typography>
         <Typography variant="body1" paragraph>
           <strong>Dispute Resolution:</strong> Any disputes arising from this Agreement shall be 
           resolved through binding arbitration administered by the American Arbitration Association 
           (AAA) under its Commercial Arbitration Rules. The arbitration shall be conducted in 
-          [City, State] and shall be confidential. Judgment on the arbitration award may be entered 
+          New Haven, Connecticut and shall be confidential. Judgment on the arbitration award may be entered 
           in any court having jurisdiction.
         </Typography>
         <Typography variant="body1" paragraph>
@@ -345,9 +348,10 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
         </Typography>
         <Typography variant="body1" paragraph>
           <strong>Agreement Changes:</strong> ImPACTS reserves the right to modify this Agreement 
-          at any time. We will notify users of material changes via email or through the Tool. 
-          Your continued use of the Tool after such modifications constitutes acceptance of the 
-          updated Agreement.
+          at any time. The "Last Updated" date at the top of this document reflects the date of 
+          the most recent substantive revision. We will notify users of material changes via email 
+          or through the Tool. Your continued use of the Tool after such modifications constitutes 
+          acceptance of the updated Agreement.
         </Typography>
         <Typography variant="body1" paragraph>
           <strong>Tool Updates:</strong> ImPACTS may update, modify, or discontinue the Tool at 

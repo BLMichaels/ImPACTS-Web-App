@@ -44,6 +44,7 @@ import {
   Assignment as AssignmentIcon
 } from '@mui/icons-material';
 import { useUserProfile } from '../context/UserProfileContext';
+import { getUserData, setUserData } from '../utils/userData';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
 
 interface PRISMActivity {
@@ -75,16 +76,25 @@ const PRISMActivitiesPage: React.FC = () => {
 
   const hospitals: { id: string; name: string }[] = [];
 
+  const prismUserId = (userProfile as any)?.id;
   useEffect(() => {
-    // Load activities from localStorage; start empty when no saved data
-    const email = (userProfile as any)?.email || '';
-    const savedActivities = localStorage.getItem(`prismActivities_${email}`);
-    if (savedActivities) {
-      setActivities(JSON.parse(savedActivities));
-    } else {
-      setActivities([]);
-    }
-  }, [(userProfile as any)?.email]);
+    if (!prismUserId) { setActivities([]); return; }
+    let mounted = true;
+    (async () => {
+      const val = await getUserData<any[]>(prismUserId, 'prismActivities');
+      if (!mounted) return;
+      if (val != null && Array.isArray(val)) setActivities(val);
+      else {
+        const email = (userProfile as any)?.email || '';
+        try {
+          const raw = localStorage.getItem(`prismActivities_${email}`);
+          if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) { setActivities(p); await setUserData(prismUserId, 'prismActivities', p); localStorage.removeItem(`prismActivities_${email}`); } }
+        } catch {}
+        if (val === undefined) setActivities([]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [prismUserId, (userProfile as any)?.email]);
 
   useEffect(() => {
     // Filter activities based on search and filter criteria
@@ -168,7 +178,7 @@ const PRISMActivitiesPage: React.FC = () => {
   const handleDeleteActivity = (activityId: string) => {
     const updatedActivities = activities.filter(activity => activity.id !== activityId);
     setActivities(updatedActivities);
-    localStorage.setItem(`prismActivities_${(userProfile as any)?.email || ''}`, JSON.stringify(updatedActivities));
+    if (prismUserId) setUserData(prismUserId, 'prismActivities', updatedActivities);
   };
 
   const stats = {

@@ -29,6 +29,8 @@ import { format, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../supabase';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -55,27 +57,49 @@ interface ReadinessScore {
     const { userProfile } = useUserProfile();
     const { currentUser } = useAuth();
     const navigate = useNavigate();
-    
+    const [primaryProgramName, setPrimaryProgramName] = useState<string>('ImPACTS');
+
+    useEffect(() => {
+      const pid = (userProfile as { primary_program_id?: string | null })?.primary_program_id;
+      if (!pid) {
+        setPrimaryProgramName('ImPACTS');
+        return;
+      }
+      let mounted = true;
+      supabase.from('programs').select('name').eq('id', pid).maybeSingle().then(({ data }) => {
+        if (mounted && data && typeof (data as { name?: string }).name === 'string') {
+          setPrimaryProgramName((data as { name: string }).name);
+        } else {
+          setPrimaryProgramName('ImPACTS');
+        }
+      });
+      return () => { mounted = false; };
+    }, [userProfile?.id, (userProfile as { primary_program_id?: string | null })?.primary_program_id]);
+
     // Mobile responsiveness
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
-    // Check if PRS section should be visible
+    // Check if PRS section should be visible (from user_data)
     const [prsSectionVisible, setPrsSectionVisible] = useState(true);
-    
+    const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
     useEffect(() => {
-      if (currentUser?.uid) {
-        const saved = localStorage.getItem(`pecc_prs_section_visible_${currentUser.uid}`);
-        // Default to true if not set
-        setPrsSectionVisible(saved === null ? true : saved === 'true');
-      }
-    }, [currentUser]);
+      if (!uid) return;
+      let cancelled = false;
+      getUserData<boolean>(uid, 'pecc_prs_section_visible').then((saved) => {
+        if (cancelled) return;
+        if (saved !== null && saved !== undefined) setPrsSectionVisible(!!saved);
+        else migrateFromLocalStorage(uid, 'pecc_prs_section_visible', `pecc_prs_section_visible_${uid}`, (v) => setPrsSectionVisible(v === true || v === 'true'));
+      });
+      return () => { cancelled = true; };
+    }, [uid]);
     
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [readinessScoreDialogOpen, setReadinessScoreDialogOpen] = useState(false);
   const [readinessScoreForm, setReadinessScoreForm] = useState({ date: new Date(), score: '' });
 
   const [departmentContacts, setDepartmentContacts] = useState<DepartmentContact[]>([
+    { id: '17', department: 'Pediatric Readiness Mentor', contactName: '', phone: '', email: '', notes: '' },
     { id: '1', department: 'Chief Nursing Officer', contactName: '', phone: '', email: '', notes: '' },
     { id: '2', department: 'Chief Medical Officer', contactName: '', phone: '', email: '', notes: '' },
     { id: '3', department: 'Trauma Coordinator', contactName: '', phone: '', email: '', notes: '' },
@@ -92,7 +116,6 @@ interface ReadinessScore {
     { id: '14', department: 'Information Systems Contact', contactName: '', phone: '', email: '', notes: '' },
     { id: '15', department: 'Pediatric Hospitalist (Point Person)', contactName: '', phone: '', email: '', notes: '' },
     { id: '16', department: 'Pediatric Intensivist (Point Person)', contactName: '', phone: '', email: '', notes: '' },
-    { id: '17', department: 'Pediatric Readiness Mentor', contactName: '', phone: '', email: '', notes: '' },
     { id: '18', department: 'Pediatric and/or Emergency Clinical Nurse Specialist', contactName: '', phone: '', email: '', notes: '' },
     { id: '19', department: 'OTHER CONTACT 1', contactName: '', phone: '', email: '', notes: '' },
     { id: '20', department: 'OTHER CONTACT 2', contactName: '', phone: '', email: '', notes: '' },
@@ -111,26 +134,21 @@ interface ReadinessScore {
     direction: 'asc' | 'desc';
   } | null>(null);
 
-  // Load readiness scores
+  // Load readiness scores from user_data
   useEffect(() => {
-    if (currentUser?.uid) {
-      const saved = localStorage.getItem(`readinessScores_${currentUser.uid}`);
-      if (saved) {
-        try {
-          setReadinessScores(JSON.parse(saved));
-        } catch {
-          setReadinessScores([]);
-        }
-      }
-    }
-  }, [currentUser]);
+    if (!uid) return;
+    let mounted = true;
+    getUserData<ReadinessScore[]>(uid, 'readinessScores').then((val) => {
+      if (!mounted) return;
+      if (val != null && Array.isArray(val)) setReadinessScores(val);
+      else migrateFromLocalStorage(uid, 'readinessScores', `readinessScores_${uid}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
+    });
+    return () => { mounted = false; };
+  }, [uid]);
 
-  // Save readiness scores
-  const saveReadinessScores = (scores: ReadinessScore[]) => {
-    if (currentUser?.uid) {
-      localStorage.setItem(`readinessScores_${currentUser.uid}`, JSON.stringify(scores));
-      setReadinessScores(scores);
-    }
+  const saveReadinessScores = async (scores: ReadinessScore[]) => {
+    setReadinessScores(scores);
+    if (uid) await setUserData(uid, 'readinessScores', scores);
   };
 
   // Handle add readiness score
@@ -268,7 +286,7 @@ interface ReadinessScore {
               </Typography>
               
               <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
-                Welcome to your ImPACTS PECC Tracker! This tool is designed to guide you through your Pediatric Emergency Care Coordinator journey. Here's how to get started:
+                Welcome to your {primaryProgramName} PECC Tracker! This tool is designed to guide you through your Pediatric Emergency Care Coordinator journey. Here&apos;s how to get started:
               </Typography>
               
               <Grid container spacing={isMobile ? 1 : 2} sx={{ mt: 2 }}>

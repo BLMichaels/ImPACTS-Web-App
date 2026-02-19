@@ -20,6 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface MilestoneTask {
@@ -423,42 +424,51 @@ const MilestonesPage = () => {
     })();
   }, [hospitalId]);
 
-  // Load milestone data from localStorage on component mount (fallback when no site/hospital or Supabase unavailable)
+  const milestonesUserId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  // Load milestone data from user_data when no site/hospital
   useEffect(() => {
-    if (currentUser?.uid && !hospitalId) {
+    if (!milestonesUserId || hospitalId) return;
+    let mounted = true;
+    (async () => {
       try {
-        const key = `milestones_${currentUser.uid}`;
-        const savedStages = localStorage.getItem(key);
-        if (savedStages) {
-          const parsedStages = JSON.parse(savedStages);
-          const hasRichContent = parsedStages.some((stage: MilestoneStage) =>
-            stage.tasks.some((task: MilestoneTask) => task.links && task.links.length > 0)
-          );
-          if (hasRichContent) {
-            setStages(parsedStages);
-          } else {
-            setStages(prev => prev.map((defaultStage, stageIndex) => {
-              const savedStage = parsedStages[stageIndex];
-              if (savedStage) {
-                return {
-                  ...defaultStage,
-                  tasks: defaultStage.tasks.map((defaultTask, taskIndex) => {
-                    const savedTask = savedStage.tasks[taskIndex];
-                    return savedTask ? { ...defaultTask, completed: savedTask.completed } : defaultTask;
-                  })
-                };
-              }
-              return defaultStage;
-            }));
-          }
+        let savedStages = await getUserData<MilestoneStage[]>(milestonesUserId, 'milestones');
+        if (savedStages == null || !Array.isArray(savedStages)) {
+          await migrateFromLocalStorage(milestonesUserId, 'milestones', `milestones_${milestonesUserId}`, (v) => {
+            const parsed = Array.isArray(v) ? v : null;
+            if (parsed && mounted) applyStages(parsed);
+          });
+          dataLoadedRef.current = true;
+          return;
         }
+        if (!mounted) return;
+        applyStages(savedStages);
         dataLoadedRef.current = true;
       } catch (err) {
         console.error('Error loading milestones:', err);
         dataLoadedRef.current = true;
       }
+    })();
+    function applyStages(parsedStages: MilestoneStage[]) {
+      const hasRichContent = parsedStages.some((stage: MilestoneStage) =>
+        stage.tasks.some((task: MilestoneTask) => task.links && task.links.length > 0)
+      );
+      if (hasRichContent) setStages(parsedStages);
+      else setStages(prev => prev.map((defaultStage, stageIndex) => {
+        const savedStage = parsedStages[stageIndex];
+        if (savedStage) {
+          return {
+            ...defaultStage,
+            tasks: defaultStage.tasks.map((defaultTask, taskIndex) => {
+              const savedTask = savedStage.tasks[taskIndex];
+              return savedTask ? { ...defaultTask, completed: savedTask.completed } : defaultTask;
+            })
+          };
+        }
+        return defaultStage;
+      }));
     }
-  }, [currentUser?.uid, hospitalId]);
+    return () => { mounted = false; };
+  }, [milestonesUserId, hospitalId]);
 
 
   const handleTaskToggle = (stageId: string, taskId: string) => {
@@ -494,26 +504,13 @@ const MilestonesPage = () => {
         }, { onConflict: 'hospital_id,task_id' })
         .then(({ error }) => { if (error) console.error('Checklist save error:', error); });
     }
-    if (currentUser?.uid) {
-      try {
-        localStorage.setItem(`milestones_${currentUser.uid}`, JSON.stringify(newStages));
-      } catch (err) {
-        console.error('Error saving milestones to localStorage:', err);
-      }
-    }
+    if (milestonesUserId) setUserData(milestonesUserId, 'milestones', newStages);
   };
 
-  const testLocalStorage = () => {
-    if (currentUser?.uid) {
-      const key = `milestones_${currentUser.uid}`;
-      const saved = localStorage.getItem(key);
-      console.log('🧪 TEST localStorage:', { key, saved: saved ? 'EXISTS' : 'MISSING', data: saved });
-      
-      // Also check all localStorage keys
-      const allKeys = Object.keys(localStorage);
-      const milestoneKeys = allKeys.filter(k => k.includes('milestones'));
-      console.log('🔍 All localStorage keys:', allKeys);
-      console.log('🎯 Milestone-related keys:', milestoneKeys);
+  const testLocalStorage = async () => {
+    if (milestonesUserId) {
+      const saved = await getUserData(milestonesUserId, 'milestones');
+      console.log('🧪 TEST user_data milestones:', { userId: milestonesUserId, saved: saved ? 'EXISTS' : 'MISSING', data: saved });
     }
   };
 

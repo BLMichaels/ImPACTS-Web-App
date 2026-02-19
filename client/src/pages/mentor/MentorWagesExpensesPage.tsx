@@ -39,6 +39,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, startOfMonth, endOfMonth, parseISO, getYear, getMonth, isWithinInterval } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+import { getUserData, setUserData } from '../../utils/userData';
 
 // Constants
 const HOURLY_RATE = 30; // $30/hr
@@ -112,32 +113,44 @@ const MentorWagesExpensesPage: React.FC = () => {
     miles: ''
   });
 
-  // Load wages data from localStorage
-  const [wagesData, setWagesData] = useState<MentorWagesData>(() => {
-    if (currentUser?.id) {
-      const saved = localStorage.getItem(`mentorWages_${currentUser.id}`);
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch {
-          return { monthlyData: [], expenses: [], stipends: {} };
-        }
-      }
-    }
-    return { monthlyData: [], expenses: [], stipends: {} };
-  });
-
-  // Load activities to calculate hours
+  const [wagesData, setWagesData] = useState<MentorWagesData>({ monthlyData: [], expenses: [], stipends: {} });
   const [activities, setActivities] = useState<any[]>([]);
 
   useEffect(() => {
-    if (currentUser?.id) {
-      const savedActivities = localStorage.getItem(`mentorActivities_${currentUser.id}`);
-      if (savedActivities) {
-        setActivities(JSON.parse(savedActivities));
+    const uid = currentUser?.id;
+    if (!uid) return;
+    let mounted = true;
+    (async () => {
+      let wagesVal = await getUserData<MentorWagesData>(uid, 'mentorWages');
+      let activitiesVal = await getUserData<any[]>(uid, 'mentorActivities');
+      if (wagesVal == null) {
+        try {
+          const raw = localStorage.getItem(`mentorWages_${uid}`);
+          if (raw) {
+            wagesVal = JSON.parse(raw) as MentorWagesData;
+            await setUserData(uid, 'mentorWages', wagesVal);
+            localStorage.removeItem(`mentorWages_${uid}`);
+          }
+        } catch {}
       }
-    }
-  }, [currentUser]);
+      if (activitiesVal == null) {
+        try {
+          const raw = localStorage.getItem(`mentorActivities_${uid}`);
+          if (raw) {
+            activitiesVal = JSON.parse(raw);
+            if (Array.isArray(activitiesVal)) {
+              await setUserData(uid, 'mentorActivities', activitiesVal);
+              localStorage.removeItem(`mentorActivities_${uid}`);
+            }
+          }
+        } catch {}
+      }
+      if (!mounted) return;
+      if (wagesVal && typeof wagesVal === 'object') setWagesData(wagesVal);
+      if (Array.isArray(activitiesVal)) setActivities(activitiesVal);
+    })();
+    return () => { mounted = false; };
+  }, [currentUser?.id]);
 
   // Calculate monthly hours from activities
   const calculateMonthlyHours = (month: number, year: number): number => {
@@ -199,12 +212,9 @@ const MentorWagesExpensesPage: React.FC = () => {
     return months;
   }, [activities, wagesData, currentYear]);
 
-  // Save wages data
-  const saveWagesData = (data: MentorWagesData) => {
-    if (currentUser?.id) {
-      localStorage.setItem(`mentorWages_${currentUser.id}`, JSON.stringify(data));
-      setWagesData(data);
-    }
+  const saveWagesData = async (data: MentorWagesData) => {
+    setWagesData(data);
+    if (currentUser?.id) await setUserData(currentUser.id, 'mentorWages', data);
   };
 
   // Expense handlers

@@ -46,6 +46,7 @@ import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ExpandMore as E
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
+import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
@@ -1397,85 +1398,44 @@ const PRSPage: React.FC = () => {
     setShowSkipMessage(null);
   };
 
-  // Load data from localStorage on component mount
+  const prsUserId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  // Load data from user_data on mount
   useEffect(() => {
-    const savedQuestions = localStorage.getItem('prsQuestions');
-    const savedScores = localStorage.getItem('prsReadinessScores');
-    
-    // Check for gap plans in both old and new locations
-    let savedGapPlans = null;
-    if (currentUser?.uid) {
-      // First try the new location
-      savedGapPlans = localStorage.getItem(`gapPlans_${currentUser.uid}`);
-      
-      // If no gap plans in new location, check old location and migrate
-      if (!savedGapPlans) {
-        const oldGapPlans = localStorage.getItem('prsGapPlans');
-        if (oldGapPlans) {
-          try {
-            // Migrate to new location
-            localStorage.setItem(`gapPlans_${currentUser.uid}`, oldGapPlans);
-            savedGapPlans = oldGapPlans;
-            // Remove old data
-            localStorage.removeItem('prsGapPlans');
-            console.log('Migrated gap plans from old to new location');
-          } catch (error) {
-            console.error('Error migrating gap plans:', error);
-          }
-        }
+    if (!prsUserId) return;
+    let mounted = true;
+    (async () => {
+      const [questionsVal, scoresVal, gapPlansVal] = await Promise.all([
+        getUserData<any[]>(prsUserId, 'prsQuestions'),
+        getUserData<any[]>(prsUserId, 'prsReadinessScores'),
+        getUserData<any[]>(prsUserId, 'gapPlans')
+      ]);
+      if (!mounted) return;
+      if (questionsVal != null && Array.isArray(questionsVal)) setQuestions(questionsVal);
+      else await migrateFromLocalStorage(prsUserId, 'prsQuestions', 'prsQuestions', (v) => setQuestions(Array.isArray(v) ? v : ASSESSMENT_QUESTIONS));
       }
-    }
+      if (scoresVal != null && Array.isArray(scoresVal)) setReadinessScores(scoresVal);
+      else await migrateFromLocalStorage(prsUserId, 'prsReadinessScores', 'prsReadinessScores', (v) => setReadinessScores(Array.isArray(v) ? v : []));
+      if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
+      else {
+        await migrateFromLocalStorage(prsUserId, 'gapPlans', `gapPlans_${prsUserId}`, (v) => setGapPlans(Array.isArray(v) ? v : []));
+        try {
+          const oldGap = localStorage.getItem('prsGapPlans');
+          if (oldGap) { const p = JSON.parse(oldGap); if (Array.isArray(p)) { await setUserData(prsUserId, 'gapPlans', p); setGapPlans(p); localStorage.removeItem('prsGapPlans'); } }
+        } catch {}
+      }
+    })();
+    return () => { mounted = false; };
+  }, [prsUserId]);
 
-    console.log('Loading from localStorage...');
-    console.log('Saved questions:', savedQuestions);
-    console.log('ASSESSMENT_QUESTIONS length:', ASSESSMENT_QUESTIONS.length);
-    console.log('ASSESSMENT_QUESTIONS with 18a-18h:', ASSESSMENT_QUESTIONS.filter((q: AssessmentQuestion) => q.id.startsWith('18')));
-
-    if (savedQuestions) {
-      try {
-        const parsedQuestions = JSON.parse(savedQuestions);
-        console.log('Parsed questions:', parsedQuestions);
-        console.log('Parsed questions with 18a-18h:', parsedQuestions.filter((q: AssessmentQuestion) => q.id.startsWith('18')));
-        setQuestions(parsedQuestions);
-      } catch (error) {
-        console.error('Error parsing saved questions:', error);
-        setQuestions(ASSESSMENT_QUESTIONS);
-      }
-    } else {
-      console.log('No saved questions, using default ASSESSMENT_QUESTIONS');
-      setQuestions(ASSESSMENT_QUESTIONS);
-    }
-    
-    if (savedScores) {
-      try {
-        const parsedScores = JSON.parse(savedScores);
-        setReadinessScores(parsedScores);
-      } catch (error) {
-        console.error('Error parsing saved scores:', error);
-        setReadinessScores([]);
-      }
-    }
-    
-    if (savedGapPlans) {
-      try {
-        const parsedGapPlans = JSON.parse(savedGapPlans);
-        setGapPlans(parsedGapPlans);
-      } catch (error) {
-        console.error('Error parsing saved gap plans:', error);
-        setGapPlans([]);
-      }
-    }
-  }, [currentUser?.uid]);
-
-  // Save questions to localStorage whenever they change
+  // Persist questions to user_data when they change
   useEffect(() => {
-    localStorage.setItem('prsQuestions', JSON.stringify(questions));
-  }, [questions]);
+    if (prsUserId) setUserData(prsUserId, 'prsQuestions', questions);
+  }, [prsUserId, questions]);
 
-  // Save readiness scores to localStorage whenever they change
+  // Persist readiness scores to user_data when they change
   useEffect(() => {
-    localStorage.setItem('prsReadinessScores', JSON.stringify(readinessScores));
-  }, [readinessScores]);
+    if (prsUserId) setUserData(prsUserId, 'prsReadinessScores', readinessScores);
+  }, [prsUserId, readinessScores]);
 
   // Handle viewing PDF files
   const handleViewPdf = (score: ReadinessScore) => {
@@ -1569,12 +1529,10 @@ const PRSPage: React.FC = () => {
     return score.toFixed(3);
   };
 
-  // Save gap plans to localStorage whenever they change
+  // Persist gap plans to user_data when they change
   useEffect(() => {
-    if (currentUser?.uid) {
-      localStorage.setItem(`gapPlans_${currentUser.uid}`, JSON.stringify(gapPlans));
-    }
-  }, [gapPlans, currentUser?.uid]);
+    if (prsUserId) setUserData(prsUserId, 'gapPlans', gapPlans);
+  }, [prsUserId, gapPlans]);
 
   // Calculate readiness score
   const calculateReadinessScore = () => {

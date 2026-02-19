@@ -105,8 +105,12 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           error.message,
           '— Ensure public.users has a row where id = your Auth User UID (Supabase → Authentication → Users).'
         );
-        // If no profile exists yet (new user), check localStorage for legacy data
-        const savedProfile = localStorage.getItem(`userProfile_${currentUser.uid || currentUser.id}`);
+        // If no profile exists yet (new user), check user_data then localStorage for legacy data
+        const { getUserData } = await import('../utils/userData');
+        let savedProfile: string | null = null;
+        const cached = await getUserData<Record<string, unknown>>(currentUser.uid || currentUser.id, 'userProfile_cache');
+        if (cached && typeof cached === 'object') savedProfile = JSON.stringify(cached);
+        if (!savedProfile) savedProfile = localStorage.getItem(`userProfile_${currentUser.uid || currentUser.id}`);
         if (savedProfile) {
           try {
             const parsed = JSON.parse(savedProfile);
@@ -282,16 +286,17 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
 
       if (error) {
         console.error('Error updating profile in Supabase:', error);
-        // Fall back to localStorage
+        // Fall back to user_data cache
         const updatedProfile = { ...userProfile, ...updates };
         setUserProfile(updatedProfile);
-        localStorage.setItem(`userProfile_${currentUser.uid || currentUser.id}`, JSON.stringify({
+        const { setUserData } = await import('../utils/userData');
+        await setUserData(currentUser.uid || currentUser.id, 'userProfile_cache', {
           firstName: updatedProfile.first_name,
           lastName: updatedProfile.last_name,
           phone: updatedProfile.phone,
           tier: updatedProfile.role === UserRole.MENTOR ? 'PRISM' : 'PECC',
           email: updatedProfile.email
-        }));
+        });
       } else {
         // For self-update, preserve role and is_admin so we never overwrite admin with PECC in local state
         const merged = { ...userProfile, ...updates };

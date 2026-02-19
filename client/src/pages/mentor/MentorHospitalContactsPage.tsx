@@ -55,6 +55,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
+import { getUserData, setUserData } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -263,36 +264,63 @@ const MentorHospitalContactsPage: React.FC = () => {
     const uid = currentUser?.id;
     if (!uid) return;
 
-    const savedHospitals = localStorage.getItem(`mentorHospitals_${uid}`);
-    const savedContacts = localStorage.getItem(`mentorContacts_${uid}`);
-
-    // One-time migration: clear old sample/mock data from localStorage
     const isOldMockHospital = (name: string) =>
       name === 'Memorial General Hospital' || name === "Children's Regional Medical Center" || name === "St. Mary's Community Hospital";
     const isOldMockContact = (f: string, l: string) =>
       (f === 'Jane' && l === 'Smith') || (f === 'John' && l === 'Doe');
 
     let hospitals: Hospital[] = [];
-    if (savedHospitals) {
+    let contacts: Contact[] = [];
+    let hospitalsVal = await getUserData<Hospital[]>(uid, 'mentorHospitals');
+    let contactsVal = await getUserData<Contact[]>(uid, 'mentorContacts');
+    if (hospitalsVal == null || !Array.isArray(hospitalsVal)) {
       try {
-        const parsed = JSON.parse(savedHospitals);
-        if (Array.isArray(parsed) && parsed.some((h: { name?: string }) => isOldMockHospital(h?.name || ''))) {
-          localStorage.removeItem(`mentorHospitals_${uid}`);
-          localStorage.removeItem(`mentorContacts_${uid}`);
-        } else {
-          // Migrate old hospitals to include isWorkingWith field (default to true)
-          hospitals = Array.isArray(parsed) ? parsed.map((h: Hospital) => ({
-            ...h,
-            isWorkingWith: h.isWorkingWith ?? true,
-            notesLog: Array.isArray((h as Hospital & { notesLog?: DatedNote[] }).notesLog) ? (h as Hospital & { notesLog: DatedNote[] }).notesLog : []
-          })) : [];
+        const raw = localStorage.getItem(`mentorHospitals_${uid}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            hospitalsVal = parsed;
+            await setUserData(uid, 'mentorHospitals', parsed);
+            localStorage.removeItem(`mentorHospitals_${uid}`);
+          }
         }
-      } catch {
+      } catch {}
+    }
+    if (contactsVal == null || !Array.isArray(contactsVal)) {
+      try {
+        const raw = localStorage.getItem(`mentorContacts_${uid}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            contactsVal = parsed;
+            await setUserData(uid, 'mentorContacts', parsed);
+            localStorage.removeItem(`mentorContacts_${uid}`);
+          }
+        }
+      } catch {}
+    }
+    if (hospitalsVal != null && Array.isArray(hospitalsVal)) {
+      if (hospitalsVal.some((h: Hospital) => isOldMockHospital(h?.name || ''))) {
         hospitals = [];
+        await setUserData(uid, 'mentorHospitals', []);
+        await setUserData(uid, 'mentorContacts', []);
+      } else {
+        hospitals = hospitalsVal.map((h: Hospital) => ({
+          ...h,
+          isWorkingWith: h.isWorkingWith ?? true,
+          notesLog: Array.isArray((h as Hospital & { notesLog?: DatedNote[] }).notesLog) ? (h as Hospital & { notesLog: DatedNote[] }).notesLog : []
+        }));
+      }
+    }
+    if (contactsVal != null && Array.isArray(contactsVal)) {
+      if (contactsVal.some((c: any) => isOldMockContact(c?.firstName || '', c?.lastName || ''))) {
+        contacts = [];
+        await setUserData(uid, 'mentorContacts', []);
+      } else {
+        contacts = contactsVal;
       }
     }
 
-    // Sync hospital names from CRM so updates in CRM appear in tabs
     if (hospitals.length > 0) {
       const nameByKey: Record<string, string> = {};
       const ids = hospitals.map((h: Hospital) => h.id);
@@ -307,36 +335,22 @@ const MentorHospitalContactsPage: React.FC = () => {
         ...h,
         name: nameByKey[h.id] ?? normalizeHospitalOrOrgName(h.name)
       }));
-      localStorage.setItem(`mentorHospitals_${uid}`, JSON.stringify(hospitals));
+      await setUserData(uid, 'mentorHospitals', hospitals);
     }
 
     setHospitals(hospitals);
     setSelectedHospital(hospitals.length > 0 ? hospitals[0] : null);
-
-    let contacts: Contact[] = [];
-    if (savedContacts) {
-      try {
-        const parsed = JSON.parse(savedContacts);
-        if (Array.isArray(parsed) && parsed.some((c: { firstName?: string; lastName?: string }) => isOldMockContact(c?.firstName || '', c?.lastName || ''))) {
-          localStorage.removeItem(`mentorContacts_${uid}`);
-        } else {
-          contacts = Array.isArray(parsed) ? parsed : [];
-        }
-      } catch {
-        contacts = [];
-      }
-    }
     setContacts(contacts);
   };
 
-  const saveHospitals = (newHospitals: Hospital[]) => {
-    localStorage.setItem(`mentorHospitals_${currentUser?.id}`, JSON.stringify(newHospitals));
+  const saveHospitals = async (newHospitals: Hospital[]) => {
     setHospitals(newHospitals);
+    if (currentUser?.id) await setUserData(currentUser.id, 'mentorHospitals', newHospitals);
   };
 
-  const saveContacts = (newContacts: Contact[]) => {
-    localStorage.setItem(`mentorContacts_${currentUser?.id}`, JSON.stringify(newContacts));
+  const saveContacts = async (newContacts: Contact[]) => {
     setContacts(newContacts);
+    if (currentUser?.id) await setUserData(currentUser.id, 'mentorContacts', newContacts);
   };
 
   // CRM state → city → hospital options for Add Hospital
@@ -647,22 +661,32 @@ const MentorHospitalContactsPage: React.FC = () => {
     });
   };
 
-  // Load cohorts when invite dialog opens
+  // Load cohorts when invite dialog opens (mentors only see cohorts they're allowed to invite to)
   useEffect(() => {
-    if (inviteDialogOpen) {
+    if (inviteDialogOpen && currentUser?.id) {
       setInviteCohortIds([]);
       setInviteCustomMessage('');
       setInviteSuccessCode(null);
       (async () => {
-        const { data } = await supabase
-          .from('cohorts')
-          .select('id, name')
-          .eq('is_active', true)
-          .order('name');
-        if (data) setInviteCohorts(data.map(c => ({ id: c.id, name: c.name })));
+        const { data: allowedRows } = await supabase
+          .from('cohort_invite_mentors')
+          .select('cohort_id')
+          .eq('mentor_id', currentUser.id);
+        const allowedIds = (allowedRows || []).map(r => r.cohort_id);
+        if (allowedIds.length === 0) {
+          setInviteCohorts([]);
+        } else {
+          const { data } = await supabase
+            .from('cohorts')
+            .select('id, name')
+            .eq('is_active', true)
+            .in('id', allowedIds)
+            .order('name');
+          if (data) setInviteCohorts(data.map(c => ({ id: c.id, name: c.name })));
+        }
       })();
     }
-  }, [inviteDialogOpen]);
+  }, [inviteDialogOpen, currentUser?.id]);
 
   const handleSendInvite = async () => {
     if (!inviteEmail.trim() || !currentUser?.id || !selectedHospital) return;
@@ -1038,251 +1062,240 @@ const MentorHospitalContactsPage: React.FC = () => {
               </Box>
             </DialogTitle>
             <DialogContent>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>Hospital Information</Typography>
-              <Divider sx={{ mb: 2 }} />
-              
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <Typography variant="subtitle2" color="textSecondary">Status:</Typography>
-                {selectedHospital.isWorkingWith ? (
-                  <Chip label="Working With" color="success" size="small" />
-                ) : (
-                  <Chip label="Contact Only" color="default" size="small" />
-                )}
-              </Box>
-              
-              <Typography variant="subtitle2" color="textSecondary">Name</Typography>
-              <Typography gutterBottom>{normalizeHospitalOrOrgName(selectedHospital.name)}</Typography>
-              
-              <Typography variant="subtitle2" color="textSecondary">Trauma Level</Typography>
-              <Chip label={selectedHospital.traumaLevel} size="small" sx={{ mb: 1 }} />
-              
-              <Typography variant="subtitle2" color="textSecondary">Address</Typography>
-              <Typography gutterBottom>
-                {selectedHospital.address}<br />
-                {selectedHospital.city}, {selectedHospital.state}
-              </Typography>
-              
-              <Typography variant="subtitle2" color="textSecondary">Phone</Typography>
-              <Typography gutterBottom>{selectedHospital.phone || '-'}</Typography>
-              
-              <Typography variant="subtitle2" color="textSecondary">ED Size</Typography>
-              <Typography gutterBottom>{selectedHospital.edSize || '-'}</Typography>
-              
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="subtitle1" fontWeight={600} gutterBottom>Notes</Typography>
-              <Typography variant="subtitle2" color="textSecondary">General notes</Typography>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>
-                {selectedHospital.notes || '—'}
-              </Typography>
-              <Typography variant="subtitle2" color="textSecondary" gutterBottom>Dated notes</Typography>
-              {(selectedHospital.notesLog ?? []).length === 0 ? (
-                <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>No dated notes yet.</Typography>
-              ) : (
-                <Box sx={{ mb: 2, maxHeight: 160, overflow: 'auto' }}>
-                  {(selectedHospital.notesLog ?? []).map((entry, i) => (
-                    <Box key={i} sx={{ mb: 1.5, pb: 1.5, borderBottom: i < (selectedHospital.notesLog!.length - 1) ? 1 : 0, borderColor: 'divider' }}>
-                      <Typography variant="caption" color="textSecondary">{entry.date}</Typography>
-                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-              <TextField
-                size="small"
-                type="date"
-                label="Note date"
-                value={newNoteDate}
-                onChange={(e) => setNewNoteDate(e.target.value)}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                sx={{ mb: 1 }}
-              />
-              <TextField
-                size="small"
-                label="Add a dated note"
-                placeholder="e.g. Call with PECC lead, discussed timeline..."
-                value={newNoteText}
-                onChange={(e) => setNewNoteText(e.target.value)}
-                fullWidth
-                multiline
-                minRows={2}
-                sx={{ mb: 1 }}
-              />
-              <Button size="small" variant="outlined" onClick={handleAddDatedNote} disabled={!newNoteText.trim()}>
-                Add note
-              </Button>
-              
-              <Button 
-                variant="outlined" 
-                fullWidth 
-                sx={{ mt: 2, mb: 1 }}
-                onClick={() => handleEditHospital(selectedHospital)}
-              >
-                Edit Hospital
-              </Button>
-              <Button 
-                variant="outlined" 
-                fullWidth 
-                sx={{ mb: 1 }}
-                onClick={() => handleToggleWorkingWith(selectedHospital.id)}
-              >
-                {selectedHospital.isWorkingWith ? 'Mark as Contact Only' : 'Mark as Working With'}
-              </Button>
-              <Button 
-                variant="outlined" 
-                color="error"
-                fullWidth 
-                onClick={() => handleRemoveHospital(selectedHospital.id)}
-              >
-                Remove from Dashboard
-              </Button>
-            </Paper>
-          </Grid>
-          
-          <Grid item xs={12} md={8}>
-            <Paper sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">Contacts</Typography>
-                <Box>
-                  <Button 
-                    startIcon={<SendIcon />} 
-                    onClick={() => setInviteDialogOpen(true)}
-                    sx={{ mr: 1 }}
-                  >
-                    Invite PECC
-                  </Button>
-                  <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddContact}>
-                    Add Contact
-                  </Button>
-                </Box>
-              </Box>
-              {hospitalContacts.length > 0 && (
-                <Grid container spacing={2} sx={{ mb: 2 }}>
-                  <Grid item xs={12} sm={6} md={4}>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      placeholder="Search contacts..."
-                      value={contactSearch}
-                      onChange={(e) => setContactSearch(e.target.value)}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <SearchIcon fontSize="small" color="action" />
-                          </InputAdornment>
-                        )
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={6} sm={3} md={2}>
-                    <FormControl size="small" fullWidth>
-                      <InputLabel>Sort by</InputLabel>
-                      <Select
-                        value={contactSortBy}
-                        label="Sort by"
-                        onChange={(e) => setContactSortBy(e.target.value as typeof contactSortBy)}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {/* 1. Hospital name and basic info at top */}
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>{normalizeHospitalOrOrgName(selectedHospital.name)}</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    {selectedHospital.isWorkingWith ? (
+                      <Chip label="Working With" color="success" size="small" />
+                    ) : (
+                      <Chip label="Contact Only" color="default" size="small" />
+                    )}
+                    <Chip label={selectedHospital.traumaLevel} size="small" />
+                  </Box>
+                  <Typography variant="subtitle2" color="textSecondary">Address</Typography>
+                  <Typography gutterBottom>
+                    {selectedHospital.address}<br />
+                    {selectedHospital.city}, {selectedHospital.state}
+                  </Typography>
+                  <Typography variant="subtitle2" color="textSecondary">Phone</Typography>
+                  <Typography gutterBottom>{selectedHospital.phone || '—'}</Typography>
+                  <Typography variant="subtitle2" color="textSecondary">ED Size</Typography>
+                  <Typography>{selectedHospital.edSize || '—'}</Typography>
+                </Paper>
+
+                {/* 2. Contacts */}
+                <Paper sx={{ p: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6">Contacts</Typography>
+                    <Box>
+                      <Button 
+                        startIcon={<SendIcon />} 
+                        onClick={() => setInviteDialogOpen(true)}
+                        sx={{ mr: 1 }}
                       >
-                        <MenuItem value="name">Name</MenuItem>
-                        <MenuItem value="role">Role</MenuItem>
-                        <MenuItem value="status">Status</MenuItem>
-                        <MenuItem value="primary">Primary first</MenuItem>
-                        <MenuItem value="workingWithMe">Working with me first</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={2} md={1}>
-                    <IconButton
-                      size="small"
-                      onClick={() => setContactSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-                      title={contactSortOrder === 'asc' ? 'Ascending' : 'Descending'}
-                    >
-                      {contactSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
-                    </IconButton>
-                  </Grid>
-                </Grid>
-              )}
-              <Divider sx={{ mb: 2 }} />
-              
-              {hospitalContacts.length === 0 ? (
-                <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
-                  No contacts for this hospital yet
-                </Typography>
-              ) : filteredAndSortedContacts.length === 0 ? (
-                <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
-                  No contacts match the search. Try a different term.
-                </Typography>
-              ) : (
-                <List>
-                  {filteredAndSortedContacts.map((contact, index) => (
-                    <React.Fragment key={contact.id}>
-                      <ListItem>
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: contact.isPrimaryContact ? 'primary.main' : 'grey.400' }}>
-                            <PersonIcon />
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                              {contact.firstName} {contact.lastName}
-                              {contact.isPrimaryContact && (
-                                <Chip label="Primary" size="small" color="primary" />
-                              )}
-                              {contact.isActivelyEngaged && (
-                                <Chip label="Active" size="small" color="success" />
-                              )}
-                              <Chip
-                                size="small"
-                                variant={contact.isWorkingWithMentor !== false ? 'filled' : 'outlined'}
-                                color={contact.isWorkingWithMentor !== false ? 'success' : 'default'}
-                                label={contact.isWorkingWithMentor !== false ? 'Working with me' : 'Not actively working with me'}
-                                onClick={(e) => { e.stopPropagation(); handleToggleContactWorkingWith(contact); }}
-                                sx={{ cursor: 'pointer' }}
-                              />
-                            </Box>
-                          }
-                          secondary={
-                            <>
-                              <Typography variant="body2" component="span">
-                                {contact.roleAtHospital}
-                              </Typography>
-                              <br />
-                              <Typography variant="caption" component="span">
-                                <Chip label={contact.contactStatus} size="small" sx={{ mr: 1 }} />
-                              </Typography>
-                              <br />
-                              <Typography variant="caption" component="span">
-                                <EmailIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
-                                {contact.email}
-                                {contact.phone && (
-                                  <>
-                                    {' | '}
-                                    <PhoneIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
-                                    {contact.phone}
-                                  </>
-                                )}
-                              </Typography>
-                            </>
-                          }
+                        Invite PECC
+                      </Button>
+                      <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddContact}>
+                        Add Contact
+                      </Button>
+                    </Box>
+                  </Box>
+                  {hospitalContacts.length > 0 && (
+                    <Grid container spacing={2} sx={{ mb: 2 }}>
+                      <Grid item xs={12} sm={6} md={4}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          placeholder="Search contacts..."
+                          value={contactSearch}
+                          onChange={(e) => setContactSearch(e.target.value)}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <SearchIcon fontSize="small" color="action" />
+                              </InputAdornment>
+                            )
+                          }}
                         />
-                        <ListItemSecondaryAction>
-                          <IconButton size="small" onClick={() => handleEditContact(contact)} aria-label="Edit contact">
-                            <EditIcon />
-                          </IconButton>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                      {index < filteredAndSortedContacts.length - 1 && <Divider variant="inset" component="li" />}
-                    </React.Fragment>
-                  ))}
-                </List>
-              )}
-            </Paper>
-          </Grid>
-        </Grid>
-              </DialogContent>
+                      </Grid>
+                      <Grid item xs={6} sm={3} md={2}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel>Sort by</InputLabel>
+                          <Select
+                            value={contactSortBy}
+                            label="Sort by"
+                            onChange={(e) => setContactSortBy(e.target.value as typeof contactSortBy)}
+                          >
+                            <MenuItem value="name">Name</MenuItem>
+                            <MenuItem value="role">Role</MenuItem>
+                            <MenuItem value="status">Status</MenuItem>
+                            <MenuItem value="primary">Primary first</MenuItem>
+                            <MenuItem value="workingWithMe">Working with me first</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={6} sm={2} md={1}>
+                        <IconButton
+                          size="small"
+                          onClick={() => setContactSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+                          title={contactSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                        >
+                          {contactSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
+                        </IconButton>
+                      </Grid>
+                    </Grid>
+                  )}
+                  <Divider sx={{ mb: 2 }} />
+                  {hospitalContacts.length === 0 ? (
+                    <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
+                      No contacts for this hospital yet
+                    </Typography>
+                  ) : filteredAndSortedContacts.length === 0 ? (
+                    <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
+                      No contacts match the search. Try a different term.
+                    </Typography>
+                  ) : (
+                    <List>
+                      {filteredAndSortedContacts.map((contact, index) => (
+                        <React.Fragment key={contact.id}>
+                          <ListItem>
+                            <ListItemAvatar>
+                              <Avatar sx={{ bgcolor: contact.isPrimaryContact ? 'primary.main' : 'grey.400' }}>
+                                <PersonIcon />
+                              </Avatar>
+                            </ListItemAvatar>
+                            <ListItemText
+                              primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                  {contact.firstName} {contact.lastName}
+                                  {contact.isPrimaryContact && (
+                                    <Chip label="Primary" size="small" color="primary" />
+                                  )}
+                                  {contact.isActivelyEngaged && (
+                                    <Chip label="Active" size="small" color="success" />
+                                  )}
+                                  <Chip
+                                    size="small"
+                                    variant={contact.isWorkingWithMentor !== false ? 'filled' : 'outlined'}
+                                    color={contact.isWorkingWithMentor !== false ? 'success' : 'default'}
+                                    label={contact.isWorkingWithMentor !== false ? 'Working with me' : 'Not actively working with me'}
+                                    onClick={(e) => { e.stopPropagation(); handleToggleContactWorkingWith(contact); }}
+                                    sx={{ cursor: 'pointer' }}
+                                  />
+                                </Box>
+                              }
+                              secondary={
+                                <>
+                                  <Typography variant="body2" component="span">
+                                    {contact.roleAtHospital}
+                                  </Typography>
+                                  <br />
+                                  <Typography variant="caption" component="span">
+                                    <Chip label={contact.contactStatus} size="small" sx={{ mr: 1 }} />
+                                  </Typography>
+                                  <br />
+                                  <Typography variant="caption" component="span">
+                                    <EmailIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
+                                    {contact.email}
+                                    {contact.phone && (
+                                      <>
+                                        {' | '}
+                                        <PhoneIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
+                                        {contact.phone}
+                                      </>
+                                    )}
+                                  </Typography>
+                                </>
+                              }
+                            />
+                            <ListItemSecondaryAction>
+                              <IconButton size="small" onClick={() => handleEditContact(contact)} aria-label="Edit contact">
+                                <EditIcon />
+                              </IconButton>
+                            </ListItemSecondaryAction>
+                          </ListItem>
+                          {index < filteredAndSortedContacts.length - 1 && <Divider variant="inset" component="li" />}
+                        </React.Fragment>
+                      ))}
+                    </List>
+                  )}
+                </Paper>
+
+                {/* 3. Notes underneath */}
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>Notes</Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  <Typography variant="subtitle2" color="textSecondary">General notes</Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>
+                    {selectedHospital.notes || '—'}
+                  </Typography>
+                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>Dated notes</Typography>
+                  {(selectedHospital.notesLog ?? []).length === 0 ? (
+                    <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>No dated notes yet.</Typography>
+                  ) : (
+                    <Box sx={{ mb: 2, maxHeight: 200, overflow: 'auto' }}>
+                      {(selectedHospital.notesLog ?? []).map((entry, i) => (
+                        <Box key={i} sx={{ mb: 1.5, pb: 1.5, borderBottom: i < (selectedHospital.notesLog!.length - 1) ? 1 : 0, borderColor: 'divider' }}>
+                          <Typography variant="caption" color="textSecondary">{entry.date}</Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                  <TextField
+                    size="small"
+                    type="date"
+                    label="Note date"
+                    value={newNoteDate}
+                    onChange={(e) => setNewNoteDate(e.target.value)}
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ mb: 1 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Add a dated note"
+                    placeholder="e.g. Call with PECC lead, discussed timeline..."
+                    value={newNoteText}
+                    onChange={(e) => setNewNoteText(e.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    sx={{ mb: 1 }}
+                  />
+                  <Button size="small" variant="outlined" onClick={handleAddDatedNote} disabled={!newNoteText.trim()}>
+                    Add note
+                  </Button>
+                  <Divider sx={{ my: 2 }} />
+                  <Button 
+                    variant="outlined" 
+                    fullWidth 
+                    sx={{ mb: 1 }}
+                    onClick={() => handleEditHospital(selectedHospital)}
+                  >
+                    Edit Hospital
+                  </Button>
+                  <Button 
+                    variant="outlined" 
+                    fullWidth 
+                    sx={{ mb: 1 }}
+                    onClick={() => handleToggleWorkingWith(selectedHospital.id)}
+                  >
+                    {selectedHospital.isWorkingWith ? 'Mark as Contact Only' : 'Mark as Working With'}
+                  </Button>
+                  <Button 
+                    variant="outlined" 
+                    color="error"
+                    fullWidth 
+                    onClick={() => handleRemoveHospital(selectedHospital.id)}
+                  >
+                    Remove from Dashboard
+                  </Button>
+                </Paper>
+              </Box>
+            </DialogContent>
               <DialogActions>
                 <Button onClick={() => setHospitalDetailsDialogOpen(false)}>Close</Button>
               </DialogActions>

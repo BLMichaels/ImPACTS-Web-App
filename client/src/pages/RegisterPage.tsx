@@ -343,8 +343,8 @@ export default function RegisterPage() {
         }
       }
 
-      localStorage.setItem('termsAccepted', 'true');
-      localStorage.setItem('termsAcceptedDate', new Date().toISOString());
+      const { setUserData } = await import('../utils/userData');
+      await setUserData(userId, 'terms_accepted_at', new Date().toISOString());
       navigate('/', { replace: true });
     } catch (err: unknown) {
       setError(err && typeof err === 'object' && 'message' in err ? String((err as { message: string }).message) : 'Failed to create an account.');
