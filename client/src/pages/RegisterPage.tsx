@@ -11,6 +11,7 @@ import {
   Link,
   FormControl,
   FormLabel,
+  FormGroup,
   RadioGroup,
   Radio,
   InputLabel,
@@ -501,6 +502,31 @@ export default function RegisterPage() {
           />
         );
       case 'checkbox':
+        if (opts.length > 0) {
+          const selected = (Array.isArray(value) ? value : typeof value === 'string' && value ? [value] : []) as string[];
+          return (
+            <FormControl key={q.id} fullWidth margin="normal" required={q.required}>
+              <FormLabel>{q.label + (q.required ? ' *' : '')}</FormLabel>
+              <FormGroup>
+                {opts.map((opt) => (
+                  <FormControlLabel
+                    key={opt}
+                    control={
+                      <Checkbox
+                        checked={selected.includes(opt)}
+                        onChange={(e) => {
+                          const next = e.target.checked ? [...selected, opt] : selected.filter((x) => x !== opt);
+                          setDynamicAnswer(q.id, next);
+                        }}
+                      />
+                    }
+                    label={opt}
+                  />
+                ))}
+              </FormGroup>
+            </FormControl>
+          );
+        }
         return (
           <FormControlLabel
             key={q.id}

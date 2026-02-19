@@ -579,8 +579,8 @@ export default function AdminSettingsPage() {
     if (!formLabel.trim()) { setRegError('Label is required.'); return; }
     const options = formOptionsText.trim() ? formOptionsText.split('\n').map(s => s.trim()).filter(Boolean) : [];
     const linkedHospital = formLinkedCrmField === 'hospital';
-    if ((formType === 'radio' || formType === 'select') && options.length === 0 && !linkedHospital) {
-      setRegError('Radio and Select need at least one option (one per line).');
+    if ((formType === 'radio' || formType === 'select' || formType === 'checkbox') && options.length === 0 && !linkedHospital) {
+      setRegError('Radio, Select, and Checkbox need at least one option (one per line).');
       return;
     }
     setRegError('');
@@ -1466,8 +1466,8 @@ export default function AdminSettingsPage() {
             </Select>
           </FormControl>
           <FormControlLabel control={<Checkbox checked={formRequired} onChange={e => setFormRequired(e.target.checked)} />} label="Required" />
-          {(formType === 'radio' || formType === 'select') && formLinkedCrmField !== 'hospital' && (
-            <TextField fullWidth margin="normal" label="Options (one per line)" value={formOptionsText} onChange={e => setFormOptionsText(e.target.value)} multiline rows={4} placeholder="One option per line" />
+          {(formType === 'radio' || formType === 'select' || formType === 'checkbox') && formLinkedCrmField !== 'hospital' && (
+            <TextField fullWidth margin="normal" label="Options (one per line)" value={formOptionsText} onChange={e => setFormOptionsText(e.target.value)} multiline rows={4} placeholder="One option per line (e.g. Option A, Option B)" helperText={formType === 'checkbox' ? 'Each line becomes a selectable checkbox.' : formType === 'radio' ? 'Each line becomes a radio option.' : 'Each line becomes a dropdown option.'} />
           )}
           {formLinkedCrmField === 'hospital' && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>Registrants will choose from CRM hospitals: State → City → Hospital name. No options needed.</Typography>
