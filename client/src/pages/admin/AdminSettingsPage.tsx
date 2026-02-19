@@ -40,6 +40,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { supabase } from '../../supabase';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../../types/database';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '../../types/database';
@@ -425,6 +427,16 @@ export default function AdminSettingsPage() {
     setSnackbar({ open: true, message: 'Education question deleted', severity: 'success' });
   };
 
+  const moveEducationQuestion = async (fromIndex: number, direction: 'up' | 'down') => {
+    const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= educationQuestions.length) return;
+    const next = [...educationQuestions];
+    [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
+    setEducationQuestions(next);
+    await saveAppSetting('education_questions', next);
+    setSnackbar({ open: true, message: 'Order updated', severity: 'success' });
+  };
+
   const openSimDialog = (sim?: PeccSimulation) => {
     if (sim) {
       setEditingSimId(sim.id);
@@ -478,6 +490,23 @@ export default function AdminSettingsPage() {
       setSnackbar({ open: true, message: 'Simulation removed', severity: 'success' });
     } catch (e) {
       setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to delete', severity: 'error' });
+    }
+  };
+
+  const moveSimulation = async (fromIndex: number, direction: 'up' | 'down') => {
+    const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= simulationsList.length) return;
+    const next = [...simulationsList];
+    [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
+    setSimulationsList(next);
+    try {
+      await Promise.all(next.map((sim, i) =>
+        supabase.from('pecc_simulations').update({ display_order: i }).eq('id', sim.id)
+      ));
+      setSnackbar({ open: true, message: 'Order updated', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to update order', severity: 'error' });
+      loadSimulations();
     }
   };
 
@@ -1089,7 +1118,7 @@ export default function AdminSettingsPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  educationQuestions.map((eq) => (
+                  educationQuestions.map((eq, idx) => (
                     <TableRow key={eq.questionId}>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
@@ -1108,6 +1137,22 @@ export default function AdminSettingsPage() {
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          title="Move up"
+                          disabled={idx === 0}
+                          onClick={() => moveEducationQuestion(idx, 'up')}
+                        >
+                          <ArrowUpwardIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          title="Move down"
+                          disabled={idx === educationQuestions.length - 1}
+                          onClick={() => moveEducationQuestion(idx, 'down')}
+                        >
+                          <ArrowDownwardIcon fontSize="small" />
+                        </IconButton>
                         <IconButton
                           size="small"
                           onClick={() => handleOpenEducationDialog(eq)}
@@ -1160,11 +1205,13 @@ export default function AdminSettingsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    simulationsList.map((s) => (
+                    simulationsList.map((s, idx) => (
                       <TableRow key={s.id}>
                         <TableCell>{s.name || '—'}</TableCell>
                         <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.url || '—'}</TableCell>
                         <TableCell align="right">
+                          <IconButton size="small" title="Move up" disabled={idx === 0} onClick={() => moveSimulation(idx, 'up')}><ArrowUpwardIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" title="Move down" disabled={idx === simulationsList.length - 1} onClick={() => moveSimulation(idx, 'down')}><ArrowDownwardIcon fontSize="small" /></IconButton>
                           <IconButton size="small" onClick={() => openSimDialog(s)}><EditIcon fontSize="small" /></IconButton>
                           <IconButton size="small" onClick={() => handleDeleteSim(s.id)}><DeleteIcon fontSize="small" /></IconButton>
                         </TableCell>
