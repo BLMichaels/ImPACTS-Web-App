@@ -335,7 +335,7 @@ const AdminProjectPipelinePage: React.FC = () => {
   const [restoreSnack, setRestoreSnack] = useState<string | null>(null);
 
   // Try localStorage with key_uid or key (legacy global key from before per-user storage)
-  const tryLocalStorageThenSave = async <T>(uid: string, dataKey: string, setState: (v: T) => void, validator: (v: unknown) => v is T): Promise<boolean> => {
+  const tryLocalStorageThenSave = async <T,>(uid: string, dataKey: string, setState: (v: T) => void, validator: (v: unknown) => v is T): Promise<boolean> => {
     try {
       for (const lsKey of [`${dataKey}_${uid}`, dataKey]) {
         const s = localStorage.getItem(lsKey);
