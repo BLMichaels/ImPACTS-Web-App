@@ -1296,33 +1296,70 @@ const SnapshotPage = () => {
           </Grid>
         </Grid>
 
-      {/* Overall Progress Overview - High-Level Progress Tracking */}
+      {/* Progress Overview: Checklist (overall + by stage in one card) and Gap Plans */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Overall Checklist Progress
+                Checklist Progress
               </Typography>
               <Box sx={{ mt: 2 }}>
-                {milestones.length > 0 ? (
+                {milestones && milestones.length > 0 ? (
                   <>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Overall Progress</Typography>
-                      <Typography variant="body2">
-                        {Math.round((milestones.filter(m => m.status === 'completed').length / milestones.length) * 100)}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={(milestones.filter(m => m.status === 'completed').length / milestones.length) * 100}
-                      sx={{ height: 8, borderRadius: 4 }}
-                    />
-                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        {milestones.filter(m => m.status === 'completed').length} of {milestones.length} completed
-                      </Typography>
-                    </Box>
+                    {(() => {
+                      const hasStages = milestones[0]?.tasks != null;
+                      const totalTasks = hasStages
+                        ? milestones.reduce((sum: number, s: any) => sum + (s.tasks?.length || 0), 0)
+                        : milestones.length;
+                      const completedTasks = hasStages
+                        ? milestones.reduce((sum: number, s: any) => sum + (s.tasks?.filter((t: any) => t.completed)?.length || 0), 0)
+                        : milestones.filter((m: any) => m.status === 'completed' || m.completed).length;
+                      const overallPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                      return (
+                        <>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography variant="body2">Overall Progress</Typography>
+                            <Typography variant="body2">{overallPct}%</Typography>
+                          </Box>
+                          <LinearProgress variant="determinate" value={overallPct} sx={{ height: 8, borderRadius: 4 }} />
+                          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" color="text.secondary">
+                              {completedTasks} of {totalTasks} completed
+                            </Typography>
+                          </Box>
+                        </>
+                      );
+                    })()}
+                    {milestones[0]?.tasks != null && (
+                      <>
+                        <Typography variant="subtitle2" sx={{ mt: 3, mb: 1.5, fontWeight: 600 }}>Progress by Stage</Typography>
+                        <Grid container spacing={2}>
+                          {milestones.map((stage: any) => {
+                            const totalTasks = stage.tasks?.length || 0;
+                            const completedTasks = stage.tasks?.filter((task: any) => task.completed)?.length || 0;
+                            const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                            return (
+                              <Grid item xs={12} sm={6} key={stage.id}>
+                                <Box sx={{ mb: 1 }}>
+                                  <Typography variant="body2" color="primary.main" sx={{ fontWeight: 500 }}>
+                                    {stage.title}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {completedTasks} of {totalTasks} tasks · {progress}%
+                                  </Typography>
+                                  <LinearProgress
+                                    variant="determinate"
+                                    value={progress}
+                                    sx={{ mt: 0.5, height: 6, borderRadius: 3 }}
+                                  />
+                                </Box>
+                              </Grid>
+                            );
+                          })}
+                        </Grid>
+                      </>
+                    )}
                   </>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
@@ -1333,7 +1370,7 @@ const SnapshotPage = () => {
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
@@ -1871,135 +1908,66 @@ const SnapshotPage = () => {
                   </Typography>
                 )}
               </Box>
+              {/* Assessment list - same card, below chart (no duplicate section) */}
+              {readinessScores.length > 0 && (
+                <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Assessment History</Typography>
+                  {readinessScores
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    .map((score, index) => (
+                      <Box key={score.id} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            Assessment #{index + 1}
+                          </Typography>
+                          <Typography variant="h6" color="primary.main">
+                            {score.score}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(score.date).toLocaleDateString()}
+                          </Typography>
+                          {index > 0 && (
+                            <Typography
+                              variant="caption"
+                              color={score.score > readinessScores[index - 1].score ? 'success.main' : 'error.main'}
+                              sx={{ fontWeight: 500 }}
+                            >
+                              {score.score > readinessScores[index - 1].score ? '↗' : '↘'}
+                              {Math.abs(score.score - readinessScores[index - 1].score).toFixed(1)} pts
+                            </Typography>
+                          )}
+                        </Box>
+                        {score.notes && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                            Notes: {score.notes}
+                          </Typography>
+                        )}
+                      </Box>
+                    ))}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
+                    <Typography variant="body2" color="primary.main">
+                      Progress Trend: {readinessScores.length < 2 ? 'Insufficient data' : (() => {
+                        const firstScore = readinessScores[0].score;
+                        const lastScore = readinessScores[readinessScores.length - 1].score;
+                        const improvement = lastScore - firstScore;
+                        if (improvement > 0) return `+${improvement.toFixed(1)} points improvement`;
+                        if (improvement < 0) return `${improvement.toFixed(1)} points decline`;
+                        return 'No change';
+                      })()}
+                    </Typography>
+                    <Typography variant="body2" color="primary.main">
+                      Total Assessments: {readinessScores.length}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
         </Grid>
       )}
-
-      {/* Readiness Score Progress Over Time - Detailed List View - Only show if PRS and charts visible */}
-      {prsSectionVisible && snapshotReadinessChartsVisible !== false && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Readiness Score Progress Over Time
-                </Typography>
-              <Box sx={{ mt: 2 }}>
-                {readinessScores.length > 0 ? (
-                  <>
-                    <Box sx={{ mb: 3 }}>
-                      {readinessScores
-                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                        .map((score, index) => (
-                          <Box key={score.id} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                Assessment #{index + 1}
-                              </Typography>
-                              <Typography variant="h6" color="primary.main">
-                                {score.score}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {new Date(score.date).toLocaleDateString()}
-                              </Typography>
-                              {index > 0 && (
-                                <Typography 
-                                  variant="caption" 
-                                  color={score.score > readinessScores[index - 1].score ? 'success.main' : 'error.main'}
-                                  sx={{ fontWeight: 500 }}
-                                >
-                                  {score.score > readinessScores[index - 1].score ? '↗' : '↘'} 
-                                  {Math.abs(score.score - readinessScores[index - 1].score).toFixed(1)} pts
-                                </Typography>
-                              )}
-                            </Box>
-                            {score.notes && (
-                              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                                Notes: {score.notes}
-                              </Typography>
-                            )}
-                          </Box>
-                        ))}
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
-                      <Typography variant="body2" color="primary.main">
-                        Progress Trend: {(() => {
-                          if (readinessScores.length < 2) return 'Insufficient data';
-                          const firstScore = readinessScores[0].score;
-                          const lastScore = readinessScores[readinessScores.length - 1].score;
-                          const improvement = lastScore - firstScore;
-                          if (improvement > 0) return `+${improvement.toFixed(1)} points improvement`;
-                          if (improvement < 0) return `${improvement.toFixed(1)} points decline`;
-                          return 'No change';
-                        })()}
-                      </Typography>
-                      <Typography variant="body2" color="primary.main">
-                        Total Assessments: {readinessScores.length}
-                      </Typography>
-                    </Box>
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No readiness scores available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        </Grid>
-      )}
-
-      {/* Checklist Progress by Stage - Detailed Progress Breakdown */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Checklist Progress by Stage
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {milestones && milestones.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {milestones.map(stage => {
-                      const totalTasks = stage.tasks?.length || 0;
-                      const completedTasks = stage.tasks?.filter((task: any) => task.completed)?.length || 0;
-                      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                      
-                      return (
-                        <Grid item xs={12} sm={6} md={3} key={stage.id}>
-                          <Typography variant="h6" color="primary.main" gutterBottom>
-                            {stage.title}
-                          </Typography>
-                          <Typography variant="h4" color="success.main">
-                            {progress}%
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {completedTasks} of {totalTasks} tasks
-                          </Typography>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={progress}
-                            sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                          />
-                        </Grid>
-                      );
-                    })}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No checklist data available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
 
       {/* Simulation Analytics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
