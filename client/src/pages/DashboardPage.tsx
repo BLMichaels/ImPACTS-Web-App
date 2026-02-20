@@ -81,14 +81,14 @@ interface ReadinessScore {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
-    const prsSectionAllowed = usePrsSectionVisible(); // permission: can user see PRS at all
+    const prsSectionAllowed = usePrsSectionVisible(); // permission: can user see PRS at all (granular permission)
     const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
-    const [userPrsSectionVisible, setUserPrsSectionVisible] = useState<boolean | null>(null); // null = not loaded yet
-    const prsSectionVisible = prsSectionAllowed && (userPrsSectionVisible === true);
+    const [userPrsSectionVisible, setUserPrsSectionVisible] = useState<boolean | null>(null); // null = not loaded; true/false = user pref (default show)
+    const prsSectionVisible = prsSectionAllowed && (userPrsSectionVisible !== false);
 
     useEffect(() => {
       if (!uid) return;
-      getUserData<boolean>(uid, 'pecc_prs_section_visible').then((v) => setUserPrsSectionVisible(v === true));
+      getUserData<boolean>(uid, 'pecc_prs_section_visible').then((v) => setUserPrsSectionVisible(v !== false));
     }, [uid]);
 
     const setPrsSectionVisiblePref = async (visible: boolean) => {

@@ -68,9 +68,9 @@ const SnapshotPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [renderError, setRenderError] = useState(false);
-  const prsSectionAllowed = usePrsSectionVisible();
+  const prsSectionAllowed = usePrsSectionVisible(); // granular permission: when false, hides all PRS + charts
   const [userPrsSectionVisible, setUserPrsSectionVisible] = useState<boolean | null>(null);
-  const prsSectionVisible = prsSectionAllowed && (userPrsSectionVisible === true);
+  const prsSectionVisible = prsSectionAllowed && (userPrsSectionVisible !== false);
   const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
   const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
@@ -81,8 +81,8 @@ const SnapshotPage = () => {
       getUserData<boolean>(userId, 'pecc_prs_section_visible'),
       getUserData<boolean>(userId, 'snapshot_readiness_charts_visible')
     ]).then(([prs, charts]) => {
-      setUserPrsSectionVisible(prs === true);
-      setSnapshotReadinessChartsVisible(charts === true);
+      setUserPrsSectionVisible(prs !== false);
+      setSnapshotReadinessChartsVisible(charts !== false);
     });
   }, [userId]);
 
@@ -1068,7 +1068,7 @@ const SnapshotPage = () => {
           </Box>
           
           {/* Pediatric Readiness Scores section hidden by default */}
-          {prsSectionAllowed && userPrsSectionVisible !== true && (
+          {prsSectionAllowed && userPrsSectionVisible === false && (
             <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 Pediatric Readiness Scores section is hidden.
@@ -1336,7 +1336,7 @@ const SnapshotPage = () => {
       </Grid>
 
       {/* Readiness Score Trend & Progress - hidden by default; user can show */}
-      {prsSectionVisible && snapshotReadinessChartsVisible !== true && (
+      {prsSectionVisible && snapshotReadinessChartsVisible === false && (
         <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
           <Typography variant="body2" color="text.secondary">
             Readiness Score Trend and Readiness Score Progress Over Time are hidden.
@@ -1346,7 +1346,7 @@ const SnapshotPage = () => {
           </Button>
         </Box>
       )}
-      {prsSectionVisible && snapshotReadinessChartsVisible === true && (
+      {prsSectionVisible && snapshotReadinessChartsVisible !== false && (
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
           <Button size="small" variant="outlined" onClick={() => setReadinessChartsVisiblePref(false)}>
             Hide Readiness Score Trend &amp; Progress
@@ -1354,7 +1354,7 @@ const SnapshotPage = () => {
         </Box>
       )}
       {/* Readiness Assessment Progress - Core Mission Metrics - Only show if PRS and charts visible */}
-      {prsSectionVisible && snapshotReadinessChartsVisible === true && (
+      {prsSectionVisible && snapshotReadinessChartsVisible !== false && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12}>
             <Card>
@@ -1475,7 +1475,7 @@ const SnapshotPage = () => {
       )}
 
         {/* Readiness Score Progress Chart - Enhanced - Only show if PRS and charts visible */}
-        {prsSectionVisible && snapshotReadinessChartsVisible === true && (
+        {prsSectionVisible && snapshotReadinessChartsVisible !== false && (
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
               <Card>
@@ -1834,7 +1834,7 @@ const SnapshotPage = () => {
       )}
 
       {/* Readiness Score Progress Over Time - Detailed List View - Only show if PRS and charts visible */}
-      {prsSectionVisible && snapshotReadinessChartsVisible === true && (
+      {prsSectionVisible && snapshotReadinessChartsVisible !== false && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12}>
             <Card>
