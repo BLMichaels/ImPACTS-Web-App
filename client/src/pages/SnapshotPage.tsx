@@ -64,6 +64,7 @@ const SnapshotPage = () => {
   const [activities, setActivities] = useState<any[]>([]);
   const [milestones, setMilestones] = useState<any[]>([]);
   const [gapPlans, setGapPlans] = useState<any[]>([]);
+  const [simulationGaps, setSimulationGaps] = useState<any[]>([]);
   const [readinessScores, setReadinessScores] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -232,10 +233,11 @@ const SnapshotPage = () => {
         const prsPromises = prsSectionVisible
           ? [getUserData<any[]>(userId, 'readinessScores'), getUserData<any[]>(userId, 'prsQuestions')]
           : [Promise.resolve(null), Promise.resolve(null)];
-        const [activitiesVal, milestonesVal, gapPlansVal, ...prsVals] = await Promise.all([
+        const [activitiesVal, milestonesVal, gapPlansVal, simulationGapsVal, ...prsVals] = await Promise.all([
           getUserData<any[]>(userId, 'activities'),
           getUserData<any[]>(userId, 'milestones'),
           getUserData<any[]>(userId, 'gapPlans'),
+          getUserData<any[]>(userId, 'simulation_gaps'),
           ...prsPromises
         ]);
         const scoresVal = prsSectionVisible ? (prsVals[0] as any[] | null) : null;
@@ -256,6 +258,9 @@ const SnapshotPage = () => {
             if (prsGap) { const p = JSON.parse(prsGap); if (Array.isArray(p)) { await setUserData(userId, 'gapPlans', p); setGapPlans(p); localStorage.removeItem('prsGapPlans'); } }
           } catch {}
         }
+
+        if (simulationGapsVal != null && Array.isArray(simulationGapsVal)) setSimulationGaps(simulationGapsVal);
+        else await migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setSimulationGaps(Array.isArray(v) ? v : []));
 
         if (!prsSectionVisible) {
           setReadinessScores([]);
@@ -480,9 +485,12 @@ const SnapshotPage = () => {
         const completedGapPlans = gapPlans.filter(p => p.status === 'Completed').length;
         const totalGapPlans = gapPlans.length;
         const gapCompletionRate = totalGapPlans > 0 ? Math.round((completedGapPlans / totalGapPlans) * 100) : 0;
+        const completedSimGaps = simulationGaps.filter((g: any) => g.status === 'completed').length;
+        const totalSimGaps = simulationGaps.length;
+        const simGapCompletionRate = totalSimGaps > 0 ? Math.round((completedSimGaps / totalSimGaps) * 100) : 0;
         
-        const kpiCount = prsSectionVisible ? 4 : 3;
-        const boxWidth = Math.min(45, (pageWidth - margin * 2 - 30) / kpiCount);
+        const kpiCount = prsSectionVisible ? 5 : 4;
+        const boxWidth = Math.min(40, (pageWidth - margin * 2 - 30) / kpiCount);
         const spacing = (pageWidth - margin * 2 - boxWidth * kpiCount) / (kpiCount - 1);
         let kpiX = margin;
         if (prsSectionVisible) {
@@ -494,12 +502,17 @@ const SnapshotPage = () => {
         addMetricBox('Gap Plans', `${completedGapPlans}/${totalGapPlans}`, 'Completed vs. total gap plans', kpiX, currentY, boxWidth);
         kpiX += boxWidth + spacing;
         addMetricBox('Activities', activities.length.toString(), 'Total activities logged', kpiX, currentY, boxWidth);
+        kpiX += boxWidth + spacing;
+        addMetricBox('Sim. Gaps', `${completedSimGaps}/${totalSimGaps}`, 'Simulation gaps completed', kpiX, currentY, boxWidth);
         
         currentY += 50;
         
         // Progress Bars (like the progress indicators on the page)
         currentY = addProgressBar('Checklist Progress', completionRate, currentY, 'Overall completion rate of all checklist items across all stages');
         currentY = addProgressBar('Gap Plan Completion', gapCompletionRate, currentY, 'Percentage of gap plans that have been completed');
+        if (totalSimGaps > 0) {
+          currentY = addProgressBar('Simulation Gaps Completion', simGapCompletionRate, currentY, 'Percentage of simulation gaps completed');
+        }
         
         // Page 2: Detailed Progress Analysis (like the detailed sections on the page)
         doc.addPage();
@@ -542,6 +555,21 @@ const SnapshotPage = () => {
           const percentage = Math.round((countValue / totalGapPlans) * 100);
           currentY = addProgressBar(`${status}`, percentage, currentY, `${countValue} gap plans in ${status} status`);
         });
+        
+        // Simulation Gaps Status Distribution
+        if (simulationGaps.length > 0) {
+          currentY += 20;
+          currentY = addSectionHeader('Simulation Gaps by Status', currentY);
+          const simStatuses = simulationGaps.reduce((acc: Record<string, number>, g: any) => {
+            const s = (g.status || 'identified') as string;
+            acc[s] = (acc[s] || 0) + 1;
+            return acc;
+          }, {});
+          Object.entries(simStatuses).forEach(([status, count]) => {
+            const percentage = Math.round((count / totalSimGaps) * 100);
+            currentY = addProgressBar(status.replace(/_/g, ' '), percentage, currentY, `${count} simulation gaps in ${status}`);
+          });
+        }
         
         // Page 3: Activity Summary & Trends (like the "Activity Category Distribution" section)
         doc.addPage();
@@ -1234,6 +1262,33 @@ const SnapshotPage = () => {
                 {activities.length > 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                     {activities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0).toFixed(1)} hours logged
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+              <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                <Box sx={{ 
+                  display: 'inline-flex', 
+                  p: 1.5, 
+                  borderRadius: '50%', 
+                  bgcolor: 'secondary.light', 
+                  mb: 2 
+                }}>
+                  <SlideshowIcon sx={{ fontSize: 32, color: 'secondary.main' }} />
+                </Box>
+                <Typography variant="h3" color="secondary.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  {simulationGaps.length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                  Simulation Gaps
+                </Typography>
+                {simulationGaps.length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    {simulationGaps.filter((g: any) => g.status === 'completed').length} completed
                   </Typography>
                 )}
               </CardContent>
@@ -2242,6 +2297,98 @@ const SnapshotPage = () => {
             </Grid>
           </Grid>
 
+      {/* Simulation Gaps Analytics - From Simulation tab */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Simulation Gaps by Status
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {simulationGaps.length > 0 ? (
+                  <Grid container spacing={2}>
+                    {(() => {
+                      const statusCounts = simulationGaps.reduce((acc, g) => {
+                        const s = (g.status || 'identified') as string;
+                        acc[s] = (acc[s] || 0) + 1;
+                        return acc;
+                      }, {} as Record<string, number>);
+                      const total = simulationGaps.length;
+                      return Object.entries(statusCounts).map(([status, count]) => (
+                        <Grid item xs={12} key={status}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                              {status.replace(/_/g, ' ')}
+                            </Typography>
+                            <Typography variant="body2" color="primary.main">
+                              {count} ({Math.round((count / total) * 100)}%)
+                            </Typography>
+                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={(count / total) * 100}
+                            sx={{ height: 6, borderRadius: 3 }}
+                          />
+                        </Grid>
+                      ));
+                    })()}
+                  </Grid>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No simulation gaps recorded. Add gaps from the Simulation tab.
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Simulation Gaps by Severity
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {simulationGaps.length > 0 ? (
+                  <Grid container spacing={2}>
+                    {(() => {
+                      const severityCounts = simulationGaps.reduce((acc, g) => {
+                        const s = (g.severity || 'other') as string;
+                        acc[s] = (acc[s] || 0) + 1;
+                        return acc;
+                      }, {} as Record<string, number>);
+                      const total = simulationGaps.length;
+                      return Object.entries(severityCounts).map(([severity, count]) => (
+                        <Grid item xs={12} key={severity}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                              {severity}
+                            </Typography>
+                            <Typography variant="body2" color="primary.main">
+                              {count} ({Math.round((count / total) * 100)}%)
+                            </Typography>
+                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={(count / total) * 100}
+                            sx={{ height: 6, borderRadius: 3 }}
+                          />
+                        </Grid>
+                      ));
+                    })()}
+                  </Grid>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No simulation gaps recorded
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
       {/* Activity Analysis - Work Tracking and Insights */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6}>
@@ -2383,122 +2530,6 @@ const SnapshotPage = () => {
           </Card>
         </Grid>
       </Grid>
-
-      {/* Checklist Progress by Stage */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Checklist Progress by Stage
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
-                    {milestones && milestones.length > 0 ? (
-                      <Grid container spacing={2}>
-                        {milestones.map((stage: any) => {
-                          const totalTasks = stage.tasks?.length || 0;
-                          const completedTasks = stage.tasks?.filter((task: any) => task.completed)?.length || 0;
-                          const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                          
-                          return (
-                            <Grid item xs={12} sm={6} md={3} key={stage.id}>
-                              <Typography variant="h6" color="primary.main" gutterBottom>
-                                {stage.title}
-                              </Typography>
-                              <Typography variant="h4" color="success.main">
-                                {progress}%
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {completedTasks} of {totalTasks} tasks
-                              </Typography>
-                              <LinearProgress 
-                                variant="determinate" 
-                                value={progress}
-                                sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                              />
-                            </Grid>
-                          );
-                        })}
-                      </Grid>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No checklist data available
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-          {/* Activity Category Distribution */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Activity Category Distribution
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
-                    {activities.length > 0 ? (
-                      <>
-                        {(() => {
-                          const categoryStats = activities.reduce((acc, activity) => {
-                            const category = activity.category;
-                            if (!acc[category]) {
-                              acc[category] = { count: 0, hours: 0 };
-                            }
-                            acc[category].count += 1;
-                            acc[category].hours += activity.hours || 0;
-                            return acc;
-                          }, {} as Record<string, { count: number; hours: number }>);
-                          
-                          const sortedCategories = Object.entries(categoryStats)
-                            .sort(([, a], [, b]) => (b as { hours: number }).hours - (a as { hours: number }).hours);
-                          
-                          return (
-                            <Grid container spacing={2}>
-                              {sortedCategories.map(([category, stats]) => (
-                                <Grid item xs={12} sm={6} md={4} key={category}>
-                                  <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                                    <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
-                                      {category}
-                                    </Typography>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <Box>
-                                        <Typography variant="h6" color="primary.main">
-                                          {(stats as { count: number }).count}
-                                        </Typography>
-                                        <Typography variant="caption" color="text.secondary">
-                                          Activities
-                                        </Typography>
-                                      </Box>
-                                      <Box sx={{ textAlign: 'right' }}>
-                                        <Typography variant="h6" color="success.main">
-                                          {(stats as { hours: number }).hours}
-                                        </Typography>
-                                        <Typography variant="caption" color="text.secondary">
-                                          Hours
-                                        </Typography>
-                                      </Box>
-                                    </Box>
-                                  </Box>
-                                </Grid>
-                              ))}
-                            </Grid>
-                          );
-                        })()}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No activities recorded
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
 
         {/* Domain Performance Analysis - Only show if PRS section is visible */}
         {prsSectionVisible && domainScores && (
