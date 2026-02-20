@@ -383,7 +383,7 @@ const AdminProjectPipelinePage: React.FC = () => {
 
     for (const [dataKey, setState, validator, keys] of knownKeys) {
       if (Array.isArray(await getUserData(uid, dataKey))) continue;
-      if (await tryKeys(dataKey, setState, validator, [...keys])) restored++;
+      if (await tryKeys(dataKey, setState as (v: unknown) => void, validator, [...keys])) restored++;
     }
 
     if (restored > 0) return restored;
