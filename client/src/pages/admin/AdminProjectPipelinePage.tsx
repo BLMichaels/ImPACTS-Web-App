@@ -433,17 +433,17 @@ const AdminProjectPipelinePage: React.FC = () => {
         }
       };
       if (Array.isArray(simbox)) setSimboxCases(simbox);
-      else await tryKeys(PIPELINE_STORAGE_KEY, setSimboxCases, (v): boolean => Array.isArray(v), [`${PIPELINE_STORAGE_KEY}_${uid}`, PIPELINE_STORAGE_KEY, 'project_pipeline_simbox', 'pipeline_simbox']);
+      else await tryKeys(PIPELINE_STORAGE_KEY, setSimboxCases as (v: unknown) => void, (v): boolean => Array.isArray(v), [`${PIPELINE_STORAGE_KEY}_${uid}`, PIPELINE_STORAGE_KEY, 'project_pipeline_simbox', 'pipeline_simbox']);
       if (Array.isArray(scholarship)) setScholarshipItems(scholarship);
-      else await tryKeys(PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems, (v): boolean => Array.isArray(v), [`${PIPELINE_SCHOLARSHIP_KEY}_${uid}`, PIPELINE_SCHOLARSHIP_KEY, 'project_pipeline_scholarship', 'pipeline_scholarship']);
+      else await tryKeys(PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems as (v: unknown) => void, (v): boolean => Array.isArray(v), [`${PIPELINE_SCHOLARSHIP_KEY}_${uid}`, PIPELINE_SCHOLARSHIP_KEY, 'project_pipeline_scholarship', 'pipeline_scholarship']);
       if (Array.isArray(research)) setResearchDisseminationItems(research);
-      else await tryKeys(PIPELINE_RESEARCH_DISSEMINATION_KEY, setResearchDisseminationItems, (v): boolean => Array.isArray(v), [`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${uid}`, PIPELINE_RESEARCH_DISSEMINATION_KEY, 'project_pipeline_research_dissemination', 'pipeline_research_dissemination']);
+      else await tryKeys(PIPELINE_RESEARCH_DISSEMINATION_KEY, setResearchDisseminationItems as (v: unknown) => void, (v): boolean => Array.isArray(v), [`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${uid}`, PIPELINE_RESEARCH_DISSEMINATION_KEY, 'project_pipeline_research_dissemination', 'pipeline_research_dissemination']);
       if (Array.isArray(abstracts)) setAbstractsItems(abstracts);
-      else await tryKeys(PIPELINE_ABSTRACTS_KEY, setAbstractsItems, (v): boolean => Array.isArray(v), [`${PIPELINE_ABSTRACTS_KEY}_${uid}`, PIPELINE_ABSTRACTS_KEY, 'project_pipeline_abstracts', 'pipeline_abstracts']);
+      else await tryKeys(PIPELINE_ABSTRACTS_KEY, setAbstractsItems as (v: unknown) => void, (v): boolean => Array.isArray(v), [`${PIPELINE_ABSTRACTS_KEY}_${uid}`, PIPELINE_ABSTRACTS_KEY, 'project_pipeline_abstracts', 'pipeline_abstracts']);
       if (Array.isArray(team)) setTeamMembersList(team);
-      else await tryKeys(PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList, (v): boolean => Array.isArray(v), [`${PIPELINE_TEAM_MEMBERS_KEY}_${uid}`, PIPELINE_TEAM_MEMBERS_KEY, 'project_pipeline_team_members', 'pipeline_team_members']);
+      else await tryKeys(PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList as (v: unknown) => void, (v): boolean => Array.isArray(v), [`${PIPELINE_TEAM_MEMBERS_KEY}_${uid}`, PIPELINE_TEAM_MEMBERS_KEY, 'project_pipeline_team_members', 'pipeline_team_members']);
       if (Array.isArray(coAuthors)) setCoAuthorsList(coAuthors);
-      else await tryKeys(PIPELINE_COAUTHORS_KEY, setCoAuthorsList, (v): boolean => Array.isArray(v), [`${PIPELINE_COAUTHORS_KEY}_${uid}`, PIPELINE_COAUTHORS_KEY, 'project_pipeline_coauthors', 'pipeline_coauthors']);
+      else await tryKeys(PIPELINE_COAUTHORS_KEY, setCoAuthorsList as (v: unknown) => void, (v): boolean => Array.isArray(v), [`${PIPELINE_COAUTHORS_KEY}_${uid}`, PIPELINE_COAUTHORS_KEY, 'project_pipeline_coauthors', 'pipeline_coauthors']);
     })();
     return () => { mounted = false; };
   }, [currentUser?.id]);
