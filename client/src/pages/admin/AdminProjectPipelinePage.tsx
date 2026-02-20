@@ -35,7 +35,8 @@ import {
   CircularProgress,
   Autocomplete,
   Menu,
-  Tooltip
+  Tooltip,
+  Snackbar
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -331,8 +332,51 @@ const AdminProjectPipelinePage: React.FC = () => {
   // Sort state
   const [sortField, setSortField] = useState<string>('order');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [restoreSnack, setRestoreSnack] = useState<string | null>(null);
 
-  // Load data from user_data
+  // Try localStorage with key_uid or key (legacy global key from before per-user storage)
+  const tryLocalStorageThenSave = async <T>(uid: string, dataKey: string, setState: (v: T) => void, validator: (v: unknown) => v is T): Promise<boolean> => {
+    try {
+      for (const lsKey of [`${dataKey}_${uid}`, dataKey]) {
+        const s = localStorage.getItem(lsKey);
+        if (!s) continue;
+        const p = JSON.parse(s) as unknown;
+        if (!validator(p)) continue;
+        setState(p);
+        await setUserData(uid, dataKey, p);
+        localStorage.removeItem(lsKey);
+        return true;
+      }
+    } catch {}
+    return false;
+  };
+
+  const loadPipelineFromLocal = useCallback(async () => {
+    const uid = currentUser?.id;
+    if (!uid) return 0;
+    let restored = 0;
+    if (!Array.isArray(await getUserData(uid, PIPELINE_STORAGE_KEY))) {
+      if (await tryLocalStorageThenSave(uid, PIPELINE_STORAGE_KEY, setSimboxCases, (v): v is SimBoxCase[] => Array.isArray(v))) restored++;
+    }
+    if (!Array.isArray(await getUserData(uid, PIPELINE_SCHOLARSHIP_KEY))) {
+      if (await tryLocalStorageThenSave(uid, PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems, (v): v is ScholarshipPublication[] => Array.isArray(v))) restored++;
+    }
+    if (!Array.isArray(await getUserData(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY))) {
+      if (await tryLocalStorageThenSave(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY, setResearchDisseminationItems, (v): v is ResearchDisseminationIdea[] => Array.isArray(v))) restored++;
+    }
+    if (!Array.isArray(await getUserData(uid, PIPELINE_ABSTRACTS_KEY))) {
+      if (await tryLocalStorageThenSave(uid, PIPELINE_ABSTRACTS_KEY, setAbstractsItems, (v): v is AbstractsPresentation[] => Array.isArray(v))) restored++;
+    }
+    if (!Array.isArray(await getUserData(uid, PIPELINE_TEAM_MEMBERS_KEY))) {
+      if (await tryLocalStorageThenSave(uid, PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList, (v): v is string[] => Array.isArray(v))) restored++;
+    }
+    if (!Array.isArray(await getUserData(uid, PIPELINE_COAUTHORS_KEY))) {
+      if (await tryLocalStorageThenSave(uid, PIPELINE_COAUTHORS_KEY, setCoAuthorsList, (v): v is string[] => Array.isArray(v))) restored++;
+    }
+    return restored;
+  }, [currentUser?.id]);
+
+  // Load data from user_data, then try localStorage (with uid and legacy global keys)
   useEffect(() => {
     const uid = currentUser?.id;
     if (!uid) return;
@@ -348,17 +392,17 @@ const AdminProjectPipelinePage: React.FC = () => {
       ]);
       if (!mounted) return;
       if (Array.isArray(simbox)) setSimboxCases(simbox);
-      else try { const s = localStorage.getItem(`${PIPELINE_STORAGE_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setSimboxCases(p); setUserData(uid, PIPELINE_STORAGE_KEY, p); localStorage.removeItem(`${PIPELINE_STORAGE_KEY}_${uid}`); } } } catch {}
+      else await tryLocalStorageThenSave(uid, PIPELINE_STORAGE_KEY, setSimboxCases, (v): v is SimBoxCase[] => Array.isArray(v));
       if (Array.isArray(scholarship)) setScholarshipItems(scholarship);
-      else try { const s = localStorage.getItem(`${PIPELINE_SCHOLARSHIP_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setScholarshipItems(p); setUserData(uid, PIPELINE_SCHOLARSHIP_KEY, p); localStorage.removeItem(`${PIPELINE_SCHOLARSHIP_KEY}_${uid}`); } } } catch {}
+      else await tryLocalStorageThenSave(uid, PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems, (v): v is ScholarshipPublication[] => Array.isArray(v));
       if (Array.isArray(research)) setResearchDisseminationItems(research);
-      else try { const s = localStorage.getItem(`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setResearchDisseminationItems(p); setUserData(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY, p); localStorage.removeItem(`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${uid}`); } } } catch {}
+      else await tryLocalStorageThenSave(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY, setResearchDisseminationItems, (v): v is ResearchDisseminationIdea[] => Array.isArray(v));
       if (Array.isArray(abstracts)) setAbstractsItems(abstracts);
-      else try { const s = localStorage.getItem(`${PIPELINE_ABSTRACTS_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setAbstractsItems(p); setUserData(uid, PIPELINE_ABSTRACTS_KEY, p); localStorage.removeItem(`${PIPELINE_ABSTRACTS_KEY}_${uid}`); } } } catch {}
+      else await tryLocalStorageThenSave(uid, PIPELINE_ABSTRACTS_KEY, setAbstractsItems, (v): v is AbstractsPresentation[] => Array.isArray(v));
       if (Array.isArray(team)) setTeamMembersList(team);
-      else try { const s = localStorage.getItem(`${PIPELINE_TEAM_MEMBERS_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setTeamMembersList(p); setUserData(uid, PIPELINE_TEAM_MEMBERS_KEY, p); localStorage.removeItem(`${PIPELINE_TEAM_MEMBERS_KEY}_${uid}`); } } } catch {}
+      else await tryLocalStorageThenSave(uid, PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList, (v): v is string[] => Array.isArray(v));
       if (Array.isArray(coAuthors)) setCoAuthorsList(coAuthors);
-      else try { const s = localStorage.getItem(`${PIPELINE_COAUTHORS_KEY}_${uid}`); if (s) { const p = JSON.parse(s); if (Array.isArray(p)) { setCoAuthorsList(p); setUserData(uid, PIPELINE_COAUTHORS_KEY, p); localStorage.removeItem(`${PIPELINE_COAUTHORS_KEY}_${uid}`); } } } catch {}
+      else await tryLocalStorageThenSave(uid, PIPELINE_COAUTHORS_KEY, setCoAuthorsList, (v): v is string[] => Array.isArray(v));
     })();
     return () => { mounted = false; };
   }, [currentUser?.id]);
@@ -1128,10 +1172,25 @@ const AdminProjectPipelinePage: React.FC = () => {
         marginRight: '-50vw',
         boxSizing: 'border-box'
       }}>
-        <Typography variant="h4" gutterBottom>Project Pipeline</Typography>
-        <Typography color="textSecondary" sx={{ mb: 2 }}>
-          Manage project pipeline sections. Use &quot;Master Priorities List&quot; to view all sections stacked.
-        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2 }}>
+          <Box>
+            <Typography variant="h4" gutterBottom>Project Pipeline</Typography>
+            <Typography color="textSecondary">
+              Manage project pipeline sections. Use &quot;Master Priorities List&quot; to view all sections stacked.
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={async () => {
+              const n = await loadPipelineFromLocal();
+              setRestoreSnack(n > 0 ? `Restored ${n} pipeline section(s) from this device.` : 'No pipeline data found in this browser.');
+            }}
+          >
+            Restore from this device
+          </Button>
+        </Box>
+        <Snackbar open={!!restoreSnack} autoHideDuration={6000} onClose={() => setRestoreSnack(null)} message={restoreSnack} sx={{ bottom: 24 }} />
 
         <RoleLegend />
 
