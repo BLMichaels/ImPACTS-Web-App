@@ -2283,23 +2283,25 @@ const SnapshotPage = () => {
                         return acc;
                       }, {} as Record<string, number>);
                       const total = simulationGaps.length;
-                      return Object.entries(statusCounts).map(([status, count]) => (
+                      return Object.entries(statusCounts).map(([status, count]) => {
+                        const n = count as number;
+                        return (
                         <Grid item xs={12} key={status}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                             <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
                               {status.replace(/_/g, ' ')}
                             </Typography>
                             <Typography variant="body2" color="primary.main">
-                              {count} ({Math.round((count / total) * 100)}%)
+                              {`${n} (${Math.round((n / total) * 100)}%)`}
                             </Typography>
                           </Box>
                           <LinearProgress
                             variant="determinate"
-                            value={(count / total) * 100}
+                            value={(n / total) * 100}
                             sx={{ height: 6, borderRadius: 3 }}
                           />
                         </Grid>
-                      ));
+                      ); });
                     })()}
                   </Grid>
                 ) : (
@@ -2327,23 +2329,25 @@ const SnapshotPage = () => {
                         return acc;
                       }, {} as Record<string, number>);
                       const total = simulationGaps.length;
-                      return Object.entries(severityCounts).map(([severity, count]) => (
+                      return Object.entries(severityCounts).map(([severity, count]) => {
+                        const n = count as number;
+                        return (
                         <Grid item xs={12} key={severity}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                             <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
                               {severity}
                             </Typography>
                             <Typography variant="body2" color="primary.main">
-                              {count} ({Math.round((count / total) * 100)}%)
+                              {`${n} (${Math.round((n / total) * 100)}%)`}
                             </Typography>
                           </Box>
                           <LinearProgress
                             variant="determinate"
-                            value={(count / total) * 100}
+                            value={(n / total) * 100}
                             sx={{ height: 6, borderRadius: 3 }}
                           />
                         </Grid>
-                      ));
+                      ); });
                     })()}
                   </Grid>
                 ) : (
@@ -2378,7 +2382,7 @@ const SnapshotPage = () => {
                               {category.length > 30 ? category.substring(0, 30) + '...' : category}
                             </Typography>
                             <Typography variant="body2">
-                              {count} ({Math.round(percentage)}%)
+                              {`${count} (${Math.round(percentage)}%)`}
                             </Typography>
                           </Box>
                           <LinearProgress 
