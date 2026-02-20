@@ -81,21 +81,8 @@ interface ReadinessScore {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
-    const prsSectionAllowed = usePrsSectionVisible(); // permission: can user see PRS at all (granular permission)
+    const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
     const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
-    const [userPrsSectionVisible, setUserPrsSectionVisible] = useState<boolean | null>(null); // null = not loaded; true/false = user pref (default show)
-    const prsSectionVisible = prsSectionAllowed && (userPrsSectionVisible !== false);
-
-    useEffect(() => {
-      if (!uid) return;
-      getUserData<boolean>(uid, 'pecc_prs_section_visible').then((v) => setUserPrsSectionVisible(v !== false));
-    }, [uid]);
-
-    const setPrsSectionVisiblePref = async (visible: boolean) => {
-      if (!uid) return;
-      await setUserData(uid, 'pecc_prs_section_visible', visible);
-      setUserPrsSectionVisible(visible);
-    };
 
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [readinessScoreDialogOpen, setReadinessScoreDialogOpen] = useState(false);
@@ -372,7 +359,17 @@ interface ReadinessScore {
         </Grid>
       </Grid>
 
-      {/* Pediatric Readiness Score Section - only shown when user has opted in (no placeholder on dashboard) */}
+      {/* Pediatric Readiness Score Section - same source as Granular Permissions (view_tabs) */}
+      {!prsSectionVisible && (
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Pediatric Readiness Scores section is hidden.
+          </Typography>
+          <Button size="small" variant="text" onClick={() => setPrsSectionVisible(true)} sx={{ mt: 1, p: 0 }}>
+            Show Pediatric Readiness Scores
+          </Button>
+        </Box>
+      )}
       {prsSectionVisible && (
         <Box sx={{ mb: 6 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -380,7 +377,7 @@ interface ReadinessScore {
               Pediatric Readiness Scores
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button size="small" variant="outlined" onClick={() => setPrsSectionVisiblePref(false)}>
+              <Button size="small" variant="outlined" onClick={() => setPrsSectionVisible(false)}>
                 Hide section
               </Button>
               <Button

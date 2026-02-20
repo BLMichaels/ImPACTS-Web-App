@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { useUserProfile } from '../context/UserProfileContext';
 
@@ -115,12 +115,13 @@ export const PRS_SECTION_TAB_KEY = 'snapshot_prs_section';
 
 /**
  * Resolves whether the Pediatric Readiness Scores section is visible for the current user.
- * Uses view_tabs with resolution order: user → cohort → program (via is_tab_visible RPC when available).
- * Used by Dashboard (PECC Support Tool), Snapshot, and any PRS-related UI.
+ * Uses view_tabs (same as Granular Permissions). Returns [visible, setVisible] so the dashboard
+ * "Hide section" / "Show" and the admin toggle stay in sync.
  */
-export const usePrsSectionVisible = () => {
+export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<void>] => {
   const { userProfile } = useUserProfile();
   const [isVisible, setIsVisible] = useState(true);
+  const [refreshCounter, setRefreshCounter] = useState(0);
   const userId = userProfile?.id;
   const primaryProgramId = (userProfile as { primary_program_id?: string | null })?.primary_program_id ?? null;
 
@@ -161,7 +162,6 @@ export const usePrsSectionVisible = () => {
           return;
         }
 
-        // Fallback: manual resolution (user → cohort → program)
         const { data: userTab } = await supabase
           .from('view_tabs')
           .select('is_visible')
@@ -210,7 +210,28 @@ export const usePrsSectionVisible = () => {
 
     resolve();
     return () => { cancelled = true; };
-  }, [userId, primaryProgramId]);
+  }, [userId, primaryProgramId, refreshCounter]);
 
-  return isVisible;
+  const setPrsSectionVisible = useCallback(async (visible: boolean) => {
+    if (!userId) return;
+    const { error } = await supabase
+      .from('view_tabs')
+      .upsert(
+        {
+          user_id: userId,
+          tab_key: PRS_SECTION_TAB_KEY,
+          is_visible: visible,
+          granted_by: userId,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'user_id,tab_key' }
+      );
+    if (!error) {
+      setIsVisible(visible);
+    } else {
+      setRefreshCounter(c => c + 1);
+    }
+  }, [userId]);
+
+  return [isVisible, setPrsSectionVisible];
 };

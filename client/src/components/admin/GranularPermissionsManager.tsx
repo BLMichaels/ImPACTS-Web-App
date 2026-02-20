@@ -97,7 +97,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     { key: 'activities', label: 'Activities' },
     { key: 'milestones', label: 'Milestones' },
     { key: 'wages', label: 'Wages & Expenses' },
-    { key: 'learning', label: 'Learning modules (SCORM)' }
+    { key: 'learning', label: 'Learning modules (SCORM)' },
+    { key: 'snapshot_prs_section', label: 'Pediatric Readiness Scores (PECC Support Tool & Snapshot)' }
   ];
 
   const getUserDisplayName = (u: User): string => {

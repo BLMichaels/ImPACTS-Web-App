@@ -68,29 +68,18 @@ const SnapshotPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [renderError, setRenderError] = useState(false);
-  const prsSectionAllowed = usePrsSectionVisible(); // granular permission: when false, hides all PRS + charts
-  const [userPrsSectionVisible, setUserPrsSectionVisible] = useState<boolean | null>(null);
-  const prsSectionVisible = prsSectionAllowed && (userPrsSectionVisible !== false);
+  const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
   const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
   const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
 
   useEffect(() => {
     if (!userId) return;
-    Promise.all([
-      getUserData<boolean>(userId, 'pecc_prs_section_visible'),
-      getUserData<boolean>(userId, 'snapshot_readiness_charts_visible')
-    ]).then(([prs, charts]) => {
-      setUserPrsSectionVisible(prs !== false);
-      setSnapshotReadinessChartsVisible(charts !== false);
-    });
+    getUserData<boolean>(userId, 'snapshot_readiness_charts_visible').then((charts) =>
+      setSnapshotReadinessChartsVisible(charts !== false)
+    );
   }, [userId]);
 
-  const setPrsSectionVisiblePref = async (visible: boolean) => {
-    if (!userId) return;
-    await setUserData(userId, 'pecc_prs_section_visible', visible);
-    setUserPrsSectionVisible(visible);
-  };
   const setReadinessChartsVisiblePref = async (visible: boolean) => {
     if (!userId) return;
     await setUserData(userId, 'snapshot_readiness_charts_visible', visible);
@@ -1068,12 +1057,12 @@ const SnapshotPage = () => {
           </Box>
           
           {/* Pediatric Readiness Scores section hidden by default */}
-          {prsSectionAllowed && userPrsSectionVisible === false && (
+          {!prsSectionVisible && (
             <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 Pediatric Readiness Scores section is hidden.
               </Typography>
-              <Button size="small" variant="text" onClick={() => setPrsSectionVisiblePref(true)} sx={{ mt: 1, p: 0 }}>
+              <Button size="small" variant="text" onClick={() => setPrsSectionVisible(true)} sx={{ mt: 1, p: 0 }}>
                 Show Pediatric Readiness Scores
               </Button>
             </Box>
@@ -1127,7 +1116,7 @@ const SnapshotPage = () => {
         {/* Key Performance Indicators (KPIs) - Enhanced with better visuals */}
         {prsSectionVisible && (
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-            <Button size="small" variant="outlined" onClick={() => setPrsSectionVisiblePref(false)}>
+            <Button size="small" variant="outlined" onClick={() => setPrsSectionVisible(false)}>
               Hide Pediatric Readiness Scores
             </Button>
           </Box>

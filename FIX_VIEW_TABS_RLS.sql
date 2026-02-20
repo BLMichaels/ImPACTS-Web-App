@@ -19,6 +19,7 @@ ALTER TABLE public.view_tabs ENABLE ROW LEVEL SECURITY;
 -- 3. Drop existing policies (if they exist) to recreate them cleanly
 -- =====================================================
 DROP POLICY IF EXISTS "Users view own tabs" ON public.view_tabs;
+DROP POLICY IF EXISTS "Users manage own tabs" ON public.view_tabs;
 DROP POLICY IF EXISTS "Users view cohort program tabs" ON public.view_tabs;
 DROP POLICY IF EXISTS "Admins manage tabs" ON public.view_tabs;
 DROP POLICY IF EXISTS "Managers manage team tabs" ON public.view_tabs;
@@ -32,6 +33,20 @@ DROP POLICY IF EXISTS "Mentors manage mentee tabs" ON public.view_tabs;
 CREATE POLICY "Users view own tabs" ON public.view_tabs
   FOR SELECT 
   USING (user_id = auth.uid());
+
+-- Policy 1b: Users can insert/update/delete their own user-level tab settings (so PECC "Hide section" and Granular Permissions stay in sync)
+CREATE POLICY "Users manage own tabs" ON public.view_tabs
+  FOR ALL
+  USING (
+    user_id = auth.uid()
+    AND cohort_id IS NULL
+    AND program_id IS NULL
+  )
+  WITH CHECK (
+    user_id = auth.uid()
+    AND cohort_id IS NULL
+    AND program_id IS NULL
+  );
 
 -- Policy 2: Users can view tab settings for cohorts/programs they're members of
 CREATE POLICY "Users view cohort program tabs" ON public.view_tabs
