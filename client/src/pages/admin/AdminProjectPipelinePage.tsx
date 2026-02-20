@@ -334,44 +334,79 @@ const AdminProjectPipelinePage: React.FC = () => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [restoreSnack, setRestoreSnack] = useState<string | null>(null);
 
-  // Try localStorage with key_uid or key (legacy global key from before per-user storage)
-  const tryLocalStorageThenSave = async <T,>(uid: string, dataKey: string, setState: (v: T) => void, validator: (v: unknown) => v is T): Promise<boolean> => {
+  // Try a specific localStorage key; if valid, save to Supabase and update state
+  const tryLocalStorageThenSave = async <T,>(uid: string, dataKey: string, setState: (v: T) => void, validator: (v: unknown) => v is T, lsKey: string): Promise<boolean> => {
     try {
-      for (const lsKey of [`${dataKey}_${uid}`, dataKey]) {
-        const s = localStorage.getItem(lsKey);
-        if (!s) continue;
-        const p = JSON.parse(s) as unknown;
-        if (!validator(p)) continue;
-        setState(p);
-        await setUserData(uid, dataKey, p);
-        localStorage.removeItem(lsKey);
-        return true;
-      }
-    } catch {}
-    return false;
+      const s = localStorage.getItem(lsKey);
+      if (!s) return false;
+      const p = JSON.parse(s) as unknown;
+      if (!validator(p)) return false;
+      setState(p);
+      await setUserData(uid, dataKey, p);
+      localStorage.removeItem(lsKey);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
+  // Scan ALL localStorage keys for anything that looks like pipeline data (handles unknown/legacy key names)
   const loadPipelineFromLocal = useCallback(async () => {
     const uid = currentUser?.id;
     if (!uid) return 0;
     let restored = 0;
-    if (!Array.isArray(await getUserData(uid, PIPELINE_STORAGE_KEY))) {
-      if (await tryLocalStorageThenSave(uid, PIPELINE_STORAGE_KEY, setSimboxCases, (v): v is SimBoxCase[] => Array.isArray(v))) restored++;
+
+    const tryKeys = (dataKey: string, setState: (v: unknown) => void, validator: (v: unknown) => boolean, keys: string[]) => {
+      return (async () => {
+        for (const lsKey of keys) {
+          const ok = await tryLocalStorageThenSave(uid, dataKey, setState as (v: never) => void, validator as (v: unknown) => v is never, lsKey);
+          if (ok) return true;
+        }
+        return false;
+      })();
+    };
+
+    const isSimbox = (v: unknown): v is SimBoxCase[] => Array.isArray(v) && (v.length === 0 || (typeof (v[0] as any)?.categoryTopic === 'string' && typeof (v[0] as any)?.projectDevelopmentStatus === 'string'));
+    const isScholarship = (v: unknown): v is ScholarshipPublication[] => Array.isArray(v) && (v.length === 0 || typeof (v[0] as any)?.categoryTopic === 'string');
+    const isResearch = (v: unknown): v is ResearchDisseminationIdea[] => Array.isArray(v) && (v.length === 0 || typeof (v[0] as any)?.categoryTopic === 'string');
+    const isAbstracts = (v: unknown): v is AbstractsPresentation[] => Array.isArray(v) && (v.length === 0 || typeof (v[0] as any)?.categoryTopic === 'string');
+    const isStringArr = (v: unknown): v is string[] => Array.isArray(v) && (v.length === 0 || typeof v[0] === 'string');
+
+    const knownKeys = [
+      [PIPELINE_STORAGE_KEY, setSimboxCases, isSimbox, [`${PIPELINE_STORAGE_KEY}_${uid}`, PIPELINE_STORAGE_KEY, 'project_pipeline_simbox', 'pipeline_simbox']],
+      [PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems, isScholarship, [`${PIPELINE_SCHOLARSHIP_KEY}_${uid}`, PIPELINE_SCHOLARSHIP_KEY, 'project_pipeline_scholarship', 'pipeline_scholarship']],
+      [PIPELINE_RESEARCH_DISSEMINATION_KEY, setResearchDisseminationItems, isResearch, [`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${uid}`, PIPELINE_RESEARCH_DISSEMINATION_KEY, 'project_pipeline_research_dissemination', 'pipeline_research_dissemination']],
+      [PIPELINE_ABSTRACTS_KEY, setAbstractsItems, isAbstracts, [`${PIPELINE_ABSTRACTS_KEY}_${uid}`, PIPELINE_ABSTRACTS_KEY, 'project_pipeline_abstracts', 'pipeline_abstracts']],
+      [PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList, isStringArr, [`${PIPELINE_TEAM_MEMBERS_KEY}_${uid}`, PIPELINE_TEAM_MEMBERS_KEY, 'project_pipeline_team_members', 'pipeline_team_members']],
+      [PIPELINE_COAUTHORS_KEY, setCoAuthorsList, isStringArr, [`${PIPELINE_COAUTHORS_KEY}_${uid}`, PIPELINE_COAUTHORS_KEY, 'project_pipeline_coauthors', 'pipeline_coauthors']]
+    ] as const;
+
+    for (const [dataKey, setState, validator, keys] of knownKeys) {
+      if (Array.isArray(await getUserData(uid, dataKey))) continue;
+      if (await tryKeys(dataKey, setState, validator, [...keys])) restored++;
     }
-    if (!Array.isArray(await getUserData(uid, PIPELINE_SCHOLARSHIP_KEY))) {
-      if (await tryLocalStorageThenSave(uid, PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems, (v): v is ScholarshipPublication[] => Array.isArray(v))) restored++;
-    }
-    if (!Array.isArray(await getUserData(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY))) {
-      if (await tryLocalStorageThenSave(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY, setResearchDisseminationItems, (v): v is ResearchDisseminationIdea[] => Array.isArray(v))) restored++;
-    }
-    if (!Array.isArray(await getUserData(uid, PIPELINE_ABSTRACTS_KEY))) {
-      if (await tryLocalStorageThenSave(uid, PIPELINE_ABSTRACTS_KEY, setAbstractsItems, (v): v is AbstractsPresentation[] => Array.isArray(v))) restored++;
-    }
-    if (!Array.isArray(await getUserData(uid, PIPELINE_TEAM_MEMBERS_KEY))) {
-      if (await tryLocalStorageThenSave(uid, PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList, (v): v is string[] => Array.isArray(v))) restored++;
-    }
-    if (!Array.isArray(await getUserData(uid, PIPELINE_COAUTHORS_KEY))) {
-      if (await tryLocalStorageThenSave(uid, PIPELINE_COAUTHORS_KEY, setCoAuthorsList, (v): v is string[] => Array.isArray(v))) restored++;
+
+    if (restored > 0) return restored;
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const lsKey = localStorage.key(i);
+      if (!lsKey || !/pipeline|simbox|scholarship|abstracts|research_dissemination|team_member|coauthor/i.test(lsKey)) continue;
+      try {
+        const s = localStorage.getItem(lsKey);
+        if (!s) continue;
+        const p = JSON.parse(s) as unknown;
+        if (!Array.isArray(p)) continue;
+        if (p.length > 0 && typeof p[0] === 'string') {
+          if (!Array.isArray(await getUserData(uid, PIPELINE_TEAM_MEMBERS_KEY)) && await tryLocalStorageThenSave(uid, PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList, (v): v is string[] => Array.isArray(v), lsKey)) restored++;
+        } else if (p.length > 0 && typeof (p[0] as any)?.categoryTopic === 'string') {
+          const hasDev = typeof (p[0] as any)?.projectDevelopmentStatus === 'string';
+          if (hasDev && !Array.isArray(await getUserData(uid, PIPELINE_STORAGE_KEY))) {
+            if (await tryLocalStorageThenSave(uid, PIPELINE_STORAGE_KEY, setSimboxCases, (v): v is SimBoxCase[] => Array.isArray(v), lsKey)) restored++;
+          } else if (!Array.isArray(await getUserData(uid, PIPELINE_SCHOLARSHIP_KEY))) {
+            if (await tryLocalStorageThenSave(uid, PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems, (v): v is ScholarshipPublication[] => Array.isArray(v), lsKey)) restored++;
+          }
+        }
+      } catch {}
     }
     return restored;
   }, [currentUser?.id]);
@@ -391,18 +426,24 @@ const AdminProjectPipelinePage: React.FC = () => {
         getUserData<string[]>(uid, PIPELINE_COAUTHORS_KEY)
       ]);
       if (!mounted) return;
+      const tryKeys = async (dataKey: string, setState: (v: unknown) => void, validator: (v: unknown) => boolean, keys: string[]) => {
+        for (const lsKey of keys) {
+          const ok = await tryLocalStorageThenSave(uid, dataKey, setState as (v: never) => void, validator as (v: unknown) => v is never, lsKey);
+          if (ok) return;
+        }
+      };
       if (Array.isArray(simbox)) setSimboxCases(simbox);
-      else await tryLocalStorageThenSave(uid, PIPELINE_STORAGE_KEY, setSimboxCases, (v): v is SimBoxCase[] => Array.isArray(v));
+      else await tryKeys(PIPELINE_STORAGE_KEY, setSimboxCases, (v): boolean => Array.isArray(v), [`${PIPELINE_STORAGE_KEY}_${uid}`, PIPELINE_STORAGE_KEY, 'project_pipeline_simbox', 'pipeline_simbox']);
       if (Array.isArray(scholarship)) setScholarshipItems(scholarship);
-      else await tryLocalStorageThenSave(uid, PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems, (v): v is ScholarshipPublication[] => Array.isArray(v));
+      else await tryKeys(PIPELINE_SCHOLARSHIP_KEY, setScholarshipItems, (v): boolean => Array.isArray(v), [`${PIPELINE_SCHOLARSHIP_KEY}_${uid}`, PIPELINE_SCHOLARSHIP_KEY, 'project_pipeline_scholarship', 'pipeline_scholarship']);
       if (Array.isArray(research)) setResearchDisseminationItems(research);
-      else await tryLocalStorageThenSave(uid, PIPELINE_RESEARCH_DISSEMINATION_KEY, setResearchDisseminationItems, (v): v is ResearchDisseminationIdea[] => Array.isArray(v));
+      else await tryKeys(PIPELINE_RESEARCH_DISSEMINATION_KEY, setResearchDisseminationItems, (v): boolean => Array.isArray(v), [`${PIPELINE_RESEARCH_DISSEMINATION_KEY}_${uid}`, PIPELINE_RESEARCH_DISSEMINATION_KEY, 'project_pipeline_research_dissemination', 'pipeline_research_dissemination']);
       if (Array.isArray(abstracts)) setAbstractsItems(abstracts);
-      else await tryLocalStorageThenSave(uid, PIPELINE_ABSTRACTS_KEY, setAbstractsItems, (v): v is AbstractsPresentation[] => Array.isArray(v));
+      else await tryKeys(PIPELINE_ABSTRACTS_KEY, setAbstractsItems, (v): boolean => Array.isArray(v), [`${PIPELINE_ABSTRACTS_KEY}_${uid}`, PIPELINE_ABSTRACTS_KEY, 'project_pipeline_abstracts', 'pipeline_abstracts']);
       if (Array.isArray(team)) setTeamMembersList(team);
-      else await tryLocalStorageThenSave(uid, PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList, (v): v is string[] => Array.isArray(v));
+      else await tryKeys(PIPELINE_TEAM_MEMBERS_KEY, setTeamMembersList, (v): boolean => Array.isArray(v), [`${PIPELINE_TEAM_MEMBERS_KEY}_${uid}`, PIPELINE_TEAM_MEMBERS_KEY, 'project_pipeline_team_members', 'pipeline_team_members']);
       if (Array.isArray(coAuthors)) setCoAuthorsList(coAuthors);
-      else await tryLocalStorageThenSave(uid, PIPELINE_COAUTHORS_KEY, setCoAuthorsList, (v): v is string[] => Array.isArray(v));
+      else await tryKeys(PIPELINE_COAUTHORS_KEY, setCoAuthorsList, (v): boolean => Array.isArray(v), [`${PIPELINE_COAUTHORS_KEY}_${uid}`, PIPELINE_COAUTHORS_KEY, 'project_pipeline_coauthors', 'pipeline_coauthors']);
     })();
     return () => { mounted = false; };
   }, [currentUser?.id]);
@@ -1184,7 +1225,7 @@ const AdminProjectPipelinePage: React.FC = () => {
             size="small"
             onClick={async () => {
               const n = await loadPipelineFromLocal();
-              setRestoreSnack(n > 0 ? `Restored ${n} pipeline section(s) from this device.` : 'No pipeline data found in this browser.');
+              setRestoreSnack(n > 0 ? `Restored ${n} pipeline section(s) from this device.` : 'No pipeline data found in this browser. If you used a different device or cleared site data, that data cannot be recovered from here.');
             }}
           >
             Restore from this device
