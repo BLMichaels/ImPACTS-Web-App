@@ -18,10 +18,9 @@ import {
   Select,
   MenuItem,
   Alert,
-  Chip,
-  IconButton
+  Chip
 } from '@mui/material';
-import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon, Edit as EditIcon } from '@mui/icons-material';
+import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon, NoteAdd as NoteAddIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
@@ -116,8 +115,10 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
   });
   const [gapPlansList, setGapPlansList] = useState<GapPlan[]>([]);
   const [userQuestionNotes, setUserQuestionNotes] = useState<Record<string, string>>({});
-  const [editingNoteQuestionId, setEditingNoteQuestionId] = useState<string | null>(null);
-  const [editingNoteValue, setEditingNoteValue] = useState('');
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [noteDialogQuestionId, setNoteDialogQuestionId] = useState<string | null>(null);
+  const [noteDialogLabel, setNoteDialogLabel] = useState('');
+  const [noteDialogValue, setNoteDialogValue] = useState('');
   
   // Load education content from Supabase (app_settings) so it syncs across devices
   useEffect(() => {
@@ -185,8 +186,17 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     if (!value.trim()) delete next[questionId];
     setUserQuestionNotes(next);
     await setUserData(userId, 'gap_closure_question_notes', next);
-    setEditingNoteQuestionId(null);
-    setEditingNoteValue('');
+    setNoteDialogOpen(false);
+    setNoteDialogQuestionId(null);
+    setNoteDialogValue('');
+  };
+
+  const openNoteDialog = (questionId: string, label: string, currentNote: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNoteDialogQuestionId(questionId);
+    setNoteDialogLabel(label);
+    setNoteDialogValue(currentNote);
+    setNoteDialogOpen(true);
   };
 
   const handleQuestionClick = (questionId: string) => {
@@ -289,116 +299,103 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     .filter((q) => !domainFilter || q.domain === domainFilter)
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  const handleStartEditNote = (questionId: string, currentNote: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingNoteQuestionId(questionId);
-    setEditingNoteValue(currentNote);
-  };
-
-  const renderQuestionCard = (question: { id: string; text: string; domain: string; category: string; userNote: string; gapPlanCount: number }) => (
-    <Card
-      key={question.id}
-      sx={{
-        mb: 2,
-        cursor: 'pointer',
-        transition: 'all 0.2s ease-in-out',
-        '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: 3
-        }
-      }}
-      onClick={() => handleQuestionClick(question.id)}
-    >
-      <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" component="h3" sx={{ mb: 0.5, color: '#1976d2' }}>
-              {question.category?.trim() ? question.category : `Question ${question.id}`}
-            </Typography>
-            {editingNoteQuestionId === question.id ? (
-              <Box onClick={(e) => e.stopPropagation()} sx={{ mb: 0.5 }}>
-                <TextField
-                  size="small"
-                  fullWidth
-                  placeholder="Your note (as you work on this gap)"
-                  value={editingNoteValue}
-                  onChange={(e) => setEditingNoteValue(e.target.value)}
-                  onBlur={() => saveUserNote(question.id, editingNoteValue)}
-                  multiline
-                  minRows={1}
-                  maxRows={3}
-                  sx={{ '& .MuiInputBase-root': { fontSize: '0.875rem' } }}
-                />
-              </Box>
-            ) : (
-              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, mb: 0.5 }}>
-                {question.userNote?.trim() ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-                    {question.userNote}
-                  </Typography>
-                ) : null}
-                <IconButton size="small" onClick={(e) => handleStartEditNote(question.id, question.userNote, e)} title={question.userNote ? 'Edit your note' : 'Add your note'} sx={{ mt: -0.5 }}>
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            )}
-            {question.gapPlanCount > 0 && (
-              <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.5 }}>
-                {question.gapPlanCount} gap plan{question.gapPlanCount !== 1 ? 's' : ''} for this question
+  const renderQuestionCard = (question: { id: string; text: string; domain: string; category: string; userNote: string; gapPlanCount: number }) => {
+    const label = question.category?.trim() ? question.category : `Question ${question.id}`;
+    return (
+      <Card
+        key={question.id}
+        elevation={0}
+        sx={{
+          mb: 1,
+          cursor: 'pointer',
+          borderRadius: 1,
+          border: '1px solid',
+          borderColor: 'divider',
+          transition: 'box-shadow 0.2s, border-color 0.2s',
+          '&:hover': {
+            boxShadow: 1,
+            borderColor: 'primary.light'
+          }
+        }}
+        onClick={() => handleQuestionClick(question.id)}
+      >
+        <CardContent sx={{ py: 1.25, px: 2, '&:last-child': { pb: 1.25 } }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600, color: 'primary.main', lineHeight: 1.3 }}>
+                {label}
               </Typography>
-            )}
+              {(question.userNote?.trim() || question.gapPlanCount > 0) && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.25, flexWrap: 'wrap' }}>
+                  {question.userNote?.trim() ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                      {question.userNote}
+                    </Typography>
+                  ) : null}
+                  {question.gapPlanCount > 0 && (
+                    <Typography variant="caption" color="primary.main">
+                      {question.gapPlanCount} gap plan{question.gapPlanCount !== 1 ? 's' : ''}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<NoteAddIcon />}
+                onClick={(e) => openNoteDialog(question.id, label, question.userNote, e)}
+                sx={{ minWidth: 'auto' }}
+              >
+                Add Note
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<SchoolIcon />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  trackLinkClick(`/gap-plan?q=${question.id}`, 'Learn More', 'education_card');
+                  handleQuestionClick(question.id);
+                }}
+                sx={{ minWidth: 'auto' }}
+              >
+                Learn More
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  trackLinkClick('/gap-plan', 'Gap Plan', 'education_card');
+                  handleAddGapPlan(question.id);
+                }}
+                sx={{
+                  minWidth: 'auto',
+                  backgroundColor: '#2e7d32',
+                  '&:hover': { backgroundColor: '#1b5e20' }
+                }}
+              >
+                Gap Plan
+              </Button>
+            </Box>
           </Box>
-
-          <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1, ml: 2, flexShrink: 0 }}>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<SchoolIcon />}
-              onClick={(e) => {
-                e.stopPropagation();
-                trackLinkClick(`/gap-plan?q=${question.id}`, 'Learn More', 'education_card');
-                handleQuestionClick(question.id);
-              }}
-              sx={{ minWidth: 'auto', px: 2 }}
-            >
-              Learn More
-            </Button>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                trackLinkClick('/gap-plan', 'Gap Plan', 'education_card');
-                handleAddGapPlan(question.id);
-              }}
-              sx={{
-                minWidth: 'auto',
-                px: 2,
-                backgroundColor: '#4caf50',
-                '&:hover': { backgroundColor: '#45a049' }
-              }}
-            >
-              Gap Plan
-            </Button>
-          </Box>
-        </Box>
-      </CardContent>
-    </Card>
-  );
+        </CardContent>
+      </Card>
+    );
+  };
 
   const selectedEducationContent = selectedQuestion ? educationContent[selectedQuestion] : null;
 
   return (
-    <Container maxWidth="lg" sx={{ py: domainFilter ? 2 : 4 }}>
+    <Container maxWidth="lg" sx={{ py: domainFilter ? 1 : 4, px: domainFilter ? 0 : 3 }}>
       {!domainFilter && (
-        <>
-          <Typography variant="body1" sx={{ mb: 4, color: 'text.secondary' }}>
-            Click on any question below to learn more about pediatric emergency care readiness requirements,
-            best practices, and implementation strategies.
-          </Typography>
-        </>
+        <Typography variant="body1" sx={{ mb: 3, color: 'text.secondary' }}>
+          Click on any question below to learn more about pediatric emergency care readiness requirements,
+          best practices, and implementation strategies.
+        </Typography>
       )}
 
       {educationQuestionList.map(renderQuestionCard)}
@@ -417,6 +414,41 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
       )}
 
       {!domainFilter && <ScormPackagesSection title="SCORM learning modules" placement="education" />}
+
+      {/* Add / Edit Note Dialog */}
+      <Dialog open={noteDialogOpen} onClose={() => { setNoteDialogOpen(false); setNoteDialogQuestionId(null); setNoteDialogValue(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Your note</DialogTitle>
+        <DialogContent>
+          {noteDialogLabel && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              {noteDialogLabel}
+            </Typography>
+          )}
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={3}
+            maxRows={8}
+            placeholder="Add a note as you work on this gap (e.g. next steps, who to contact, timeline)."
+            value={noteDialogValue}
+            onChange={(e) => setNoteDialogValue(e.target.value)}
+            variant="outlined"
+            sx={{ mt: 0.5 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => { setNoteDialogOpen(false); setNoteDialogQuestionId(null); setNoteDialogValue(''); }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => noteDialogQuestionId && saveUserNote(noteDialogQuestionId, noteDialogValue)}
+          >
+            Save note
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Education Dialog */}
       <Dialog 
