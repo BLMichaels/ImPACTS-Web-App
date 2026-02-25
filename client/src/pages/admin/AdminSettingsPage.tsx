@@ -192,7 +192,8 @@ export default function AdminSettingsPage() {
   // Education Questions state (Gap Closure)
   interface EducationQuestion {
     questionId: string;
-    category: string;
+    domain: string;   // one of EDUCATION_BUCKETS → which accordion section
+    category: string; // typed name (e.g. Coordination) → label on the card
     question: string;
     why: string;
     background: string;
@@ -205,6 +206,7 @@ export default function AdminSettingsPage() {
   const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
   const [educationForm, setEducationForm] = useState<EducationQuestion>({
     questionId: '',
+    domain: '',
     category: '',
     question: '',
     why: '',
@@ -388,7 +390,7 @@ export default function AdminSettingsPage() {
     }
     const eduVal = byKey.get('education_questions');
     if (eduVal != null && Array.isArray(eduVal)) {
-      setEducationQuestions((eduVal as any[]).map((q: any) => ({ ...q, category: q.category ?? '' })));
+      setEducationQuestions((eduVal as any[]).map((q: any) => ({ ...q, domain: q.domain ?? '', category: q.category ?? '' })));
     } else {
       setEducationQuestions([]);
     }
@@ -444,11 +446,12 @@ export default function AdminSettingsPage() {
   const handleOpenEducationDialog = (question?: EducationQuestion) => {
     if (question) {
       setEditingEducationId(question.questionId);
-      setEducationForm({ ...question, category: question.category ?? '' });
+      setEducationForm({ ...question, domain: question.domain ?? '', category: question.category ?? '' });
     } else {
       setEditingEducationId(null);
       setEducationForm({
         questionId: '',
+        domain: '',
         category: '',
         question: '',
         why: '',
@@ -1168,7 +1171,8 @@ export default function AdminSettingsPage() {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Question ID</TableCell>
+                  <TableCell>Question ID / Category</TableCell>
+                  <TableCell>Domain (accordion)</TableCell>
                   <TableCell>Question Preview</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
@@ -1176,7 +1180,7 @@ export default function AdminSettingsPage() {
               <TableBody>
                 {educationQuestions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} align="center">
+                    <TableCell colSpan={4} align="center">
                       <Typography color="textSecondary">No education questions yet. Add your first question.</Typography>
                     </TableCell>
                   </TableRow>
@@ -1186,6 +1190,11 @@ export default function AdminSettingsPage() {
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                           {eq.category?.trim() ? `Question ${eq.questionId}: ${eq.category}` : `Question ${eq.questionId}`}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {eq.domain || '—'}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -1381,23 +1390,33 @@ export default function AdminSettingsPage() {
               inputProps={{ dir: 'ltr' }}
             />
             <FormControl fullWidth margin="normal">
-              <InputLabel>Category (bucket)</InputLabel>
+              <InputLabel>Domain (accordion section)</InputLabel>
               <Select
-                value={educationForm.category}
-                label="Category (bucket)"
-                onChange={(e) => setEducationForm(prev => ({ ...prev, category: e.target.value }))}
+                value={educationForm.domain}
+                label="Domain (accordion section)"
+                onChange={(e) => setEducationForm(prev => ({ ...prev, domain: e.target.value }))}
               >
                 <MenuItem value="">
-                  <em>Select a category</em>
+                  <em>Select a domain</em>
                 </MenuItem>
                 {EDUCATION_BUCKETS.map((bucket) => (
                   <MenuItem key={bucket} value={bucket}>{bucket}</MenuItem>
                 ))}
               </Select>
               <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
-                Filed under this section on the Gap Plan page.
+                Which accordion section this question appears under on the Gap Plan page.
               </Typography>
             </FormControl>
+            <TextField
+              fullWidth
+              label="Category"
+              value={educationForm.category}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, category: e.target.value }))}
+              margin="normal"
+              placeholder="e.g. Coordination, Staffing"
+              helperText="Short name you type. Shown as the question label next to the question ID on the card."
+              inputProps={{ dir: 'ltr' }}
+            />
             <TextField
               fullWidth
               label="Assessment question (Learn more page)"

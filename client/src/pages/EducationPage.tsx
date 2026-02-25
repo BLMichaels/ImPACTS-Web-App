@@ -30,8 +30,8 @@ import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/user
 import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface EducationContent {
+  domain?: string;
   category?: string;
-  notes?: string;
   question: string;
   why: string;
   background: string;
@@ -88,11 +88,11 @@ export const GAP_PLANS_UPDATED_EVENT = 'impacts:gapPlansUpdated';
 
 interface EducationPageProps {
   onGapPlanSaved?: () => void;
-  /** When set, only show questions in this category (for Gap Plan page accordions). */
-  categoryFilter?: string;
+  /** When set, only show questions in this domain (accordion section on Gap Plan page). */
+  domainFilter?: string;
 }
 
-const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryFilter }) => {
+const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFilter }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const { trackLinkClick } = useUsageAnalytics();
@@ -130,6 +130,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
         const contentMap: Record<string, EducationContent> = {};
         (parsed as any[]).forEach((eq: any) => {
           contentMap[eq.questionId] = {
+            domain: eq.domain ?? '',
             category: eq.category ?? '',
             question: eq.question ?? '',
             why: eq.why ?? '',
@@ -278,13 +279,14 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
     .map(([questionId, content]) => ({
       id: questionId,
       text: content.question,
+      domain: content.domain ?? '',
       category: content.category ?? '',
       userNote: userQuestionNotes[questionId] ?? '',
       gapPlanCount: (allGapPlans as GapPlan[]).filter(
         (p) => p && String(p.questionId) === String(questionId) && typeof (p as any).action === 'string'
       ).length
     }))
-    .filter((q) => !categoryFilter || q.category === categoryFilter)
+    .filter((q) => !domainFilter || q.domain === domainFilter)
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
   const handleStartEditNote = (questionId: string, currentNote: string, e: React.MouseEvent) => {
@@ -293,7 +295,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
     setEditingNoteValue(currentNote);
   };
 
-  const renderQuestionCard = (question: { id: string; text: string; category: string; userNote: string; gapPlanCount: number }) => (
+  const renderQuestionCard = (question: { id: string; text: string; domain: string; category: string; userNote: string; gapPlanCount: number }) => (
     <Card
       key={question.id}
       sx={{
@@ -389,8 +391,8 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
   const selectedEducationContent = selectedQuestion ? educationContent[selectedQuestion] : null;
 
   return (
-    <Container maxWidth="lg" sx={{ py: categoryFilter ? 2 : 4 }}>
-      {!categoryFilter && (
+    <Container maxWidth="lg" sx={{ py: domainFilter ? 2 : 4 }}>
+      {!domainFilter && (
         <>
           <Typography variant="body1" sx={{ mb: 4, color: 'text.secondary' }}>
             Click on any question below to learn more about pediatric emergency care readiness requirements,
@@ -404,17 +406,17 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
       {educationQuestionList.length === 0 && (
         <Alert severity="info" sx={{ mt: 4 }}>
           <Typography variant="body1" gutterBottom>
-            {categoryFilter ? 'No questions in this section yet.' : 'No education content available yet.'}
+            {domainFilter ? 'No questions in this domain yet.' : 'No education content available yet.'}
           </Typography>
           <Typography variant="body2">
-            {categoryFilter
-              ? 'Add questions in Admin Settings → Gap Closure and assign them to this category.'
+            {domainFilter
+              ? 'Add questions in Admin Settings → Gap Closure and assign them to this domain.'
               : 'Education content must be configured in Admin Settings → Gap Closure tab before it can be displayed here.'}
           </Typography>
         </Alert>
       )}
 
-      {!categoryFilter && <ScormPackagesSection title="SCORM learning modules" placement="education" />}
+      {!domainFilter && <ScormPackagesSection title="SCORM learning modules" placement="education" />}
 
       {/* Education Dialog */}
       <Dialog 

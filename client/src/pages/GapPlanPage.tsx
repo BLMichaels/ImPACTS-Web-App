@@ -829,7 +829,7 @@ const GapPlanPage: React.FC = () => {
               </Box>
             </AccordionSummary>
             <AccordionDetails sx={{ p: 0 }}>
-              <EducationPage categoryFilter={bucket} onGapPlanSaved={loadGapPlans} />
+              <EducationPage domainFilter={bucket} onGapPlanSaved={loadGapPlans} />
             </AccordionDetails>
           </Accordion>
         ))}

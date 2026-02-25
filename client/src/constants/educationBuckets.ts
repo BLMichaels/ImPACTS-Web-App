@@ -1,6 +1,6 @@
 /**
- * Main category buckets for gap/education questions.
- * Used in Admin Settings (Gaps tab) and on the Gap Plan page accordions.
+ * Domain buckets for gap/education questions. Each domain = one accordion section on the Gap Plan page.
+ * Admin picks a domain (dropdown) and types a category name (e.g. "Coordination") per question.
  */
 export const EDUCATION_BUCKETS = [
   'Guidelines for Administration and Coordination of the ED for the Care of Children',
