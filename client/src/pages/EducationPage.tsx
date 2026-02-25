@@ -20,7 +20,7 @@ import {
   Alert,
   Chip
 } from '@mui/material';
-import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon } from '@mui/icons-material';
+import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon, NoteAdd as NoteAddIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
@@ -111,6 +111,10 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
     attachments: []
   });
   const [gapPlansList, setGapPlansList] = useState<GapPlan[]>([]);
+  const [educationNotes, setEducationNotes] = useState<Record<string, string>>({});
+  const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [notesQuestionId, setNotesQuestionId] = useState<string | null>(null);
+  const [notesText, setNotesText] = useState('');
   
   // Load education content from Supabase (app_settings) so it syncs across devices
   useEffect(() => {
@@ -161,6 +165,16 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
     return () => { mounted = false; };
   }, [userId, gapPlansRefreshKey]);
 
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      const raw = await getUserData<Record<string, string>>(userId, 'education_notes');
+      if (mounted && raw && typeof raw === 'object') setEducationNotes(raw);
+    })();
+    return () => { mounted = false; };
+  }, [userId]);
+
   const handleQuestionClick = (questionId: string) => {
     setSelectedQuestion(questionId);
     setEducationDialogOpen(true);
@@ -169,6 +183,16 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
   const handleCloseDialog = () => {
     setEducationDialogOpen(false);
     setSelectedQuestion(null);
+  };
+
+  const handleSaveNotes = async () => {
+    if (!userId || !notesQuestionId) return;
+    const next = { ...educationNotes, [notesQuestionId]: notesText.trim() };
+    await setUserData(userId, 'education_notes', next);
+    setEducationNotes(next);
+    setNotesDialogOpen(false);
+    setNotesQuestionId(null);
+    setNotesText('');
   };
 
   const handleAddGapPlan = (questionId: string) => {
@@ -254,11 +278,12 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
       category: content.category ?? '',
       gapPlanCount: (allGapPlans as GapPlan[]).filter(
         (p) => p && String(p.questionId) === String(questionId) && typeof (p as any).action === 'string'
-      ).length
+      ).length,
+      notes: educationNotes[questionId] ?? ''
     }))
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  const renderQuestionCard = (question: { id: string; text: string; category: string; gapPlanCount: number }) => (
+  const renderQuestionCard = (question: { id: string; text: string; category: string; gapPlanCount: number; notes: string }) => (
     <Card
       key={question.id}
       sx={{
@@ -318,8 +343,30 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
             >
               Gap Plan
             </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<NoteAddIcon />}
+              onClick={(e) => {
+                e.stopPropagation();
+                setNotesQuestionId(question.id);
+                setNotesText(educationNotes[question.id] ?? '');
+                setNotesDialogOpen(true);
+              }}
+              sx={{ minWidth: 'auto', px: 2 }}
+            >
+              Add Notes
+            </Button>
           </Box>
         </Box>
+        {question.notes && (
+          <Box sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Your note: </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+              {question.notes}
+            </Typography>
+          </Box>
+        )}
       </CardContent>
     </Card>
   );
@@ -352,110 +399,76 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
 
       <ScormPackagesSection title="SCORM learning modules" placement="education" />
 
-      {/* Education Dialog */}
+      {/* Education Dialog (Learn More) */}
       <Dialog 
         open={educationDialogOpen} 
         onClose={handleCloseDialog}
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle sx={{ color: '#1976d2', fontWeight: 'bold' }}>
+        <DialogTitle sx={{ color: 'primary.main', fontWeight: 600, fontSize: '1.25rem' }}>
           {selectedEducationContent?.category?.trim()
-            ? `Question ${selectedQuestion}: ${selectedEducationContent.category}`
+            ? selectedEducationContent.category
             : `Question ${selectedQuestion}`}
         </DialogTitle>
         <DialogContent>
           {selectedEducationContent ? (
-            <Box>
+            <Box sx={{ '& .SectionHeading': { fontWeight: 600, fontSize: '1rem', color: 'text.primary', mb: 1, mt: 2.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider' }, '& .SectionHeading:first-of-type': { mt: 0 }, '& .SectionBody': { mb: 2 }, '& .SectionBody ul, & .SectionBody ol': { pl: 3 }, '& .SectionBody li': { mb: 0.5 }, '& .SectionBody a': { color: 'primary.main', textDecoration: 'underline' }, '& .SectionBody strong': { fontWeight: 600 }, '& .SectionBody em': { fontStyle: 'italic' } }}>
               {selectedEducationContent.question?.trim() ? (
                 <>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
-                    Assessment Question:
-                  </Typography>
-                  <Typography variant="body1" sx={{ mb: 3 }}>
+                  <Typography className="SectionHeading">Assessment Question:</Typography>
+                  <Typography variant="body1" className="SectionBody">
                     {selectedEducationContent.question}
                   </Typography>
                 </>
               ) : null}
 
+              <Typography className="SectionHeading">Pediatric Readiness Assessment Question #:</Typography>
+              <Typography variant="body1" className="SectionBody">{selectedQuestion}</Typography>
+
               {hasHtmlContent(selectedEducationContent.why) ? (
                 <>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#2e7d32' }}>
-                    Why:
-                  </Typography>
-                  <Box
-                    sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.why }}
-                  />
+                  <Typography className="SectionHeading">Why:</Typography>
+                  <Box className="SectionBody" dangerouslySetInnerHTML={{ __html: selectedEducationContent.why }} />
                 </>
               ) : null}
 
               {hasHtmlContent(selectedEducationContent.background) ? (
                 <>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1976d2' }}>
-                    Background:
-                  </Typography>
-                  <Box
-                    sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.background }}
-                  />
+                  <Typography className="SectionHeading">Background:</Typography>
+                  <Box className="SectionBody" dangerouslySetInnerHTML={{ __html: selectedEducationContent.background }} />
                 </>
               ) : null}
 
               {hasHtmlContent(selectedEducationContent.example) ? (
                 <>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#f57c00' }}>
-                    Example:
-                  </Typography>
-                  <Box
-                    sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.example }}
-                  />
+                  <Typography className="SectionHeading">Example:</Typography>
+                  <Box className="SectionBody" dangerouslySetInnerHTML={{ __html: selectedEducationContent.example }} />
                 </>
               ) : null}
 
               {hasHtmlContent(selectedEducationContent.sustainability) ? (
                 <>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#7b1fa2' }}>
-                    Sustainability Practices for PECC:
-                  </Typography>
-                  <Box
-                    sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.sustainability }}
-                  />
+                  <Typography className="SectionHeading">Sustainability Practices for PECCs:</Typography>
+                  <Box className="SectionBody" dangerouslySetInnerHTML={{ __html: selectedEducationContent.sustainability }} />
                 </>
               ) : null}
 
               {selectedEducationContent.resources?.length > 0 && selectedEducationContent.resources.some((r) => r && String(r).trim()) ? (
                 <>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#d32f2f' }}>
-                    Additional Resources:
-                  </Typography>
-                  <Box component="ul" sx={{ mb: 2, pl: 3, m: 0, listStyle: 'disc', '& li': { mb: 0.5 } }}>
+                  <Typography className="SectionHeading">Additional Resources:</Typography>
+                  <Box component="ul" className="SectionBody" sx={{ pl: 3, m: 0, listStyle: 'disc' }}>
                     {selectedEducationContent.resources.filter((r) => r && String(r).trim()).map((resource, index) => {
                       const parsed = parseResource(resource);
                       const url = formatUrl(parsed.url);
-                      const linkBlue = '#0000EE';
                       return (
                         <Box component="li" key={index}>
                           {url ? (
-                            <Link
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              variant="body2"
-                              sx={{
-                                color: linkBlue,
-                                textDecoration: 'underline',
-                                '&:hover': { color: '#551A8B' }
-                              }}
-                            >
+                            <Link href={url} target="_blank" rel="noopener noreferrer" variant="body2" sx={{ color: 'primary.main', textDecoration: 'underline' }}>
                               {parsed.title || resource}
                             </Link>
                           ) : (
-                            <Typography variant="body2" component="span" sx={{ color: linkBlue }}>
-                              {parsed.title || resource}
-                            </Typography>
+                            <Typography variant="body2" component="span">{parsed.title || resource}</Typography>
                           )}
                         </Box>
                       );
@@ -464,13 +477,24 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
                 </>
               ) : null}
 
-              <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 'bold', color: '#1565c0', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <AssignmentIcon fontSize="small" />
-                Gap Plans for this question:
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 2.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider', mb: 1.5 }}>
+                <Typography sx={{ fontWeight: 600, fontSize: '1rem', color: 'text.primary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <AssignmentIcon fontSize="small" />
+                  Gap Plans for this Question:
+                </Typography>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => selectedQuestion && handleAddGapPlan(selectedQuestion)}
+                  sx={{ backgroundColor: '#4caf50', '&:hover': { backgroundColor: '#45a049' } }}
+                >
+                  + Gap Plan
+                </Button>
+              </Box>
               {gapPlansForSelectedQuestion.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  No gap plans yet. Use &quot;Gap Plan&quot; on the card or add one from the Gaps & Education table.
+                  No gap plans yet. Add one with the &quot;+ Gap Plan&quot; button above or from the card.
                 </Typography>
               ) : (
                 <Box sx={{ mb: 2 }}>
@@ -510,6 +534,26 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
           <Button onClick={handleCloseDialog}>
             Close
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Notes Dialog */}
+      <Dialog open={notesDialogOpen} onClose={() => { setNotesDialogOpen(false); setNotesQuestionId(null); setNotesText(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Notes for Question {notesQuestionId}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            placeholder="Add your notes for this question..."
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setNotesDialogOpen(false); setNotesQuestionId(null); setNotesText(''); }}>Cancel</Button>
+          <Button onClick={handleSaveNotes} variant="contained">Save Notes</Button>
         </DialogActions>
       </Dialog>
 

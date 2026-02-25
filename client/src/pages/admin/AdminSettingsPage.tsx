@@ -1256,35 +1256,34 @@ export default function AdminSettingsPage() {
           {editingEducationId ? `Edit Question ${editingEducationId}` : 'Add Education Question'}
         </DialogTitle>
         <DialogContent aria-describedby={undefined}>
-          <Box sx={{ pt: 2 }}>
+          <Box sx={{ pt: 2, '& .MuiTextField-root': { mb: 1 }, '& .SectionLabel': { fontWeight: 600, fontSize: '1rem', color: 'text.primary', marginTop: 16, marginBottom: 8, display: 'block' } }}>
+            <Typography className="SectionLabel">Category</Typography>
             <TextField
               fullWidth
-              label="Question ID"
-              value={educationForm.questionId}
-              onChange={(e) => setEducationForm(prev => ({ ...prev, questionId: e.target.value }))}
-              margin="normal"
-              helperText="Question number (e.g., 22, 23). Shown next to category on the Gaps & Education tab."
-              inputProps={{ dir: 'ltr' }}
-            />
-            <TextField
-              fullWidth
-              label="Category"
               value={educationForm.category}
               onChange={(e) => setEducationForm(prev => ({ ...prev, category: e.target.value }))}
-              margin="normal"
               placeholder="e.g., Coordination, Staffing"
-              helperText="Shown next to the question number on the Gaps & Education tab."
+              helperText="Section title on the Learn More page (e.g., Coordination, Staffing)."
               inputProps={{ dir: 'ltr' }}
             />
+            <Typography className="SectionLabel">Assessment Question:</Typography>
             <TextField
               fullWidth
-              label="Assessment question (Learn more page)"
               value={educationForm.question}
               onChange={(e) => setEducationForm(prev => ({ ...prev, question: e.target.value }))}
-              margin="normal"
               multiline
               rows={3}
-              helperText="The actual question from the assessment. Shown at the top when users click Learn more."
+              placeholder="The actual question from the pediatric readiness assessment."
+              helperText="Shown as the first content section when users click Learn More."
+              inputProps={{ dir: 'ltr' }}
+            />
+            <Typography className="SectionLabel">Pediatric Readiness Assessment Question #:</Typography>
+            <TextField
+              fullWidth
+              value={educationForm.questionId}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, questionId: e.target.value }))}
+              placeholder="e.g., 22, 23"
+              helperText="Question number. Shown after the assessment question on the Learn More page."
               inputProps={{ dir: 'ltr' }}
             />
             <Box sx={{ mt: 2, mb: 1 }}>
@@ -1320,14 +1319,12 @@ export default function AdminSettingsPage() {
                 onChange={(value) => setEducationForm(prev => ({ ...prev, sustainability: value }))}
                 placeholder="Best practices for maintaining this aspect..."
                 minHeight={100}
-                label="Sustainability Practices for PECC"
+                label="Sustainability Practices for PECCs"
               />
             </Box>
             
             <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Additional Resources
-              </Typography>
+              <Typography className="SectionLabel">Additional Resources</Typography>
               <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block' }}>
                 Format: "Resource Title (https://url.com)" or just "https://url.com"
               </Typography>
