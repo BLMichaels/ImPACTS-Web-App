@@ -63,8 +63,10 @@ import { UserRole } from '../../types/database';
 
 // Types
 interface DatedNote {
+  id?: string;
   date: string; // YYYY-MM-DD
   text: string;
+  author_id?: string; // user id of creator; only they can edit/delete
 }
 
 interface Hospital {
@@ -145,7 +147,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   
   // Snackbar
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
   
   // Form states
   const [hospitalForm, setHospitalForm] = useState({
@@ -204,6 +206,10 @@ const MentorHospitalContactsPage: React.FC = () => {
   // Dated note form (hospital detail)
   const [newNoteDate, setNewNoteDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [newNoteText, setNewNoteText] = useState('');
+  // Edit note dialog (own notes only)
+  const [editingNote, setEditingNote] = useState<DatedNote | null>(null);
+  const [editNoteDate, setEditNoteDate] = useState('');
+  const [editNoteText, setEditNoteText] = useState('');
 
   // Load CRM hospitals for Add Hospital cascading dropdowns
   useEffect(() => {
@@ -529,7 +535,13 @@ const MentorHospitalContactsPage: React.FC = () => {
   const handleAddDatedNote = async () => {
     if (!selectedHospital || !newNoteText.trim()) return;
     const noteText = newNoteText.trim();
-    const note: DatedNote = { date: newNoteDate, text: noteText };
+    const noteId = crypto.randomUUID();
+    const note: DatedNote = {
+      id: noteId,
+      date: newNoteDate,
+      text: noteText,
+      author_id: currentUser?.id ?? undefined
+    };
     const notesLog = [...(selectedHospital.notesLog ?? []), note].sort((a, b) => b.date.localeCompare(a.date));
     const updated: Hospital = { ...selectedHospital, notesLog };
     const newHospitals = hospitals.map(h => h.id === selectedHospital.id ? updated : h);
@@ -546,7 +558,8 @@ const MentorHospitalContactsPage: React.FC = () => {
     const { error } = await supabase.rpc('append_hospital_note', {
       p_hospital_id: selectedHospital.id,
       p_note_date: newNoteDate,
-      p_note_text: crmNoteText
+      p_note_text: crmNoteText,
+      p_note_id: noteId
     });
     if (error) {
       console.warn('Could not sync note to CRM:', error.message);
@@ -555,6 +568,59 @@ const MentorHospitalContactsPage: React.FC = () => {
         message: `Note saved locally. It did not sync to the CRM (${error.message}). Ask an admin to run MENTOR_HOSPITAL_NOTE_TO_CRM.sql in Supabase if you need notes to appear in the CRM.`,
         severity: 'warning'
       });
+    }
+  };
+
+  const canEditNote = (entry: DatedNote) =>
+    Boolean(entry.author_id && currentUser?.id && entry.author_id === currentUser.id);
+
+  const handleEditNoteClick = (entry: DatedNote) => {
+    setEditingNote(entry);
+    setEditNoteDate(entry.date);
+    setEditNoteText(entry.text);
+  };
+
+  const handleUpdateNote = async () => {
+    if (!selectedHospital || !editingNote?.id) return;
+    const newLog = (selectedHospital.notesLog ?? []).map((n) =>
+      n.id === editingNote.id ? { ...n, date: editNoteDate, text: editNoteText } : n
+    );
+    const updated: Hospital = { ...selectedHospital, notesLog: newLog };
+    const newHospitals = hospitals.map(h => h.id === selectedHospital.id ? updated : h);
+    saveHospitals(newHospitals);
+    setSelectedHospital(updated);
+    setEditingNote(null);
+    setSnackbar({ open: true, message: 'Note updated', severity: 'success' });
+
+    const { error } = await supabase.rpc('update_hospital_note', {
+      p_hospital_id: selectedHospital.id,
+      p_note_id: editingNote.id,
+      p_note_date: editNoteDate,
+      p_note_text: editNoteText
+    });
+    if (error) {
+      console.warn('Could not sync note update to CRM:', error.message);
+      setSnackbar({ open: true, message: 'Note updated locally; CRM sync failed.', severity: 'warning' });
+    }
+  };
+
+  const handleDeleteNote = async (entry: DatedNote) => {
+    if (!selectedHospital || !entry.id) return;
+    if (!window.confirm('Delete this note? This cannot be undone.')) return;
+    const newLog = (selectedHospital.notesLog ?? []).filter((n) => n.id !== entry.id);
+    const updated: Hospital = { ...selectedHospital, notesLog: newLog };
+    const newHospitals = hospitals.map(h => h.id === selectedHospital.id ? updated : h);
+    saveHospitals(newHospitals);
+    setSelectedHospital(updated);
+    setSnackbar({ open: true, message: 'Note deleted', severity: 'success' });
+
+    const { error } = await supabase.rpc('delete_hospital_note', {
+      p_hospital_id: selectedHospital.id,
+      p_note_id: entry.id
+    });
+    if (error) {
+      console.warn('Could not sync note deletion to CRM:', error.message);
+      setSnackbar({ open: true, message: 'Note deleted locally; CRM sync failed.', severity: 'warning' });
     }
   };
 
@@ -1258,9 +1324,21 @@ const MentorHospitalContactsPage: React.FC = () => {
                   ) : (
                     <Box sx={{ mb: 2, maxHeight: 200, overflow: 'auto' }}>
                       {(selectedHospital.notesLog ?? []).map((entry, i) => (
-                        <Box key={i} sx={{ mb: 1.5, pb: 1.5, borderBottom: i < (selectedHospital.notesLog!.length - 1) ? 1 : 0, borderColor: 'divider' }}>
-                          <Typography variant="caption" color="textSecondary">{entry.date}</Typography>
-                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
+                        <Box key={entry.id ?? i} sx={{ mb: 1.5, pb: 1.5, borderBottom: i < (selectedHospital.notesLog!.length - 1) ? 1 : 0, borderColor: 'divider', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography variant="caption" color="textSecondary">{entry.date}</Typography>
+                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
+                          </Box>
+                          {canEditNote(entry) && (
+                            <Box sx={{ flexShrink: 0 }}>
+                              <IconButton size="small" aria-label="Edit note" onClick={() => handleEditNoteClick(entry)}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" aria-label="Delete note" color="error" onClick={() => handleDeleteNote(entry)}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          )}
                         </Box>
                       ))}
                     </Box>
@@ -1323,6 +1401,36 @@ const MentorHospitalContactsPage: React.FC = () => {
             </>
           )}
         </Dialog>
+
+      {/* Edit note dialog (own notes only) */}
+      <Dialog open={Boolean(editingNote)} onClose={() => setEditingNote(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit note</DialogTitle>
+        <DialogContent>
+          <TextField
+            size="small"
+            type="date"
+            label="Note date"
+            value={editNoteDate}
+            onChange={(e) => setEditNoteDate(e.target.value)}
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            size="small"
+            label="Note text"
+            value={editNoteText}
+            onChange={(e) => setEditNoteText(e.target.value)}
+            fullWidth
+            multiline
+            minRows={3}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditingNote(null)}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateNote}>Save</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Hospital Dialog */}
       <Dialog open={hospitalDialogOpen} onClose={() => setHospitalDialogOpen(false)} maxWidth="sm" fullWidth>
