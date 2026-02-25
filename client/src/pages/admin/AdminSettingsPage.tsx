@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -101,9 +101,21 @@ const formatPermissionLabel = (key: string) => key.split('_').map(w => w.charAt(
 const ROLES: UserRole[] = [UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC];
 const getRoleColor = (role: string) => ({ manager: '#9c27b0', mentor: '#ff9800', pecc: '#2196f3' }[role] || '#757575');
 
+interface TierUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: 'hospital_system' | 'hiring_group';
+  systemNames: string[];
+}
+
 export default function AdminSettingsPage() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [tierUsers, setTierUsers] = useState<TierUser[]>([]);
+  const [tierUsersLoading, setTierUsersLoading] = useState(false);
 
   // Map tab query param to index
   const tabParamToIndex: Record<string, number> = useMemo(() => ({
@@ -116,7 +128,8 @@ export default function AdminSettingsPage() {
     'cohorts': 6,
     'activity-categories': 7,
     'education': 8,
-    'simulations': 9
+    'simulations': 9,
+    'tiers': 10
   }), []);
 
   const tabIndexToParam: Record<number, string> = useMemo(() => ({
@@ -129,12 +142,19 @@ export default function AdminSettingsPage() {
     6: 'cohorts',
     7: 'activity-categories',
     8: 'education',
-    9: 'simulations'
+    9: 'simulations',
+    10: 'tiers'
   }), []);
 
   // Initialize tab from URL or default to 0
   const initialTab = tabParamToIndex[searchParams.get('tab') || ''] ?? 0;
   const [tabIndex, setTabIndex] = useState(initialTab);
+
+  // Sync tab index when URL param changes (e.g. direct link to ?tab=tiers)
+  useEffect(() => {
+    const tab = tabParamToIndex[searchParams.get('tab') || ''] ?? 0;
+    setTabIndex(tab);
+  }, [searchParams, tabParamToIndex]);
 
   // Update URL when tab changes
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
@@ -376,6 +396,42 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     loadAppSettings();
   }, []);
+
+  // Load Hospital System & Hiring Group users when Tiers tab is selected
+  useEffect(() => {
+    if (tabIndex !== 10) return;
+    let cancelled = false;
+    setTierUsersLoading(true);
+    (async () => {
+      const { data: usersData, error: usersErr } = await supabase
+        .from('users')
+        .select('id, email, first_name, last_name, role')
+        .in('role', ['hospital_system', 'hiring_group']);
+      if (cancelled || usersErr || !usersData?.length) {
+        if (!cancelled) setTierUsers([]);
+        setTierUsersLoading(false);
+        return;
+      }
+      const list: TierUser[] = [];
+      for (const u of usersData as { id: string; email: string; first_name: string; last_name: string; role: string }[]) {
+        const role = u.role as 'hospital_system' | 'hiring_group';
+        const table = role === 'hospital_system' ? 'hospital_system_assignments' : 'hiring_group_assignments';
+        const { data: assignData } = await supabase.from(table).select('hospital_system_name').eq('user_id', u.id);
+        const systemNames = (assignData || []).map((a: { hospital_system_name: string }) => a.hospital_system_name);
+        list.push({
+          id: u.id,
+          email: u.email,
+          firstName: u.first_name || '',
+          lastName: u.last_name || '',
+          role,
+          systemNames
+        });
+      }
+      if (!cancelled) setTierUsers(list);
+      setTierUsersLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [tabIndex]);
 
   const saveAppSetting = async (key: string, value: unknown) => {
     await supabase.from('app_settings').upsert(
@@ -690,6 +746,7 @@ export default function AdminSettingsPage() {
         <Tab label="Activity Categories" />
         <Tab label="Education" />
         <Tab label="Simulations" />
+        <Tab label="Tiers" />
       </Tabs>
 
       {/* Registration Questions */}
@@ -1218,6 +1275,57 @@ export default function AdminSettingsPage() {
                       </TableRow>
                     ))
                   )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
+      )}
+
+      {/* Tiers: Hospital System & Hiring Group */}
+      {tabIndex === 10 && (
+        <Box>
+          <Typography variant="h6" gutterBottom>Tiers</Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Two additional access tiers: <strong>Hospital System</strong> (see PECC data and aggregated data for their assigned systems) and <strong>Hiring Group</strong> (read-only snapshot view for assigned systems). Assign users and their hospital systems from the CRM Team tab.
+          </Typography>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            To add or edit users with these roles and assign them to hospital systems, go to <strong>CRM → Team</strong>. Set a user&apos;s role to &quot;Hospital System&quot; or &quot;Hiring Group&quot; and choose one or more <strong>Assigned hospital systems</strong> (from the Hospital system field on hospitals in the CRM).
+          </Alert>
+          <Button variant="contained" onClick={() => navigate('/admin/crm?tab=team')} sx={{ mb: 2 }}>
+            Open CRM Team to manage users &amp; assignments
+          </Button>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Users with Hospital System or Hiring Group role</Typography>
+          {tierUsersLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={20} /><Typography variant="body2">Loading…</Typography></Box>
+          ) : tierUsers.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">No users with Hospital System or Hiring Group role yet. Use CRM → Team to set a user&apos;s role and assign hospital systems.</Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Tier</TableCell>
+                    <TableCell>Assigned hospital systems</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {tierUsers.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell>{(u.firstName || u.lastName).trim() ? `${u.firstName} ${u.lastName}`.trim() : '—'}</TableCell>
+                      <TableCell>{u.email}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={u.role === 'hospital_system' ? 'Hospital System' : 'Hiring Group'}
+                          size="small"
+                          color={u.role === 'hospital_system' ? 'success' : 'info'}
+                        />
+                      </TableCell>
+                      <TableCell>{u.systemNames.length ? u.systemNames.join(', ') : <Typography variant="caption" color="text.secondary">None assigned</Typography>}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
