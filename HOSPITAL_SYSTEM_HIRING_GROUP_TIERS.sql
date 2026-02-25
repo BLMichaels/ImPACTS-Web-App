@@ -1,7 +1,11 @@
 -- Hospital System and Hiring Group tiers: roles, assignments, and system checklist.
 -- Run in Supabase SQL Editor. Requires: users, hospitals (with hospital_system column).
+--
+-- If you get "ALTER TYPE ... ADD VALUE cannot run inside a transaction block", run these two lines first (one at a time, no DO block):
+--   ALTER TYPE public.user_role ADD VALUE 'hospital_system';
+--   ALTER TYPE public.user_role ADD VALUE 'hiring_group';
 
--- 1. Add new role values to user_role enum (run separately if your PG version requires it)
+-- 1. Add new role values to user_role enum
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'hospital_system' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_role')) THEN

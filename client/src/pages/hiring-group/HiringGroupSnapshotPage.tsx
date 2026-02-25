@@ -54,6 +54,7 @@ const HiringGroupSnapshotPage: React.FC = () => {
         if (assignErr) throw assignErr;
         const names = (assignments || []).map((a: { hospital_system_name: string }) => a.hospital_system_name).filter(Boolean);
         setSystemNames(names);
+        if (names.length > 0) setExpandedSystem((prev) => (prev == null ? names[0] : prev));
 
         const bySystem: Record<string, HospitalRow[]> = {};
         for (const sys of names) {

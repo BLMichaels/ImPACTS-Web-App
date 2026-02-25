@@ -290,11 +290,15 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         const updatedProfile = { ...userProfile, ...updates };
         setUserProfile(updatedProfile);
         const { setUserData } = await import('../utils/userData');
+        const tier = updatedProfile.role === UserRole.MENTOR ? 'PRISM'
+          : updatedProfile.role === UserRole.HOSPITAL_SYSTEM ? 'Hospital System'
+          : updatedProfile.role === UserRole.HIRING_GROUP ? 'Hiring Group'
+          : 'PECC';
         await setUserData(currentUser.uid || currentUser.id, 'userProfile_cache', {
           firstName: updatedProfile.first_name,
           lastName: updatedProfile.last_name,
           phone: updatedProfile.phone,
-          tier: updatedProfile.role === UserRole.MENTOR ? 'PRISM' : 'PECC',
+          tier,
           email: updatedProfile.email
         });
       } else {

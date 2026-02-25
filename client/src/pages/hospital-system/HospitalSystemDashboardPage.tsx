@@ -25,11 +25,8 @@ import {
   LocalHospital as HospitalIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
-  CheckCircle as CheckCircleIcon,
-  RadioButtonUnchecked as UncheckedIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
-import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 
 const CHECKLIST_STEPS = [
@@ -60,7 +57,6 @@ interface ChecklistRow {
 
 const HospitalSystemDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
   const [systemNames, setSystemNames] = useState<string[]>([]);
   const [selectedSystem, setSelectedSystem] = useState<string>('');
   const [hospitals, setHospitals] = useState<HospitalRow[]>([]);
@@ -83,7 +79,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
         if (assignErr) throw assignErr;
         const names = (assignments || []).map((a: { hospital_system_name: string }) => a.hospital_system_name).filter(Boolean);
         setSystemNames(names);
-        if (names.length > 0 && !selectedSystem) setSelectedSystem(names[0]);
+        setSelectedSystem((prev) => (names.length > 0 && (!prev || !names.includes(prev)) ? names[0] : prev));
       } catch (e: any) {
         setError(e?.message || 'Failed to load assignments');
       } finally {
@@ -132,20 +128,22 @@ const HospitalSystemDashboardPage: React.FC = () => {
   const handleStepStatusChange = async (stepNum: number, status: 'not_started' | 'in_progress' | 'completed') => {
     if (!selectedSystem || !currentUser?.id) return;
     setSavingStep(stepNum);
+    const existing = checklist.find((c) => c.step_number === stepNum);
+    const payload = {
+      hospital_system_name: selectedSystem,
+      step_number: stepNum,
+      status,
+      notes: existing?.notes ?? null,
+      updated_at: new Date().toISOString(),
+      updated_by: currentUser.id,
+    };
     try {
-      await supabase.from('hospital_system_checklist').upsert(
-        {
-          hospital_system_name: selectedSystem,
-          step_number: stepNum,
-          status,
-          updated_at: new Date().toISOString(),
-          updated_by: currentUser.id,
-        },
-        { onConflict: 'hospital_system_name,step_number' }
-      );
+      await supabase.from('hospital_system_checklist').upsert(payload, {
+        onConflict: 'hospital_system_name,step_number',
+      });
       setChecklist((prev) => {
         const rest = prev.filter((c) => c.step_number !== stepNum);
-        return [...rest, { hospital_system_name: selectedSystem, step_number: stepNum, status, notes: null, updated_at: new Date().toISOString() }];
+        return [...rest, { hospital_system_name: selectedSystem, step_number: stepNum, status, notes: payload.notes, updated_at: payload.updated_at }];
       });
     } finally {
       setSavingStep(null);
