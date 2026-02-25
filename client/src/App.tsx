@@ -60,6 +60,10 @@ const ProgramsPage = lazy(() => import('./pages/ProgramsPage'));
 const ManagerProgramsPage = lazy(() => import('./pages/manager/ManagerProgramsPage'));
 const ManagerPermissionsPage = lazy(() => import('./pages/manager/ManagerPermissionsPage'));
 
+// Hospital System & Hiring Group (lazy)
+const HospitalSystemDashboardPage = lazy(() => import('./pages/hospital-system/HospitalSystemDashboardPage'));
+const HiringGroupSnapshotPage = lazy(() => import('./pages/hiring-group/HiringGroupSnapshotPage'));
+
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
 
@@ -106,6 +110,11 @@ const getDefaultDashboard = (role: UserRole): string => {
     case UserRole.MENTOR:
       return '/mentor/dashboard';
     case UserRole.PECC:
+      return '/dashboard';
+    case UserRole.HOSPITAL_SYSTEM:
+      return '/hospital-system/dashboard';
+    case UserRole.HIRING_GROUP:
+      return '/hiring-group/snapshot';
     default:
       return '/dashboard';
   }
@@ -242,6 +251,12 @@ function App() {
                   <Route path="/admin/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCohortsPage /></ProtectedRoute>} />
                   {/* Programs is a tab in Settings - redirect old URL */}
                   <Route path="/admin/programs" element={<Navigate to="/admin/settings?tab=programs" replace />} />
+                  
+                  {/* Hospital System Routes */}
+                  <Route path="/hospital-system/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.HOSPITAL_SYSTEM]}><HospitalSystemDashboardPage /></ProtectedRoute>} />
+                  
+                  {/* Hiring Group Routes */}
+                  <Route path="/hiring-group/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.HIRING_GROUP]}><HiringGroupSnapshotPage /></ProtectedRoute>} />
                   
                   {/* Common Routes */}
                   <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />

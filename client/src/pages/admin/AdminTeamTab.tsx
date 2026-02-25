@@ -58,7 +58,7 @@ interface User {
   lastName: string;
   email: string;
   phone: string;
-  role: 'admin' | 'manager' | 'mentor' | 'pecc';
+  role: 'admin' | 'manager' | 'mentor' | 'pecc' | 'hospital_system' | 'hiring_group';
   is_admin?: boolean;
   status: 'active' | 'pending' | 'inactive';
   lastLogin: string | null;
@@ -95,7 +95,8 @@ const AdminTeamTab: React.FC = () => {
     status: 'active' as 'active' | 'pending' | 'inactive',
     assignedManagerId: '' as string,
     assignedMentorId: '' as string,
-    assignedManagerIdForPECC: '' as string  // Direct manager assignment for PECCs
+    assignedManagerIdForPECC: '' as string,
+    assignedHospitalSystems: [] as string[]
   });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -109,9 +110,20 @@ const AdminTeamTab: React.FC = () => {
     sendInvite: true,
     assignedManagerId: '' as string,
     assignedMentorId: '' as string,
-    assignedManagerIdForPECC: '' as string  // Direct manager assignment for PECCs
+    assignedManagerIdForPECC: '' as string,
+    assignedHospitalSystems: [] as string[]
   });
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [hospitalSystemOptions, setHospitalSystemOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadHospitalSystems = async () => {
+      const { data } = await supabase.from('hospitals').select('hospital_system').not('hospital_system', 'is', null);
+      const names = [...new Set((data || []).map((r: { hospital_system: string | null }) => r.hospital_system).filter(Boolean) as string[])].sort();
+      setHospitalSystemOptions(names);
+    };
+    loadHospitalSystems();
+  }, []);
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -181,11 +193,13 @@ const AdminTeamTab: React.FC = () => {
   });
 
   const getRoleColor = (role: string) => {
-    const colors: Record<string, 'error' | 'secondary' | 'warning' | 'primary'> = {
+    const colors: Record<string, 'error' | 'secondary' | 'warning' | 'primary' | 'success' | 'info'> = {
       admin: 'error',
       manager: 'secondary',
       mentor: 'warning',
-      pecc: 'primary'
+      pecc: 'primary',
+      hospital_system: 'success',
+      hiring_group: 'info'
     };
     return colors[role] || 'default';
   };
@@ -213,7 +227,9 @@ const AdminTeamTab: React.FC = () => {
           'pecc': UserRole.PECC,
           'mentor': UserRole.MENTOR,
           'manager': UserRole.MANAGER,
-          'admin': UserRole.ADMIN
+          'admin': UserRole.ADMIN,
+          'hospital_system': UserRole.HOSPITAL_SYSTEM,
+          'hiring_group': UserRole.HIRING_GROUP
         };
         const userRole = roleMap[formData.role] || UserRole.PECC;
         
@@ -253,7 +269,8 @@ const AdminTeamTab: React.FC = () => {
         sendInvite: true,
         assignedManagerId: '',
         assignedMentorId: '',
-        assignedManagerIdForPECC: ''
+        assignedManagerIdForPECC: '',
+        assignedHospitalSystems: []
       });
       
       // Reload users to show the invitation status
@@ -323,9 +340,17 @@ const AdminTeamTab: React.FC = () => {
     setSelectedUser(user);
   };
 
-  const openProfileDrawer = (editMode = false) => {
+  const openProfileDrawer = async (editMode = false) => {
     setAnchorEl(null);
     if (selectedUser) {
+      let assignedSystems: string[] = [];
+      if (selectedUser.role === 'hospital_system') {
+        const { data } = await supabase.from('hospital_system_assignments').select('hospital_system_name').eq('user_id', selectedUser.id);
+        assignedSystems = (data || []).map((r: { hospital_system_name: string }) => r.hospital_system_name);
+      } else if (selectedUser.role === 'hiring_group') {
+        const { data } = await supabase.from('hiring_group_assignments').select('hospital_system_name').eq('user_id', selectedUser.id);
+        assignedSystems = (data || []).map((r: { hospital_system_name: string }) => r.hospital_system_name);
+      }
       setProfileForm({
         firstName: selectedUser.firstName,
         lastName: selectedUser.lastName,
@@ -336,7 +361,8 @@ const AdminTeamTab: React.FC = () => {
         status: selectedUser.status,
         assignedManagerId: selectedUser.role === 'mentor' && selectedUser.manager_id ? selectedUser.manager_id : '',
         assignedMentorId: selectedUser.role === 'pecc' && selectedUser.mentor_id ? selectedUser.mentor_id : '',
-        assignedManagerIdForPECC: selectedUser.role === 'pecc' && selectedUser.manager_id_for_pecc ? selectedUser.manager_id_for_pecc : ''
+        assignedManagerIdForPECC: selectedUser.role === 'pecc' && selectedUser.manager_id_for_pecc ? selectedUser.manager_id_for_pecc : '',
+        assignedHospitalSystems: assignedSystems
       });
       setProfileEditMode(editMode);
       setProfileError(null);
@@ -363,12 +389,24 @@ const AdminTeamTab: React.FC = () => {
       .from('users')
       .update(payload)
       .eq('id', selectedUser.id);
-    setProfileSaving(false);
     if (error) {
+      setProfileSaving(false);
       const msg = error.code ? `${error.message} (${error.code})` : error.message;
       setProfileError(msg);
       return;
     }
+    if (profileForm.role === 'hospital_system') {
+      await supabase.from('hospital_system_assignments').delete().eq('user_id', selectedUser.id);
+      for (const name of profileForm.assignedHospitalSystems) {
+        await supabase.from('hospital_system_assignments').insert({ user_id: selectedUser.id, hospital_system_name: name });
+      }
+    } else if (profileForm.role === 'hiring_group') {
+      await supabase.from('hiring_group_assignments').delete().eq('user_id', selectedUser.id);
+      for (const name of profileForm.assignedHospitalSystems) {
+        await supabase.from('hiring_group_assignments').insert({ user_id: selectedUser.id, hospital_system_name: name });
+      }
+    }
+    setProfileSaving(false);
     setUsers(prev => prev.map(u => {
       if (u.id !== selectedUser.id) return u;
       const updated: User = {
@@ -448,6 +486,8 @@ const AdminTeamTab: React.FC = () => {
             <MenuItem value="manager">Manager</MenuItem>
             <MenuItem value="mentor">Mentor</MenuItem>
             <MenuItem value="pecc">PECC</MenuItem>
+            <MenuItem value="hospital_system">Hospital System</MenuItem>
+            <MenuItem value="hiring_group">Hiring Group</MenuItem>
           </Select>
         </FormControl>
         <Box sx={{ flexGrow: 1 }} />
@@ -573,12 +613,21 @@ const AdminTeamTab: React.FC = () => {
                     <InputLabel>Role</InputLabel>
                     <Select value={profileForm.role} label="Role" onChange={(e) => {
                       const role = e.target.value as User['role'];
-                      setProfileForm(p => ({ ...p, role, assignedManagerId: role !== 'mentor' ? '' : p.assignedManagerId, assignedMentorId: role !== 'pecc' ? '' : p.assignedMentorId, assignedManagerIdForPECC: role !== 'pecc' ? '' : p.assignedManagerIdForPECC }));
+                      setProfileForm(p => ({
+                        ...p,
+                        role,
+                        assignedManagerId: role !== 'mentor' ? '' : p.assignedManagerId,
+                        assignedMentorId: role !== 'pecc' ? '' : p.assignedMentorId,
+                        assignedManagerIdForPECC: role !== 'pecc' ? '' : p.assignedManagerIdForPECC,
+                        assignedHospitalSystems: (role === 'hospital_system' || role === 'hiring_group') ? p.assignedHospitalSystems : []
+                      }));
                     }}>
                       <MenuItem value="admin">Admin</MenuItem>
                       <MenuItem value="manager">Manager</MenuItem>
                       <MenuItem value="mentor">Mentor</MenuItem>
                       <MenuItem value="pecc">PECC</MenuItem>
+                      <MenuItem value="hospital_system">Hospital System</MenuItem>
+                      <MenuItem value="hiring_group">Hiring Group</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -623,6 +672,29 @@ const AdminTeamTab: React.FC = () => {
                       </Typography>
                     </Grid>
                   </>
+                )}
+                {(profileForm.role === 'hospital_system' || profileForm.role === 'hiring_group') && (
+                  <Grid item xs={12}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Assigned hospital systems</InputLabel>
+                      <Select
+                        multiple
+                        value={profileForm.assignedHospitalSystems}
+                        label="Assigned hospital systems"
+                        onChange={(e) => setProfileForm(p => ({ ...p, assignedHospitalSystems: e.target.value as string[] }))}
+                        renderValue={(selected) => selected.join(', ')}
+                      >
+                        {hospitalSystemOptions.map((name) => (
+                          <MenuItem key={name} value={name}>{name}</MenuItem>
+                        ))}
+                      </Select>
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                        {profileForm.role === 'hospital_system'
+                          ? 'User will see all PECC data and aggregated data for hospitals in these systems (CRM Hospital system field).'
+                          : 'User will see read-only snapshot view for these systems and their hospitals.'}
+                      </Typography>
+                    </FormControl>
+                  </Grid>
                 )}
                 <Grid item xs={12}>
                   <FormControl fullWidth size="small">
@@ -684,12 +756,21 @@ const AdminTeamTab: React.FC = () => {
                 <InputLabel>Role</InputLabel>
                 <Select value={formData.role} label="Role" onChange={(e) => {
                   const role = e.target.value as User['role'];
-                  setFormData((prev) => ({ ...prev, role, assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId, assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId, assignedManagerIdForPECC: role !== 'pecc' ? '' : prev.assignedManagerIdForPECC }));
+                  setFormData((prev) => ({
+                    ...prev,
+                    role,
+                    assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId,
+                    assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId,
+                    assignedManagerIdForPECC: role !== 'pecc' ? '' : prev.assignedManagerIdForPECC,
+                    assignedHospitalSystems: (role === 'hospital_system' || role === 'hiring_group') ? prev.assignedHospitalSystems : []
+                  }));
                 }}>
                   <MenuItem value="admin">Admin</MenuItem>
                   <MenuItem value="manager">Manager</MenuItem>
                   <MenuItem value="mentor">Mentor</MenuItem>
                   <MenuItem value="pecc">PECC</MenuItem>
+                  <MenuItem value="hospital_system">Hospital System</MenuItem>
+                  <MenuItem value="hiring_group">Hiring Group</MenuItem>
                 </Select>
               </FormControl>
             </Grid>

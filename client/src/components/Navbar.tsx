@@ -172,6 +172,16 @@ const Navbar: React.FC = () => {
         filteredItems.push({ path: '/cohorts', label: 'Cohorts', icon: <CohortsIcon /> });
         return filteredItems;
       }
+
+      case UserRole.HOSPITAL_SYSTEM:
+        return [
+          { path: '/hospital-system/dashboard', label: 'Dashboard', icon: <DashboardIcon /> }
+        ];
+
+      case UserRole.HIRING_GROUP:
+        return [
+          { path: '/hiring-group/snapshot', label: 'Snapshot', icon: <TimelineIcon /> }
+        ];
     }
   };
 
@@ -180,6 +190,8 @@ const Navbar: React.FC = () => {
       case UserRole.ADMIN: return '/admin/dashboard';
       case UserRole.MANAGER: return '/manager/snapshot';
       case UserRole.MENTOR: return '/mentor/dashboard';
+      case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';
+      case UserRole.HIRING_GROUP: return '/hiring-group/snapshot';
       default: return '/dashboard';
     }
   };
@@ -189,6 +201,8 @@ const Navbar: React.FC = () => {
       case UserRole.ADMIN: return '#d32f2f';
       case UserRole.MANAGER: return '#9c27b0';
       case UserRole.MENTOR: return '#ff9800';
+      case UserRole.HOSPITAL_SYSTEM: return '#2e7d32';
+      case UserRole.HIRING_GROUP: return '#1565c0';
       default: return '#1976d2';
     }
   };
@@ -198,6 +212,8 @@ const Navbar: React.FC = () => {
       case UserRole.ADMIN: return 'Admin';
       case UserRole.MANAGER: return 'Manager';
       case UserRole.MENTOR: return 'Mentor';
+      case UserRole.HOSPITAL_SYSTEM: return 'Hospital System';
+      case UserRole.HIRING_GROUP: return 'Hiring Group';
       default: return 'PECC';
     }
   };
