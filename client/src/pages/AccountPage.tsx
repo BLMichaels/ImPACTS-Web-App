@@ -630,6 +630,8 @@ const AccountPage = () => {
                       <MenuItem value={UserRole.MANAGER}>Manager - Oversees Mentors and sees aggregated data</MenuItem>
                       <MenuItem value={UserRole.MENTOR}>Mentor (PRISM) - Works with hospitals directly</MenuItem>
                       <MenuItem value={UserRole.PECC}>PECC - Hospital-level user</MenuItem>
+                      <MenuItem value={UserRole.HOSPITAL_SYSTEM}>Hospital System - PECC data and checklist for assigned systems</MenuItem>
+                      <MenuItem value={UserRole.HIRING_GROUP}>Hiring Group - Read-only snapshot for assigned systems</MenuItem>
                     </Select>
                   </FormControl>
 
@@ -662,6 +664,12 @@ const AccountPage = () => {
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5 }}>
                       <strong>PECC:</strong> Hospital-level access to Snapshot, Activities, Checklist, Education, Gap Plan, and Simulation.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <strong>Hospital System:</strong> Sees PECC data and 7-step checklist for their assigned hospital systems (aggregated view).
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <strong>Hiring Group:</strong> Read-only snapshot of hospital systems and hospitals they are assigned to.
                     </Typography>
                   </Alert>
                 </CardContent>
