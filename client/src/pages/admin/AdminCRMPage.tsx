@@ -4042,7 +4042,7 @@ const AdminCRMPage: React.FC = () => {
                         <Typography variant="body2" color="text.secondary">Loading…</Typography>
                       ) : (
                         <FormGroup>
-                          {([['activities', 'Activities'], ['snapshot', 'Snapshot'], ['milestones', 'Checklist'], ['education', 'Education'], ['gap-plan', 'Gap Closure & Education'], ['simulation', 'Simulation']] as [string, string][]).map(([k, lbl]) => (
+                          {([['activities', 'Activities'], ['snapshot', 'Snapshot'], ['milestones', 'Checklist'], ['education', 'Education'], ['gap-plan', 'Gap Closure'], ['simulation', 'Simulation']] as [string, string][]).map(([k, lbl]) => (
                             <FormControlLabel key={k} control={<Checkbox checked={siteTabVisibility[k] !== false} onChange={(_, v) => currentSiteId && saveSiteTabVisibility(currentSiteId, k, v)} />} label={lbl} />
                           ))}
                         </FormGroup>

@@ -483,7 +483,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
               </Typography>
               {gapPlansForSelectedQuestion.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  No gap plans yet. Use &quot;Gap Plan&quot; on the card or add one from the Gap Closure & Education table.
+                  No gap plans yet. Use &quot;Gap Plan&quot; on the card or add one from the Gap Closure table.
                 </Typography>
               ) : (
                 <Box sx={{ mb: 2 }}>
@@ -508,7 +508,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
                     </Box>
                   ))}
                   <Button size="small" variant="outlined" onClick={() => { handleCloseDialog(); navigate('/gap-plan'); }} sx={{ mt: 1 }}>
-                    View all on Gap Closure & Education
+                    View all on Gap Closure
                   </Button>
                 </Box>
               )}
