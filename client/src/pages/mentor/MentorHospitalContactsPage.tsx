@@ -540,8 +540,9 @@ const MentorHospitalContactsPage: React.FC = () => {
     setSnackbar({ open: true, message: 'Dated note added', severity: 'success' });
 
     // Sync note to CRM so admins see it on the hospital's CRM page
-    const mentorName = [userProfile?.first_name, userProfile?.last_name].filter(Boolean).join(' ').trim();
-    const crmNoteText = mentorName ? `Mentor (${mentorName}): ${noteText}` : `Mentor: ${noteText}`;
+    const authorName = [userProfile?.first_name, userProfile?.last_name].filter(Boolean).join(' ').trim();
+    const roleLabel = userProfile?.role === 'manager' ? 'Manager' : 'Mentor';
+    const crmNoteText = authorName ? `${roleLabel} (${authorName}): ${noteText}` : `${roleLabel}: ${noteText}`;
     const { error } = await supabase.rpc('append_hospital_note', {
       p_hospital_id: selectedHospital.id,
       p_note_date: newNoteDate,

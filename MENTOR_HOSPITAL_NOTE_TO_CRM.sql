@@ -1,4 +1,4 @@
--- Mentor notes on hospitals: sync to CRM so admins see them on the hospital's CRM page.
+-- Mentor and manager notes on hospitals: sync to CRM so admins see them on the hospital's CRM page.
 -- Run in Supabase SQL Editor. Requires: hospitals (with notes_log), mentor_hospital_assignments, users.
 
 CREATE OR REPLACE FUNCTION public.append_hospital_note(
@@ -26,8 +26,10 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Ensure caller is a mentor assigned to this hospital
+  -- Ensure caller is a mentor assigned to this hospital, or a manager
   IF NOT EXISTS (
+    SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND u.role = 'manager'
+  ) AND NOT EXISTS (
     SELECT 1
     FROM public.users u
     INNER JOIN public.mentor_hospital_assignments mha ON mha.mentor_id = u.id
@@ -55,4 +57,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.append_hospital_note(text, text, text) IS
-  'Allows mentors to append a dated note to a hospital notes_log. Only mentors assigned to that hospital can call. Used so mentor notes appear on the hospital CRM page.';
+  'Allows mentors (assigned to that hospital) and managers to append a dated note to a hospital notes_log. Notes appear on the hospital CRM page for admins.';
