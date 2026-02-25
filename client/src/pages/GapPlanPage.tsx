@@ -46,12 +46,12 @@ import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
 import { EDUCATION_BUCKETS } from '../constants/educationBuckets';
 
 const DOMAIN_ACCORDION_COLORS = [
-  { bg: 'rgba(25, 118, 210, 0.08)', border: '#1976d2' },
-  { bg: 'rgba(46, 125, 50, 0.1)', border: '#2e7d32' },
-  { bg: 'rgba(123, 31, 162, 0.08)', border: '#7b1fa2' },
-  { bg: 'rgba(245, 124, 0, 0.1)', border: '#f57c00' },
-  { bg: 'rgba(0, 150, 136, 0.08)', border: '#009688' },
-  { bg: 'rgba(233, 30, 99, 0.08)', border: '#e91e63' }
+  { bg: 'rgba(25, 118, 210, 0.18)', border: '#1976d2' },
+  { bg: 'rgba(46, 125, 50, 0.2)', border: '#2e7d32' },
+  { bg: 'rgba(123, 31, 162, 0.18)', border: '#7b1fa2' },
+  { bg: 'rgba(245, 124, 0, 0.2)', border: '#f57c00' },
+  { bg: 'rgba(0, 150, 136, 0.18)', border: '#009688' },
+  { bg: 'rgba(233, 30, 99, 0.18)', border: '#e91e63' }
 ];
 
 interface GapPlan {
