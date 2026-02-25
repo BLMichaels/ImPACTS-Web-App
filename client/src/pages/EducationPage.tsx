@@ -413,50 +413,50 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
         </DialogTitle>
         <DialogContent>
           {selectedEducationContent ? (
-            <Box sx={{ '& .SectionHeading': { fontWeight: 600, fontSize: '1rem', color: 'text.primary', mb: 1, mt: 2.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider' }, '& .SectionHeading:first-of-type': { mt: 0 }, '& .SectionBody': { mb: 2 }, '& .SectionBody ul, & .SectionBody ol': { pl: 3 }, '& .SectionBody li': { mb: 0.5 }, '& .SectionBody a': { color: 'primary.main', textDecoration: 'underline' }, '& .SectionBody strong': { fontWeight: 600 }, '& .SectionBody em': { fontStyle: 'italic' } }}>
+            <Box sx={{ '& .SectionHeading': { fontWeight: 600, fontSize: '1rem', mb: 1, mt: 2.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider' }, '& .SectionHeading:first-of-type': { mt: 0 }, '& .SectionBody': { mb: 2 }, '& .SectionBody ul, & .SectionBody ol': { pl: 3 }, '& .SectionBody li': { mb: 0.5 }, '& .SectionBody a': { color: 'primary.main', textDecoration: 'underline' }, '& .SectionBody strong': { fontWeight: 600 }, '& .SectionBody em': { fontStyle: 'italic' } }}>
               {selectedEducationContent.question?.trim() ? (
                 <>
-                  <Typography className="SectionHeading">Assessment Question:</Typography>
+                  <Typography className="SectionHeading" sx={{ color: '#1976d2' }}>Assessment Question:</Typography>
                   <Typography variant="body1" className="SectionBody">
                     {selectedEducationContent.question}
                   </Typography>
                 </>
               ) : null}
 
-              <Typography className="SectionHeading">Pediatric Readiness Assessment Question #:</Typography>
+              <Typography className="SectionHeading" sx={{ color: '#1976d2' }}>Pediatric Readiness Assessment Question #:</Typography>
               <Typography variant="body1" className="SectionBody">{selectedQuestion}</Typography>
 
               {hasHtmlContent(selectedEducationContent.why) ? (
                 <>
-                  <Typography className="SectionHeading">Why:</Typography>
+                  <Typography className="SectionHeading" sx={{ color: '#2e7d32' }}>Why:</Typography>
                   <Box className="SectionBody" dangerouslySetInnerHTML={{ __html: selectedEducationContent.why }} />
                 </>
               ) : null}
 
               {hasHtmlContent(selectedEducationContent.background) ? (
                 <>
-                  <Typography className="SectionHeading">Background:</Typography>
+                  <Typography className="SectionHeading" sx={{ color: '#1565c0' }}>Background:</Typography>
                   <Box className="SectionBody" dangerouslySetInnerHTML={{ __html: selectedEducationContent.background }} />
                 </>
               ) : null}
 
               {hasHtmlContent(selectedEducationContent.example) ? (
                 <>
-                  <Typography className="SectionHeading">Example:</Typography>
+                  <Typography className="SectionHeading" sx={{ color: '#e65100' }}>Example:</Typography>
                   <Box className="SectionBody" dangerouslySetInnerHTML={{ __html: selectedEducationContent.example }} />
                 </>
               ) : null}
 
               {hasHtmlContent(selectedEducationContent.sustainability) ? (
                 <>
-                  <Typography className="SectionHeading">Sustainability Practices for PECCs:</Typography>
+                  <Typography className="SectionHeading" sx={{ color: '#7b1fa2' }}>Sustainability Practices for PECCs:</Typography>
                   <Box className="SectionBody" dangerouslySetInnerHTML={{ __html: selectedEducationContent.sustainability }} />
                 </>
               ) : null}
 
               {selectedEducationContent.resources?.length > 0 && selectedEducationContent.resources.some((r) => r && String(r).trim()) ? (
                 <>
-                  <Typography className="SectionHeading">Additional Resources:</Typography>
+                  <Typography className="SectionHeading" sx={{ color: '#c62828' }}>Additional Resources:</Typography>
                   <Box component="ul" className="SectionBody" sx={{ pl: 3, m: 0, listStyle: 'disc' }}>
                     {selectedEducationContent.resources.filter((r) => r && String(r).trim()).map((resource, index) => {
                       const parsed = parseResource(resource);
@@ -478,7 +478,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
               ) : null}
 
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 2.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider', mb: 1.5 }}>
-                <Typography sx={{ fontWeight: 600, fontSize: '1rem', color: 'text.primary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography sx={{ fontWeight: 600, fontSize: '1rem', color: '#1565c0', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <AssignmentIcon fontSize="small" />
                   Gap Plans for this Question:
                 </Typography>
