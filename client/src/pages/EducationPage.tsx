@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon, NoteAdd as NoteAddIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
@@ -93,6 +94,7 @@ interface EducationPageProps {
 
 const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFilter }) => {
   const { currentUser } = useAuth();
+  const { effectiveUserId } = useUserProfile();
   const navigate = useNavigate();
   const { trackLinkClick } = useUsageAnalytics();
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
@@ -153,7 +155,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     return () => window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
   }, []);
 
-  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const userId = effectiveUserId;
   useEffect(() => {
     if (!userId) return;
     let mounted = true;

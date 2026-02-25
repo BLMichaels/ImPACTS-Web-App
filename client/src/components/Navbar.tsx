@@ -55,7 +55,7 @@ interface NavItem {
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, actualRole, visibleTabs, primaryProgramLogoUrl } = useUserProfile();
+  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, actualRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const { trackLinkClick } = useUsageAnalytics();
@@ -311,12 +311,12 @@ const Navbar: React.FC = () => {
 
   return (
     <>
-      {/* View As Banner - shown when admin is viewing as another role */}
-      {isViewingAs && (
+      {/* View As Banner - viewing as another role or as a specific user */}
+      {(isViewingAsUser || isViewingAs) && (
         <Box 
           sx={{ 
-            bgcolor: 'warning.main', 
-            color: 'warning.contrastText',
+            bgcolor: isViewingAsUser ? 'info.main' : 'warning.main', 
+            color: isViewingAsUser ? 'info.contrastText' : 'warning.contrastText',
             py: 0.5,
             px: 2,
             display: 'flex',
@@ -326,13 +326,18 @@ const Navbar: React.FC = () => {
           }}
         >
           <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-            👁️ Viewing as {viewAsRole?.toUpperCase()}
+            {isViewingAsUser && viewAsUserProfile
+              ? `👁️ Viewing as ${viewAsUserProfile.first_name} ${viewAsUserProfile.last_name} (${viewAsUserProfile.role?.toUpperCase() ?? 'User'})`
+              : `👁️ Viewing as ${viewAsRole?.toUpperCase()}`}
           </Typography>
           <Button 
             size="small" 
             variant="outlined" 
             color="inherit"
-            onClick={() => setViewAsRole(null)}
+            onClick={() => {
+              if (isViewingAsUser) clearViewAsUser();
+              else setViewAsRole(null);
+            }}
             sx={{ 
               py: 0, 
               minHeight: '24px',

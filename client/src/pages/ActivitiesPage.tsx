@@ -50,6 +50,7 @@ import {
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -146,6 +147,7 @@ const PARTICIPANT_OPTIONS = Array.from({ length: 26 }, (_, i) => i);
 
 const ActivitiesPage = () => {
   const { currentUser, loading } = useAuth();
+  const { effectiveUserId } = useUserProfile();
   const { trackClick, trackActivity } = useUsageAnalytics();
   useEffect(() => {
     trackActivity('view');
@@ -183,7 +185,7 @@ const ActivitiesPage = () => {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   // Load activities, gap plans, simulation gaps from Supabase (syncs across devices)
-  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const userId = effectiveUserId;
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
@@ -212,7 +214,7 @@ const ActivitiesPage = () => {
     try {
       setActivities(newActivities);
       if (userId) {
-        const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+        const uid = userId;
         const timestampedActivities = newActivities.map(activity => ({
           ...activity,
           created_at: activity.created_at || new Date().toISOString(),
@@ -289,7 +291,7 @@ const ActivitiesPage = () => {
         saveActivities(updatedActivities);
       } else {
         trackActivity('create', { name: formData.activity?.slice(0, 80) });
-        const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+        const uid = userId;
         const newActivity: Activity = {
           id: Date.now().toString(),
           date: formData.date,

@@ -47,6 +47,14 @@ interface UserProfileContextType {
   viewAsRole: UserRole | null;
   setViewAsRole: (role: UserRole | null) => void;
   isViewingAs: boolean;
+  // View as specific user (Admin, Manager, or Mentor) – see app and data as that user
+  viewAsUserId: string | null;
+  viewAsUserProfile: UserProfile | null;
+  enterViewAsUser: (userId: string) => Promise<boolean>;
+  clearViewAsUser: () => void;
+  isViewingAsUser: boolean;
+  /** When viewing as another user, use this for data load/save; otherwise current user id. */
+  effectiveUserId: string | undefined;
   // PECC site and tab visibility (page = hospital/site; tabs toggled in CRM)
   siteId: string | null;
   visibleTabs: string[];  // Tab keys that are visible for this PECC's site; empty = all visible
@@ -74,6 +82,10 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [permissions, setPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewAsRole, setViewAsRole] = useState<UserRole | null>(null);
+  const [viewAsUserId, setViewAsUserId] = useState<string | null>(null);
+  const [viewAsUserProfile, setViewAsUserProfile] = useState<UserProfile | null>(null);
+  const [viewAsSiteId, setViewAsSiteId] = useState<string | null>(null);
+  const [viewAsVisibleTabs, setViewAsVisibleTabs] = useState<string[]>([]);
   const [siteId, setSiteId] = useState<string | null>(null);
   const [visibleTabs, setVisibleTabs] = useState<string[]>([]);
   const [primaryProgramLogoUrl, setPrimaryProgramLogoUrl] = useState<string | null>(null);
@@ -267,6 +279,67 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     fetchUserProfile();
   }, [fetchUserProfile]);
 
+  const enterViewAsUser = useCallback(async (userId: string): Promise<boolean> => {
+    const me = userProfile;
+    const isAdmin = me?.role === UserRole.ADMIN || me?.is_admin === true;
+    const isManager = me?.role === UserRole.MANAGER;
+    const isMentor = me?.role === UserRole.MENTOR;
+    if (!isAdmin && !isManager && !isMentor) return false;
+    if (userId === currentUser?.id || userId === (currentUser as { uid?: string })?.uid) return false;
+    try {
+      const { data: profile, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      if (error || !profile) return false;
+      const prof = profile as UserProfile & { hospital_facility_id?: string | null };
+      let sid: string | null = prof.hospital_facility_id ?? null;
+      let tabs: string[] = [...PECC_TAB_KEYS];
+      if (prof.role === 'pecc') {
+        if (!sid) {
+          const { data: memberRow } = await supabase
+            .from('site_members')
+            .select('site_id')
+            .eq('user_id', userId)
+            .limit(1)
+            .maybeSingle();
+          if (memberRow && typeof (memberRow as { site_id?: string }).site_id === 'string') {
+            sid = (memberRow as { site_id: string }).site_id;
+          }
+        }
+        if (sid) {
+          const { data: tabRows } = await supabase
+            .from('site_tab_visibility')
+            .select('tab_key, visible')
+            .eq('site_id', sid);
+          if (tabRows && tabRows.length > 0) {
+            tabs = (tabRows as { tab_key: string; visible: boolean }[])
+              .filter(r => r.visible).map(r => r.tab_key);
+          }
+        }
+      } else {
+        sid = null;
+        tabs = [];
+      }
+      setViewAsRole(null);
+      setViewAsUserId(userId);
+      setViewAsUserProfile(prof);
+      setViewAsSiteId(sid);
+      setViewAsVisibleTabs(tabs);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [userProfile, currentUser?.id, (currentUser as { uid?: string })?.uid]);
+
+  const clearViewAsUser = useCallback(() => {
+    setViewAsUserId(null);
+    setViewAsUserProfile(null);
+    setViewAsSiteId(null);
+    setViewAsVisibleTabs([]);
+  }, []);
+
   const updateUserProfile = async (updates: Partial<UserProfile>) => {
     if (!userProfile || !currentUser) return;
 
@@ -316,12 +389,14 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   };
 
   const hasPermission = (permission: string): boolean => {
-    // If viewing as a different role, check permissions for that role
+    // If viewing as a specific user, use that user's role permissions
+    if (viewAsUserId && viewAsUserProfile) {
+      return DEFAULT_ROLE_PERMISSIONS[viewAsUserProfile.role]?.includes(permission) ?? false;
+    }
+    // If viewing as a different role (no specific user), check permissions for that role
     if (viewAsRole && (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin)) {
-      // Admin viewing as another role - use that role's permissions
       return DEFAULT_ROLE_PERMISSIONS[viewAsRole]?.includes(permission) || false;
     }
-    // Admins (role or is_admin) always have all permissions when not viewing as another role
     if (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin) {
       return true;
     }
@@ -333,14 +408,20 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     await fetchUserProfile();
   };
 
-  // Get the effective role (either viewAsRole or actual role). Anyone with admin access (role or is_admin) can use admin.
   const hasAdminAccess = userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true;
-  const effectiveRole = (viewAsRole && hasAdminAccess)
-    ? viewAsRole
-    : (hasAdminAccess ? UserRole.ADMIN : (userProfile?.role || UserRole.PECC));
+  const canViewAsUser = hasAdminAccess || userProfile?.role === UserRole.MANAGER || userProfile?.role === UserRole.MENTOR;
+  const effectiveRole = viewAsUserId && viewAsUserProfile
+    ? viewAsUserProfile.role
+    : (viewAsRole && hasAdminAccess)
+      ? viewAsRole
+      : (hasAdminAccess ? UserRole.ADMIN : (userProfile?.role || UserRole.PECC));
+  const effectiveSiteId = viewAsUserId ? viewAsSiteId : siteId;
+  const effectiveVisibleTabs = viewAsUserId ? viewAsVisibleTabs : visibleTabs;
+  const effectiveUserId = viewAsUserId ?? (currentUser?.uid ?? (currentUser as { id?: string })?.id) ?? undefined;
+  const isViewingAsUser = viewAsUserId != null && canViewAsUser;
 
   const value = {
-    userProfile,
+    userProfile: viewAsUserId ? viewAsUserProfile : userProfile,
     updateUserProfile,
     isLoading,
     userRole: effectiveRole,
@@ -350,9 +431,15 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     refreshProfile,
     viewAsRole,
     setViewAsRole,
-    isViewingAs: viewAsRole !== null && (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true),
-    siteId,
-    visibleTabs,
+    isViewingAs: viewAsRole !== null && hasAdminAccess,
+    viewAsUserId,
+    viewAsUserProfile,
+    enterViewAsUser,
+    clearViewAsUser,
+    isViewingAsUser,
+    effectiveUserId,
+    siteId: effectiveSiteId,
+    visibleTabs: effectiveVisibleTabs,
     primaryProgramLogoUrl
   };
 

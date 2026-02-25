@@ -14,6 +14,7 @@ import {
   Paper
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
@@ -60,6 +61,7 @@ const DOMAIN_MAX_POINTS: Record<string, number> = {
 
 const SnapshotPage = () => {
   const { currentUser } = useAuth();
+  const { effectiveUserId } = useUserProfile();
   
   const [activities, setActivities] = useState<any[]>([]);
   const [milestones, setMilestones] = useState<any[]>([]);
@@ -72,7 +74,7 @@ const SnapshotPage = () => {
   const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
   const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
-  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const userId = effectiveUserId;
 
   useEffect(() => {
     if (!userId) return;

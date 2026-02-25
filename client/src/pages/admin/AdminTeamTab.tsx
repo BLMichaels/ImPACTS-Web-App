@@ -43,7 +43,8 @@ import {
   Close as CloseIcon,
   Edit as EditIcon,
   Save as SaveIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
@@ -75,7 +76,7 @@ interface User {
 const AdminTeamTab: React.FC = () => {
   const navigate = useNavigate();
   const { resetPasswordForEmail } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, enterViewAsUser } = useUserProfile();
   const [users, setUsers] = useState<User[]>([]);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' }>({ open: false, message: '' });
   const [searchQuery, setSearchQuery] = useState('');
@@ -566,6 +567,14 @@ const AdminTeamTab: React.FC = () => {
         }}>
           <SettingsIcon sx={{ mr: 1, fontSize: 18 }} /> Manage permissions
         </MenuItem>
+        <MenuItem onClick={async () => {
+          if (!selectedUser?.id) return;
+          setAnchorEl(null);
+          const ok = await enterViewAsUser(selectedUser.id);
+          if (ok) navigate('/');
+        }}>
+          <VisibilityIcon sx={{ mr: 1, fontSize: 18 }} /> View as this user
+        </MenuItem>
         <MenuItem onClick={handleToggleStatus}>{selectedUser?.status === 'active' ? 'Deactivate' : 'Activate'}</MenuItem>
         {selectedUser?.status === 'pending' && (
           <MenuItem onClick={() => setAnchorEl(null)}><SendIcon sx={{ mr: 1, fontSize: 18 }} /> Resend Invite</MenuItem>
@@ -735,7 +744,15 @@ const AdminTeamTab: React.FC = () => {
                   {selectedUser.mentorName && <ListItem disablePadding><ListItemText primary="Mentor" secondary={selectedUser.mentorName} /></ListItem>}
                   {selectedUser.managerNameForPECC && <ListItem disablePadding><ListItemText primary="Direct Manager" secondary={selectedUser.managerNameForPECC} /></ListItem>}
                 </List>
-                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)} sx={{ mt: 2 }}>Edit user</Button>
+                <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                  <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)}>Edit user</Button>
+                  <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
+                    const ok = await enterViewAsUser(selectedUser.id);
+                    if (ok) { setProfileDrawerOpen(false); navigate('/'); }
+                  }}>
+                    View as this user
+                  </Button>
+                </Box>
               </>
             )}
           </Box>

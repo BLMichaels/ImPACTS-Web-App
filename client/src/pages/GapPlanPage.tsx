@@ -35,6 +35,7 @@ import { FileDownload as DownloadIcon, Upload as UploadIcon, Image as ImageIcon,
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
@@ -81,6 +82,7 @@ interface GapPlanAttachment {
 
 const GapPlanPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { effectiveUserId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<GapPlan[]>([]);
@@ -115,10 +117,10 @@ const GapPlanPage: React.FC = () => {
   const [activitiesForGapPlan, setActivitiesForGapPlan] = useState<any[]>([]);
 
   useEffect(() => {
-    if (currentUser?.uid) {
+    if (effectiveUserId) {
       loadGapPlans();
     }
-  }, [currentUser?.uid]);
+  }, [effectiveUserId]);
 
   useEffect(() => {
     let mounted = true;
@@ -139,9 +141,9 @@ const GapPlanPage: React.FC = () => {
 
   // Reload when gap plans updated (e.g. added from Education) or user returns to this tab
   useEffect(() => {
-    const onGapPlansUpdated = () => { if (currentUser?.uid) loadGapPlans(); };
+    const onGapPlansUpdated = () => { if (effectiveUserId) loadGapPlans(); };
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && currentUser?.uid) loadGapPlans();
+      if (document.visibilityState === 'visible' && effectiveUserId) loadGapPlans();
     };
     window.addEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -149,13 +151,13 @@ const GapPlanPage: React.FC = () => {
       window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [currentUser?.uid]);
+  }, [effectiveUserId]);
 
   useEffect(() => {
     applyFiltersAndSort();
   }, [gapPlans, filterStatus, filterPriority, filterOwner, sortBy, sortOrder]);
 
-  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const userId = effectiveUserId;
   const loadGapPlans = async () => {
     if (!userId) return;
     try {

@@ -41,7 +41,7 @@ interface MilestoneStage {
 
 const MilestonesPage = () => {
   const { currentUser } = useAuth();
-  const { siteId } = useUserProfile();
+  const { siteId, effectiveUserId } = useUserProfile();
   const { trackChecklist } = useUsageAnalytics();
   const dataLoadedRef = useRef(false);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
@@ -424,7 +424,7 @@ const MilestonesPage = () => {
     })();
   }, [hospitalId]);
 
-  const milestonesUserId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const milestonesUserId = effectiveUserId;
   // Load milestone data from user_data when no site/hospital
   useEffect(() => {
     if (!milestonesUserId || hospitalId) return;

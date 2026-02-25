@@ -83,7 +83,8 @@ import {
   PersonAdd as PersonAddIcon,
   LocalHospital as LocalHospitalIcon,
   Upload as UploadIcon,
-  Groups as GroupsIcon
+  Groups as GroupsIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -338,9 +339,10 @@ const AdminCRMPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actualRole } = useUserProfile();
+  const { actualRole, enterViewAsUser } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
+  const canViewAsUser = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
 
   const [tabValue, setTabValue] = useState(() => (searchParams.get('tab') === 'team' ? TEAM_TAB_INDEX : 0));
   useEffect(() => {
@@ -3410,6 +3412,21 @@ const AdminCRMPage: React.FC = () => {
                     Manage permissions
                   </Button>
                 )}
+                {isPersonType(detailContact.type) && detailContactUserId && canViewAsUser && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    startIcon={<VisibilityIcon />}
+                    fullWidth
+                    onClick={async () => {
+                      const ok = await enterViewAsUser(detailContactUserId);
+                      if (ok) navigate('/');
+                    }}
+                  >
+                    View as this user
+                  </Button>
+                )}
                 {isPersonType(detailContact.type) && detailContact.email && (
                   <Button 
                     size="small" 
@@ -4091,6 +4108,14 @@ const AdminCRMPage: React.FC = () => {
                   {detailContact && isPersonType(detailContact.type) && detailContactUserId && (
                     <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}>
                       Manage permissions
+                    </Button>
+                  )}
+                  {detailContact && isPersonType(detailContact.type) && detailContactUserId && canViewAsUser && (
+                    <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
+                      const ok = await enterViewAsUser(detailContactUserId);
+                      if (ok) navigate('/');
+                    }}>
+                      View as this user
                     </Button>
                   )}
                 </Box>

@@ -54,6 +54,7 @@ import {
   PictureAsPdf as PdfIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { supabase } from '../supabase';
@@ -378,6 +379,7 @@ const SEVERITY_LEVELS = [
 
 const SimulationPage: React.FC = () => {
   const { currentUser, loading } = useAuth();
+  const { effectiveUserId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -439,7 +441,7 @@ const SimulationPage: React.FC = () => {
     status: 'identified'
   });
 
-  const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const userId = effectiveUserId;
   // Activities list for linked-activities display and for updating activity–gap links (from user_data)
   const [activitiesSim, setActivitiesSim] = useState<any[]>([]);
 

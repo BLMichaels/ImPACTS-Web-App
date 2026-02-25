@@ -94,10 +94,13 @@ const AccountPage = () => {
     viewAsRole, 
     setViewAsRole,
     isViewingAs,
-    refreshProfile
+    refreshProfile,
+    viewAsUserProfile,
+    clearViewAsUser,
+    isViewingAsUser
   } = useUserProfile();
   const navigate = useNavigate();
-  
+
   // Handle both old and new field names
   const userProfile = rawUserProfile as LegacyProfile | null;
   const getFirstName = () => userProfile?.firstName || userProfile?.first_name || 'User';
@@ -672,6 +675,22 @@ const AccountPage = () => {
                       <strong>Hiring Group:</strong> Read-only snapshot of hospital systems and hospitals they are assigned to.
                     </Typography>
                   </Alert>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
+          {/* View as user status only – enter from CRM (contact detail → View as this user) */}
+          {isViewingAsUser && viewAsUserProfile && (
+            <Grid item xs={12}>
+              <Card sx={{ border: '2px solid', borderColor: 'info.main' }}>
+                <CardContent>
+                  <Alert severity="info" sx={{ mb: 1 }}>
+                    You are viewing the app as <strong>{viewAsUserProfile.first_name} {viewAsUserProfile.last_name}</strong>. Use the &quot;Exit&quot; button in the bar above to return to your account. To view as a different user, open them in <strong>CRM</strong> and click &quot;View as this user&quot; in their contact detail.
+                  </Alert>
+                  <Button variant="outlined" color="primary" onClick={() => { clearViewAsUser(); setAlert({ type: 'success', message: 'Stopped viewing as another user.' }); }}>
+                    Exit View As User
+                  </Button>
                 </CardContent>
               </Card>
             </Grid>
