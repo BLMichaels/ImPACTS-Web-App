@@ -30,6 +30,7 @@ import ScormPackagesSection from '../components/ScormPackagesSection';
 
 interface EducationContent {
   category?: string;
+  notes?: string;
   question: string;
   why: string;
   background: string;
@@ -86,9 +87,11 @@ export const GAP_PLANS_UPDATED_EVENT = 'impacts:gapPlansUpdated';
 
 interface EducationPageProps {
   onGapPlanSaved?: () => void;
+  /** When set, only show questions in this category (for Gap Plan page accordions). */
+  categoryFilter?: string;
 }
 
-const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
+const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryFilter }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const { trackLinkClick } = useUsageAnalytics();
@@ -124,6 +127,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
         (parsed as any[]).forEach((eq: any) => {
           contentMap[eq.questionId] = {
             category: eq.category ?? '',
+            notes: eq.notes ?? '',
             question: eq.question ?? '',
             why: eq.why ?? '',
             background: eq.background ?? '',
@@ -252,13 +256,15 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
       id: questionId,
       text: content.question,
       category: content.category ?? '',
+      notes: content.notes ?? '',
       gapPlanCount: (allGapPlans as GapPlan[]).filter(
         (p) => p && String(p.questionId) === String(questionId) && typeof (p as any).action === 'string'
       ).length
     }))
+    .filter((q) => !categoryFilter || q.category === categoryFilter)
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  const renderQuestionCard = (question: { id: string; text: string; category: string; gapPlanCount: number }) => (
+  const renderQuestionCard = (question: { id: string; text: string; category: string; notes: string; gapPlanCount: number }) => (
     <Card
       key={question.id}
       sx={{
@@ -275,9 +281,14 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" component="h3" sx={{ mb: 1, color: '#1976d2' }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 0.5, color: '#1976d2' }}>
               {question.category?.trim() ? question.category : `Question ${question.id}`}
             </Typography>
+            {question.notes?.trim() ? (
+              <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                {question.notes}
+              </Typography>
+            ) : null}
             {question.gapPlanCount > 0 && (
               <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.5 }}>
                 {question.gapPlanCount} gap plan{question.gapPlanCount !== 1 ? 's' : ''} for this question
@@ -327,30 +338,32 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved }) => {
   const selectedEducationContent = selectedQuestion ? educationContent[selectedQuestion] : null;
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Typography variant="h3" component="h1" gutterBottom color="primary">
-        Pediatric Readiness Education
-      </Typography>
-      
-      <Typography variant="body1" sx={{ mb: 4, color: 'text.secondary' }}>
-        Click on any question below to learn more about pediatric emergency care readiness requirements, 
-        best practices, and implementation strategies.
-      </Typography>
+    <Container maxWidth="lg" sx={{ py: categoryFilter ? 2 : 4 }}>
+      {!categoryFilter && (
+        <>
+          <Typography variant="body1" sx={{ mb: 4, color: 'text.secondary' }}>
+            Click on any question below to learn more about pediatric emergency care readiness requirements,
+            best practices, and implementation strategies.
+          </Typography>
+        </>
+      )}
 
       {educationQuestionList.map(renderQuestionCard)}
 
       {educationQuestionList.length === 0 && (
         <Alert severity="info" sx={{ mt: 4 }}>
           <Typography variant="body1" gutterBottom>
-            No education content available yet.
+            {categoryFilter ? 'No questions in this section yet.' : 'No education content available yet.'}
           </Typography>
           <Typography variant="body2">
-            Education content must be configured in Admin Settings → Education tab before it can be displayed here.
+            {categoryFilter
+              ? 'Add questions in Admin Settings → Gaps and assign them to this category.'
+              : 'Education content must be configured in Admin Settings → Gaps tab before it can be displayed here.'}
           </Typography>
         </Alert>
       )}
 
-      <ScormPackagesSection title="SCORM learning modules" placement="education" />
+      {!categoryFilter && <ScormPackagesSection title="SCORM learning modules" placement="education" />}
 
       {/* Education Dialog */}
       <Dialog 

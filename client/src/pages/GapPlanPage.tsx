@@ -43,6 +43,7 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
 import EducationPage from './EducationPage';
 import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
+import { EDUCATION_BUCKETS } from '../constants/educationBuckets';
 
 interface GapPlan {
   id: string;
@@ -83,7 +84,11 @@ const GapPlanPage: React.FC = () => {
   const [draggedPlanId, setDraggedPlanId] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [educationCategories, setEducationCategories] = useState<Record<string, string>>({});
-  const [openEducationAccordion, setOpenEducationAccordion] = useState(true); // PECC: Education Resources accordion defaults to open
+  const [openGapsAccordions, setOpenGapsAccordions] = useState<Record<number, boolean>>(() => {
+    const o: Record<number, boolean> = {};
+    EDUCATION_BUCKETS.forEach((_, i) => { o[i] = i === 0; });
+    return o;
+  });
   const [editingPlan, setEditingPlan] = useState<GapPlan | null>(null);
   const [editFormData, setEditFormData] = useState({
     action: '',
@@ -804,22 +809,30 @@ const GapPlanPage: React.FC = () => {
         )}
       </Box>
 
-      {/* Education Section - Collapsible */}
+      {/* Gaps – accordion per bucket */}
       <Box sx={{ mt: 4 }}>
-        <Accordion expanded={openEducationAccordion} onChange={() => setOpenEducationAccordion(!openEducationAccordion)} sx={{ boxShadow: 2 }}>
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{ bgcolor: 'primary.main', color: 'white', '& .MuiAccordionSummary-expandIconWrapper': { color: 'white' } }}
+        <Typography variant="h5" sx={{ mb: 2 }}>Gaps</Typography>
+        {EDUCATION_BUCKETS.map((bucket, index) => (
+          <Accordion
+            key={bucket}
+            expanded={openGapsAccordions[index] ?? index === 0}
+            onChange={() => setOpenGapsAccordions((prev) => ({ ...prev, [index]: !(prev[index] ?? index === 0) }))}
+            sx={{ boxShadow: 2, '&:not(:last-child)': { mb: 0 } }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SchoolIcon />
-              <Typography variant="h6">Education Resources</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails sx={{ p: 0 }}>
-            <EducationPage onGapPlanSaved={loadGapPlans} />
-          </AccordionDetails>
-        </Accordion>
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{ bgcolor: 'primary.main', color: 'white', '& .MuiAccordionSummary-expandIconWrapper': { color: 'white' } }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <SchoolIcon />
+                <Typography variant="h6">{bucket}</Typography>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails sx={{ p: 0 }}>
+              <EducationPage categoryFilter={bucket} onGapPlanSaved={loadGapPlans} />
+            </AccordionDetails>
+          </Accordion>
+        ))}
       </Box>
 
       {/* Edit Dialog */}

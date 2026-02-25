@@ -48,6 +48,7 @@ import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '../../types/dat
 import ScormPackagesSection from '../../components/ScormPackagesSection';
 import { useAuth } from '../../context/AuthContext';
 import EducationRichTextEditor from '../../components/admin/EducationRichTextEditor';
+import { EDUCATION_BUCKETS } from '../../constants/educationBuckets';
 
 // Lazy load Programs and Cohorts pages to embed in settings
 const AdminProgramsContent = lazy(() => import('./AdminProgramsPage'));
@@ -127,7 +128,7 @@ export default function AdminSettingsPage() {
     'programs': 5,
     'cohorts': 6,
     'activity-categories': 7,
-    'education': 8,
+    'gaps': 8,
     'simulations': 9,
     'tiers': 10
   }), []);
@@ -141,7 +142,7 @@ export default function AdminSettingsPage() {
     5: 'programs',
     6: 'cohorts',
     7: 'activity-categories',
-    8: 'education',
+    8: 'gaps',
     9: 'simulations',
     10: 'tiers'
   }), []);
@@ -188,10 +189,11 @@ export default function AdminSettingsPage() {
   const [categoryType, setCategoryType] = useState<'pecc' | 'mentor'>('pecc');
   
   
-  // Education Questions state
+  // Education Questions state (Gaps)
   interface EducationQuestion {
     questionId: string;
     category: string;
+    notes: string;
     question: string;
     why: string;
     background: string;
@@ -205,6 +207,7 @@ export default function AdminSettingsPage() {
   const [educationForm, setEducationForm] = useState<EducationQuestion>({
     questionId: '',
     category: '',
+    notes: '',
     question: '',
     why: '',
     background: '',
@@ -387,7 +390,7 @@ export default function AdminSettingsPage() {
     }
     const eduVal = byKey.get('education_questions');
     if (eduVal != null && Array.isArray(eduVal)) {
-      setEducationQuestions((eduVal as any[]).map((q: any) => ({ ...q, category: q.category ?? '' })));
+      setEducationQuestions((eduVal as any[]).map((q: any) => ({ ...q, category: q.category ?? '', notes: q.notes ?? '' })));
     } else {
       setEducationQuestions([]);
     }
@@ -443,12 +446,13 @@ export default function AdminSettingsPage() {
   const handleOpenEducationDialog = (question?: EducationQuestion) => {
     if (question) {
       setEditingEducationId(question.questionId);
-      setEducationForm({ ...question, category: question.category ?? '' });
+      setEducationForm({ ...question, category: question.category ?? '', notes: question.notes ?? '' });
     } else {
       setEditingEducationId(null);
       setEducationForm({
         questionId: '',
         category: '',
+        notes: '',
         question: '',
         why: '',
         background: '',
@@ -744,7 +748,7 @@ export default function AdminSettingsPage() {
         <Tab label="Programs" />
         <Tab label="Cohorts" />
         <Tab label="Activity Categories" />
-        <Tab label="Education" />
+        <Tab label="Gaps" />
         <Tab label="Simulations" />
         <Tab label="Tiers" />
       </Tabs>
@@ -1139,14 +1143,14 @@ export default function AdminSettingsPage() {
         </Box>
       )}
 
-      {/* Education Questions */}
+      {/* Gaps (education questions by bucket) */}
       {tabIndex === 8 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Box>
-              <Typography variant="h6">Education Questions</Typography>
+              <Typography variant="h6">Gaps – Questions</Typography>
               <Typography color="textSecondary">
-                Manage educational content for PRS questions. Each question can have a template with Question, Why, Background, Example, Sustainability Practices, and Additional Resources.
+                Manage educational content for PRS questions. Assign each question to a category (bucket); they appear in that section on the Gap Plan page. Each question can have a template with Question, Why, Background, Example, Sustainability Practices, Notes, and Additional Resources.
               </Typography>
             </Box>
             <Button
@@ -1374,14 +1378,33 @@ export default function AdminSettingsPage() {
               helperText="Question number (e.g., 22, 23). Shown next to category on the Gaps & Education tab."
               inputProps={{ dir: 'ltr' }}
             />
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Category (bucket)</InputLabel>
+              <Select
+                value={educationForm.category}
+                label="Category (bucket)"
+                onChange={(e) => setEducationForm(prev => ({ ...prev, category: e.target.value }))}
+              >
+                <MenuItem value="">
+                  <em>Select a category</em>
+                </MenuItem>
+                {EDUCATION_BUCKETS.map((bucket) => (
+                  <MenuItem key={bucket} value={bucket}>{bucket}</MenuItem>
+                ))}
+              </Select>
+              <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
+                Filed under this section on the Gap Plan page.
+              </Typography>
+            </FormControl>
             <TextField
               fullWidth
-              label="Category"
-              value={educationForm.category}
-              onChange={(e) => setEducationForm(prev => ({ ...prev, category: e.target.value }))}
+              label="Notes (per question)"
+              value={educationForm.notes}
+              onChange={(e) => setEducationForm(prev => ({ ...prev, notes: e.target.value }))}
               margin="normal"
-              placeholder="e.g., Coordination, Staffing"
-              helperText="Shown next to the question number on the Gaps & Education tab."
+              multiline
+              rows={2}
+              placeholder="Optional notes shown as subtext under this question on the Gap Plan page."
               inputProps={{ dir: 'ltr' }}
             />
             <TextField
