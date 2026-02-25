@@ -1190,6 +1190,12 @@ const AdminCRMPage: React.FC = () => {
     }
     return contactStates.sort() as string[];
   }, [contacts]);
+  const hospitalSystemOptions = useMemo(() => {
+    const names = contacts
+      .filter(c => c.type === 'hospital' && (c.hospitalSystem ?? '').trim())
+      .map(c => (c.hospitalSystem ?? '').trim());
+    return [...new Set(names)].filter(Boolean).sort() as string[];
+  }, [contacts]);
   const hospitalTypes = useMemo(() => [...new Set(contacts.map(c => c.hospitalType).filter(Boolean))].sort() as string[], [contacts]);
   // State for available programs and cohorts from database
   const [availablePrograms, setAvailablePrograms] = useState<Array<{ id: string; name: string }>>([]);
@@ -3497,7 +3503,18 @@ const AdminCRMPage: React.FC = () => {
                     <Grid item xs={12}><TextField label="Hospital name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required /></Grid>
                     <Grid item xs={12}><TextField label="Facility ID" value={formData.facilityId} onChange={(e) => setFormData(prev => ({ ...prev, facilityId: e.target.value }))} fullWidth size="small" placeholder="Unique identifier for this facility" /></Grid>
                     <Grid item xs={12}><TextField label="Company / Parent organization" value={formData.organization} onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))} fullWidth size="small" placeholder="e.g. health system or owner" /></Grid>
-                    <Grid item xs={12}><TextField label="Hospital system" value={formData.hospitalSystem} onChange={(e) => setFormData(prev => ({ ...prev, hospitalSystem: e.target.value }))} fullWidth size="small" placeholder="Health system or network this hospital is part of" /></Grid>
+                    <Grid item xs={12}>
+                      <Autocomplete
+                        freeSolo
+                        size="small"
+                        options={hospitalSystemOptions}
+                        value={formData.hospitalSystem?.trim() || null}
+                        inputValue={formData.hospitalSystem ?? ''}
+                        onInputChange={(_, v) => setFormData(prev => ({ ...prev, hospitalSystem: v }))}
+                        onChange={(_, v) => setFormData(prev => ({ ...prev, hospitalSystem: v == null ? '' : String(v) }))}
+                        renderInput={(params) => <TextField {...params} label="Hospital system" placeholder="Search or type new system name" />}
+                      />
+                    </Grid>
                   </>
                 )}
                 <Grid item xs={6}><TextField label="Email" type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} fullWidth size="small" /></Grid>
@@ -4160,7 +4177,16 @@ const AdminCRMPage: React.FC = () => {
                   <TextField label="Company / Parent organization" value={formData.organization} onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))} fullWidth size="small" placeholder="e.g. health system or owner" />
                 </Grid>
                 <Grid item xs={12}>
-                  <TextField label="Hospital system" value={formData.hospitalSystem} onChange={(e) => setFormData(prev => ({ ...prev, hospitalSystem: e.target.value }))} fullWidth size="small" placeholder="Health system or network this hospital is part of" />
+                  <Autocomplete
+                    freeSolo
+                    size="small"
+                    options={hospitalSystemOptions}
+                    value={formData.hospitalSystem?.trim() || null}
+                    inputValue={formData.hospitalSystem ?? ''}
+                    onInputChange={(_, v) => setFormData(prev => ({ ...prev, hospitalSystem: v }))}
+                    onChange={(_, v) => setFormData(prev => ({ ...prev, hospitalSystem: v == null ? '' : String(v) }))}
+                    renderInput={(params) => <TextField {...params} label="Hospital system" placeholder="Search or type new system name" />}
+                  />
                 </Grid>
               </>
             )}
