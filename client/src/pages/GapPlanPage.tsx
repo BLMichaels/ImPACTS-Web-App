@@ -401,7 +401,7 @@ const GapPlanPage: React.FC = () => {
 
   const handleDragLeave = () => setDragOverIndex(null);
 
-  const handleDrop = (e: React.DragEvent, toIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, toIndex: number) => {
     e.preventDefault();
     setDragOverIndex(null);
     const planId = e.dataTransfer.getData('text/plain');
@@ -411,18 +411,17 @@ const GapPlanPage: React.FC = () => {
     const reordered = [...filteredPlans];
     const [removed] = reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, removed);
-    const idToNewIndex = new Map(reordered.map((p, i) => [p.id, i]));
     const filteredIds = new Set(reordered.map(p => p.id));
-    const newGapPlans = [...gapPlans].sort((a, b) => {
-      const aIn = filteredIds.has(a.id);
-      const bIn = filteredIds.has(b.id);
-      if (aIn && bIn) return (idToNewIndex.get(a.id) ?? 0) - (idToNewIndex.get(b.id) ?? 0);
-      if (aIn) return 1;
-      if (bIn) return -1;
-      return gapPlans.indexOf(a) - gapPlans.indexOf(b);
+    // Preserve global order: only reorder within the filtered subset's slot positions
+    const filteredIndices = gapPlans
+      .map((p, i) => (filteredIds.has(p.id) ? i : -1))
+      .filter((i) => i >= 0);
+    const newGapPlans = [...gapPlans];
+    reordered.forEach((plan, j) => {
+      if (filteredIndices[j] !== undefined) newGapPlans[filteredIndices[j]] = plan;
     });
     setGapPlans(newGapPlans);
-    saveGapPlans(newGapPlans);
+    await saveGapPlans(newGapPlans);
     setDraggedPlanId(null);
   };
 
