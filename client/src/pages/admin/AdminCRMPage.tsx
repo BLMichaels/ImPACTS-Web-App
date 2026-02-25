@@ -1755,6 +1755,37 @@ const AdminCRMPage: React.FC = () => {
     setPanelOpen(true);
   };
 
+  // When viewing a hospital's detail, refetch notes_log and activity_log so mentor/manager notes appear
+  useEffect(() => {
+    const c = detailContact;
+    if (!c || c.type !== 'hospital') return;
+    const hospitalId = c.hospitalId ?? c.id;
+    const facilityId = c.facilityId ?? (c.id !== hospitalId ? c.id : null);
+    const orParts = [`id.eq.${hospitalId}`];
+    if (facilityId) orParts.push(`facility_id.eq.${facilityId}`);
+    if (c.id && c.id !== hospitalId) orParts.push(`id.eq.${c.id}`);
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('hospitals')
+        .select('notes_log, activity_log')
+        .or(orParts.join(','))
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+      const rawNotesLog = (data as Record<string, unknown>).notes_log;
+      const rawActivityLog = (data as Record<string, unknown>).activity_log;
+      const notesLog: NotesLogEntry[] = Array.isArray(rawNotesLog)
+        ? (rawNotesLog as unknown[]).filter((e): e is NotesLogEntry => typeof e === 'object' && e != null && 'date' in e && 'text' in e).map(e => ({ date: String((e as NotesLogEntry).date), text: String((e as NotesLogEntry).text) }))
+        : [];
+      const activityLog: ActivityLogEntry[] = Array.isArray(rawActivityLog)
+        ? (rawActivityLog as unknown[]).filter((e): e is ActivityLogEntry => typeof e === 'object' && e != null && 'type' in e && 'date' in e && 'text' in e).map(e => ({ type: (e as ActivityLogEntry).type as ActivityLogType, date: String((e as ActivityLogEntry).date), text: String((e as ActivityLogEntry).text) }))
+        : [];
+      setDetailContact(prev => prev && prev.id === c.id ? { ...prev, notesLog, activityLog } : prev);
+    })();
+    return () => { cancelled = true; };
+  }, [detailContact?.id, detailContact?.type, detailContact?.hospitalId, detailContact?.facilityId]);
+
   const openFullScreen = () => {
     setPanelOpen(false);
     setFullScreenOpen(true);
