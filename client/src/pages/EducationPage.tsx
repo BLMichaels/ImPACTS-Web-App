@@ -357,8 +357,8 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
           </Typography>
           <Typography variant="body2">
             {categoryFilter
-              ? 'Add questions in Admin Settings → Gaps and assign them to this category.'
-              : 'Education content must be configured in Admin Settings → Gaps tab before it can be displayed here.'}
+              ? 'Add questions in Admin Settings → Gap Closure and assign them to this category.'
+              : 'Education content must be configured in Admin Settings → Gap Closure tab before it can be displayed here.'}
           </Typography>
         </Alert>
       )}
@@ -483,7 +483,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
               </Typography>
               {gapPlansForSelectedQuestion.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  No gap plans yet. Use &quot;Gap Plan&quot; on the card or add one from the Gaps & Education table.
+                  No gap plans yet. Use &quot;Gap Plan&quot; on the card or add one from the Gap Closure & Education table.
                 </Typography>
               ) : (
                 <Box sx={{ mb: 2 }}>
@@ -508,7 +508,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
                     </Box>
                   ))}
                   <Button size="small" variant="outlined" onClick={() => { handleCloseDialog(); navigate('/gap-plan'); }} sx={{ mt: 1 }}>
-                    View all on Gaps & Education
+                    View all on Gap Closure & Education
                   </Button>
                 </Box>
               )}

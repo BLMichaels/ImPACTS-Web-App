@@ -838,7 +838,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
             Control which tabs and sections are visible
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            For <strong>users</strong>: control PECC Support Tool tabs (Snapshot, Activities, Gaps &amp; Education, Simulation, etc.) and sections like Pediatric Readiness Scores. For <strong>cohorts</strong> and <strong>programs</strong>: control announcements, discussions, members, and other cohort/program page tabs. Default is visible when no override is set.
+            For <strong>users</strong>: control PECC Support Tool tabs (Snapshot, Activities, Gap Closure &amp; Education, Simulation, etc.) and sections like Pediatric Readiness Scores. For <strong>cohorts</strong> and <strong>programs</strong>: control announcements, discussions, members, and other cohort/program page tabs. Default is visible when no override is set.
           </Typography>
 
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Choose who or what to configure</Typography>
@@ -913,7 +913,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           {selectedUserId && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" gutterBottom>User: PECC Tool page tabs</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Show or hide entire tabs on the PECC Support Tool (e.g. Snapshot, Activities, Gaps & Education, Simulation).</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Show or hide entire tabs on the PECC Support Tool (e.g. Snapshot, Activities, Gap Closure & Education, Simulation).</Typography>
               <Grid container spacing={1}>
                 {PECC_TAB_KEYS.map(tab => {
                   const existing = viewTabs.find(t => t.tab_key === tab);
@@ -930,7 +930,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                             }}
                           />
                         }
-                        label={tab === 'gap-plan' ? 'Gaps & Education' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        label={tab === 'gap-plan' ? 'Gap Closure & Education' : tab.charAt(0).toUpperCase() + tab.slice(1)}
                       />
                     </Grid>
                   );

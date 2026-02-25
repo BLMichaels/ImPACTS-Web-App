@@ -809,9 +809,9 @@ const GapPlanPage: React.FC = () => {
         )}
       </Box>
 
-      {/* Gaps – accordion per bucket */}
+      {/* Gap Closure – accordion per bucket */}
       <Box sx={{ mt: 4 }}>
-        <Typography variant="h5" sx={{ mb: 2 }}>Gaps</Typography>
+        <Typography variant="h5" sx={{ mb: 2 }}>Gap Closure</Typography>
         {EDUCATION_BUCKETS.map((bucket, index) => (
           <Accordion
             key={bucket}

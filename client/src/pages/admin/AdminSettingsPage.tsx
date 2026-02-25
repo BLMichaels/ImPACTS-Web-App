@@ -128,7 +128,7 @@ export default function AdminSettingsPage() {
     'programs': 5,
     'cohorts': 6,
     'activity-categories': 7,
-    'gaps': 8,
+    'gap-closure': 8,
     'simulations': 9,
     'tiers': 10
   }), []);
@@ -142,7 +142,7 @@ export default function AdminSettingsPage() {
     5: 'programs',
     6: 'cohorts',
     7: 'activity-categories',
-    8: 'gaps',
+    8: 'gap-closure',
     9: 'simulations',
     10: 'tiers'
   }), []);
@@ -189,7 +189,7 @@ export default function AdminSettingsPage() {
   const [categoryType, setCategoryType] = useState<'pecc' | 'mentor'>('pecc');
   
   
-  // Education Questions state (Gaps)
+  // Education Questions state (Gap Closure)
   interface EducationQuestion {
     questionId: string;
     category: string;
@@ -748,7 +748,7 @@ export default function AdminSettingsPage() {
         <Tab label="Programs" />
         <Tab label="Cohorts" />
         <Tab label="Activity Categories" />
-        <Tab label="Gaps" />
+        <Tab label="Gap Closure" />
         <Tab label="Simulations" />
         <Tab label="Tiers" />
       </Tabs>
@@ -1143,12 +1143,12 @@ export default function AdminSettingsPage() {
         </Box>
       )}
 
-      {/* Gaps (education questions by bucket) */}
+      {/* Gap Closure (education questions by bucket) */}
       {tabIndex === 8 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Box>
-              <Typography variant="h6">Gaps – Questions</Typography>
+              <Typography variant="h6">Gap Closure – Questions</Typography>
               <Typography color="textSecondary">
                 Manage educational content for PRS questions. Assign each question to a category (bucket); they appear in that section on the Gap Plan page. Each question can have a template with Question, Why, Background, Example, Sustainability Practices, Notes, and Additional Resources.
               </Typography>
@@ -1375,7 +1375,7 @@ export default function AdminSettingsPage() {
               value={educationForm.questionId}
               onChange={(e) => setEducationForm(prev => ({ ...prev, questionId: e.target.value }))}
               margin="normal"
-              helperText="Question number (e.g., 22, 23). Shown next to category on the Gaps & Education tab."
+              helperText="Question number (e.g., 22, 23). Shown next to category on the Gap Plan page."
               inputProps={{ dir: 'ltr' }}
             />
             <FormControl fullWidth margin="normal">
