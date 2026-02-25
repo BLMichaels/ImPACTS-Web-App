@@ -193,7 +193,6 @@ export default function AdminSettingsPage() {
   interface EducationQuestion {
     questionId: string;
     category: string;
-    notes: string;
     question: string;
     why: string;
     background: string;
@@ -207,7 +206,6 @@ export default function AdminSettingsPage() {
   const [educationForm, setEducationForm] = useState<EducationQuestion>({
     questionId: '',
     category: '',
-    notes: '',
     question: '',
     why: '',
     background: '',
@@ -390,7 +388,7 @@ export default function AdminSettingsPage() {
     }
     const eduVal = byKey.get('education_questions');
     if (eduVal != null && Array.isArray(eduVal)) {
-      setEducationQuestions((eduVal as any[]).map((q: any) => ({ ...q, category: q.category ?? '', notes: q.notes ?? '' })));
+      setEducationQuestions((eduVal as any[]).map((q: any) => ({ ...q, category: q.category ?? '' })));
     } else {
       setEducationQuestions([]);
     }
@@ -446,13 +444,12 @@ export default function AdminSettingsPage() {
   const handleOpenEducationDialog = (question?: EducationQuestion) => {
     if (question) {
       setEditingEducationId(question.questionId);
-      setEducationForm({ ...question, category: question.category ?? '', notes: question.notes ?? '' });
+      setEducationForm({ ...question, category: question.category ?? '' });
     } else {
       setEditingEducationId(null);
       setEducationForm({
         questionId: '',
         category: '',
-        notes: '',
         question: '',
         why: '',
         background: '',
@@ -474,7 +471,12 @@ export default function AdminSettingsPage() {
       ? educationQuestions.map(q => q.questionId === editingEducationId ? form : q)
       : [...educationQuestions, form];
     setEducationQuestions(updated);
-    await saveAppSetting('education_questions', updated);
+    // Strip notes from payload – PECCs add their own notes in Gap Closure
+    const toSave = updated.map((q: unknown) => {
+      const { notes: _n, ...rest } = q as Record<string, unknown> & { notes?: string };
+      return rest;
+    });
+    await saveAppSetting('education_questions', toSave);
     setEducationDialogOpen(false);
     setSnackbar({ open: true, message: 'Education question saved', severity: 'success' });
   };
@@ -1396,17 +1398,6 @@ export default function AdminSettingsPage() {
                 Filed under this section on the Gap Plan page.
               </Typography>
             </FormControl>
-            <TextField
-              fullWidth
-              label="Notes (per question)"
-              value={educationForm.notes}
-              onChange={(e) => setEducationForm(prev => ({ ...prev, notes: e.target.value }))}
-              margin="normal"
-              multiline
-              rows={2}
-              placeholder="Optional notes shown as subtext under this question on the Gap Plan page."
-              inputProps={{ dir: 'ltr' }}
-            />
             <TextField
               fullWidth
               label="Assessment question (Learn more page)"

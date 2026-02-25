@@ -18,9 +18,10 @@ import {
   Select,
   MenuItem,
   Alert,
-  Chip
+  Chip,
+  IconButton
 } from '@mui/material';
-import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon } from '@mui/icons-material';
+import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon, Edit as EditIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
@@ -114,6 +115,9 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
     attachments: []
   });
   const [gapPlansList, setGapPlansList] = useState<GapPlan[]>([]);
+  const [userQuestionNotes, setUserQuestionNotes] = useState<Record<string, string>>({});
+  const [editingNoteQuestionId, setEditingNoteQuestionId] = useState<string | null>(null);
+  const [editingNoteValue, setEditingNoteValue] = useState('');
   
   // Load education content from Supabase (app_settings) so it syncs across devices
   useEffect(() => {
@@ -127,7 +131,6 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
         (parsed as any[]).forEach((eq: any) => {
           contentMap[eq.questionId] = {
             category: eq.category ?? '',
-            notes: eq.notes ?? '',
             question: eq.question ?? '',
             why: eq.why ?? '',
             background: eq.background ?? '',
@@ -164,6 +167,26 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
     })();
     return () => { mounted = false; };
   }, [userId, gapPlansRefreshKey]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      const notes = await getUserData<Record<string, string>>(userId, 'gap_closure_question_notes');
+      if (mounted && notes && typeof notes === 'object') setUserQuestionNotes(notes);
+    })();
+    return () => { mounted = false; };
+  }, [userId]);
+
+  const saveUserNote = async (questionId: string, value: string) => {
+    if (!userId) return;
+    const next = { ...userQuestionNotes, [questionId]: value.trim() };
+    if (!value.trim()) delete next[questionId];
+    setUserQuestionNotes(next);
+    await setUserData(userId, 'gap_closure_question_notes', next);
+    setEditingNoteQuestionId(null);
+    setEditingNoteValue('');
+  };
 
   const handleQuestionClick = (questionId: string) => {
     setSelectedQuestion(questionId);
@@ -256,7 +279,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
       id: questionId,
       text: content.question,
       category: content.category ?? '',
-      notes: content.notes ?? '',
+      userNote: userQuestionNotes[questionId] ?? '',
       gapPlanCount: (allGapPlans as GapPlan[]).filter(
         (p) => p && String(p.questionId) === String(questionId) && typeof (p as any).action === 'string'
       ).length
@@ -264,7 +287,13 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
     .filter((q) => !categoryFilter || q.category === categoryFilter)
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  const renderQuestionCard = (question: { id: string; text: string; category: string; notes: string; gapPlanCount: number }) => (
+  const handleStartEditNote = (questionId: string, currentNote: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingNoteQuestionId(questionId);
+    setEditingNoteValue(currentNote);
+  };
+
+  const renderQuestionCard = (question: { id: string; text: string; category: string; userNote: string; gapPlanCount: number }) => (
     <Card
       key={question.id}
       sx={{
@@ -284,11 +313,33 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, categoryF
             <Typography variant="h6" component="h3" sx={{ mb: 0.5, color: '#1976d2' }}>
               {question.category?.trim() ? question.category : `Question ${question.id}`}
             </Typography>
-            {question.notes?.trim() ? (
-              <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                {question.notes}
-              </Typography>
-            ) : null}
+            {editingNoteQuestionId === question.id ? (
+              <Box onClick={(e) => e.stopPropagation()} sx={{ mb: 0.5 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Your note (as you work on this gap)"
+                  value={editingNoteValue}
+                  onChange={(e) => setEditingNoteValue(e.target.value)}
+                  onBlur={() => saveUserNote(question.id, editingNoteValue)}
+                  multiline
+                  minRows={1}
+                  maxRows={3}
+                  sx={{ '& .MuiInputBase-root': { fontSize: '0.875rem' } }}
+                />
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, mb: 0.5 }}>
+                {question.userNote?.trim() ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                    {question.userNote}
+                  </Typography>
+                ) : null}
+                <IconButton size="small" onClick={(e) => handleStartEditNote(question.id, question.userNote, e)} title={question.userNote ? 'Edit your note' : 'Add your note'} sx={{ mt: -0.5 }}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            )}
             {question.gapPlanCount > 0 && (
               <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.5 }}>
                 {question.gapPlanCount} gap plan{question.gapPlanCount !== 1 ? 's' : ''} for this question
