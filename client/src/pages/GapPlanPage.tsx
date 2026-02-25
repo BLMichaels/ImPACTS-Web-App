@@ -45,6 +45,15 @@ import EducationPage from './EducationPage';
 import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
 import { EDUCATION_BUCKETS } from '../constants/educationBuckets';
 
+const DOMAIN_ACCORDION_COLORS = [
+  { bg: 'rgba(25, 118, 210, 0.08)', border: '#1976d2' },
+  { bg: 'rgba(46, 125, 50, 0.1)', border: '#2e7d32' },
+  { bg: 'rgba(123, 31, 162, 0.08)', border: '#7b1fa2' },
+  { bg: 'rgba(245, 124, 0, 0.1)', border: '#f57c00' },
+  { bg: 'rgba(0, 150, 136, 0.08)', border: '#009688' },
+  { bg: 'rgba(233, 30, 99, 0.08)', border: '#e91e63' }
+];
+
 interface GapPlan {
   id: string;
   questionId: string;
@@ -809,46 +818,53 @@ const GapPlanPage: React.FC = () => {
         )}
       </Box>
 
-      {/* Gap Closure – accordion per domain */}
+      {/* Gap Closure – accordion per domain (each with distinct color) */}
       <Box sx={{ mt: 4 }}>
         <Typography variant="h5" sx={{ mb: 1.5, fontWeight: 600 }}>Gap Closure</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Work through questions by domain. Add notes as you go and create gap plans to track actions.
         </Typography>
-        {EDUCATION_BUCKETS.map((bucket, index) => (
-          <Accordion
-            key={bucket}
-            expanded={openGapsAccordions[index] ?? index === 0}
-            onChange={() => setOpenGapsAccordions((prev) => ({ ...prev, [index]: !(prev[index] ?? index === 0) }))}
-            elevation={0}
-            sx={{
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 1,
-              '&:not(:last-child)': { mb: 1 },
-              '&:before': { display: 'none' }
-            }}
-          >
-            <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
+        {EDUCATION_BUCKETS.map((bucket, index) => {
+          const { bg, border } = DOMAIN_ACCORDION_COLORS[index % DOMAIN_ACCORDION_COLORS.length] ?? DOMAIN_ACCORDION_COLORS[0];
+          return (
+            <Accordion
+              key={bucket}
+              expanded={openGapsAccordions[index] ?? index === 0}
+              onChange={() => setOpenGapsAccordions((prev) => ({ ...prev, [index]: !(prev[index] ?? index === 0) }))}
+              elevation={0}
               sx={{
-                bgcolor: 'grey.100',
-                color: 'text.primary',
-                minHeight: 48,
-                '& .MuiAccordionSummary-expandIconWrapper': { color: 'text.secondary' },
-                '&.Mui-expanded': { minHeight: 48 }
+                border: '1px solid',
+                borderColor: border,
+                borderLeftWidth: 4,
+                borderRadius: 1,
+                overflow: 'hidden',
+                '&:not(:last-child)': { mb: 1.5 },
+                '&:before': { display: 'none' }
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <SchoolIcon fontSize="small" color="action" />
-                <Typography variant="subtitle1" fontWeight={500}>{bucket}</Typography>
-              </Box>
-            </AccordionSummary>
-            <AccordionDetails sx={{ px: 2, pt: 0, pb: 2 }}>
-              <EducationPage domainFilter={bucket} onGapPlanSaved={loadGapPlans} />
-            </AccordionDetails>
-          </Accordion>
-        ))}
+              <AccordionSummary
+                expandIcon={<ExpandMoreIcon />}
+                sx={{
+                  bgcolor: bg,
+                  color: 'text.primary',
+                  minHeight: 48,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  '& .MuiAccordionSummary-expandIconWrapper': { color: 'text.secondary' },
+                  '&.Mui-expanded': { minHeight: 48 }
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <SchoolIcon fontSize="small" sx={{ color: border }} />
+                  <Typography variant="subtitle1" fontWeight={500}>{bucket}</Typography>
+                </Box>
+              </AccordionSummary>
+              <AccordionDetails sx={{ px: 2, pt: 0, pb: 2, bgcolor: 'rgba(0,0,0,0.02)' }}>
+                <EducationPage domainFilter={bucket} onGapPlanSaved={loadGapPlans} />
+              </AccordionDetails>
+            </Accordion>
+          );
+        })}
       </Box>
 
       {/* Edit Dialog */}
