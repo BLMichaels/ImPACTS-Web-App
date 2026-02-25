@@ -54,6 +54,7 @@ import {
   Close as CloseIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
+import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
@@ -128,6 +129,7 @@ const CONTACT_STATUSES = [
 
 const MentorHospitalContactsPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { userProfile } = useUserProfile();
   
   // State
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
@@ -524,9 +526,10 @@ const MentorHospitalContactsPage: React.FC = () => {
     setNewNoteText('');
   };
 
-  const handleAddDatedNote = () => {
+  const handleAddDatedNote = async () => {
     if (!selectedHospital || !newNoteText.trim()) return;
-    const note: DatedNote = { date: newNoteDate, text: newNoteText.trim() };
+    const noteText = newNoteText.trim();
+    const note: DatedNote = { date: newNoteDate, text: noteText };
     const notesLog = [...(selectedHospital.notesLog ?? []), note].sort((a, b) => b.date.localeCompare(a.date));
     const updated: Hospital = { ...selectedHospital, notesLog };
     const newHospitals = hospitals.map(h => h.id === selectedHospital.id ? updated : h);
@@ -535,6 +538,18 @@ const MentorHospitalContactsPage: React.FC = () => {
     setNewNoteText('');
     setNewNoteDate(new Date().toISOString().slice(0, 10));
     setSnackbar({ open: true, message: 'Dated note added', severity: 'success' });
+
+    // Sync note to CRM so admins see it on the hospital's CRM page
+    const mentorName = [userProfile?.first_name, userProfile?.last_name].filter(Boolean).join(' ').trim();
+    const crmNoteText = mentorName ? `Mentor (${mentorName}): ${noteText}` : `Mentor: ${noteText}`;
+    const { error } = await supabase.rpc('append_hospital_note', {
+      p_hospital_id: selectedHospital.id,
+      p_note_date: newNoteDate,
+      p_note_text: crmNoteText
+    });
+    if (error) {
+      console.warn('Could not sync note to CRM:', error.message);
+    }
   };
 
   const handleRemoveHospital = (hospitalId: string) => {

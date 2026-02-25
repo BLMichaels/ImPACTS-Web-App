@@ -1,0 +1,58 @@
+-- Mentor notes on hospitals: sync to CRM so admins see them on the hospital's CRM page.
+-- Run in Supabase SQL Editor. Requires: hospitals (with notes_log), mentor_hospital_assignments, users.
+
+CREATE OR REPLACE FUNCTION public.append_hospital_note(
+  p_hospital_id text,
+  p_note_date text,
+  p_note_text text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_hospital_uuid uuid;
+  v_current_log jsonb;
+  v_new_entry jsonb;
+BEGIN
+  -- Resolve hospital by id (uuid) or facility_id
+  SELECT id INTO v_hospital_uuid
+  FROM public.hospitals
+  WHERE (id::text = p_hospital_id OR facility_id = p_hospital_id)
+  LIMIT 1;
+
+  IF v_hospital_uuid IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- Ensure caller is a mentor assigned to this hospital
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.users u
+    INNER JOIN public.mentor_hospital_assignments mha ON mha.mentor_id = u.id
+    WHERE u.id = auth.uid()
+      AND u.role = 'mentor'
+      AND mha.hospital_id = v_hospital_uuid
+      AND (mha.is_active = true OR mha.is_active IS NULL)
+  ) THEN
+    RETURN;
+  END IF;
+
+  -- Append note to notes_log
+  SELECT COALESCE(notes_log, '[]'::jsonb) INTO v_current_log
+  FROM public.hospitals
+  WHERE id = v_hospital_uuid;
+
+  v_new_entry := jsonb_build_object('date', p_note_date, 'text', p_note_text);
+  v_current_log := v_current_log || v_new_entry;
+
+  UPDATE public.hospitals
+  SET notes_log = v_current_log,
+      updated_at = now()
+  WHERE id = v_hospital_uuid;
+END;
+$$;
+
+COMMENT ON FUNCTION public.append_hospital_note(text, text, text) IS
+  'Allows mentors to append a dated note to a hospital notes_log. Only mentors assigned to that hospital can call. Used so mentor notes appear on the hospital CRM page.';
