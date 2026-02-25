@@ -483,22 +483,19 @@ const AdminCRMPage: React.FC = () => {
   const [mergeTarget, setMergeTarget] = useState<Contact | null>(null);
   const [detectedDuplicates, setDetectedDuplicates] = useState<Array<{ contact: Contact; duplicates: Contact[] }>>([]);
 
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    (async () => {
-      const list: Contact[] = [];
-      try {
-        const chunk = 1000;
-        let offset = 0;
-        let hasMore = true;
-        while (mounted && hasMore) {
-          const { data: batch, error } = await supabase
-            .from('hospitals')
-            .select('*')
-            .range(offset, offset + chunk - 1);
-          if (!mounted) return;
-          if (error || !batch || batch.length === 0) break;
+  const loadAllContactsFromSupabase = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
+    const list: Contact[] = [];
+    try {
+      const chunk = 1000;
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const { data: batch, error } = await supabase
+          .from('hospitals')
+          .select('*')
+          .range(offset, offset + chunk - 1);
+        if (error || !batch || batch.length === 0) break;
           for (const row of batch as Record<string, unknown>[]) {
             const id = String(row.facility_id ?? row.id ?? '');
             const name = String(row.name ?? 'Unknown');
@@ -549,7 +546,7 @@ const AdminCRMPage: React.FC = () => {
           offset += chunk;
         }
         // Load CRM contacts (organizations, other, and manually-added people types)
-        if (mounted) {
+        {
           const { data: orgsData, error: orgsError } = await supabase
             .from('crm_organizations')
             .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, programs, cohorts, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip, is_admin');
@@ -606,14 +603,14 @@ const AdminCRMPage: React.FC = () => {
           }
         }
         // Append app users (manager, mentor, pecc) so they show in CRM tabs — same fetch as Team tab, filter by role in JS
-        if (mounted) {
+        {
           const { data: usersData, error: usersError } = await supabase
             .from('users')
             .select('id, email, first_name, last_name, phone, role, is_active, created_at');
           if (usersError) {
             console.warn('CRM: could not load users for contacts:', usersError.message, usersError.code);
-            if (mounted) setUsersLoadError(usersError.message || 'Could not load team members');
-          } else if (mounted) setUsersLoadError(null);
+            setUsersLoadError(usersError.message || 'Could not load team members');
+          } else setUsersLoadError(null);
           const userRows = (usersData ?? []) as { id: string; email: string; first_name?: string; last_name?: string; phone?: string; role: string; is_active: boolean; created_at: string }[];
           const crmRoles = ['admin', 'manager', 'mentor', 'pecc'];
           const roleToContactType: Record<string, ContactType> = { admin: 'staff', manager: 'manager', mentor: 'mentor', pecc: 'pecc' };
@@ -643,15 +640,20 @@ const AdminCRMPage: React.FC = () => {
           }
         }
       } catch (_) {
-        if (mounted) list.length = 0;
+        list.length = 0;
       }
-      if (mounted) {
-        setContacts(list);
-        setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
+      setContacts(list);
+      if (!background) setLoading(false);
+    }, []);
+
+  useEffect(() => {
+    loadAllContactsFromSupabase();
+  }, [loadAllContactsFromSupabase]);
+
+  // Refetch contacts from Supabase when Add/Edit dialog opens so dropdowns (hospitals, organizations, PECCs) are always current
+  useEffect(() => {
+    if (dialogOpen) loadAllContactsFromSupabase(true);
+  }, [dialogOpen, loadAllContactsFromSupabase]);
 
   // Load CRM prefs and custom field defs from user_data (and migrate from localStorage once)
   useEffect(() => {
@@ -1549,11 +1551,12 @@ const AdminCRMPage: React.FC = () => {
         setSaveError(`Failed to add hospital: ${error.message || 'Database error'}. Please check your RLS policies.`);
         return;
       }
-      // Add to local state
+      // Add to local state (hospitalId required for Linked hospitals dropdown)
       const newContact: Contact = {
         ...payload,
         id: newHospital.id,
-        facilityId: newHospital.facility_id || newHospital.id
+        facilityId: newHospital.facility_id || newHospital.id,
+        hospitalId: String((newHospital as { id?: string }).id ?? '')
       };
       setContacts(prev => [...prev, newContact]);
       setSaveError(null);

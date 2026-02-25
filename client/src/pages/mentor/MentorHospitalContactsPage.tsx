@@ -550,6 +550,11 @@ const MentorHospitalContactsPage: React.FC = () => {
     });
     if (error) {
       console.warn('Could not sync note to CRM:', error.message);
+      setSnackbar({
+        open: true,
+        message: `Note saved locally. It did not sync to the CRM (${error.message}). Ask an admin to run MENTOR_HOSPITAL_NOTE_TO_CRM.sql in Supabase if you need notes to appear in the CRM.`,
+        severity: 'warning'
+      });
     }
   };
 

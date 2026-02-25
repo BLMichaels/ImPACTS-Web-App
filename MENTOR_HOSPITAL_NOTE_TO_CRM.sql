@@ -58,3 +58,7 @@ $$;
 
 COMMENT ON FUNCTION public.append_hospital_note(text, text, text) IS
   'Allows mentors (assigned to that hospital) and managers to append a dated note to a hospital notes_log. Notes appear on the hospital CRM page for admins.';
+
+-- Allow authenticated users (mentors, managers) to call this function. The function itself enforces who can append.
+GRANT EXECUTE ON FUNCTION public.append_hospital_note(text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.append_hospital_note(text, text, text) TO service_role;

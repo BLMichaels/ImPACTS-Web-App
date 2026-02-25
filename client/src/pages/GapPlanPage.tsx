@@ -460,8 +460,8 @@ const GapPlanPage: React.FC = () => {
 
   const exportToExcel = () => {
     const exportData = filteredPlans.map(plan => ({
-      'Category': educationCategories[plan.questionId] || '',
       'Ques. #': plan.questionId,
+      'Category': educationCategories[plan.questionId] || '',
       'Action': plan.action,
       'Owner': plan.owner,
       'Status': plan.status,
@@ -695,8 +695,8 @@ const GapPlanPage: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 'bold', width: 40, minWidth: 40, backgroundColor: 'primary.main', color: 'white' }} />
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 200, backgroundColor: 'primary.main', color: 'white' }}>Category</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 100, backgroundColor: 'primary.main', color: 'white', cursor: 'pointer' }} onClick={() => handleSort('questionId')}>Ques. # {sortBy === 'questionId' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', minWidth: 200, backgroundColor: 'primary.main', color: 'white' }}>Category</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 300, backgroundColor: 'primary.main', color: 'white' }}>Action</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 120, backgroundColor: 'primary.main', color: 'white' }}>Owner</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', minWidth: 150, backgroundColor: 'primary.main', color: 'white', cursor: 'pointer' }} onClick={() => handleSort('status')}>Status {sortBy === 'status' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</TableCell>
@@ -724,6 +724,7 @@ const GapPlanPage: React.FC = () => {
                     <TableCell sx={{ width: 40, minWidth: 40, cursor: 'grab', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
                       <DragIndicatorIcon fontSize="small" color="action" />
                     </TableCell>
+                    <TableCell sx={{ minWidth: 100 }}>{plan.questionId}</TableCell>
                     <TableCell
                       sx={{
                         minWidth: 200,
@@ -739,7 +740,6 @@ const GapPlanPage: React.FC = () => {
                     >
                       {educationCategories[plan.questionId]?.trim() || '—'}
                     </TableCell>
-                    <TableCell sx={{ minWidth: 100 }}>{plan.questionId}</TableCell>
                     <TableCell sx={{ 
                       minWidth: 300, 
                       maxWidth: 300, 
