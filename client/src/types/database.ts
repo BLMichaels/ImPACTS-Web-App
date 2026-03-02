@@ -13,6 +13,17 @@ export enum UserRole {
   HIRING_GROUP = 'hiring_group'
 }
 
+const USER_ROLE_VALUES = Object.values(UserRole) as string[];
+
+/** Normalize role from DB (may be mixed case or invalid) to UserRole. Use for display and comparisons. */
+export function normalizeUserRole(role: unknown): UserRole {
+  if (role == null) return UserRole.PECC;
+  const s = String(role).trim().toLowerCase();
+  if (USER_ROLE_VALUES.includes(s)) return s as UserRole;
+  if (s === 'prism') return UserRole.MENTOR;
+  return UserRole.PECC;
+}
+
 export enum TraumaLevel {
   LEVEL_I = 'Level I',
   LEVEL_II = 'Level II',

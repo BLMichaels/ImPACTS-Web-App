@@ -327,7 +327,7 @@ const Navbar: React.FC = () => {
         >
           <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
             {isViewingAsUser && viewAsUserProfile
-              ? `👁️ Viewing as ${viewAsUserProfile.first_name} ${viewAsUserProfile.last_name} (${viewAsUserProfile.role?.toUpperCase() ?? 'User'})`
+              ? `👁️ Viewing as ${viewAsUserProfile.first_name} ${viewAsUserProfile.last_name} (${(userRole ?? viewAsUserProfile.role)?.toString().toUpperCase().replace('_', ' ') ?? 'User'})`
               : `👁️ Viewing as ${viewAsRole?.toUpperCase()}`}
           </Typography>
           <Button 

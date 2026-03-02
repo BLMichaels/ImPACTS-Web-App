@@ -22,7 +22,7 @@ import {
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { createAndSendInvitation } from '../../utils/invitations';
-import { UserRole } from '../../types/database';
+import { UserRole, normalizeUserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 
@@ -118,10 +118,10 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
     const { data: rpcData, error: rpcError } = await supabase.rpc('get_mentors_and_managers_for_invite');
     if (!rpcError && Array.isArray(rpcData)) {
       const mentorsList = (rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[])
-        .filter((r) => r.role === 'mentor')
+        .filter((r) => normalizeUserRole(r.role) === UserRole.MENTOR)
         .map(mapUserToOption);
       const managersList = (rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[])
-        .filter((r) => r.role === 'manager')
+        .filter((r) => normalizeUserRole(r.role) === UserRole.MANAGER)
         .map(mapUserToOption);
       setMentors(mentorsList);
       setManagers(managersList);

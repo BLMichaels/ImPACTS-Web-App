@@ -37,7 +37,7 @@ import {
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { UserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User } from '../../types/database';
+import { UserRole, normalizeUserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User } from '../../types/database';
 
 const PERMISSION_GROUPS: Record<string, string[]> = {
   'Dashboard & Views': [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_AGGREGATED_DATA, PERMISSIONS.VIEW_SNAPSHOT, PERMISSIONS.EXPORT_DATA],
@@ -193,7 +193,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           first_name: u.first_name ?? '',
           last_name: u.last_name ?? '',
           phone: u.phone || null,
-          role: u.role as UserRole,
+          role: normalizeUserRole(u.role) as UserRole,
           is_admin: u.is_admin === true,
           is_active: u.is_active ?? true,
           created_at: u.created_at || new Date().toISOString(),

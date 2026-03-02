@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getUserData, setUserData } from '../../utils/userData';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
-import { UserRole, PECC_TAB_KEYS } from '../../types/database';
+import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database';
 import AdminTeamTab from './AdminTeamTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
 import {
@@ -627,7 +627,7 @@ const AdminCRMPage: React.FC = () => {
             }
           }
         }
-        // Append app users (manager, mentor, pecc) so they show in CRM tabs — same fetch as Team tab, filter by role in JS
+        // Append app users (manager, mentor, pecc, admin, hospital_system, hiring_group) so they show in CRM — type must match users.role
         {
           const { data: usersData, error: usersError } = await supabase
             .from('users')
@@ -637,14 +637,21 @@ const AdminCRMPage: React.FC = () => {
             setUsersLoadError(usersError.message || 'Could not load team members');
           } else setUsersLoadError(null);
           const userRows = (usersData ?? []) as { id: string; email: string; first_name?: string; last_name?: string; phone?: string; role: string; is_active: boolean; created_at: string }[];
-          const crmRoles = ['admin', 'manager', 'mentor', 'pecc'];
-          const roleToContactType: Record<string, ContactType> = { admin: 'staff', manager: 'manager', mentor: 'mentor', pecc: 'pecc' };
+          const roleToContactType: Record<string, ContactType> = {
+            admin: 'staff',
+            manager: 'manager',
+            mentor: 'mentor',
+            pecc: 'pecc',
+            hospital_system: 'other',
+            hiring_group: 'other'
+          };
           for (const u of userRows) {
-            const role = (u.role && typeof u.role === 'string' ? u.role.toLowerCase() : '') as string;
-            if (!crmRoles.includes(role)) continue;
+            const role = normalizeUserRole(u.role);
+            const roleKey = role as string;
+            if (!roleToContactType[roleKey]) continue;
             // Skip if we already have this user from crm_organizations
             if (list.some(c => c.email === u.email && c.crmCreated)) continue;
-            const type = roleToContactType[role];
+            const type = roleToContactType[roleKey];
             const displayName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || '—';
             list.push({
               id: u.id,
@@ -662,6 +669,18 @@ const AdminCRMPage: React.FC = () => {
               user_id: u.id,  // Mark as user-sourced
               crmCreated: false
             });
+          }
+          // Critical: for any contact that matches a user by email, use the user's current role for type (so recategorization in Team is reflected)
+          const emailToUser = new Map(userRows.map((u) => [u.email?.trim().toLowerCase() ?? '', u]));
+          for (let i = 0; i < list.length; i++) {
+            const c = list[i];
+            const emailKey = c.email?.trim().toLowerCase() ?? '';
+            const user = emailToUser.get(emailKey);
+            if (user) {
+              const role = normalizeUserRole(user.role);
+              const type = roleToContactType[role as string];
+              if (type) list[i] = { ...c, type };
+            }
           }
         }
       } catch (_) {

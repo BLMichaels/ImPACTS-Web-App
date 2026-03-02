@@ -51,7 +51,7 @@ import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
-import { UserRole } from '../../types/database';
+import { UserRole, normalizeUserRole } from '../../types/database';
 
 interface User {
   id: string;
@@ -155,7 +155,7 @@ const AdminTeamTab: React.FC = () => {
           lastName: r.last_name || '',
           email: r.email || '',
           phone: r.phone || '',
-          role: r.role as User['role'],
+          role: normalizeUserRole(r.role) as User['role'],
           is_admin: r.is_admin === true,
           status: r.is_active ? 'active' : 'inactive',
           lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,
@@ -299,7 +299,7 @@ const AdminTeamTab: React.FC = () => {
           lastName: r.last_name || '',
           email: r.email || '',
           phone: r.phone || '',
-          role: r.role as User['role'],
+          role: normalizeUserRole(r.role) as User['role'],
           is_admin: r.is_admin === true,
           status: r.is_active ? 'active' : 'inactive',
           lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,

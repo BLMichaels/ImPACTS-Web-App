@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../supabase';
-import { UserRole, PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } from '../types/database';
+import { UserRole, normalizeUserRole, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } from '../types/database';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
 
 // Re-export UserRole as UserTier for backward compatibility
@@ -163,7 +163,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         }
       } else if (profile) {
         const prof = profile as UserProfile & { hospital_facility_id?: string | null; primary_program_id?: string | null };
-        setUserProfile(prof);
+        const normalizedRole = normalizeUserRole(prof.role);
+        setUserProfile({ ...prof, role: normalizedRole });
 
         // Primary program logo for navbar
         if (prof.primary_program_id) {
@@ -177,19 +178,19 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         const { data: perms } = await supabase
           .from('role_permissions')
           .select('permission_key')
-          .eq('role', profile.role)
+          .eq('role', normalizedRole)
           .eq('is_enabled', true);
 
         if (perms) {
           setPermissions(perms.map(p => p.permission_key));
         } else {
           // Fall back to default permissions
-          setPermissions(DEFAULT_ROLE_PERMISSIONS[profile.role as UserRole] || []);
+          setPermissions(DEFAULT_ROLE_PERMISSIONS[normalizedRole] || []);
         }
 
         // PECC: resolve site and visible tabs (page = hospital/site; tabs set in CRM)
         let sid: string | null = null;
-        if (profile.role === 'pecc') {
+        if (normalizedRole === UserRole.PECC) {
           sid = prof.hospital_facility_id ?? null;
           if (!sid) {
             const { data: memberRow, error: memErr } = await supabase
@@ -223,7 +224,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         }
 
         // Resolve hospital/site name from CRM (hospitals table) so tabs and UI show current name after CRM updates
-        const siteIdToResolve = prof.hospital_facility_id ?? (profile.role === 'pecc' ? sid : null);
+        const siteIdToResolve = prof.hospital_facility_id ?? (normalizedRole === UserRole.PECC ? sid : null);
         if (siteIdToResolve) {
           const { data: hospitalRow } = await supabase
             .from('hospitals')
@@ -294,9 +295,11 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         .single();
       if (error || !profile) return false;
       const prof = profile as UserProfile & { hospital_facility_id?: string | null };
+      const normalizedRole = normalizeUserRole(prof.role);
+      const profWithRole = { ...prof, role: normalizedRole };
       let sid: string | null = prof.hospital_facility_id ?? null;
       let tabs: string[] = [...PECC_TAB_KEYS];
-      if (prof.role === 'pecc') {
+      if (normalizedRole === UserRole.PECC) {
         if (!sid) {
           const { data: memberRow } = await supabase
             .from('site_members')
@@ -324,7 +327,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       }
       setViewAsRole(null);
       setViewAsUserId(userId);
-      setViewAsUserProfile(prof);
+      setViewAsUserProfile(profWithRole);
       setViewAsSiteId(sid);
       setViewAsVisibleTabs(tabs);
       return true;
@@ -410,8 +413,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
 
   const hasAdminAccess = userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true;
   const canViewAsUser = hasAdminAccess || userProfile?.role === UserRole.MANAGER || userProfile?.role === UserRole.MENTOR;
+  // When viewing as another user: show Admin if they have is_admin, else their normalized role (so assignment always matches display)
   const effectiveRole = viewAsUserId && viewAsUserProfile
-    ? viewAsUserProfile.role
+    ? (viewAsUserProfile.is_admin === true ? UserRole.ADMIN : viewAsUserProfile.role)
     : (viewAsRole && hasAdminAccess)
       ? viewAsRole
       : (hasAdminAccess ? UserRole.ADMIN : (userProfile?.role || UserRole.PECC));
