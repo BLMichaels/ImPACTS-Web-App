@@ -350,6 +350,14 @@ const usagePathLabel = (path: string): string => {
   return p.replace(/-/g, ' ') || path;
 };
 
+/** Map CRM person contact type to users.role so CRM type changes persist in Supabase and survive reload. */
+const CONTACT_TYPE_TO_USER_ROLE: Partial<Record<ContactType, string>> = {
+  staff: 'admin',
+  pecc: 'pecc',
+  manager: 'manager',
+  mentor: 'mentor'
+};
+
 const AdminCRMPage: React.FC = () => {
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1820,9 +1828,30 @@ const AdminCRMPage: React.FC = () => {
           setSaveError(`Failed to update contact: ${error.message || 'Database error'}. Please check your RLS policies.`);
           return; // Don't close dialog
         }
+        // Sync users.role so reload shows correct type (list overwrites from users.role)
+        const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
+        if (userRole != null) {
+          const uid = editingContact.user_id ?? (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle()).data?.id : null);
+          if (uid) {
+            await supabase.from('users').update({
+              role: userRole,
+              is_admin: formData.type === 'staff' ? (formData.is_admin ?? false) : false,
+              updated_at: new Date().toISOString()
+            }).eq('id', uid);
+          }
+        }
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
         setSaveError(null);
       } else if (isUserSourced && editingContact) {
+        // Sync users.role and is_admin first so type change persists on reload
+        const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
+        if (userRole != null && editingContact.user_id) {
+          await supabase.from('users').update({
+            role: userRole,
+            is_admin: formData.type === 'staff' ? (formData.is_admin ?? false) : false,
+            updated_at: new Date().toISOString()
+          }).eq('id', editingContact.user_id);
+        }
         // For user-sourced contacts, we need to create a CRM record to store any CRM-specific data
         // that can't be stored in the users table (which only has: email, first_name, last_name, phone, role)
         // We create a CRM record if ANY of these fields have values:
@@ -1923,7 +1952,20 @@ const AdminCRMPage: React.FC = () => {
           // Show error to user - DON'T add to local state since it wasn't saved
           setSaveError(`Failed to save contact: ${error.message || 'Database error'}. Please check your RLS policies - run CRM_RLS_FIX.sql in Supabase.`);
           return; // Don't close dialog or add to state
-        } else if (inserted && typeof (inserted as { id?: string }).id === 'string') {
+        }
+        // If this person has a platform user (same email), sync users.role so list shows correct type on reload
+        const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
+        if (userRole != null && formData.email?.trim()) {
+          const { data: userRow } = await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle();
+          if (userRow?.id) {
+            await supabase.from('users').update({
+              role: userRole,
+              is_admin: formData.type === 'staff' ? (formData.is_admin ?? false) : false,
+              updated_at: new Date().toISOString()
+            }).eq('id', userRow.id);
+          }
+        }
+        if (inserted && typeof (inserted as { id?: string }).id === 'string') {
           const id = (inserted as { id: string; created_at?: string }).id;
           const createdAt = (inserted as { created_at?: string }).created_at ? String((inserted as { created_at: string }).created_at).split('T')[0] : payload.createdAt;
           setContacts(prev => [...prev, { ...payload, id, createdAt, crmCreated: true }]);
