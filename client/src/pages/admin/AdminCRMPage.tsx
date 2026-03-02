@@ -3317,7 +3317,7 @@ const AdminCRMPage: React.FC = () => {
         <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false }); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
-        <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
+        <MenuItem onClick={() => { if (detailContact?.email?.trim()) window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`); setAnchorEl(null); }} disabled={!detailContact?.email?.trim()}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
         <MenuItem onClick={() => { if (detailContact) { setDeleteConfirmTyped(''); setDeleteTarget({ single: detailContact.id }); setDeleteConfirmOpen(true); } setAnchorEl(null); }} sx={{ color: 'error.main' }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete
         </MenuItem>
@@ -3729,7 +3729,7 @@ const AdminCRMPage: React.FC = () => {
                 }}>
                   Edit
                 </Button>
-                <Button size="small" variant="outlined" startIcon={<EmailIcon />} fullWidth>Email</Button>
+                <Button size="small" variant="outlined" startIcon={<EmailIcon />} fullWidth onClick={() => detailContact?.email?.trim() && window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`)} disabled={!detailContact?.email?.trim()}>Email</Button>
                 {isPersonType(detailContact.type) && detailContactUserId && (
                   <Button
                     size="small"
@@ -4488,7 +4488,7 @@ const AdminCRMPage: React.FC = () => {
                   }}>
                     Edit
                   </Button>
-                  <Button variant="contained" startIcon={<EmailIcon />}>Email</Button>
+                  <Button variant="contained" startIcon={<EmailIcon />} onClick={() => detailContact?.email?.trim() && window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`)} disabled={!detailContact?.email?.trim()}>Email</Button>
                   {detailContact && isPersonType(detailContact.type) && detailContactUserId && (
                     <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}>
                       Manage permissions
