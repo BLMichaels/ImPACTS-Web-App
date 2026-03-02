@@ -670,7 +670,7 @@ const AdminCRMPage: React.FC = () => {
               crmCreated: false
             });
           }
-          // Critical: for any contact that matches a user by email, use the user's current role for type (so recategorization in Team is reflected)
+          // Critical: for any contact that matches a user by email, use the user's current role for type AND set user_id (so "view as" and recategorization are correct)
           const emailToUser = new Map(userRows.map((u) => [u.email?.trim().toLowerCase() ?? '', u]));
           for (let i = 0; i < list.length; i++) {
             const c = list[i];
@@ -679,7 +679,7 @@ const AdminCRMPage: React.FC = () => {
             if (user) {
               const role = normalizeUserRole(user.role);
               const type = roleToContactType[role as string];
-              if (type) list[i] = { ...c, type };
+              if (type) list[i] = { ...c, type, user_id: user.id };
             }
           }
         }
@@ -887,7 +887,8 @@ const AdminCRMPage: React.FC = () => {
       setContactUsage(null);
       return;
     }
-    const userId = isPerson ? (detailContactUserId ?? c.user_id ?? c.id) : null;
+    // Use only platform user id (never CRM org id) so usage and view-as are correct
+    const userId = isPerson ? (detailContactUserId ?? c.user_id ?? (c.crmCreated ? null : c.id)) : null;
     if (isPerson && !userId) {
       setContactUsage(null);
       setContactUsageLoading(false);
@@ -979,10 +980,20 @@ const AdminCRMPage: React.FC = () => {
       return;
     }
     let cancelled = false;
-    supabase.from('users').select('id').ilike('email', c.email.trim()).maybeSingle().then(({ data }) => {
-      if (!cancelled && data?.id) setDetailContactUserId(data.id);
-      else if (!cancelled) setDetailContactUserId(null);
-    });
+    (async () => {
+      try {
+        // Try exact match first, then case-insensitive so we resolve platform user even if CRM/DB casing differs
+        let res = await supabase.from('users').select('id').eq('email', c.email.trim()).maybeSingle();
+        if (res.error && res.data == null) {
+          res = await supabase.from('users').select('id').ilike('email', c.email.trim()).limit(1).maybeSingle();
+        }
+        if (cancelled) return;
+        if (!res.error && res.data?.id) setDetailContactUserId(res.data.id);
+        else setDetailContactUserId(null);
+      } catch {
+        if (!cancelled) setDetailContactUserId(null);
+      }
+    })();
     return () => { cancelled = true; };
   }, [detailContact?.id, detailContact?.type, detailContact?.email, detailContact?.user_id, detailContact?.crmCreated]);
 
@@ -3381,7 +3392,10 @@ const AdminCRMPage: React.FC = () => {
         PaperProps={{ sx: { width: { xs: '100%', sm: 380 } } }}
         ModalProps={{
           keepMounted: false,
+          // Avoid aria-hidden on drawer root so focused content is not hidden from assistive tech
+          'aria-hidden': false,
         }}
+        slotProps={{ root: { 'aria-hidden': false } }}
       >
         {detailContact && (
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>

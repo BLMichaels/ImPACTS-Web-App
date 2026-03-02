@@ -145,23 +145,28 @@ export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<
           cohortId = (cm as { cohort_id: string }).cohort_id;
         }
 
-        const { data, error } = await supabase.rpc('is_tab_visible', {
-          p_user_id: userId,
-          p_tab_key: PRS_SECTION_TAB_KEY,
-          p_cohort_id: cohortId,
-          p_program_id: programId
-        });
+        try {
+          const { data, error } = await supabase.rpc('is_tab_visible', {
+            p_user_id: userId,
+            p_tab_key: PRS_SECTION_TAB_KEY,
+            p_cohort_id: cohortId,
+            p_program_id: programId
+          });
+          if (!cancelled) {
+            if (!error && data === false) {
+              setIsVisible(false);
+              return;
+            }
+            if (!error && data === true) {
+              setIsVisible(true);
+              return;
+            }
+          }
+        } catch {
+          // RPC may not exist (404); fall back to view_tabs below
+        }
 
         if (cancelled) return;
-        if (!error && data === false) {
-          setIsVisible(false);
-          return;
-        }
-        if (!error && data === true) {
-          setIsVisible(true);
-          return;
-        }
-
         const { data: userTab } = await supabase
           .from('view_tabs')
           .select('is_visible')

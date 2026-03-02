@@ -89,15 +89,20 @@ function useUsageTracker() {
     async (eventType: UsageEventType, path: string, metadata: UsageMetadata | Record<string, unknown> = {}) => {
       if (!currentUser?.id || !actualRole) return;
       try {
+        const roleStr = typeof actualRole === 'string' ? actualRole : String(actualRole ?? '');
         const payload: Record<string, unknown> = {
           user_id: currentUser.id,
-          role: actualRole,
+          role: roleStr,
           event_type: eventType,
           path: path || '/',
           metadata: metadata && typeof metadata === 'object' ? metadata : {},
         };
         if (hospitalIdRef.current) payload.hospital_id = hospitalIdRef.current;
-        await supabase.from('usage_events').insert(payload);
+        const { error } = await supabase.from('usage_events').insert(payload);
+        if (error) {
+          // Table may not exist or schema may differ; avoid surfacing 400 to user
+          return;
+        }
       } catch {
         // Fire-and-forget; don't block UI or surface errors
       }

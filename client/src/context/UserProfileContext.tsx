@@ -288,9 +288,10 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     if (!isAdmin && !isManager && !isMentor) return false;
     if (userId === currentUser?.id || userId === (currentUser as { uid?: string })?.uid) return false;
     try {
+      // Always fetch fresh from DB so recategorized role (e.g. PECC → staff) is correct; select role and is_admin explicitly
       const { data: profile, error } = await supabase
         .from('users')
-        .select('*')
+        .select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, hospital_facility_id, primary_program_id')
         .eq('id', userId)
         .single();
       if (error || !profile) return false;
