@@ -477,6 +477,7 @@ const AdminCRMPage: React.FC = () => {
   const [myRemindersOpen, setMyRemindersOpen] = useState(false);
   const [addNoteText, setAddNoteText] = useState('');
   const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
+  const [noteDeleteConfirmIndex, setNoteDeleteConfirmIndex] = useState<number | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
   const [editingNoteDate, setEditingNoteDate] = useState('');
   const [addActivityType, setAddActivityType] = useState<ActivityLogType>('communication');
@@ -1522,6 +1523,14 @@ const AdminCRMPage: React.FC = () => {
 
   const handleSaveContact = async (fromFullScreen = false) => {
     trackClick?.(editingContact ? 'CRM - Save contact (edit)' : 'CRM - Save contact (add)');
+    if (['hospital', 'system', 'hiring_group'].includes(formData.type) && !(formData.name?.trim())) {
+      setSaveError('Name is required for Hospital, System, and Hiring Group contacts.');
+      return;
+    }
+    if (isPersonType(formData.type) && !([formData.firstName, formData.lastName].filter(Boolean).join(' ').trim())) {
+      setSaveError('First name or last name is required for person contacts.');
+      return;
+    }
     const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
     const payload: Contact = {
       id: editingContact?.id ?? `contact_${Date.now()}`,
@@ -1654,7 +1663,7 @@ const AdminCRMPage: React.FC = () => {
         } else {
           setSaveError(`Failed to update hospital: ${error.message}`);
         }
-        setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...updatedContact } : c)));
+        return;
       } else {
         setSaveError(null);
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...updatedContact } : c)));
@@ -2664,6 +2673,10 @@ const AdminCRMPage: React.FC = () => {
         ...(target.linkedHospitalIds || []),
         ...(source.linkedHospitalIds || [])
       ]));
+      const mergedLinkedSystems = Array.from(new Set([
+        ...(target.linkedSystemIds || []),
+        ...(source.linkedSystemIds || [])
+      ]));
       
       // Combine notes (target first, then source)
       const mergedNotes = [
@@ -2712,6 +2725,7 @@ const AdminCRMPage: React.FC = () => {
           cohorts: mergedCohorts,
           linked_organization_ids: mergedLinkedOrgs,
           linked_hospital_ids: mergedLinkedHospitals,
+          linked_system_ids: mergedLinkedSystems,
           updated_at: new Date().toISOString()
         };
         
@@ -2753,6 +2767,7 @@ const AdminCRMPage: React.FC = () => {
               cohorts: mergedCohorts,
               linkedOrganizationIds: mergedLinkedOrgs,
               linkedHospitalIds: mergedLinkedHospitals,
+              linkedSystemIds: mergedLinkedSystems,
               email: keepContact.email || deleteContact.email,
               phone: keepContact.phone || deleteContact.phone,
               firstName: keepContact.firstName || deleteContact.firstName,
@@ -3152,11 +3167,12 @@ const AdminCRMPage: React.FC = () => {
                       onDragEnd={handleColumnDragEnd}
                       onDragOver={handleColumnDragOver}
                       onDrop={(e) => handleColumnDrop(e, colId)}
+                      aria-sort={col.sortable && sortField === col.id ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
                     >
                       <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                        <DragIndicatorIcon sx={{ fontSize: 16, color: 'action.disabled' }} />
+                        <DragIndicatorIcon sx={{ fontSize: 16, color: 'action.disabled' }} aria-hidden />
                         {col.sortable ? (
-                          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleSort(col.id as SortField)}>
+                          <Box component="span" role="button" tabIndex={0} sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleSort(col.id as SortField)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSort(col.id as SortField); } }}>
                             {col.label}
                             <SortIcon sx={{ fontSize: 16, ml: 0.5, opacity: sortField === col.id ? 1 : 0.4 }} />
                             {sortField === col.id && <Typography component="span" variant="caption" sx={{ ml: 0.25 }}>({sortOrder})</Typography>}
@@ -3205,7 +3221,7 @@ const AdminCRMPage: React.FC = () => {
                     ))}
                     {visibleColumns.has('actions') && (
                       <TableCell align="right" onClick={(e) => e.stopPropagation()} sx={{ minWidth: 56 }}>
-                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); setAnchorEl(e.currentTarget); setDetailContact(contact); }}>
+                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); setAnchorEl(e.currentTarget); setDetailContact(contact); }} aria-label={`Actions for ${contactDisplayName(contact)}`}>
                           <MoreIcon />
                         </IconButton>
                       </TableCell>
@@ -3230,7 +3246,7 @@ const AdminCRMPage: React.FC = () => {
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
-        <MenuItem onClick={() => { if (detailContact) { setDeleteTarget({ single: detailContact.id }); setDeleteConfirmOpen(true); } setAnchorEl(null); }} sx={{ color: 'error.main' }}>
+        <MenuItem onClick={() => { if (detailContact) { setDeleteConfirmTyped(''); setDeleteTarget({ single: detailContact.id }); setDeleteConfirmOpen(true); } setAnchorEl(null); }} sx={{ color: 'error.main' }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete
         </MenuItem>
       </Menu>
@@ -3251,28 +3267,56 @@ const AdminCRMPage: React.FC = () => {
               This is an app user (manager/mentor/PECC). They will reappear in the list after refresh. To deactivate or edit them, use the Team tab.
             </Typography>
           )}
-          {deleteTarget?.bulk && (
-            <TextField
-              autoFocus
-              fullWidth
-              size="small"
-              label='Type DELETE to confirm'
-              value={deleteConfirmTyped}
-              onChange={(e) => setDeleteConfirmTyped(e.target.value)}
-              placeholder="DELETE"
-              sx={{ mt: 2 }}
-              error={deleteConfirmTyped.length > 0 && deleteConfirmTyped !== 'DELETE'}
-              helperText={deleteConfirmTyped.length > 0 && deleteConfirmTyped !== 'DELETE' ? 'Must type exactly DELETE' : undefined}
-            />
-          )}
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            label="Type DELETE to confirm"
+            value={deleteConfirmTyped}
+            onChange={(e) => setDeleteConfirmTyped(e.target.value)}
+            placeholder="DELETE"
+            sx={{ mt: 2 }}
+            error={deleteConfirmTyped.length > 0 && deleteConfirmTyped !== 'DELETE'}
+            helperText={deleteConfirmTyped.length > 0 && deleteConfirmTyped !== 'DELETE' ? 'Must type exactly DELETE' : undefined}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); setDeleteConfirmTyped(''); }}>Cancel</Button>
           <Button
             color="error"
             variant="contained"
-            onClick={() => { if (deleteTarget?.single) handleDeleteContact(deleteTarget.single); else if (deleteTarget?.bulk && deleteConfirmTyped === 'DELETE') handleBulkDelete(); }}
-            disabled={Boolean(deleteTarget?.bulk) && deleteConfirmTyped !== 'DELETE'}
+            onClick={() => {
+              if (deleteConfirmTyped !== 'DELETE') return;
+              if (deleteTarget?.single) handleDeleteContact(deleteTarget.single);
+              else if (deleteTarget?.bulk) handleBulkDelete();
+              setDeleteConfirmOpen(false);
+              setDeleteTarget(null);
+              setDeleteConfirmTyped('');
+            }}
+            disabled={deleteConfirmTyped !== 'DELETE'}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Note delete confirmation */}
+      <Dialog open={noteDeleteConfirmIndex !== null} onClose={() => setNoteDeleteConfirmIndex(null)}>
+        <DialogTitle>Delete this note?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">This cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNoteDeleteConfirmIndex(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              if (detailContact != null && noteDeleteConfirmIndex !== null) {
+                deleteNote(detailContact, noteDeleteConfirmIndex);
+                setNoteDeleteConfirmIndex(null);
+              }
+            }}
           >
             Delete
           </Button>
@@ -4225,12 +4269,9 @@ const AdminCRMPage: React.FC = () => {
                                     <IconButton
                                       size="small"
                                       color="error"
-                                      onClick={() => {
-                                        if (window.confirm('Delete this note?')) {
-                                          deleteNote(detailContact, i);
-                                        }
-                                      }}
+                                      onClick={() => setNoteDeleteConfirmIndex(i)}
                                       sx={{ p: 0.5 }}
+                                      aria-label="Delete this note"
                                     >
                                       <DeleteIcon fontSize="small" />
                                     </IconButton>
