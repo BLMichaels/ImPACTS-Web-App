@@ -87,7 +87,7 @@ import {
   Visibility as VisibilityIcon
 } from '@mui/icons-material';
 
-export type ContactType = 'organization' | 'hospital' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
+export type ContactType = 'organization' | 'hospital' | 'system' | 'hiring_group' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
 
 export type ActivityLogType = 'communication' | 'visit' | 'follow_up';
 
@@ -137,6 +137,8 @@ interface Contact {
   cohorts?: string[];
   linkedOrganizationIds?: string[];
   linkedHospitalIds?: string[];
+  /** For type 'hiring_group': system contact IDs associated with this hiring group */
+  linkedSystemIds?: string[];
   customFields?: Record<string, string>;
   /** Hospital UUID for type 'hospital' (for usage by site) */
   hospitalId?: string;
@@ -162,6 +164,8 @@ type SortOrder = 'asc' | 'desc';
 const TYPE_LABELS: Record<ContactType, string> = {
   organization: 'Organization',
   hospital: 'Hospital',
+  system: 'System',
+  hiring_group: 'Hiring Group',
   manager: 'Manager',
   mentor: 'Mentor',
   pecc: 'PECC',
@@ -172,6 +176,8 @@ const TYPE_LABELS: Record<ContactType, string> = {
 const TYPE_COLORS: Record<ContactType, string> = {
   organization: '#2196f3',
   hospital: '#4caf50',
+  system: '#2e7d32',
+  hiring_group: '#1565c0',
   manager: '#9c27b0',
   mentor: '#ff9800',
   pecc: '#e91e63',
@@ -179,7 +185,8 @@ const TYPE_COLORS: Record<ContactType, string> = {
   other: '#607d8b'
 };
 
-const CONTACT_TYPES: ContactType[] = ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'];
+/** Display order for type dropdown: Hospital, System, Hiring Group, then people, then Other */
+const CONTACT_TYPES: ContactType[] = ['hospital', 'system', 'hiring_group', 'manager', 'mentor', 'pecc', 'staff', 'other'];
 
 /** Filter autocomplete options by search text: every word/token in inputValue must appear in the option label (case-insensitive). */
 function filterOptionsBySearch<T extends { label: string }>(
@@ -194,8 +201,17 @@ function filterOptionsBySearch<T extends { label: string }>(
   });
 }
 
+/** For a hospital contact, return the system contact id that contains this hospital (bidirectional link). */
+function getLinkedSystemIdForHospital(hospitalContact: Contact, allContacts: Contact[]): string {
+  const hospitalId = hospitalContact.hospitalId ?? hospitalContact.id;
+  const systemContact = allContacts.find(
+    (s) => s.type === 'system' && (s.linkedHospitalIds ?? []).some((hid) => hid === hospitalId || hid === hospitalContact.id)
+  );
+  return systemContact?.id ?? '';
+}
+
 /** Tab index for Team (user management) - when selected, show AdminTeamTab instead of contacts. */
-const TEAM_TAB_INDEX = 8;
+const TEAM_TAB_INDEX = 9;
 
 const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs' | 'linkedTo'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
@@ -364,6 +380,8 @@ const AdminCRMPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
   const [detailContactUserId, setDetailContactUserId] = useState<string | null>(null); // Resolved user id for "Manage permissions"
+  const [detailViewAsUserOptions, setDetailViewAsUserOptions] = useState<{ id: string; label: string }[]>([]); // For hospital/system/hiring_group: users who can be "viewed as"
+  const [viewAsMenuAnchor, setViewAsMenuAnchor] = useState<null | HTMLElement>(null);
   const [detailUserPrimaryProgramId, setDetailUserPrimaryProgramId] = useState<string | null>(null);
   const [detailUserPrimaryProgramLogoUrl, setDetailUserPrimaryProgramLogoUrl] = useState<string | null>(null);
   const [crmProgramsForPrimary, setCrmProgramsForPrimary] = useState<Array<{ id: string; name: string; logo_url?: string | null }>>([]);
@@ -414,6 +432,9 @@ const AdminCRMPage: React.FC = () => {
     cohorts: [] as string[],
     linkedOrganizationIds: [] as string[],
     linkedHospitalIds: [] as string[],
+    linkedSystemIds: [] as string[],
+    /** Hospital only: which system contact this hospital belongs to (bidirectional via system's linkedHospitalIds) */
+    linkedSystemId: '',
     customFields: {} as Record<string, string>,
     address: '',
     address2: '',
@@ -551,7 +572,7 @@ const AdminCRMPage: React.FC = () => {
         {
           const { data: orgsData, error: orgsError } = await supabase
             .from('crm_organizations')
-            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, programs, cohorts, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip, is_admin');
+            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, programs, cohorts, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, linked_system_ids, address, address2, city, county, zip, is_admin');
           if (orgsError) {
             console.warn('CRM: could not load crm_organizations:', orgsError.message);
           } else if (orgsData && orgsData.length > 0) {
@@ -593,6 +614,7 @@ const AdminCRMPage: React.FC = () => {
                 cohorts: Array.isArray(row.cohorts) ? (row.cohorts as string[]) : [],
                 linkedOrganizationIds: Array.isArray(row.linked_organization_ids) ? (row.linked_organization_ids as string[]) : [],
                 linkedHospitalIds: Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [],
+                linkedSystemIds: Array.isArray(row.linked_system_ids) ? (row.linked_system_ids as string[]) : [],
                 address: row.address != null ? String(row.address) : undefined,
                 address2: row.address2 != null ? String(row.address2) : undefined,
                 city: row.city != null ? String(row.city) : undefined,
@@ -944,6 +966,89 @@ const AdminCRMPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [detailContact?.id, detailContact?.type, detailContact?.email, detailContact?.user_id, detailContact?.crmCreated]);
 
+  // Load "View as" user options for hospital/system/hiring_group contacts (so Admin can view as any linked user)
+  useEffect(() => {
+    const c = detailContact;
+    if (!c || isPersonType(c.type) || (c.type !== 'hospital' && c.type !== 'system' && c.type !== 'hiring_group')) {
+      setDetailViewAsUserOptions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        if (c.type === 'hospital') {
+          const siteId = c.hospitalId ?? c.facilityId ?? c.id;
+          const { data: memberRows } = await supabase.from('site_members').select('user_id').eq('site_id', siteId);
+          if (cancelled || !memberRows?.length) {
+            if (!cancelled) setDetailViewAsUserOptions([]);
+            return;
+          }
+          const userIds = [...new Set((memberRows as { user_id: string }[]).map((r) => r.user_id))];
+          const { data: users } = await supabase.from('users').select('id, first_name, last_name, email').in('id', userIds);
+          if (cancelled || !users?.length) {
+            if (!cancelled) setDetailViewAsUserOptions([]);
+            return;
+          }
+          setDetailViewAsUserOptions(
+            (users as { id: string; first_name?: string; last_name?: string; email?: string }[]).map((u) => ({
+              id: u.id,
+              label: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || u.id
+            }))
+          );
+          return;
+        }
+        if (c.type === 'system') {
+          const { data: rows } = await supabase
+            .from('hospital_system_assignments')
+            .select('user_id')
+            .eq('hospital_system_name', c.name?.trim() ?? '');
+          if (cancelled || !rows?.length) {
+            if (!cancelled) setDetailViewAsUserOptions([]);
+            return;
+          }
+          const userIds = [...new Set((rows as { user_id: string }[]).map((r) => r.user_id))];
+          const { data: users } = await supabase.from('users').select('id, first_name, last_name, email').in('id', userIds);
+          if (cancelled || !users?.length) {
+            if (!cancelled) setDetailViewAsUserOptions([]);
+            return;
+          }
+          setDetailViewAsUserOptions(
+            (users as { id: string; first_name?: string; last_name?: string; email?: string }[]).map((u) => ({
+              id: u.id,
+              label: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || u.id
+            }))
+          );
+          return;
+        }
+        if (c.type === 'hiring_group') {
+          const { data: rows } = await supabase
+            .from('hiring_group_assignments')
+            .select('user_id')
+            .eq('hospital_system_name', c.name?.trim() ?? '');
+          if (cancelled || !rows?.length) {
+            if (!cancelled) setDetailViewAsUserOptions([]);
+            return;
+          }
+          const userIds = [...new Set((rows as { user_id: string }[]).map((r) => r.user_id))];
+          const { data: users } = await supabase.from('users').select('id, first_name, last_name, email').in('id', userIds);
+          if (cancelled || !users?.length) {
+            if (!cancelled) setDetailViewAsUserOptions([]);
+            return;
+          }
+          setDetailViewAsUserOptions(
+            (users as { id: string; first_name?: string; last_name?: string; email?: string }[]).map((u) => ({
+              id: u.id,
+              label: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || u.id
+            }))
+          );
+        }
+      } catch {
+        if (!cancelled) setDetailViewAsUserOptions([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [detailContact?.id, detailContact?.type, detailContact?.name, detailContact?.hospitalId, detailContact?.facilityId]);
+
   // Load primary program and programs list when viewing a person with user id (for CRM primary program selector)
   useEffect(() => {
     if (!detailContactUserId) {
@@ -1240,7 +1345,7 @@ const AdminCRMPage: React.FC = () => {
 
   const renderCellContent = (contact: Contact, colId: string): React.ReactNode => {
     switch (colId) {
-      case 'firstName': return <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.firstName ?? '—') : (contact.type === 'organization' || contact.type === 'hospital' ? contact.name : '—')}</Typography>;
+      case 'firstName': return <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.firstName ?? '—') : (contact.type === 'organization' || contact.type === 'hospital' || contact.type === 'system' || contact.type === 'hiring_group' ? contact.name : '—')}</Typography>;
       case 'lastName': return <Typography fontWeight={500}>{isPersonType(contact.type) ? (contact.lastName ?? '—') : '—'}</Typography>;
       case 'name': return (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1262,19 +1367,29 @@ const AdminCRMPage: React.FC = () => {
           const all = [...linkedOrgs, ...linkedHospitals];
           return all.length > 0 ? all.join(', ') : '—';
         }
-        if (contact.type === 'organization' || contact.type === 'hospital') {
-          // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
-          const hospitalIds = contact.type === 'hospital' 
+        if (contact.type === 'organization' || contact.type === 'hospital' || contact.type === 'system' || contact.type === 'hiring_group') {
+          const hospitalIds = contact.type === 'hospital'
             ? [contact.id, contact.facilityId, contact.hospitalId].filter(Boolean) as string[]
-            : [contact.id];
-          
+            : contact.type === 'system' || contact.type === 'hiring_group'
+              ? (contact.linkedHospitalIds ?? [])
+              : [contact.id];
           const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
-            (p.linkedOrganizationIds ?? []).includes(contact.id) || 
+            (p.linkedOrganizationIds ?? []).includes(contact.id) ||
             hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
           ));
           if (linkedPeople.length > 0) {
             const names = linkedPeople.map(p => contactDisplayName(p)).filter(Boolean);
             return names.length > 0 ? names.join(', ') : `${linkedPeople.length} contact(s)`;
+          }
+          if (contact.type === 'system' && (contact.linkedHospitalIds ?? []).length > 0) {
+            const names = (contact.linkedHospitalIds ?? []).map(hid => contacts.find(c => c.type === 'hospital' && (c.hospitalId === hid || c.id === hid))?.name).filter(Boolean);
+            return names.length > 0 ? names.join(', ') : '—';
+          }
+          if (contact.type === 'hiring_group') {
+            const hospNames = (contact.linkedHospitalIds ?? []).map(hid => contacts.find(c => c.type === 'hospital' && (c.hospitalId === hid || c.id === hid))?.name).filter(Boolean);
+            const sysNames = (contact.linkedSystemIds ?? []).map(sid => contacts.find(c => c.id === sid)?.name).filter(Boolean);
+            const all = [...hospNames, ...sysNames];
+            return all.length > 0 ? all.join(', ') : '—';
           }
           return '—';
         }
@@ -1305,13 +1420,14 @@ const AdminCRMPage: React.FC = () => {
       if (!matchesSearch) return false;
 
       if (tabValue === 0) {}
-      else if (tabValue === 1 && contact.type !== 'organization') return false;
-      else if (tabValue === 2 && contact.type !== 'hospital') return false;
-      else if (tabValue === 3 && contact.type !== 'manager') return false;
-      else if (tabValue === 4 && contact.type !== 'mentor') return false;
-      else if (tabValue === 5 && contact.type !== 'pecc') return false;
-      else if (tabValue === 6 && contact.type !== 'staff') return false;
-      else if (tabValue === 7 && contact.type !== 'other') return false;
+      else if (tabValue === 1 && contact.type !== 'hospital') return false;
+      else if (tabValue === 2 && contact.type !== 'system') return false;
+      else if (tabValue === 3 && contact.type !== 'hiring_group') return false;
+      else if (tabValue === 4 && contact.type !== 'manager') return false;
+      else if (tabValue === 5 && contact.type !== 'mentor') return false;
+      else if (tabValue === 6 && contact.type !== 'pecc') return false;
+      else if (tabValue === 7 && contact.type !== 'staff') return false;
+      else if (tabValue === 8 && contact.type !== 'other') return false;
 
       if (statusFilter.length && !statusFilter.includes(contact.status)) return false;
       if (regionFilter.length && !regionFilter.includes(contact.region)) return false;
@@ -1377,6 +1493,33 @@ const AdminCRMPage: React.FC = () => {
     });
   };
 
+  const syncHospitalToSystemLinks = async (hospitalId: string, selectedSystemId: string | null) => {
+    const systemContacts = contacts.filter((c) => c.type === 'system');
+    const updates: { id: string; linkedHospitalIds: string[] }[] = [];
+    for (const sys of systemContacts) {
+      const current = sys.linkedHospitalIds ?? [];
+      const hasHospital = current.includes(hospitalId);
+      const shouldHave = selectedSystemId === sys.id;
+      let next: string[];
+      if (shouldHave && !hasHospital) next = [...current, hospitalId];
+      else if (!shouldHave && hasHospital) next = current.filter((id) => id !== hospitalId);
+      else continue;
+      const { error } = await supabase
+        .from('crm_organizations')
+        .update({ linked_hospital_ids: next, updated_at: new Date().toISOString() })
+        .eq('id', sys.id);
+      if (!error) updates.push({ id: sys.id, linkedHospitalIds: next });
+    }
+    if (updates.length > 0) {
+      setContacts((prev) =>
+        prev.map((c) => {
+          const u = updates.find((x) => x.id === c.id);
+          return u ? { ...c, linkedHospitalIds: u.linkedHospitalIds } : c;
+        })
+      );
+    }
+  };
+
   const handleSaveContact = async (fromFullScreen = false) => {
     trackClick?.(editingContact ? 'CRM - Save contact (edit)' : 'CRM - Save contact (add)');
     const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
@@ -1397,7 +1540,8 @@ const AdminCRMPage: React.FC = () => {
       programs: (formData.programs ?? []).length ? formData.programs : undefined,
       cohorts: (formData.cohorts ?? []).length ? formData.cohorts : undefined,
       linkedOrganizationIds: isPersonType(formData.type) ? formData.linkedOrganizationIds : undefined,
-      linkedHospitalIds: isPersonType(formData.type) ? formData.linkedHospitalIds : undefined,
+      linkedHospitalIds: isPersonType(formData.type) || formData.type === 'system' || formData.type === 'hiring_group' ? formData.linkedHospitalIds : undefined,
+      linkedSystemIds: formData.type === 'hiring_group' ? formData.linkedSystemIds : undefined,
       is_admin: isPersonType(formData.type) ? (formData.is_admin || false) : undefined,
       createdAt: editingContact?.createdAt ?? new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
@@ -1514,8 +1658,9 @@ const AdminCRMPage: React.FC = () => {
       } else {
         setSaveError(null);
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...updatedContact } : c)));
-        // Also update detailContact if viewing this hospital
         setDetailContact(prev => (prev?.id === payload.id ? { ...prev, ...updatedContact } as Contact : prev));
+        const hospitalIdForSystem = editingContact.hospitalId ?? editingContact.id;
+        await syncHospitalToSystemLinks(hospitalIdForSystem, formData.linkedSystemId?.trim() || null);
         setDialogOpen(false);
         setFullScreenOpen(false);
         setFullScreenEditMode(false);
@@ -1568,6 +1713,8 @@ const AdminCRMPage: React.FC = () => {
       };
       setContacts(prev => [...prev, newContact]);
       setSaveError(null);
+      const newHospitalId = String((newHospital as { id?: string }).id ?? '');
+      await syncHospitalToSystemLinks(newHospitalId, formData.linkedSystemId?.trim() || null);
     } else if (formData.type !== 'hospital') {
       // Save all non-hospital contacts to crm_organizations table
       // This includes: organization, other, manager, mentor, pecc, staff
@@ -1579,17 +1726,18 @@ const AdminCRMPage: React.FC = () => {
       const isValidUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       
       // Filter linked IDs to only include valid UUIDs (CRM-created records)
-      // User-sourced contacts have numeric IDs that can't be stored as UUIDs
       const validLinkedOrgIds = (formData.linkedOrganizationIds ?? []).filter(isValidUuid);
       const validLinkedHospitalIds = (formData.linkedHospitalIds ?? []).filter(isValidUuid);
-      
-      // Warn if some linked items were filtered out
+      const validLinkedSystemIds = (formData.linkedSystemIds ?? []).filter(isValidUuid);
       const skippedOrgCount = (formData.linkedOrganizationIds ?? []).length - validLinkedOrgIds.length;
       const skippedHospitalCount = (formData.linkedHospitalIds ?? []).length - validLinkedHospitalIds.length;
-      if (skippedOrgCount > 0 || skippedHospitalCount > 0) {
-        console.warn(`Skipped ${skippedOrgCount} org(s) and ${skippedHospitalCount} hospital(s) with non-UUID IDs (user-sourced contacts must be saved to CRM first)`);
+      const skippedSystemCount = (formData.linkedSystemIds ?? []).length - validLinkedSystemIds.length;
+      if (skippedOrgCount > 0 || skippedHospitalCount > 0 || skippedSystemCount > 0) {
+        console.warn(`Skipped ${skippedOrgCount} org(s), ${skippedHospitalCount} hospital(s), ${skippedSystemCount} system(s) with non-UUID IDs`);
       }
-      
+      const linkedOrgIdsDb = isPersonType(formData.type) ? validLinkedOrgIds : [];
+      const linkedHospitalIdsDb = isPersonType(formData.type) || formData.type === 'system' || formData.type === 'hiring_group' ? validLinkedHospitalIds : [];
+      const linkedSystemIdsDb = formData.type === 'hiring_group' ? validLinkedSystemIds : [];
       const payloadDb: Record<string, unknown> = {
         name: (isPersonType(formData.type) ? `${formData.firstName || ''} ${formData.lastName || ''}`.trim() : formData.name?.trim()) || payload.name,
         email: formData.email?.trim() || null,
@@ -1607,8 +1755,9 @@ const AdminCRMPage: React.FC = () => {
         first_name: isPersonType(formData.type) ? (formData.firstName?.trim() || null) : null,
         last_name: isPersonType(formData.type) ? (formData.lastName?.trim() || null) : null,
         organization: isPersonType(formData.type) ? (formData.organization?.trim() || null) : null,
-        linked_organization_ids: isPersonType(formData.type) ? validLinkedOrgIds : [],
-        linked_hospital_ids: isPersonType(formData.type) ? validLinkedHospitalIds : [],
+        linked_organization_ids: linkedOrgIdsDb,
+        linked_hospital_ids: linkedHospitalIdsDb,
+        linked_system_ids: linkedSystemIdsDb,
         address: formData.address?.trim() || null,
         address2: formData.address2?.trim() || null,
         city: formData.city?.trim() || null,
@@ -1755,7 +1904,7 @@ const AdminCRMPage: React.FC = () => {
       setDialogOpen(false);
       setEditingContact(null);
     }
-    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false });
+    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false });
   };
 
   const openDetail = (c: Contact) => {
@@ -1970,6 +2119,8 @@ const AdminCRMPage: React.FC = () => {
       const roleTierMap: Record<string, ContactType> = {
         'organization': 'organization',
         'hospital': 'hospital',
+        'system': 'system',
+        'hiring_group': 'hiring_group',
         'manager': 'manager',
         'mentor': 'mentor',
         'pecc': 'pecc',
@@ -2174,13 +2325,14 @@ const AdminCRMPage: React.FC = () => {
       // Reload contacts
       const { data: orgsData } = await supabase
         .from('crm_organizations')
-        .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, address, address2, city, county, zip, programs, cohorts');
+        .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, linked_system_ids, address, address2, city, county, zip, programs, cohorts');
       if (orgsData) {
         const newContacts: Contact[] = [];
         for (const row of orgsData as Record<string, unknown>[]) {
           const id = String(row.id ?? '');
           const rawContactType = String(row.contact_type ?? 'organization');
-          const contactType: ContactType = CONTACT_TYPES.includes(rawContactType as ContactType) ? (rawContactType as ContactType) : 'organization';
+          const allTypes: ContactType[] = [...CONTACT_TYPES, 'organization'];
+          const contactType: ContactType = allTypes.includes(rawContactType as ContactType) ? (rawContactType as ContactType) : 'organization';
           const isP = isPersonType(contactType);
           const cName = isP 
             ? [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || String(row.name ?? 'Unknown')
@@ -2213,6 +2365,7 @@ const AdminCRMPage: React.FC = () => {
             customFields: (row.custom_fields && typeof row.custom_fields === 'object') ? (row.custom_fields as Record<string, string>) : undefined,
             linkedOrganizationIds: Array.isArray(row.linked_organization_ids) ? (row.linked_organization_ids as string[]) : [],
             linkedHospitalIds: Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [],
+            linkedSystemIds: Array.isArray(row.linked_system_ids) ? (row.linked_system_ids as string[]) : [],
             address: row.address != null ? String(row.address) : undefined,
             address2: row.address2 != null ? String(row.address2) : undefined,
             city: row.city != null ? String(row.city) : undefined,
@@ -2254,6 +2407,8 @@ const AdminCRMPage: React.FC = () => {
     all: contacts.length,
     organization: contacts.filter(c => c.type === 'organization').length,
     hospital: contacts.filter(c => c.type === 'hospital').length,
+    system: contacts.filter(c => c.type === 'system').length,
+    hiring_group: contacts.filter(c => c.type === 'hiring_group').length,
     manager: contacts.filter(c => c.type === 'manager').length,
     mentor: contacts.filter(c => c.type === 'mentor').length,
     pecc: contacts.filter(c => c.type === 'pecc').length,
@@ -2682,7 +2837,7 @@ const AdminCRMPage: React.FC = () => {
               Manage custom fields
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); setSaveError(null); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); setSaveError(null); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -2698,8 +2853,9 @@ const AdminCRMPage: React.FC = () => {
       <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1.5, mb: 3, overflowX: 'auto', pb: 0.5 }}>
         {[
           { key: 'all', label: 'All', count: summaryCounts.all },
-          { key: 'organization', label: 'Organizations', count: summaryCounts.organization },
           { key: 'hospital', label: 'Hospitals', count: summaryCounts.hospital },
+          { key: 'system', label: 'Systems', count: summaryCounts.system },
+          { key: 'hiring_group', label: 'Hiring Groups', count: summaryCounts.hiring_group },
           { key: 'manager', label: 'Managers', count: summaryCounts.manager },
           { key: 'mentor', label: 'Mentors', count: summaryCounts.mentor },
           { key: 'pecc', label: 'PECCs', count: summaryCounts.pecc },
@@ -2709,7 +2865,7 @@ const AdminCRMPage: React.FC = () => {
         ].map(({ key, label, count }) => {
           const isPending = key === 'pending';
           const isAll = key === 'all';
-          const typeKeys = ['organization', 'hospital', 'manager', 'mentor', 'pecc', 'staff', 'other'];
+          const typeKeys = ['hospital', 'system', 'hiring_group', 'manager', 'mentor', 'pecc', 'staff', 'other'];
           const isActive = isPending ? activePendingFilter : isAll ? tabValue === 0 && !activePendingFilter : tabValue > 0 && typeKeys[tabValue - 1] === key;
           const borderColor = isPending ? theme.palette.warning.main : isAll ? theme.palette.primary.main : TYPE_COLORS[key as ContactType] || theme.palette.grey[400];
           return (
@@ -2938,7 +3094,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -3023,7 +3179,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>
@@ -3070,7 +3226,7 @@ const AdminCRMPage: React.FC = () => {
             <PersonIcon fontSize="small" sx={{ mr: 1 }} /> Manage in Team tab
           </MenuItem>
         )}
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false }); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
+        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false }); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
@@ -3216,7 +3372,61 @@ const AdminCRMPage: React.FC = () => {
                 <ListItem disablePadding><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
               )}
               {detailContact.type === 'hospital' && (detailContact.hospitalSystem ?? '') && (
-                <ListItem disablePadding><ListItemText primary="Hospital system" secondary={detailContact.hospitalSystem} /></ListItem>
+                <ListItem disablePadding><ListItemText primary="Hospital system (text)" secondary={detailContact.hospitalSystem} /></ListItem>
+              )}
+              {detailContact.type === 'hospital' && (() => {
+                const systemContact = contacts.find(s => s.type === 'system' && (s.linkedHospitalIds ?? []).some(hid => hid === detailContact.hospitalId || hid === detailContact.id));
+                return systemContact ? (
+                  <ListItem disablePadding>
+                    <ListItemText primary="Part of system" secondary={<Chip size="small" label={systemContact.name} onClick={() => setDetailContact(systemContact)} sx={{ cursor: 'pointer', mt: 0.5 }} />} />
+                  </ListItem>
+                ) : null;
+              })()}
+              {detailContact.type === 'system' && (detailContact.linkedHospitalIds ?? []).length > 0 && (
+                <ListItem disablePadding>
+                  <ListItemText
+                    primary="Hospitals in this system"
+                    secondary={
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                        {(detailContact.linkedHospitalIds ?? []).map(hid => contacts.find(c => c.type === 'hospital' && (c.hospitalId === hid || c.id === hid))).filter(Boolean).map((h) => (
+                          <Chip key={(h as Contact).id} size="small" label={(h as Contact).name} onClick={() => setDetailContact(h as Contact)} sx={{ cursor: 'pointer' }} />
+                        ))}
+                      </Box>
+                    }
+                  />
+                </ListItem>
+              )}
+              {detailContact.type === 'hiring_group' && (
+                <>
+                  {(detailContact.linkedHospitalIds ?? []).length > 0 && (
+                    <ListItem disablePadding>
+                      <ListItemText
+                        primary="Hospitals"
+                        secondary={
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                            {(detailContact.linkedHospitalIds ?? []).map(hid => contacts.find(c => c.type === 'hospital' && (c.hospitalId === hid || c.id === hid))).filter(Boolean).map((h) => (
+                              <Chip key={(h as Contact).id} size="small" label={(h as Contact).name} onClick={() => setDetailContact(h as Contact)} sx={{ cursor: 'pointer' }} />
+                            ))}
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  )}
+                  {(detailContact.linkedSystemIds ?? []).length > 0 && (
+                    <ListItem disablePadding>
+                      <ListItemText
+                        primary="Systems"
+                        secondary={
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                            {(detailContact.linkedSystemIds ?? []).map(sid => contacts.find(c => c.id === sid)).filter(Boolean).map((s) => (
+                              <Chip key={(s as Contact).id} size="small" label={(s as Contact).name} onClick={() => setDetailContact(s as Contact)} sx={{ cursor: 'pointer' }} />
+                            ))}
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  )}
+                </>
               )}
               <ListItem disablePadding><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
               {isPersonType(detailContact.type) && detailContact.is_admin && (
@@ -3231,15 +3441,15 @@ const AdminCRMPage: React.FC = () => {
               {(detailContact.cohorts ?? []).length > 0 && (
                 <ListItem disablePadding><ListItemText primary="Cohort(s)" secondary={(detailContact.cohorts ?? []).join(', ')} /></ListItem>
               )}
-              {/* Show linked people for organizations/hospitals in quick view */}
+              {/* Show linked people for organizations/hospitals/systems/hiring groups in quick view */}
               {!isPersonType(detailContact.type) && (() => {
-                // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
-                const hospitalIds = detailContact.type === 'hospital' 
+                const hospitalIds = detailContact.type === 'hospital'
                   ? [detailContact.id, detailContact.facilityId, detailContact.hospitalId].filter(Boolean) as string[]
-                  : [detailContact.id];
-                
+                  : detailContact.type === 'system' || detailContact.type === 'hiring_group'
+                    ? (detailContact.linkedHospitalIds ?? [])
+                    : [detailContact.id];
                 const linkedPeople = contacts.filter(p => isPersonType(p.type) && (
-                  (p.linkedOrganizationIds ?? []).includes(detailContact.id) || 
+                  (p.linkedOrganizationIds ?? []).includes(detailContact.id) ||
                   hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
                 ));
                 return linkedPeople.length > 0 ? (
@@ -3359,12 +3569,12 @@ const AdminCRMPage: React.FC = () => {
                   </Box>
                 </ListItem>
               )}
-              {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
-                // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
-                const hospitalIds = detailContact.type === 'hospital' 
+              {(detailContact.type === 'organization' || detailContact.type === 'hospital' || detailContact.type === 'system' || detailContact.type === 'hiring_group') && (() => {
+                const hospitalIds = detailContact.type === 'hospital'
                   ? [detailContact.id, detailContact.facilityId, detailContact.hospitalId].filter(Boolean) as string[]
-                  : [detailContact.id];
-                
+                  : detailContact.type === 'system' || detailContact.type === 'hiring_group'
+                    ? (detailContact.linkedHospitalIds ?? [])
+                    : [detailContact.id];
                 const linked = contacts.filter(p => isPersonType(p.type) && (
                   (p.linkedOrganizationIds ?? []).includes(detailContact.id) ||
                   hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
@@ -3392,7 +3602,7 @@ const AdminCRMPage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
                   setEditingContact(c);
                   setPanelOpen(false);
                   setFullScreenOpen(true);
@@ -3412,7 +3622,7 @@ const AdminCRMPage: React.FC = () => {
                     Manage permissions
                   </Button>
                 )}
-                {isPersonType(detailContact.type) && detailContactUserId && canViewAsUser && (
+                {canViewAsUser && (isPersonType(detailContact.type) && detailContactUserId) && (
                   <Button
                     size="small"
                     variant="contained"
@@ -3420,12 +3630,41 @@ const AdminCRMPage: React.FC = () => {
                     startIcon={<VisibilityIcon />}
                     fullWidth
                     onClick={async () => {
-                      const ok = await enterViewAsUser(detailContactUserId);
+                      const ok = await enterViewAsUser(detailContactUserId!);
                       if (ok) navigate('/');
                     }}
                   >
                     View as this user
                   </Button>
+                )}
+                {canViewAsUser && detailViewAsUserOptions.length === 1 && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    startIcon={<VisibilityIcon />}
+                    fullWidth
+                    onClick={async () => {
+                      const ok = await enterViewAsUser(detailViewAsUserOptions[0].id);
+                      if (ok) navigate('/');
+                    }}
+                  >
+                    View as {detailViewAsUserOptions[0].label}
+                  </Button>
+                )}
+                {canViewAsUser && detailViewAsUserOptions.length > 1 && (
+                  <>
+                    <Button size="small" variant="contained" color="primary" startIcon={<VisibilityIcon />} fullWidth onClick={(e) => setViewAsMenuAnchor(e.currentTarget)}>
+                      View as user…
+                    </Button>
+                    <Menu anchorEl={viewAsMenuAnchor} open={Boolean(viewAsMenuAnchor)} onClose={() => setViewAsMenuAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+                      {detailViewAsUserOptions.map((opt) => (
+                        <MenuItem key={opt.id} onClick={async () => { setViewAsMenuAnchor(null); const ok = await enterViewAsUser(opt.id); if (ok) navigate('/'); }}>
+                          View as {opt.label}
+                        </MenuItem>
+                      ))}
+                    </Menu>
+                  </>
                 )}
                 {isPersonType(detailContact.type) && detailContact.email && (
                   <Button 
@@ -3485,7 +3724,9 @@ const AdminCRMPage: React.FC = () => {
                   <FormControl fullWidth size="small">
                     <InputLabel>Type</InputLabel>
                     <Select value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as ContactType }))} label="Type">
-                      {Object.entries(TYPE_LABELS).map(([val, label]) => <MenuItem key={val} value={val}>{label}</MenuItem>)}
+                      {CONTACT_TYPES.map((val) => (
+                        <MenuItem key={val} value={val}>{TYPE_LABELS[val]}</MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Grid>
@@ -3493,6 +3734,23 @@ const AdminCRMPage: React.FC = () => {
                   <Grid item xs={12}>
                     <TextField label="Organization name" value={formData.name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, name: v, organization: v })); }} fullWidth size="small" required />
                   </Grid>
+                ) : formData.type === 'system' ? (
+                  <>
+                    <Grid item xs={12}><TextField label="System name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required placeholder="e.g. Riley Health System" /></Grid>
+                    <Grid item xs={12}>
+                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({ id: c.hospitalId!, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({ id: c!.hospitalId || c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Hospitals in this system" placeholder="Search hospitals…" />} />
+                    </Grid>
+                  </>
+                ) : formData.type === 'hiring_group' ? (
+                  <>
+                    <Grid item xs={12}><TextField label="Hiring Group name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required placeholder="e.g. Regional Hiring Group" /></Grid>
+                    <Grid item xs={12}>
+                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({ id: c.hospitalId!, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({ id: c!.hospitalId || c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Hospitals" placeholder="Search hospitals…" />} />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'system').map(c => ({ id: c.id, label: c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedSystemIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedSystemIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Systems" placeholder="Search systems…" />} />
+                    </Grid>
+                  </>
                 ) : isPersonType(formData.type) ? (
                   <>
                     <Grid item xs={6}><TextField label="First name" value={formData.firstName} onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))} fullWidth size="small" required /></Grid>
@@ -3515,11 +3773,21 @@ const AdminCRMPage: React.FC = () => {
                       />
                     </Grid>
                   </>
-                ) : (
+                ) : formData.type === 'hospital' ? (
                   <>
                     <Grid item xs={12}><TextField label="Hospital name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required /></Grid>
                     <Grid item xs={12}><TextField label="Facility ID" value={formData.facilityId} onChange={(e) => setFormData(prev => ({ ...prev, facilityId: e.target.value }))} fullWidth size="small" placeholder="Unique identifier for this facility" /></Grid>
                     <Grid item xs={12}><TextField label="Company / Parent organization" value={formData.organization} onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))} fullWidth size="small" placeholder="e.g. health system or owner" /></Grid>
+                    <Grid item xs={12}>
+                      <Autocomplete
+                        size="small"
+                        options={contacts.filter(c => c.type === 'system').map(c => ({ id: c.id, label: c.name }))}
+                        value={formData.linkedSystemId ? contacts.find(c => c.id === formData.linkedSystemId) ? { id: formData.linkedSystemId, label: contacts.find(c => c.id === formData.linkedSystemId)!.name } : null : null}
+                        getOptionLabel={(opt) => opt.label}
+                        onChange={(_, v) => setFormData(prev => ({ ...prev, linkedSystemId: v?.id ?? '' }))}
+                        renderInput={(params) => <TextField {...params} label="Part of system" placeholder="Select system (shows bidirectionally)" />}
+                      />
+                    </Grid>
                     <Grid item xs={12}>
                       <Autocomplete
                         freeSolo
@@ -3529,11 +3797,11 @@ const AdminCRMPage: React.FC = () => {
                         inputValue={formData.hospitalSystem ?? ''}
                         onInputChange={(_, v) => setFormData(prev => ({ ...prev, hospitalSystem: v }))}
                         onChange={(_, v) => setFormData(prev => ({ ...prev, hospitalSystem: v == null ? '' : String(v) }))}
-                        renderInput={(params) => <TextField {...params} label="Hospital system" placeholder="Search or type new system name" />}
+                        renderInput={(params) => <TextField {...params} label="Hospital system (text)" placeholder="Optional text label" />}
                       />
                     </Grid>
                   </>
-                )}
+                ) : null}
                 <Grid item xs={6}><TextField label="Email" type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} fullWidth size="small" /></Grid>
                 <Grid item xs={6}><TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth size="small" /></Grid>
                 <Grid item xs={6}>
@@ -3850,19 +4118,19 @@ const AdminCRMPage: React.FC = () => {
                       </ListItem>
                     )}
                   </List>
-                  {(detailContact.type === 'organization' || detailContact.type === 'hospital') && (() => {
-                    // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
-                    const hospitalIds = detailContact.type === 'hospital' 
+                  {(detailContact.type === 'organization' || detailContact.type === 'hospital' || detailContact.type === 'system' || detailContact.type === 'hiring_group') && (() => {
+                    const hospitalIds = detailContact.type === 'hospital'
                       ? [detailContact.id, detailContact.facilityId, detailContact.hospitalId].filter(Boolean) as string[]
-                      : [detailContact.id];
-                    
+                      : detailContact.type === 'system' || detailContact.type === 'hiring_group'
+                        ? (detailContact.linkedHospitalIds ?? [])
+                        : [detailContact.id];
                     const linked = contacts.filter(p => isPersonType(p.type) && (
-                      (p.linkedOrganizationIds ?? []).includes(detailContact.id) || 
+                      (p.linkedOrganizationIds ?? []).includes(detailContact.id) ||
                       hospitalIds.some(hid => (p.linkedHospitalIds ?? []).includes(hid))
                     ));
                     return linked.length > 0 ? (
                       <Box sx={{ mt: 2 }}>
-                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Contacts at this {detailContact.type === 'hospital' ? 'hospital' : 'organization'}</Typography>
+                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Contacts at this {detailContact.type === 'hospital' ? 'hospital' : detailContact.type === 'system' ? 'system' : detailContact.type === 'hiring_group' ? 'hiring group' : 'organization'}</Typography>
                         <List dense disablePadding>
                           {linked.map((p) => (
                             <ListItem key={p.id} disablePadding sx={{ py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => { setDetailContact(p); setFullScreenOpen(false); setPanelOpen(true); }}>
@@ -4098,7 +4366,7 @@ const AdminCRMPage: React.FC = () => {
                 <Box sx={{ mt: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                     const c = detailContact;
-                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
+                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
                     setEditingContact(c);
                     setFullScreenEditMode(true);
                   }}>
@@ -4110,13 +4378,35 @@ const AdminCRMPage: React.FC = () => {
                       Manage permissions
                     </Button>
                   )}
-                  {detailContact && isPersonType(detailContact.type) && detailContactUserId && canViewAsUser && (
+                  {detailContact && canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && (
                     <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
                       const ok = await enterViewAsUser(detailContactUserId);
                       if (ok) navigate('/');
                     }}>
                       View as this user
                     </Button>
+                  )}
+                  {detailContact && canViewAsUser && detailViewAsUserOptions.length === 1 && (
+                    <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
+                      const ok = await enterViewAsUser(detailViewAsUserOptions[0].id);
+                      if (ok) navigate('/');
+                    }}>
+                      View as {detailViewAsUserOptions[0].label}
+                    </Button>
+                  )}
+                  {detailContact && canViewAsUser && detailViewAsUserOptions.length > 1 && (
+                    <>
+                      <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={(e) => setViewAsMenuAnchor(e.currentTarget)}>
+                        View as user…
+                      </Button>
+                      <Menu anchorEl={viewAsMenuAnchor} open={Boolean(viewAsMenuAnchor)} onClose={() => setViewAsMenuAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+                        {detailViewAsUserOptions.map((opt) => (
+                          <MenuItem key={opt.id} onClick={async () => { setViewAsMenuAnchor(null); const ok = await enterViewAsUser(opt.id); if (ok) navigate('/'); }}>
+                            View as {opt.label}
+                          </MenuItem>
+                        ))}
+                      </Menu>
+                    </>
                   )}
                 </Box>
               )}
@@ -4144,7 +4434,9 @@ const AdminCRMPage: React.FC = () => {
               <FormControl fullWidth size="small">
                 <InputLabel>Type</InputLabel>
                 <Select value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as ContactType }))} label="Type">
-                  {Object.entries(TYPE_LABELS).map(([val, label]) => <MenuItem key={val} value={val}>{label}</MenuItem>)}
+                  {CONTACT_TYPES.map((val) => (
+                    <MenuItem key={val} value={val}>{TYPE_LABELS[val]}</MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -4152,6 +4444,69 @@ const AdminCRMPage: React.FC = () => {
               <Grid item xs={12}>
                 <TextField label="Organization name" value={formData.name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, name: v, organization: v })); }} fullWidth size="small" required />
               </Grid>
+            ) : formData.type === 'system' ? (
+              <>
+                <Grid item xs={12}>
+                  <TextField label="System name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required placeholder="e.g. Riley Health System" />
+                </Grid>
+                <Grid item xs={12}>
+                  <Autocomplete
+                    multiple
+                    size="small"
+                    options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({
+                      id: c.hospitalId!,
+                      label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name
+                    }))}
+                    filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                    value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({
+                      id: c!.hospitalId || c!.id,
+                      label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name
+                    }))}
+                    getOptionLabel={(opt) => opt.label}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                    onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))}
+                    renderInput={(params) => <TextField {...params} label="Hospitals in this system" placeholder="Search hospitals…" />}
+                  />
+                </Grid>
+              </>
+            ) : formData.type === 'hiring_group' ? (
+              <>
+                <Grid item xs={12}>
+                  <TextField label="Hiring Group name" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} fullWidth size="small" required placeholder="e.g. Regional Hiring Group" />
+                </Grid>
+                <Grid item xs={12}>
+                  <Autocomplete
+                    multiple
+                    size="small"
+                    options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({
+                      id: c.hospitalId!,
+                      label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name
+                    }))}
+                    filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                    value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({
+                      id: c!.hospitalId || c!.id,
+                      label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name
+                    }))}
+                    getOptionLabel={(opt) => opt.label}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                    onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))}
+                    renderInput={(params) => <TextField {...params} label="Hospitals" placeholder="Search hospitals…" />}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Autocomplete
+                    multiple
+                    size="small"
+                    options={contacts.filter(c => c.type === 'system').map(c => ({ id: c.id, label: c.name }))}
+                    filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                    value={formData.linkedSystemIds.map(id => contacts.find(c => c.id === id)).filter(Boolean).map(c => ({ id: c!.id, label: c!.name }))}
+                    getOptionLabel={(opt) => opt.label}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                    onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedSystemIds: arr.map(x => x.id) }))}
+                    renderInput={(params) => <TextField {...params} label="Systems" placeholder="Search systems…" />}
+                  />
+                </Grid>
+              </>
             ) : isPersonType(formData.type) ? (
               <>
                 <Grid item xs={6}>
