@@ -103,6 +103,8 @@ ImPACTS-Web-App/
 
 We deploy only to the Vercel project **impacts** (not impacts-web-app). The repo is linked via `.vercel/project.json`.
 
+_Deployment wiring last verified: 2026-03-02 (test update for Vercel auto-deploy from `main`)._
+
 1. Connect your GitHub repository to the Vercel project **impacts**
 2. Set environment variables in the Vercel dashboard for that project:
    - `REACT_APP_SUPABASE_URL`
