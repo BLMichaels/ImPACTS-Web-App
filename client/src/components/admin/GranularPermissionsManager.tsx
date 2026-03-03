@@ -67,7 +67,9 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   // Selected entities
   const [selectedUserId, setSelectedUserId] = useState<string>(initialSelectedUserId || '');
   const [selectedCohortId, setSelectedCohortId] = useState<string>('');
+  const [selectedCohortUserId, setSelectedCohortUserId] = useState<string>('');
   const [selectedProgramId, setSelectedProgramId] = useState<string>('');
+  const [selectedProgramUserId, setSelectedProgramUserId] = useState<string>('');
   
   // Permissions
   const [userPermissions, setUserPermissions] = useState<UserPermission[]>([]);
@@ -303,6 +305,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       await loadPermissions();
     } catch (error) {
       console.error('Error loading data:', error);
+      setSnack({ message: 'Failed to load data. Try refreshing.', severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -505,6 +508,9 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     if (!error) {
       setSnack({ message: 'Tab visibility saved.', severity: 'success' });
       await loadPermissions();
+      if (scope === 'user' && scopeId === userProfile?.id && refreshProfile) {
+        await refreshProfile();
+      }
     } else {
       setSnack({ message: 'Failed to save tab visibility.', severity: 'error' });
     }
@@ -536,11 +542,11 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           : 'Manage permissions and tab visibility for your team members, cohorts, and programs.'}
       </Typography>
       
-      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
-        <Tab label="User Permissions" />
-        <Tab label="Cohort Permissions" />
-        <Tab label="Program Permissions" />
-        <Tab label="Tab Visibility" />
+      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }} aria-label="Granular permissions sections">
+        <Tab label="User Permissions" id="granular-tab-0" aria-controls="granular-panel-0" />
+        <Tab label="Cohort Permissions" id="granular-tab-1" aria-controls="granular-panel-1" />
+        <Tab label="Program Permissions" id="granular-tab-2" aria-controls="granular-panel-2" />
+        <Tab label="Tab Visibility" id="granular-tab-3" aria-controls="granular-panel-3" />
       </Tabs>
       
       {/* User Permissions Tab */}
@@ -667,7 +673,10 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           <Typography variant="subtitle1" gutterBottom sx={{ mb: 1 }}>Select a cohort to set permissions and tab visibility for its members</Typography>
           <Autocomplete
             value={cohorts.find(c => c.id === selectedCohortId) ?? null}
-            onChange={(_, c) => setSelectedCohortId(c?.id ?? '')}
+            onChange={(_, c) => {
+              setSelectedCohortId(c?.id ?? '');
+              setSelectedCohortUserId('');
+            }}
             options={cohorts}
             getOptionLabel={(c) => `${c.name}${c.is_active === false ? ' (Inactive)' : ''}${c.program_id ? ` — ${c.program_id}` : ''}`}
             filterOptions={(options, { inputValue }) => {
@@ -703,6 +712,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by User</Typography>
               <FormControl fullWidth sx={{ mb: 2 }}>
                 <Autocomplete
+                  value={users.find(u => u.id === selectedCohortUserId) ?? null}
+                  onChange={(_, user) => setSelectedCohortUserId(user?.id ?? '')}
                   options={users}
                   getOptionLabel={(u) => {
                     const name = getUserDisplayName(u);
@@ -719,22 +730,38 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                     });
                   }}
                   renderInput={(params) => <TextField {...params} label="Select User" placeholder="Type name or email to search..." />}
-                  onChange={(_, user) => {
-                    if (user) {
-                      // Show permissions for this user
-                      Object.values(PERMISSIONS).forEach(perm => {
-                        const existing = cohortPermissions.find(
-                          p => p.cohort_id === selectedCohortId && p.user_id === user.id && p.permission_key === perm
-                        );
-                        if (!existing) {
-                          // Initialize with default (can be toggled)
-                        }
-                      });
-                    }
-                  }}
                 />
               </FormControl>
-              
+              {selectedCohortUserId && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Overrides for {getUserDisplayName(users.find(u => u.id === selectedCohortUserId)!)}</Typography>
+                  <Grid container spacing={1}>
+                    {Object.values(PERMISSIONS).map(perm => {
+                      const existing = cohortPermissions.find(
+                        p => p.cohort_id === selectedCohortId && p.user_id === selectedCohortUserId && p.permission_key === perm
+                      );
+                      const key = `user_${selectedCohortUserId}_${perm}`;
+                      const isEnabled = existing ? existing.is_enabled : (permissionStates[key] ?? true);
+                      return (
+                        <Grid item xs={12} sm={6} md={4} key={perm}>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={isEnabled}
+                                onChange={(e) => {
+                                  setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
+                                  handleSaveCohortPermission(perm, e.target.checked, selectedCohortUserId, undefined);
+                                }}
+                              />
+                            }
+                            label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          />
+                        </Grid>
+                      );
+                    })}
+                  </Grid>
+                </Box>
+              )}
               <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role (default: all on for new members; user-specific overrides take precedence)</Typography>
               <Grid container spacing={2}>
                 {[UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC].map(role => (
@@ -808,7 +835,53 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               <Alert severity="info" sx={{ mb: 2 }}>
                 Set permissions for specific users or roles within this program. User-specific overrides take precedence over role-based permissions.
               </Alert>
-              
+              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by User</Typography>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <Autocomplete
+                  value={users.find(u => u.id === selectedProgramUserId) ?? null}
+                  onChange={(_, user) => setSelectedProgramUserId(user?.id ?? '')}
+                  options={users}
+                  getOptionLabel={(u) => `${getUserDisplayName(u)} (${u.email}) — ${getEffectiveRoleLabel(u)}`}
+                  filterOptions={(options, { inputValue }) => {
+                    const q = (inputValue || '').trim().toLowerCase();
+                    if (!q) return options;
+                    return options.filter(u =>
+                      getUserDisplayName(u).toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
+                    );
+                  }}
+                  renderInput={(params) => <TextField {...params} label="Select User" placeholder="Type name or email to search..." />}
+                />
+              </FormControl>
+              {selectedProgramUserId && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Overrides for {getUserDisplayName(users.find(u => u.id === selectedProgramUserId)!)}</Typography>
+                  <Grid container spacing={1}>
+                    {Object.values(PERMISSIONS).map(perm => {
+                      const existing = programPermissions.find(
+                        p => p.program_id === selectedProgramId && p.user_id === selectedProgramUserId && p.permission_key === perm
+                      );
+                      const key = `puser_${selectedProgramUserId}_${perm}`;
+                      const isEnabled = existing ? existing.is_enabled : (permissionStates[key] ?? true);
+                      return (
+                        <Grid item xs={12} sm={6} md={4} key={perm}>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={isEnabled}
+                                onChange={(e) => {
+                                  setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
+                                  handleSaveProgramPermission(perm, e.target.checked, selectedProgramUserId, undefined);
+                                }}
+                              />
+                            }
+                            label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          />
+                        </Grid>
+                      );
+                    })}
+                  </Grid>
+                </Box>
+              )}
               <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role (default: all on; user-specific overrides take precedence)</Typography>
               <Grid container spacing={2}>
                 {[UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC].map(role => (

@@ -188,7 +188,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           setPermissions(DEFAULT_ROLE_PERMISSIONS[normalizedRole] || []);
         }
 
-        // PECC: resolve site and visible tabs. Granular Permissions (view_tabs by user_id) is source of truth; fallback to site_tab_visibility then default all.
+        // PECC: resolve site and visible tabs. Granular Permissions (view_tabs by user_id) is source of truth.
+        // Only PECC_TAB_KEYS are used for nav; other keys (e.g. snapshot_prs_section) do not affect visibleTabs. Empty array = all tabs hidden.
         let sid: string | null = null;
         if (normalizedRole === UserRole.PECC) {
           sid = prof.hospital_facility_id ?? null;

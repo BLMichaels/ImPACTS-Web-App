@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { useUserProfile } from '../context/UserProfileContext';
-import { DEFAULT_ROLE_PERMISSIONS } from '../types/database';
+import { DEFAULT_ROLE_PERMISSIONS, normalizeUserRole, UserRole } from '../types/database';
 
 /**
  * Hook to check if a tab is visible for the current user in a cohort or program
@@ -80,7 +80,7 @@ export const usePermission = (permissionKey: string, cohortId?: string, programI
   const { userProfile } = useUserProfile();
   const [hasPermission, setHasPermission] = useState(false);
   const userId = userProfile?.id;
-  const role = userProfile?.role;
+  const role = userProfile?.role != null ? normalizeUserRole(userProfile.role) as UserRole : undefined;
 
   useEffect(() => {
     if (!userId) return;

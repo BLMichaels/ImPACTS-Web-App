@@ -15,8 +15,8 @@ Granular permissions control tab visibility (PECC tool tabs, cohort/program tabs
 - **Issue:** Upserting a user-scope row did not set `cohort_id`/`program_id` to null; row could violate one-scope CHECK or leave stale scope.
 - **Fix:** In `GranularPermissionsManager.handleSaveTabVisibility`, payload explicitly sets the other scope IDs to `null` (e.g. user scope → `cohort_id: null`, `program_id: null`).
 
-## Round 5–6: usePermission and “view as”
-- **Verification:** `usePermission` and tab visibility hooks use `userProfile` from context; when viewing as another user, context exposes that user’s profile, so the effective user is already correct. No code change.
+## Round 5–6: usePermission and "view as"
+- **Verification:** `usePermission` and tab visibility hooks use `userProfile` from context; when viewing as another user, context exposes that user's profile, so the effective user is already correct. No code change.
 - **Improvement:** `usePermission` fallback when RPC fails: use `DEFAULT_ROLE_PERMISSIONS[role]` instead of always `true`, so fallback is role-aware and safer.
 
 ## Round 7–8: GPM UX and errors
@@ -37,4 +37,25 @@ Granular permissions control tab visibility (PECC tool tabs, cohort/program tabs
 - `docs/GRANULAR_PERMISSIONS_AUDIT.md` – this summary.
 
 ## DB / RLS
-No migration changes. Ensure `FIX_VIEW_TABS_RLS.sql` and `GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql` are applied so admins/managers see all tiers and view_tabs RLS allows “Users manage own tabs” and “Mentors manage mentee tabs”.
+No migration changes. Ensure `FIX_VIEW_TABS_RLS.sql` and `GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql` are applied so admins/managers see all tiers and view_tabs RLS allows "Users manage own tabs" and "Mentors manage mentee tabs".
+
+---
+
+# Second 10-Round Audit
+
+## Round 1–2: Refresh and load errors
+- **refreshProfile after tab visibility for self:** When an admin/manager saves tab visibility for the current user, `handleSaveTabVisibility` now calls `refreshProfile()` so the nav updates without a full page reload.
+- **loadData error feedback:** On catch in `loadData`, show snackbar "Failed to load data. Try refreshing." so failures are visible.
+
+## Round 3–4: Cohort/Program by User and a11y
+- **Cohort Permissions:** "Permissions by User" Autocomplete uses `selectedCohortUserId`; when a user is selected, a full grid of permission toggles is shown and saves via `handleSaveCohortPermission(perm, enabled, selectedCohortUserId, undefined)`.
+- **Program Permissions:** Same pattern with `selectedProgramUserId` and `handleSaveProgramPermission(perm, enabled, selectedProgramUserId, undefined)`.
+- **Tabs a11y:** Main Tabs have `aria-label="Granular permissions sections"` and each Tab has `id` / `aria-controls` for screen readers.
+
+## Round 5–6: Navbar and usePermission
+- **Navbar empty visibleTabs:** When `visibleTabs` is an empty array (admin hid all PECC tabs), PECC nav now shows no tool items instead of all.
+- **usePermission role normalization:** Fallback uses `normalizeUserRole(userProfile.role)` so DB role strings match `DEFAULT_ROLE_PERMISSIONS` keys.
+
+## Round 7–8: Comments and docs
+- **UserProfileContext:** Comment clarified that only PECC_TAB_KEYS affect nav and empty array means all tabs hidden.
+- **Audit doc:** This second 10-round summary added.
