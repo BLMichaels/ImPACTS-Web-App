@@ -453,9 +453,11 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
 
   const hasAdminAccess = userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true;
   const canViewAsUser = hasAdminAccess || userProfile?.role === UserRole.MANAGER || userProfile?.role === UserRole.MENTOR;
-  // When viewing as another user: show Admin if they have is_admin, else their normalized role (so assignment always matches display)
+  // When viewing as another user: if Admin View-As is active, use that role; otherwise show Admin if they have is_admin, else their normalized role.
   const effectiveRole = viewAsUserId && viewAsUserProfile
-    ? (viewAsUserProfile.is_admin === true ? UserRole.ADMIN : viewAsUserProfile.role)
+    ? (viewAsRole && hasAdminAccess
+        ? viewAsRole
+        : (viewAsUserProfile.is_admin === true ? UserRole.ADMIN : viewAsUserProfile.role))
     : (viewAsRole && hasAdminAccess)
       ? viewAsRole
       : (hasAdminAccess ? UserRole.ADMIN : (userProfile?.role || UserRole.PECC));
