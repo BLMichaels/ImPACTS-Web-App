@@ -39,11 +39,11 @@ CREATE INDEX IF NOT EXISTS idx_user_permissions_permission_key ON public.user_pe
 
 ALTER TABLE public.user_permissions ENABLE ROW LEVEL SECURITY;
 
--- Users can view their own permissions
+DROP POLICY IF EXISTS "Users view own permissions" ON public.user_permissions;
 CREATE POLICY "Users view own permissions" ON public.user_permissions
   FOR SELECT USING (user_id = auth.uid());
 
--- Admins can manage all user permissions
+DROP POLICY IF EXISTS "Admins manage user permissions" ON public.user_permissions;
 CREATE POLICY "Admins manage user permissions" ON public.user_permissions
   FOR ALL USING (
     EXISTS (
@@ -52,7 +52,7 @@ CREATE POLICY "Admins manage user permissions" ON public.user_permissions
     )
   );
 
--- Managers can manage permissions for their direct reports (mentors and PECCs)
+DROP POLICY IF EXISTS "Managers manage team permissions" ON public.user_permissions;
 CREATE POLICY "Managers manage team permissions" ON public.user_permissions
   FOR ALL USING (
     EXISTS (
@@ -109,7 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_cohort_permissions_role ON public.cohort_permissi
 
 ALTER TABLE public.cohort_permissions ENABLE ROW LEVEL SECURITY;
 
--- Users can view permissions for cohorts they're members of
+DROP POLICY IF EXISTS "Users view cohort permissions" ON public.cohort_permissions;
 CREATE POLICY "Users view cohort permissions" ON public.cohort_permissions
   FOR SELECT USING (
     user_id = auth.uid()
@@ -134,7 +134,7 @@ CREATE POLICY "Users view cohort permissions" ON public.cohort_permissions
     )
   );
 
--- Admins can manage all cohort permissions
+DROP POLICY IF EXISTS "Admins manage cohort permissions" ON public.cohort_permissions;
 CREATE POLICY "Admins manage cohort permissions" ON public.cohort_permissions
   FOR ALL USING (
     EXISTS (
@@ -143,7 +143,7 @@ CREATE POLICY "Admins manage cohort permissions" ON public.cohort_permissions
     )
   );
 
--- Managers can manage permissions for cohorts they manage
+DROP POLICY IF EXISTS "Managers manage cohort permissions" ON public.cohort_permissions;
 CREATE POLICY "Managers manage cohort permissions" ON public.cohort_permissions
   FOR ALL USING (
     EXISTS (
@@ -185,7 +185,7 @@ CREATE INDEX IF NOT EXISTS idx_program_permissions_role ON public.program_permis
 
 ALTER TABLE public.program_permissions ENABLE ROW LEVEL SECURITY;
 
--- Users can view permissions for programs they're members of
+DROP POLICY IF EXISTS "Users view program permissions" ON public.program_permissions;
 CREATE POLICY "Users view program permissions" ON public.program_permissions
   FOR SELECT USING (
     user_id = auth.uid()
@@ -210,7 +210,7 @@ CREATE POLICY "Users view program permissions" ON public.program_permissions
     )
   );
 
--- Admins can manage all program permissions
+DROP POLICY IF EXISTS "Admins manage program permissions" ON public.program_permissions;
 CREATE POLICY "Admins manage program permissions" ON public.program_permissions
   FOR ALL USING (
     EXISTS (
@@ -219,7 +219,7 @@ CREATE POLICY "Admins manage program permissions" ON public.program_permissions
     )
   );
 
--- Managers can manage permissions for programs they manage
+DROP POLICY IF EXISTS "Managers manage program permissions" ON public.program_permissions;
 CREATE POLICY "Managers manage program permissions" ON public.program_permissions
   FOR ALL USING (
     EXISTS (
@@ -261,7 +261,7 @@ CREATE TABLE IF NOT EXISTS public.view_tabs (
   )
 );
 
--- Create partial unique indexes for conditional uniqueness
+-- Unique constraints are implemented as partial indexes (Postgres does not allow WHERE on table-level UNIQUE)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_view_tabs_user_tab_unique 
 ON public.view_tabs(user_id, tab_key) 
 WHERE user_id IS NOT NULL;
@@ -281,11 +281,11 @@ CREATE INDEX IF NOT EXISTS idx_view_tabs_tab_key ON public.view_tabs(tab_key);
 
 ALTER TABLE public.view_tabs ENABLE ROW LEVEL SECURITY;
 
--- Users can view their own tab settings
+DROP POLICY IF EXISTS "Users view own tabs" ON public.view_tabs;
 CREATE POLICY "Users view own tabs" ON public.view_tabs
   FOR SELECT USING (user_id = auth.uid());
 
--- Users can view tab settings for cohorts/programs they're members of
+DROP POLICY IF EXISTS "Users view cohort program tabs" ON public.view_tabs;
 CREATE POLICY "Users view cohort program tabs" ON public.view_tabs
   FOR SELECT USING (
     (cohort_id IS NOT NULL AND EXISTS (
@@ -303,7 +303,7 @@ CREATE POLICY "Users view cohort program tabs" ON public.view_tabs
     ))
   );
 
--- Admins can manage all tab settings
+DROP POLICY IF EXISTS "Admins manage tabs" ON public.view_tabs;
 CREATE POLICY "Admins manage tabs" ON public.view_tabs
   FOR ALL USING (
     EXISTS (
@@ -312,7 +312,7 @@ CREATE POLICY "Admins manage tabs" ON public.view_tabs
     )
   );
 
--- Managers can manage tabs for their team members
+DROP POLICY IF EXISTS "Managers manage team tabs" ON public.view_tabs;
 CREATE POLICY "Managers manage team tabs" ON public.view_tabs
   FOR ALL USING (
     (user_id IS NOT NULL AND EXISTS (
