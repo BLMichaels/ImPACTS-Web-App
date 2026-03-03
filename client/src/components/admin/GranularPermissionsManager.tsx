@@ -330,12 +330,18 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     }
   };
   
+  const isTableMissingError = (err: { code?: string; message?: string; status?: number } | null) =>
+    err && (err.code === 'PGRST301' || err.status === 404 || /not found|relation|404/i.test(String(err.message ?? '')));
+
   const loadPermissions = async () => {
     if (selectedUserId) {
-      const { data } = await supabase
+      const { data, error: permError } = await supabase
         .from('user_permissions')
         .select('*')
         .eq('user_id', selectedUserId);
+      if (isTableMissingError(permError)) {
+        setSnack({ message: 'Permission tables missing. Run CREATE_USER_PERMISSIONS_TABLE.sql in Supabase SQL Editor.', severity: 'error' });
+      }
       if (data) {
         setUserPermissions(data);
         const states: Record<string, boolean> = {};
@@ -432,7 +438,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       setSnack({ message: 'Permission saved.', severity: 'success' });
       await loadPermissions();
     } else {
-      setSnack({ message: 'Failed to save permission.', severity: 'error' });
+      const msg = isTableMissingError(error) ? 'Permission tables missing. Run CREATE_USER_PERMISSIONS_TABLE.sql in Supabase SQL Editor.' : 'Failed to save permission.';
+      setSnack({ message: msg, severity: 'error' });
     }
   };
 
