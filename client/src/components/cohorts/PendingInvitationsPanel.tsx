@@ -3,7 +3,6 @@ import {
   Box,
   Paper,
   Typography,
-  Button,
   List,
   ListItem,
   ListItemAvatar,
@@ -37,7 +36,7 @@ const PendingInvitationsPanel: React.FC<PendingInvitationsPanelProps> = ({
   cohortIds,
   onInvitationProcessed
 }) => {
-  const { userProfile, userRole } = useUserProfile();
+  const { userProfile } = useUserProfile();
   const [invitations, setInvitations] = useState<CohortInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);

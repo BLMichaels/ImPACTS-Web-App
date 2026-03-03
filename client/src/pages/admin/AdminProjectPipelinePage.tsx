@@ -254,28 +254,6 @@ const StatusChip: React.FC<{ status: string }> = ({ status }) => {
   return <Chip size="small" label={status} sx={{ ...colors, fontWeight: 500 }} />;
 };
 
-// Dev stage chip component
-const DevStageChip: React.FC<{ stage: string }> = ({ stage }) => {
-  const colors = getDevStageColor(stage);
-  return stage ? (
-    <Chip 
-      size="small" 
-      label={stage} 
-      sx={{ 
-        ...colors, 
-        fontWeight: 500, 
-        height: 'auto',
-        '& .MuiChip-label': { 
-          whiteSpace: 'normal', 
-          lineHeight: 1.3,
-          py: 0.5,
-          display: 'block'
-        } 
-      }} 
-    />
-  ) : <span>-</span>;
-};
-
 const AdminProjectPipelinePage: React.FC = () => {
   const { currentUser } = useAuth();
   const [tabValue, setTabValue] = useState(0);

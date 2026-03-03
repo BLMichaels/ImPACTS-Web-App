@@ -31,7 +31,7 @@ import {
   AccordionSummary,
   AccordionDetails
 } from '@mui/material';
-import { FileDownload as DownloadIcon, Upload as UploadIcon, Image as ImageIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, School as SchoolIcon, DragIndicator as DragIndicatorIcon } from '@mui/icons-material';
+import { Upload as UploadIcon, Image as ImageIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, School as SchoolIcon, DragIndicator as DragIndicatorIcon } from '@mui/icons-material';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
@@ -81,7 +81,7 @@ interface GapPlanAttachment {
 }
 
 const GapPlanPage: React.FC = () => {
-  const { currentUser } = useAuth();
+  useAuth();
   const { effectiveUserId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);

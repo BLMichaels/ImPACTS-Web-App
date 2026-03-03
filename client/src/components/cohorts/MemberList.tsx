@@ -49,7 +49,7 @@ const MemberList: React.FC<MemberListProps> = ({
   onMemberRemoved,
   loading
 }) => {
-  const { userProfile, userRole } = useUserProfile();
+  const { userProfile } = useUserProfile();
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<CohortMember | null>(null);

@@ -93,7 +93,7 @@ interface EducationPageProps {
 }
 
 const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFilter }) => {
-  const { currentUser } = useAuth();
+  useAuth();
   const { effectiveUserId } = useUserProfile();
   const navigate = useNavigate();
   const { trackLinkClick } = useUsageAnalytics();

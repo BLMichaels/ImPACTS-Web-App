@@ -14,7 +14,7 @@ import {
   CircularProgress,
   Alert
 } from '@mui/material';
-import { CohortMember, User, UserRole } from '../../types/database';
+import { CohortMember, UserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 

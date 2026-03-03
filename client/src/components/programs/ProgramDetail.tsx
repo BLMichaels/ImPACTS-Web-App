@@ -43,7 +43,6 @@ import { useTabVisibility } from '../../hooks/usePermissions';
 import { 
   Program, 
   ProgramMember, 
-  ProgramAnnouncement, 
   UserRole,
   ProgramMemberStatus 
 } from '../../types/database';

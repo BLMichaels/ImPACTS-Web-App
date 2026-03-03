@@ -20,7 +20,7 @@ const getDefaultDashboard = (role: UserRole): string => {
 const NotFoundPage = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { userProfile, userRole } = useUserProfile();
+  const { userRole } = useUserProfile();
 
   const handleGoHome = () => {
     if (!currentUser) {

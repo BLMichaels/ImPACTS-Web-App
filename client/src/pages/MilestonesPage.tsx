@@ -40,7 +40,7 @@ interface MilestoneStage {
 }
 
 const MilestonesPage = () => {
-  const { currentUser } = useAuth();
+  useAuth();
   const { siteId, effectiveUserId } = useUserProfile();
   const { trackChecklist } = useUsageAnalytics();
   const dataLoadedRef = useRef(false);
@@ -505,13 +505,6 @@ const MilestonesPage = () => {
         .then(({ error }) => { if (error) console.error('Checklist save error:', error); });
     }
     if (milestonesUserId) setUserData(milestonesUserId, 'milestones', newStages);
-  };
-
-  const testLocalStorage = async () => {
-    if (milestonesUserId) {
-      const saved = await getUserData(milestonesUserId, 'milestones');
-      console.log('🧪 TEST user_data milestones:', { userId: milestonesUserId, saved: saved ? 'EXISTS' : 'MISSING', data: saved });
-    }
   };
 
   const getStageProgress = (stage: MilestoneStage) => {

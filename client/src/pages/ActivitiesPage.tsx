@@ -29,23 +29,13 @@ import {
   useMediaQuery,
   useTheme,
   Drawer,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider,
-  AppBar,
-  Toolbar,
   Fab
 } from '@mui/material';
 import { 
   Add as AddIcon, 
   Edit as EditIcon, 
   FilterList as FilterIcon,
-  Menu as MenuIcon,
-  Close as CloseIcon,
-  Download as DownloadIcon,
-  PictureAsPdf as PdfIcon
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';

@@ -27,7 +27,6 @@ import {
   Search as SearchIcon,
   School as ProgramIcon,
   Add as AddIcon,
-  Edit as EditIcon,
   Close as CloseIcon
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';

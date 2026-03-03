@@ -476,7 +476,7 @@ const AdminCRMPage: React.FC = () => {
   const [importData, setImportData] = useState<Array<Record<string, string>>>([]);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
   const [importColumnMapping, setImportColumnMapping] = useState<Record<string, string>>({});
-  const [importContactType, setImportContactType] = useState<ContactType>('organization');
+  const [importContactType] = useState<ContactType>('organization');
   const [importInProgress, setImportInProgress] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<{ count: number } | null>(null);

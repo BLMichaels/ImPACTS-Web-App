@@ -17,7 +17,6 @@ import {
   Select,
   MenuItem,
   Container,
-  IconButton,
   CircularProgress,
   useMediaQuery,
   useTheme,
@@ -26,30 +25,21 @@ import {
   Stepper,
   Step,
   StepLabel,
-  StepContent,
-  Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider
+  StepContent
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
   Add as AddIcon,
-  Edit as EditIcon,
   Assessment as AssessmentIcon,
   Warning as WarningIcon,
   CheckCircle as CheckCircleIcon,
   School as SchoolIcon,
   Build as BuildIcon,
-  People as PeopleIcon,
   Policy as PolicyIcon,
   Chat as ChatIcon,
   Folder as FolderIcon,
   Info as InfoIcon,
   Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
   PictureAsPdf as PdfIcon
 } from '@mui/icons-material';
@@ -500,7 +490,7 @@ const SimulationPage: React.FC = () => {
     load();
   }, []);
 
-  const handleStartSimulation = (caseId: string) => {
+  const _handleStartSimulation = (caseId: string) => {
     trackClick?.('Simulation - Start');
     const selectedCase = SIMULATION_CASES.find(c => c.id === caseId);
     setSelectedCase(selectedCase || null);
@@ -1017,7 +1007,7 @@ const SimulationPage: React.FC = () => {
     });
   };
 
-  const getSteps = () => {
+  const _getSteps = () => {
     return ['Simulation Setup', 'Debriefing', 'Gap Identification', 'Action Planning'];
   };
 

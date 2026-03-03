@@ -10,12 +10,10 @@ import {
   Chip,
   Alert,
   Container,
-  Divider,
   Paper
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
-import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -60,7 +58,7 @@ const DOMAIN_MAX_POINTS: Record<string, number> = {
 };
 
 const SnapshotPage = () => {
-  const { currentUser } = useAuth();
+  useAuth();
   const { effectiveUserId } = useUserProfile();
   
   const [activities, setActivities] = useState<any[]>([]);
@@ -219,7 +217,7 @@ const SnapshotPage = () => {
     }
   }, [prsQuestions]);
 
-  const exportToPDF = () => {
+  const _exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
     // In a production app, you'd use a library like jsPDF or html2pdf
     window.print();
@@ -309,8 +307,6 @@ const SnapshotPage = () => {
         const margin = 20;
         const titleY = 30;
         const sectionY = 50;
-        const lineHeight = 12;
-        
         // Helper function to wrap text to fit within page width
         const wrapText = (text: string, maxWidth: number, fontSize: number) => {
           doc.setFontSize(fontSize);
@@ -1798,9 +1794,9 @@ const SnapshotPage = () => {
                           const availableWidth = chartWidth - (padding * 2);
                           const availableHeight = chartHeight - (padding * 2);
                           
-                          // Calculate scales
-                          const minScore = Math.min(...sortedData.map(d => d.score));
-                          const maxScore = Math.max(...sortedData.map(d => d.score));
+                          // Calculate scales (min/max available for future use)
+                          const _minScore = Math.min(...sortedData.map(d => d.score));
+                          const _maxScore = Math.max(...sortedData.map(d => d.score));
                           // Use a fixed range from 0 to 100 for consistent Y-axis scaling
                           const scoreRange = 100;
                           
@@ -2686,7 +2682,6 @@ const SnapshotPage = () => {
                       };
                       
                       const barHeight = `${data.percentage}%`;
-                      const maxLabelLength = Math.max(...Object.keys(domainScores).map(d => d.length));
                       
                       return (
                         <Box 

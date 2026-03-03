@@ -8,7 +8,6 @@ import {
   CardContent,
   Avatar,
   Divider,
-  Button,
   LinearProgress,
   List,
   ListItem,
@@ -19,13 +18,9 @@ import {
   People as PeopleIcon,
   LocalHospital as HospitalIcon,
   Assignment as ActivityIcon,
-  TrendingUp as TrendingIcon,
-  Settings as SettingsIcon,
   Security as SecurityIcon,
-  Storage as StorageIcon,
-  Timeline as TimelineIcon
+  Storage as StorageIcon
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import DashboardResources from '../../components/DashboardResources';
@@ -44,7 +39,6 @@ interface SystemStats {
 const AdminDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { userProfile } = useUserProfile();
-  const navigate = useNavigate();
   
   const [stats, setStats] = useState<SystemStats>({
     totalUsers: 0,

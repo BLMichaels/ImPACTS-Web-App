@@ -38,7 +38,7 @@ import {
   Email as EmailIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import { useUserProfile, UserProfile } from '../context/UserProfileContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import { getUserData } from '../utils/userData';
 import { UserRole } from '../types/database';

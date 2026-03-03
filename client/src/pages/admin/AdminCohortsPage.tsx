@@ -19,8 +19,6 @@ import {
   Autocomplete,
   Chip,
   Avatar,
-  Tabs,
-  Tab,
   Table,
   TableBody,
   TableCell,
@@ -45,7 +43,7 @@ import {
   ViewList as ListIcon,
   GridView as GridIcon
 } from '@mui/icons-material';
-import { Cohort, CohortWithStats, CohortManager, User, UserRole } from '../../types/database';
+import { Cohort, CohortWithStats, CohortManager, UserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { CohortCard, CohortDetail, PendingInvitationsPanel } from '../../components/cohorts';
