@@ -636,6 +636,22 @@ const AdminCRMPage: React.FC = () => {
             }
           }
         }
+        // Load pending invitations (invited but not yet registered)
+        const pendingInvitations: { email: string; role: string; id: string; created_at: string }[] = [];
+        {
+          const { data: invData } = await supabase
+            .from('invitations')
+            .select('id, email, role, created_at')
+            .eq('status', 'pending');
+          if (invData && invData.length > 0) {
+            for (const inv of invData as { id: string; email: string; role: string; created_at: string }[]) {
+              const email = (inv.email ?? '').trim().toLowerCase();
+              if (email) pendingInvitations.push({ ...inv, email });
+            }
+          }
+        }
+        const pendingInvitationEmails = new Set(pendingInvitations.map(i => i.email));
+
         // Append app users (manager, mentor, pecc, admin, hospital_system, hiring_group) so they show in CRM — type must match users.role
         {
           const { data: usersData, error: usersError } = await supabase
@@ -690,6 +706,50 @@ const AdminCRMPage: React.FC = () => {
               const type = roleToContactType[role as string];
               if (type) list[i] = { ...c, type, user_id: user.id };
             }
+          }
+
+          // Mark as Pending: (1) contacts with pending invitation and no user_id, (2) CRM person contacts with no user match
+          for (let i = 0; i < list.length; i++) {
+            const c = list[i];
+            const emailKey = c.email?.trim().toLowerCase() ?? '';
+            const hasUser = !!c.user_id;
+            const hasPendingInvitation = pendingInvitationEmails.has(emailKey);
+            const isPerson = isPersonType(c.type);
+            const isCrmPerson = c.crmCreated && isPerson;
+            if (!hasUser && (hasPendingInvitation || isCrmPerson)) {
+              list[i] = { ...c, status: 'Pending' };
+            }
+          }
+
+          // Add contacts from pending invitations that aren't already in the list (all tiers)
+          const existingEmails = new Set(list.map(c => c.email?.trim().toLowerCase()).filter(Boolean));
+          const invRoleToContactType: Record<string, ContactType> = {
+            admin: 'staff',
+            manager: 'manager',
+            mentor: 'mentor',
+            pecc: 'pecc',
+            hospital_system: 'other',
+            hiring_group: 'other'
+          };
+          for (const inv of pendingInvitations) {
+            if (existingEmails.has(inv.email)) continue;
+            const role = normalizeUserRole(inv.role);
+            const type = invRoleToContactType[role as string] ?? 'other';
+            const created = inv.created_at ? inv.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
+            list.push({
+              id: `invitation:${inv.id}`,
+              type,
+              name: inv.email,
+              email: inv.email,
+              phone: '',
+              status: 'Pending',
+              region: '',
+              createdAt: created,
+              notes: '',
+              organization: '',
+              crmCreated: false
+            });
+            existingEmails.add(inv.email);
           }
         }
       } catch (_) {
