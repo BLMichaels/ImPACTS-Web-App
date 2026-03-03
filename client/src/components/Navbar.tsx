@@ -26,18 +26,15 @@ import {
   Assignment as AssignmentIcon,
   Menu as MenuIcon,
   PlayArrow as PlayIcon,
-  School as SchoolIcon,
   Dashboard as DashboardIcon,
   LocalHospital as HospitalIcon,
   People as PeopleIcon,
   Business as BusinessIcon,
   Timeline as TimelineIcon,
   AttachMoney as MoneyIcon,
-  Security as SecurityIcon,
   Settings as SettingsIcon,
   AccountTree as PipelineIcon,
-  Groups as CohortsIcon,
-  School as ProgramsIcon
+  Groups as CohortsIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -55,7 +52,7 @@ interface NavItem {
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, actualRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser } = useUserProfile();
+  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const { trackLinkClick } = useUsageAnalytics();

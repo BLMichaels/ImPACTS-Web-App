@@ -40,7 +40,6 @@ const ManagerSnapshotPage = lazy(() => import('./pages/manager/ManagerSnapshotPa
 const ManagerOverviewPage = lazy(() => import('./pages/manager/ManagerOverviewPage'));
 const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
 const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
-const ManagerWagesExpensesPage = lazy(() => import('./pages/manager/ManagerWagesExpensesPage'));
 const ManagerCohortsPage = lazy(() => import('./pages/manager/ManagerCohortsPage'));
 
 // Admin Pages (lazy loaded)
@@ -50,14 +49,12 @@ const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 const AdminSnapshotPage = lazy(() => import('./pages/admin/AdminSnapshotPage'));
 const AdminProjectPipelinePage = lazy(() => import('./pages/admin/AdminProjectPipelinePage'));
 const AdminCohortsPage = lazy(() => import('./pages/admin/AdminCohortsPage'));
-const AdminProgramsPage = lazy(() => import('./pages/admin/AdminProgramsPage'));
 
 // Cohorts Page (shared for PECC/Mentor)
 const CohortsPage = lazy(() => import('./pages/CohortsPage'));
 
 // Programs Pages
 const ProgramsPage = lazy(() => import('./pages/ProgramsPage'));
-const ManagerProgramsPage = lazy(() => import('./pages/manager/ManagerProgramsPage'));
 const ManagerPermissionsPage = lazy(() => import('./pages/manager/ManagerPermissionsPage'));
 
 // Hospital System & Hiring Group (lazy)
