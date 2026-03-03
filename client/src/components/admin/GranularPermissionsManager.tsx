@@ -18,20 +18,10 @@ import {
   Chip,
   Alert,
   CircularProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions
+  Snackbar,
+  IconButton
 } from '@mui/material';
 import {
-  Save as SaveIcon,
   Delete as DeleteIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
@@ -88,6 +78,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   // Permission states (for editing)
   const [permissionStates, setPermissionStates] = useState<Record<string, boolean>>({});
   const [tabVisibilityStates, setTabVisibilityStates] = useState<Record<string, boolean>>({});
+  const [snack, setSnack] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
   
   // Common tabs for cohorts/programs (tab_key -> display label)
   const COHORT_PROGRAM_TABS: { key: string; label: string }[] = [
@@ -416,7 +407,10 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       }, { onConflict: 'user_id,permission_key' });
     
     if (!error) {
+      setSnack({ message: 'Permission saved.', severity: 'success' });
       await loadPermissions();
+    } else {
+      setSnack({ message: 'Failed to save permission.', severity: 'error' });
     }
   };
 
@@ -427,10 +421,13 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       .update({ primary_program_id: programId || null, updated_at: new Date().toISOString() })
       .eq('id', selectedUserId);
     if (!error) {
+      setSnack({ message: 'Primary program saved.', severity: 'success' });
       setUsers(prev => prev.map(u => u.id === selectedUserId ? { ...u, primary_program_id: programId || null } : u));
       if (selectedUserId === userProfile?.id && refreshProfile) {
         await refreshProfile();
       }
+    } else {
+      setSnack({ message: 'Failed to save primary program.', severity: 'error' });
     }
   };
   
@@ -450,7 +447,10 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       }, { onConflict: userId ? 'cohort_id,user_id,permission_key' : 'cohort_id,role,permission_key' });
     
     if (!error) {
+      setSnack({ message: 'Cohort permission saved.', severity: 'success' });
       await loadPermissions();
+    } else {
+      setSnack({ message: 'Failed to save cohort permission.', severity: 'error' });
     }
   };
   
@@ -470,31 +470,43 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       }, { onConflict: userId ? 'program_id,user_id,permission_key' : 'program_id,role,permission_key' });
     
     if (!error) {
+      setSnack({ message: 'Program permission saved.', severity: 'success' });
       await loadPermissions();
+    } else {
+      setSnack({ message: 'Failed to save program permission.', severity: 'error' });
     }
   };
   
   const handleSaveTabVisibility = async (tabKey: string, visible: boolean, scope: 'user' | 'cohort' | 'program') => {
     const scopeId = scope === 'user' ? selectedUserId : scope === 'cohort' ? selectedCohortId : selectedProgramId;
     if (!scopeId) return;
-    
     const payload: Partial<ViewTab> = {
       tab_key: tabKey,
       is_visible: visible,
-      granted_by: userProfile?.id,
+      granted_by: userProfile?.id ?? null,
       updated_at: new Date().toISOString()
     };
-    
-    if (scope === 'user') payload.user_id = scopeId;
-    else if (scope === 'cohort') payload.cohort_id = scopeId;
-    else payload.program_id = scopeId;
-    
+    if (scope === 'user') {
+      payload.user_id = scopeId;
+      payload.cohort_id = null;
+      payload.program_id = null;
+    } else if (scope === 'cohort') {
+      payload.user_id = null;
+      payload.cohort_id = scopeId;
+      payload.program_id = null;
+    } else {
+      payload.user_id = null;
+      payload.cohort_id = null;
+      payload.program_id = scopeId;
+    }
     const { error } = await supabase
       .from('view_tabs')
       .upsert(payload, { onConflict: scope === 'user' ? 'user_id,tab_key' : scope === 'cohort' ? 'cohort_id,tab_key' : 'program_id,tab_key' });
-    
     if (!error) {
+      setSnack({ message: 'Tab visibility saved.', severity: 'success' });
       await loadPermissions();
+    } else {
+      setSnack({ message: 'Failed to save tab visibility.', severity: 'error' });
     }
   };
   
@@ -502,7 +514,10 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     const table = type === 'user' ? 'user_permissions' : type === 'cohort' ? 'cohort_permissions' : 'program_permissions';
     const { error } = await supabase.from(table).delete().eq('id', id);
     if (!error) {
+      setSnack({ message: 'Permission removed.', severity: 'success' });
       await loadPermissions();
+    } else {
+      setSnack({ message: 'Failed to remove permission.', severity: 'error' });
     }
   };
   
@@ -1000,8 +1015,17 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       )}
       
       <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-        <Button startIcon={<RefreshIcon />} onClick={loadData} variant="outlined">Refresh</Button>
+        <Button startIcon={<RefreshIcon />} onClick={loadData} variant="outlined" aria-label="Refresh permissions and data">Refresh</Button>
       </Box>
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={5000}
+        onClose={() => setSnack(null)}
+        message={snack?.message}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        ContentProps={{ role: 'alert', 'aria-live': 'polite' }}
+        sx={{ '& .MuiSnackbarContent-message': { color: snack?.severity === 'error' ? 'error.main' : 'inherit' } }}
+      />
     </Box>
   );
 };

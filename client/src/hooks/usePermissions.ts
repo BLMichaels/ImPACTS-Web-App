@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { useUserProfile } from '../context/UserProfileContext';
+import { DEFAULT_ROLE_PERMISSIONS } from '../types/database';
 
 /**
  * Hook to check if a tab is visible for the current user in a cohort or program
@@ -72,41 +73,48 @@ export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: 
 };
 
 /**
- * Hook to check if user has a specific permission
+ * Hook to check if user has a specific permission.
+ * Uses user_has_permission RPC (role + user/cohort/program overrides); falls back to DEFAULT_ROLE_PERMISSIONS when RPC is unavailable.
  */
 export const usePermission = (permissionKey: string, cohortId?: string, programId?: string) => {
   const { userProfile } = useUserProfile();
   const [hasPermission, setHasPermission] = useState(false);
-  
+  const userId = userProfile?.id;
+  const role = userProfile?.role;
+
   useEffect(() => {
-    if (!userProfile?.id) return;
-    
+    if (!userId) return;
+
     const checkPermission = async () => {
       try {
-        // Use the database function if available, otherwise check manually
         const { data, error } = await supabase.rpc('user_has_permission', {
-          p_user_id: userProfile.id,
+          p_user_id: userId,
           p_permission_key: permissionKey,
           p_cohort_id: cohortId || null,
           p_program_id: programId || null
         });
-        
-        if (!error && data !== null) {
+        if (!error && typeof data === 'boolean') {
           setHasPermission(data);
-        } else {
-          // Fallback: check role permissions
-          // This is a simplified check - in production you'd want to check role_permissions table
-          setHasPermission(true);  // Default to true for now
+          return;
         }
-      } catch (error) {
-        console.error('Error checking permission:', error);
-        setHasPermission(true);  // Default to true on error
+        if (role && DEFAULT_ROLE_PERMISSIONS[role]?.includes(permissionKey)) {
+          setHasPermission(true);
+          return;
+        }
+        setHasPermission(false);
+      } catch (err) {
+        console.error('Error checking permission:', err);
+        if (role && DEFAULT_ROLE_PERMISSIONS[role]?.includes(permissionKey)) {
+          setHasPermission(true);
+        } else {
+          setHasPermission(false);
+        }
       }
     };
-    
+
     checkPermission();
-  }, [userProfile?.id, permissionKey, cohortId, programId]);
-  
+  }, [userId, role, permissionKey, cohortId, programId]);
+
   return hasPermission;
 };
 

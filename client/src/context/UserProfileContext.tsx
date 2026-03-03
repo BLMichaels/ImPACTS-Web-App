@@ -188,7 +188,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           setPermissions(DEFAULT_ROLE_PERMISSIONS[normalizedRole] || []);
         }
 
-        // PECC: resolve site and visible tabs (page = hospital/site; tabs set in CRM)
+        // PECC: resolve site and visible tabs. Granular Permissions (view_tabs by user_id) is source of truth; fallback to site_tab_visibility then default all.
         let sid: string | null = null;
         if (normalizedRole === UserRole.PECC) {
           sid = prof.hospital_facility_id ?? null;
@@ -204,7 +204,17 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
             }
           }
           setSiteId(sid);
-          if (sid) {
+          const { data: userTabRows } = await supabase
+            .from('view_tabs')
+            .select('tab_key, is_visible')
+            .eq('user_id', currentUser.id);
+          if (userTabRows && userTabRows.length > 0) {
+            const byKey = (userTabRows as { tab_key: string; is_visible: boolean }[]).reduce((acc, r) => {
+              acc[r.tab_key] = r.is_visible;
+              return acc;
+            }, {} as Record<string, boolean>);
+            setVisibleTabs(PECC_TAB_KEYS.filter(tab => (byKey[tab] ?? true)));
+          } else if (sid) {
             const { data: tabRows, error: tabErr } = await supabase
               .from('site_tab_visibility')
               .select('tab_key, visible')
@@ -312,7 +322,17 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
             sid = (memberRow as { site_id: string }).site_id;
           }
         }
-        if (sid) {
+        const { data: userTabRows } = await supabase
+          .from('view_tabs')
+          .select('tab_key, is_visible')
+          .eq('user_id', userId);
+        if (userTabRows && userTabRows.length > 0) {
+          const byKey = (userTabRows as { tab_key: string; is_visible: boolean }[]).reduce((acc, r) => {
+            acc[r.tab_key] = r.is_visible;
+            return acc;
+          }, {} as Record<string, boolean>);
+          tabs = PECC_TAB_KEYS.filter(tab => (byKey[tab] ?? true));
+        } else if (sid) {
           const { data: tabRows } = await supabase
             .from('site_tab_visibility')
             .select('tab_key, visible')
