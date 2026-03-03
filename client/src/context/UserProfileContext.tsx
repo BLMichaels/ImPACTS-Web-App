@@ -50,7 +50,7 @@ interface UserProfileContextType {
   // View as specific user (Admin, Manager, or Mentor) – see app and data as that user
   viewAsUserId: string | null;
   viewAsUserProfile: UserProfile | null;
-  enterViewAsUser: (userId: string) => Promise<boolean>;
+  enterViewAsUser: (userId: string) => Promise<{ ok: boolean; dashboardPath?: string }>;
   clearViewAsUser: () => void;
   isViewingAsUser: boolean;
   /** When viewing as another user, use this for data load/save; otherwise current user id. */
@@ -291,13 +291,25 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     fetchUserProfile();
   }, [fetchUserProfile]);
 
-  const enterViewAsUser = useCallback(async (userId: string): Promise<boolean> => {
+  const getDefaultDashboardForRole = useCallback((role: UserRole): string => {
+    switch (role) {
+      case UserRole.ADMIN: return '/admin/dashboard';
+      case UserRole.MANAGER: return '/manager/snapshot';
+      case UserRole.MENTOR: return '/mentor/dashboard';
+      case UserRole.PECC: return '/dashboard';
+      case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';
+      case UserRole.HIRING_GROUP: return '/hiring-group/snapshot';
+      default: return '/dashboard';
+    }
+  }, []);
+
+  const enterViewAsUser = useCallback(async (userId: string): Promise<{ ok: boolean; dashboardPath?: string }> => {
     const me = userProfile;
     const isAdmin = me?.role === UserRole.ADMIN || me?.is_admin === true;
     const isManager = me?.role === UserRole.MANAGER;
     const isMentor = me?.role === UserRole.MENTOR;
-    if (!isAdmin && !isManager && !isMentor) return false;
-    if (userId === currentUser?.id || userId === (currentUser as { uid?: string })?.uid) return false;
+    if (!isAdmin && !isManager && !isMentor) return { ok: false };
+    if (userId === currentUser?.id || userId === (currentUser as { uid?: string })?.uid) return { ok: false };
     try {
       // Always fetch fresh from DB so recategorized role (e.g. PECC → staff) is correct; select role and is_admin explicitly
       const { data: profile, error } = await supabase
@@ -305,7 +317,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         .select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, hospital_facility_id, primary_program_id')
         .eq('id', userId)
         .single();
-      if (error || !profile) return false;
+      if (error || !profile) return { ok: false };
       const prof = profile as UserProfile & { hospital_facility_id?: string | null };
       const normalizedRole = normalizeUserRole(prof.role);
       const profWithRole = { ...prof, role: normalizedRole };
@@ -357,11 +369,12 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       setViewAsUserProfile(profWithRole);
       setViewAsSiteId(sid);
       setViewAsVisibleTabs(tabs);
-      return true;
+      const dashboardPath = getDefaultDashboardForRole(normalizedRole);
+      return { ok: true, dashboardPath };
     } catch {
-      return false;
+      return { ok: false };
     }
-  }, [userProfile, currentUser?.id, (currentUser as { uid?: string })?.uid]);
+  }, [userProfile, currentUser?.id, (currentUser as { uid?: string })?.uid, getDefaultDashboardForRole]);
 
   const clearViewAsUser = useCallback(() => {
     setViewAsUserId(null);

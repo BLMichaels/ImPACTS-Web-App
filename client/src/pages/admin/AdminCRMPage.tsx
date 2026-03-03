@@ -3749,8 +3749,8 @@ const AdminCRMPage: React.FC = () => {
                     startIcon={<VisibilityIcon />}
                     fullWidth
                     onClick={async () => {
-                      const ok = await enterViewAsUser(detailContactUserId!);
-                      if (ok) navigate('/');
+                      const result = await enterViewAsUser(detailContactUserId!);
+                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
                     }}
                   >
                     View as this user
@@ -3764,8 +3764,8 @@ const AdminCRMPage: React.FC = () => {
                     startIcon={<VisibilityIcon />}
                     fullWidth
                     onClick={async () => {
-                      const ok = await enterViewAsUser(detailViewAsUserOptions[0].id);
-                      if (ok) navigate('/');
+                      const result = await enterViewAsUser(detailViewAsUserOptions[0].id);
+                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
                     }}
                   >
                     View as {detailViewAsUserOptions[0].label}
@@ -3778,7 +3778,7 @@ const AdminCRMPage: React.FC = () => {
                     </Button>
                     <Menu anchorEl={viewAsMenuAnchor} open={Boolean(viewAsMenuAnchor)} onClose={() => setViewAsMenuAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
                       {detailViewAsUserOptions.map((opt) => (
-                        <MenuItem key={opt.id} onClick={async () => { setViewAsMenuAnchor(null); const ok = await enterViewAsUser(opt.id); if (ok) navigate('/'); }}>
+                        <MenuItem key={opt.id} onClick={async () => { setViewAsMenuAnchor(null); const result = await enterViewAsUser(opt.id); if (result.ok && result.dashboardPath) navigate(result.dashboardPath); }}>
                           View as {opt.label}
                         </MenuItem>
                       ))}
@@ -4496,16 +4496,16 @@ const AdminCRMPage: React.FC = () => {
                   )}
                   {detailContact && canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && (
                     <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
-                      const ok = await enterViewAsUser(detailContactUserId);
-                      if (ok) navigate('/');
+                      const result = await enterViewAsUser(detailContactUserId);
+                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
                     }}>
                       View as this user
                     </Button>
                   )}
                   {detailContact && canViewAsUser && detailViewAsUserOptions.length === 1 && (
                     <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
-                      const ok = await enterViewAsUser(detailViewAsUserOptions[0].id);
-                      if (ok) navigate('/');
+                      const result = await enterViewAsUser(detailViewAsUserOptions[0].id);
+                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
                     }}>
                       View as {detailViewAsUserOptions[0].label}
                     </Button>
@@ -4517,7 +4517,7 @@ const AdminCRMPage: React.FC = () => {
                       </Button>
                       <Menu anchorEl={viewAsMenuAnchor} open={Boolean(viewAsMenuAnchor)} onClose={() => setViewAsMenuAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
                         {detailViewAsUserOptions.map((opt) => (
-                          <MenuItem key={opt.id} onClick={async () => { setViewAsMenuAnchor(null); const ok = await enterViewAsUser(opt.id); if (ok) navigate('/'); }}>
+                          <MenuItem key={opt.id} onClick={async () => { setViewAsMenuAnchor(null); const result = await enterViewAsUser(opt.id); if (result.ok && result.dashboardPath) navigate(result.dashboardPath); }}>
                             View as {opt.label}
                           </MenuItem>
                         ))}

@@ -570,8 +570,8 @@ const AdminTeamTab: React.FC = () => {
         <MenuItem onClick={async () => {
           if (!selectedUser?.id) return;
           setAnchorEl(null);
-          const ok = await enterViewAsUser(selectedUser.id);
-          if (ok) navigate('/');
+          const result = await enterViewAsUser(selectedUser.id);
+          if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
         }}>
           <VisibilityIcon sx={{ mr: 1, fontSize: 18 }} /> View as this user
         </MenuItem>
@@ -747,8 +747,8 @@ const AdminTeamTab: React.FC = () => {
                 <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)}>Edit user</Button>
                   <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
-                    const ok = await enterViewAsUser(selectedUser.id);
-                    if (ok) { setProfileDrawerOpen(false); navigate('/'); }
+                    const result = await enterViewAsUser(selectedUser.id);
+                    if (result.ok && result.dashboardPath) { setProfileDrawerOpen(false); navigate(result.dashboardPath); }
                   }}>
                     View as this user
                   </Button>
