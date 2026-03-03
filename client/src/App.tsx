@@ -13,6 +13,7 @@ import { UserRole } from './types/database';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
+import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -25,7 +26,6 @@ import ActivitiesPage from './pages/ActivitiesPage';
 import GapPlanPage from './pages/GapPlanPage';
 import SnapshotPage from './pages/SnapshotPage';
 import SimulationPage from './pages/SimulationPage';
-import EducationPage from './pages/EducationPage';
 
 // Mentor Pages (lazy loaded)
 const MentorDashboardPage = lazy(() => import('./pages/mentor/MentorDashboardPage'));
@@ -194,10 +194,30 @@ function App() {
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <UsageAnalyticsProvider>
             <Suspense fallback={<LoadingSpinner />}>
+              <ErrorBoundary>
               <Navbar />
               <ScrollToTop />
+              <Box
+                component="a"
+                href="#main-content"
+                sx={{
+                  position: 'fixed',
+                  left: -9999,
+                  top: 8,
+                  zIndex: 9999,
+                  padding: 2,
+                  bgcolor: 'background.paper',
+                  color: 'primary.main',
+                  border: 1,
+                  borderColor: 'divider',
+                  textDecoration: 'none',
+                  '&:focus': { left: 8 }
+                }}
+              >
+                Skip to main content
+              </Box>
               <Container sx={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 64px)' }}>
-                <Box component="main" sx={{ flex: 1 }}>
+                <Box component="main" id="main-content" sx={{ flex: 1 }}>
                 <Routes>
                   {/* Public Routes */}
                   <Route path="/" element={<RoleBasedRedirect />} />
@@ -265,6 +285,7 @@ function App() {
                 </Box>
                 <Footer />
               </Container>
+              </ErrorBoundary>
             </Suspense>
             </UsageAnalyticsProvider>
           </Router>

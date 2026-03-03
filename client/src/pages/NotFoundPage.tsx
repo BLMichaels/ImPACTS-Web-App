@@ -1,9 +1,34 @@
 import React from 'react';
 import { Box, Typography, Button, Container } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useUserProfile } from '../context/UserProfileContext';
+import { UserRole } from '../types/database';
+
+const getDefaultDashboard = (role: UserRole): string => {
+  switch (role) {
+    case UserRole.ADMIN: return '/admin/dashboard';
+    case UserRole.MANAGER: return '/manager/snapshot';
+    case UserRole.MENTOR: return '/mentor/dashboard';
+    case UserRole.PECC: return '/dashboard';
+    case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';
+    case UserRole.HIRING_GROUP: return '/hiring-group/snapshot';
+    default: return '/dashboard';
+  }
+};
 
 const NotFoundPage = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const { userProfile, userRole } = useUserProfile();
+
+  const handleGoHome = () => {
+    if (!currentUser) {
+      navigate('/login');
+    } else {
+      navigate(getDefaultDashboard(userRole ?? UserRole.PECC));
+    }
+  };
 
   return (
     <Container>
@@ -17,8 +42,8 @@ const NotFoundPage = () => {
         <Typography variant="body1" sx={{ mb: 4 }}>
           The page you are looking for does not exist.
         </Typography>
-        <Button variant="contained" onClick={() => navigate('/dashboard')}>
-          Go to Dashboard
+        <Button variant="contained" onClick={handleGoHome}>
+          {currentUser ? 'Go to Dashboard' : 'Go to Login'}
         </Button>
       </Box>
     </Container>

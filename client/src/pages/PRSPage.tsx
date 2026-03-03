@@ -46,6 +46,7 @@ import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ExpandMore as E
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
+import { useUserProfile } from '../context/UserProfileContext';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -1364,6 +1365,7 @@ export const ASSESSMENT_QUESTIONS: AssessmentQuestion[] = [
 
 const PRSPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { userProfile } = useUserProfile();
   const [questions, setQuestions] = useState<AssessmentQuestion[]>(ASSESSMENT_QUESTIONS);
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
@@ -1828,7 +1830,7 @@ const PRSPage: React.FC = () => {
       const { score } = calculateReadinessScore();
       const submissionData = {
         questions: questions,
-        hospitalName: 'ImPACTS Hospital', // TODO: Get from user profile
+        hospitalName: userProfile?.hospital_name ?? 'ImPACTS Hospital',
         submissionDate: new Date().toISOString(),
         score: score
       };
