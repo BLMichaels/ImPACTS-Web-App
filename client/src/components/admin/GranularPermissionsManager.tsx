@@ -174,6 +174,43 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
             console.warn('[GranularPermissions] get_users_for_granular_permissions failed; using table. Run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase to show all tiers.', rpcError.message);
           }
         }
+        // Fallback: if RPC/table returned empty or only admins, try CRM contacts (users by email)
+        const hasNonAdmin = usersData?.some((u: { role?: string }) => {
+          const r = String(u.role || '').toLowerCase();
+          return r && r !== 'admin';
+        });
+        const shouldTryCrmFallback = !usersData || usersData.length === 0 || (usersData.length > 0 && !hasNonAdmin);
+        if (shouldTryCrmFallback) {
+          const { data: crmRows } = await supabase
+            .from('crm_organizations')
+            .select('email')
+            .in('contact_type', ['staff', 'manager', 'mentor', 'pecc', 'other']);
+          const emails = [...new Set((crmRows || []).map((r: { email?: string }) => (r.email || '').trim()).filter(Boolean))];
+          if (emails.length > 0) {
+            const { data: byEmail } = await supabase.rpc('get_users_by_emails_for_admin', { p_emails: emails });
+            if (byEmail && Array.isArray(byEmail) && byEmail.length > 0) {
+              const existingIds = new Set((usersData || []).map((u: { id: string }) => u.id));
+              const merged = [...(usersData || [])];
+              for (const u of byEmail as typeof usersData) {
+                if (!existingIds.has(u.id)) {
+                  existingIds.add(u.id);
+                  merged.push(u);
+                }
+              }
+              usersData = merged;
+            }
+          }
+        }
+        // If we have initialSelectedUserId but user not in list, fetch that user directly
+        if (initialSelectedUserId && usersData) {
+          const hasUser = usersData.some((u: { id: string }) => u.id === initialSelectedUserId);
+          if (!hasUser) {
+            const { data: singleUser } = await supabase.rpc('get_user_by_id_for_admin', { p_user_id: initialSelectedUserId });
+            if (singleUser && Array.isArray(singleUser) && singleUser.length > 0) {
+              usersData = [...usersData, singleUser[0] as typeof usersData[0]];
+            }
+          }
+        }
       } else {
         let usersQuery = supabase.from('users').select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id');
         if (mode === 'manager' && userProfile?.id) {

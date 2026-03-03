@@ -8,6 +8,7 @@ import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database';
 import AdminTeamTab from './AdminTeamTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
+import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
 import {
   Alert,
   Box,
@@ -3798,6 +3799,14 @@ const AdminCRMPage: React.FC = () => {
                   </Button>
                 )}
               </Box>
+              {isPersonType(detailContact.type) && detailContactUserId && (
+                <ContactGranularPermissions
+                  userId={detailContactUserId}
+                  contactName={contactDisplayName(detailContact)}
+                  userRole={CONTACT_TYPE_TO_USER_ROLE[detailContact.type] || 'pecc'}
+                  isAdmin={detailContact.is_admin ?? false}
+                />
+              )}
             </Box>
           </Box>
         )}
@@ -4427,6 +4436,14 @@ const AdminCRMPage: React.FC = () => {
                   </Grid>
                 )}
               </Grid>
+              {isPersonType(detailContact.type) && detailContactUserId && (
+                <ContactGranularPermissions
+                  userId={detailContactUserId}
+                  contactName={contactDisplayName(detailContact)}
+                  userRole={CONTACT_TYPE_TO_USER_ROLE[detailContact.type] || 'pecc'}
+                  isAdmin={detailContact.is_admin ?? false}
+                />
+              )}
               {/* PECC page (site) settings: tab visibility + shared access — only for hospital contacts */}
               {detailContact.type === 'hospital' && (detailContact.facilityId != null || detailContact.id) && (
                 <Grid container spacing={3} sx={{ mt: 2 }}>
