@@ -77,3 +77,31 @@ $$;
 
 COMMENT ON FUNCTION public.get_users_by_emails_for_admin(TEXT[]) IS
   'Returns users matching the given emails when caller is admin/manager or is_admin. Fallback for GPM user list.';
+
+-- 6. RPC to get all CRM contacts (for GPM - allows setting permissions before they have accounts)
+CREATE OR REPLACE FUNCTION public.get_crm_contacts_for_granular_permissions()
+RETURNS TABLE (
+  email TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  contact_type TEXT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    TRIM(COALESCE(c.email, '')),
+    c.first_name,
+    c.last_name,
+    COALESCE(c.contact_type, 'other')
+  FROM public.crm_organizations c
+  WHERE public.current_user_can_view_all_users()
+  AND c.contact_type IN ('staff', 'manager', 'mentor', 'pecc', 'other')
+  AND TRIM(COALESCE(c.email, '')) != ''
+  ORDER BY LOWER(COALESCE(c.last_name, '')), LOWER(COALESCE(c.first_name, '')), LOWER(c.email);
+$$;
+
+COMMENT ON FUNCTION public.get_crm_contacts_for_granular_permissions() IS
+  'Returns all CRM contacts with email for Granular Permissions. Enables setting permissions before users create accounts.';

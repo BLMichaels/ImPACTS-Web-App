@@ -896,8 +896,8 @@ const AdminCRMPage: React.FC = () => {
       setContactUsage(null);
       return;
     }
-    // Use only platform user id (never CRM org id) so usage and view-as are correct
-    const userId = isPerson ? (detailContactUserId ?? c.user_id ?? (c.crmCreated ? null : c.id)) : null;
+    // Use only platform user id (never CRM org id) so usage and view-as are correct; pending users have no usage yet
+    const userId = isPerson ? (detailContactUserId?.startsWith('pending:') ? null : (detailContactUserId ?? c.user_id ?? (c.crmCreated ? null : c.id))) : null;
     if (isPerson && !userId) {
       setContactUsage(null);
       setContactUsageLoading(false);
@@ -998,7 +998,7 @@ const AdminCRMPage: React.FC = () => {
         }
         if (cancelled) return;
         if (!res.error && res.data?.id) setDetailContactUserId(res.data.id);
-        else setDetailContactUserId(null);
+        else setDetailContactUserId(`pending:${c.email.trim().toLowerCase()}`);
       } catch {
         if (!cancelled) setDetailContactUserId(null);
       }
@@ -1091,7 +1091,7 @@ const AdminCRMPage: React.FC = () => {
 
   // Load primary program and programs list when viewing a person with user id (for CRM primary program selector)
   useEffect(() => {
-    if (!detailContactUserId) {
+    if (!detailContactUserId || detailContactUserId.startsWith('pending:')) {
       setDetailUserPrimaryProgramId(null);
       setDetailUserPrimaryProgramLogoUrl(null);
       setCrmProgramsForPrimary([]);
@@ -1117,7 +1117,7 @@ const AdminCRMPage: React.FC = () => {
   }, [detailContactUserId]);
 
   const handleCrmSavePrimaryProgram = async (programId: string | null) => {
-    if (!detailContactUserId) return;
+    if (!detailContactUserId || detailContactUserId.startsWith('pending:')) return;
     const { error } = await supabase.from('users').update({ primary_program_id: programId, updated_at: new Date().toISOString() }).eq('id', detailContactUserId);
     if (!error) {
       setDetailUserPrimaryProgramId(programId);
@@ -3664,7 +3664,7 @@ const AdminCRMPage: React.FC = () => {
                   />
                 </ListItem>
               )}
-              {isPersonType(detailContact.type) && detailContactUserId && (
+              {isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
                 <ListItem disablePadding sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <Box sx={{ width: '100%' }}>
                     <ListItemText primary="Primary program (navbar logo)" secondary="Logo shown in top-left for this user." secondaryTypographyProps={{ variant: 'body2' }} />
@@ -3742,7 +3742,7 @@ const AdminCRMPage: React.FC = () => {
                     Manage permissions
                   </Button>
                 )}
-                {canViewAsUser && (isPersonType(detailContact.type) && detailContactUserId) && (
+                {canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
                   <Button
                     size="small"
                     variant="contained"
@@ -4511,7 +4511,7 @@ const AdminCRMPage: React.FC = () => {
                       Manage permissions
                     </Button>
                   )}
-                  {detailContact && canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && (
+                  {detailContact && canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
                     <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
                       const result = await enterViewAsUser(detailContactUserId);
                       if (result.ok && result.dashboardPath) navigate(result.dashboardPath);

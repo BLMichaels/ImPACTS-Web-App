@@ -34,6 +34,8 @@ const PERMISSION_GROUPS: Record<string, string[]> = {
   'Administration': [PERMISSIONS.MANAGE_PERMISSIONS, PERMISSIONS.SYSTEM_SETTINGS]
 };
 
+const PENDING_USER_PREFIX = 'pending:';
+
 const TAB_LABELS: Record<string, string> = {
   activities: 'Activities',
   snapshot: 'Snapshot',
@@ -65,14 +67,44 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
   const role = normalizeUserRole(userRole as UserRole) as UserRole;
   const defaultPerms = DEFAULT_ROLE_PERMISSIONS[role] || [];
 
+  const isPending = userId.startsWith(PENDING_USER_PREFIX);
+  const email = isPending ? userId.slice(PENDING_USER_PREFIX.length) : '';
+
   const loadPermissions = async () => {
     try {
-      const [permsRes, tabsRes] = await Promise.all([
-        supabase.from('user_permissions').select('*').eq('user_id', userId),
-        supabase.from('view_tabs').select('*').eq('user_id', userId).is('cohort_id', null).is('program_id', null)
-      ]);
-      setUserPermissions((permsRes.data || []) as UserPermission[]);
-      setViewTabs((tabsRes.data || []) as ViewTab[]);
+      if (isPending && email) {
+        const [permsRes, tabsRes] = await Promise.all([
+          supabase.from('pending_user_permissions').select('*').eq('email', email),
+          supabase.from('pending_view_tabs').select('*').eq('email', email)
+        ]);
+        setUserPermissions((permsRes.data || []).map((p: { id: string; permission_key: string; is_enabled: boolean; granted_by?: string | null; granted_at?: string; updated_at?: string }) => ({
+          id: p.id,
+          user_id: userId,
+          permission_key: p.permission_key,
+          is_enabled: p.is_enabled,
+          granted_by: p.granted_by ?? null,
+          granted_at: p.granted_at ?? new Date().toISOString(),
+          updated_at: p.updated_at ?? new Date().toISOString()
+        })) as UserPermission[]);
+        setViewTabs((tabsRes.data || []).map((t: { id: string; tab_key: string; is_visible: boolean; granted_by?: string | null; granted_at?: string; updated_at?: string }) => ({
+          id: t.id,
+          user_id: userId,
+          cohort_id: null,
+          program_id: null,
+          tab_key: t.tab_key,
+          is_visible: t.is_visible,
+          granted_by: t.granted_by ?? null,
+          granted_at: t.granted_at ?? new Date().toISOString(),
+          updated_at: t.updated_at ?? new Date().toISOString()
+        })) as ViewTab[]);
+      } else {
+        const [permsRes, tabsRes] = await Promise.all([
+          supabase.from('user_permissions').select('*').eq('user_id', userId),
+          supabase.from('view_tabs').select('*').eq('user_id', userId).is('cohort_id', null).is('program_id', null)
+        ]);
+        setUserPermissions((permsRes.data || []) as UserPermission[]);
+        setViewTabs((tabsRes.data || []) as ViewTab[]);
+      }
     } catch (e) {
       console.error('ContactGranularPermissions load error:', e);
       setSnack({ message: 'Failed to load permissions.', severity: 'error' });
@@ -86,6 +118,22 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
   }, [userId]);
 
   const handleSavePermission = async (permissionKey: string, enabled: boolean) => {
+    if (isPending && email) {
+      const { error } = await supabase.from('pending_user_permissions').upsert({
+        email: email.trim().toLowerCase(),
+        permission_key: permissionKey,
+        is_enabled: enabled,
+        granted_by: userProfile?.id,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'email,permission_key' });
+      if (!error) {
+        setSnack({ message: 'Permission saved. Will apply when they create an account.', severity: 'success' });
+        await loadPermissions();
+      } else {
+        setSnack({ message: 'Failed to save.', severity: 'error' });
+      }
+      return;
+    }
     const { error } = await supabase.from('user_permissions').upsert({
       user_id: userId,
       permission_key: permissionKey,
@@ -102,6 +150,22 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
   };
 
   const handleSaveTabVisibility = async (tabKey: string, visible: boolean) => {
+    if (isPending && email) {
+      const { error } = await supabase.from('pending_view_tabs').upsert({
+        email: email.trim().toLowerCase(),
+        tab_key: tabKey,
+        is_visible: visible,
+        granted_by: userProfile?.id,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'email,tab_key' });
+      if (!error) {
+        setSnack({ message: 'Tab visibility saved. Will apply when they create an account.', severity: 'success' });
+        await loadPermissions();
+      } else {
+        setSnack({ message: 'Failed to save tab visibility.', severity: 'error' });
+      }
+      return;
+    }
     const { error } = await supabase.from('view_tabs').upsert({
       user_id: userId,
       tab_key: tabKey,

@@ -29,6 +29,8 @@ import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { UserRole, normalizeUserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User } from '../../types/database';
 
+const PENDING_USER_PREFIX = 'pending:';
+
 const PERMISSION_GROUPS: Record<string, string[]> = {
   'Dashboard & Views': [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_AGGREGATED_DATA, PERMISSIONS.VIEW_SNAPSHOT, PERMISSIONS.EXPORT_DATA],
   'Activities': [PERMISSIONS.VIEW_OWN_ACTIVITIES, PERMISSIONS.VIEW_TEAM_ACTIVITIES, PERMISSIONS.VIEW_ALL_ACTIVITIES, PERMISSIONS.MANAGE_OWN_ACTIVITIES],
@@ -109,6 +111,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   };
 
   const getEffectiveRoleLabel = (u: User): string => {
+    if (isPendingUser(u.id)) return `${u.role || '—'} (pending account)`;
     if (u.is_admin || isEffectivelyAdmin(u)) return 'Admin';
     const email = (u.email || '').trim().toLowerCase();
     if (email && staffEmails.has(email)) return 'Staff';
@@ -148,62 +151,91 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         primary_program_id?: string | null;
       }> | null = null;
       if (mode === 'admin') {
+        // Load all CRM contacts (primary list - includes those without accounts yet)
+        const { data: crmContacts, error: crmError } = await supabase.rpc('get_crm_contacts_for_granular_permissions');
+        if (crmError) {
+          console.warn('[GranularPermissions] get_crm_contacts_for_granular_permissions failed. Run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase.', crmError);
+        }
+        const crmList = (crmContacts || []) as Array<{ email: string; first_name: string | null; last_name: string | null; contact_type: string }>;
+
+        // Load users (for those who have accounts)
+        let usersFromDb: Array<{
+          id: string;
+          email: string;
+          first_name: string;
+          last_name: string;
+          phone: string | null;
+          role: string;
+          is_admin?: boolean;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          last_login: string | null;
+          manager_id: string | null;
+          mentor_id: string | null;
+          manager_id_for_pecc: string | null;
+          primary_program_id?: string | null;
+        }> = [];
         const { data: rpcData, error: rpcError } = await supabase.rpc('get_users_for_granular_permissions');
         if (!rpcError && rpcData != null && Array.isArray(rpcData) && rpcData.length > 0) {
-          usersData = rpcData as Array<{
-            id: string;
-            email: string;
-            first_name: string;
-            last_name: string;
-            phone: string | null;
-            role: string;
-            is_admin?: boolean;
-            is_active: boolean;
-            created_at: string;
-            updated_at: string;
-            last_login: string | null;
-            manager_id: string | null;
-            mentor_id: string | null;
-            manager_id_for_pecc: string | null;
-            primary_program_id?: string | null;
-          }>;
+          usersFromDb = rpcData as typeof usersFromDb;
         } else {
           const { data: tableData } = await supabase.from('users').select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id');
-          if (tableData != null && Array.isArray(tableData)) usersData = tableData;
-          if (usersData != null && usersData.length > 0 && rpcError) {
-            console.warn('[GranularPermissions] get_users_for_granular_permissions failed; using table. Run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase to show all tiers.', rpcError.message);
+          if (tableData != null && Array.isArray(tableData)) usersFromDb = tableData as typeof usersFromDb;
+          if (rpcError) {
+            console.warn('[GranularPermissions] get_users_for_granular_permissions failed; using table. Run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase.', rpcError.message);
           }
         }
-        // Fallback: if RPC/table returned empty or only admins, try CRM contacts (users by email)
-        const hasNonAdmin = usersData?.some((u: { role?: string }) => {
-          const r = String(u.role || '').toLowerCase();
-          return r && r !== 'admin';
+
+        // Build merged list: CRM contacts as primary; use user row when email matches, else pending
+        const usersByEmail = new Map<string, (typeof usersFromDb)[0]>();
+        usersFromDb.forEach(u => {
+          const e = (u.email || '').trim().toLowerCase();
+          if (e) usersByEmail.set(e, u);
         });
-        const shouldTryCrmFallback = !usersData || usersData.length === 0 || (usersData.length > 0 && !hasNonAdmin);
-        if (shouldTryCrmFallback) {
-          const { data: crmRows } = await supabase
-            .from('crm_organizations')
-            .select('email')
-            .in('contact_type', ['staff', 'manager', 'mentor', 'pecc', 'other']);
-          const emails = [...new Set((crmRows || []).map((r: { email?: string }) => (r.email || '').trim()).filter(Boolean))];
-          if (emails.length > 0) {
-            const { data: byEmail } = await supabase.rpc('get_users_by_emails_for_admin', { p_emails: emails });
-            if (byEmail && Array.isArray(byEmail) && byEmail.length > 0) {
-              const existingIds = new Set((usersData || []).map((u: { id: string }) => u.id));
-              const merged = [...(usersData || [])];
-              const byEmailArr = byEmail as Array<{ id: string; email: string; first_name?: string; last_name?: string; phone?: string | null; role: string; is_admin?: boolean; is_active: boolean; created_at: string; updated_at: string; last_login?: string | null; manager_id?: string | null; mentor_id?: string | null; manager_id_for_pecc?: string | null; primary_program_id?: string | null }>;
-              for (const u of byEmailArr) {
-                if (!existingIds.has(u.id)) {
-                  existingIds.add(u.id);
-                  merged.push(u as (typeof merged)[0]);
-                }
-              }
-              usersData = merged;
-            }
+        const seenEmails = new Set<string>();
+        const merged: typeof usersFromDb = [];
+        for (const c of crmList) {
+          const email = (c.email || '').trim();
+          const emailLower = email.toLowerCase();
+          if (!email || seenEmails.has(emailLower)) continue;
+          seenEmails.add(emailLower);
+          const existingUser = usersByEmail.get(emailLower);
+          if (existingUser) {
+            merged.push(existingUser);
+          } else {
+            const normEmail = email.trim().toLowerCase();
+            merged.push({
+              id: `${PENDING_USER_PREFIX}${normEmail}`,
+              email: normEmail,
+              first_name: c.first_name ?? '',
+              last_name: c.last_name ?? '',
+              phone: null,
+              role: c.contact_type || 'pecc',
+              is_admin: false,
+              is_active: true,
+              created_at: '',
+              updated_at: '',
+              last_login: null,
+              manager_id: null,
+              mentor_id: null,
+              manager_id_for_pecc: null,
+              primary_program_id: null
+            });
           }
         }
+        // Add users not in CRM
+        for (const u of usersFromDb) {
+          const e = (u.email || '').trim().toLowerCase();
+          if (e && !seenEmails.has(e)) {
+            seenEmails.add(e);
+            merged.push(u);
+          }
+        }
+        usersData = merged;
+
         // If we have initialSelectedUserId but user not in list, fetch that user directly
-        if (initialSelectedUserId && usersData) {
+        if (initialSelectedUserId && !initialSelectedUserId.startsWith(PENDING_USER_PREFIX) && usersData) {
           const hasUser = usersData.some((u: { id: string }) => u.id === initialSelectedUserId);
           if (!hasUser) {
             const { data: singleUser } = await supabase.rpc('get_user_by_id_for_admin', { p_user_id: initialSelectedUserId });
@@ -371,29 +403,78 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   const isTableMissingError = (err: { code?: string; message?: string; status?: number } | null) =>
     err && (err.code === 'PGRST301' || err.status === 404 || /not found|relation|404/i.test(String(err.message ?? '')));
 
+  const isPendingUser = (id: string) => id.startsWith(PENDING_USER_PREFIX);
+  const getEmailFromPendingId = (id: string) => id.startsWith(PENDING_USER_PREFIX) ? id.slice(PENDING_USER_PREFIX.length) : '';
+
   const loadPermissions = async () => {
     if (selectedUserId) {
-      const { data, error: permError } = await supabase
-        .from('user_permissions')
-        .select('*')
-        .eq('user_id', selectedUserId);
-      if (isTableMissingError(permError)) {
-        setSnack({ message: 'Permission tables missing. Run CREATE_USER_PERMISSIONS_TABLE.sql in Supabase SQL Editor.', severity: 'error' });
+      const pending = isPendingUser(selectedUserId);
+      const email = getEmailFromPendingId(selectedUserId);
+
+      if (pending && email) {
+        // Load from pending_user_permissions and pending_view_tabs
+        const { data: permData, error: permError } = await supabase
+          .from('pending_user_permissions')
+          .select('*')
+          .eq('email', email);
+        if (isTableMissingError(permError)) {
+          setSnack({ message: 'Run PENDING_USER_PERMISSIONS_MIGRATION.sql in Supabase SQL Editor.', severity: 'error' });
+        }
+        if (permData) {
+          setUserPermissions(permData.map((p: { id: string; permission_key: string; is_enabled: boolean; granted_by?: string | null; granted_at?: string; updated_at?: string }) => ({
+            id: p.id,
+            user_id: selectedUserId,
+            permission_key: p.permission_key,
+            is_enabled: p.is_enabled,
+            granted_by: p.granted_by ?? null,
+            granted_at: p.granted_at ?? new Date().toISOString(),
+            updated_at: p.updated_at ?? new Date().toISOString()
+          })));
+          const states: Record<string, boolean> = {};
+          permData.forEach((p: { permission_key: string; is_enabled: boolean }) => { states[p.permission_key] = p.is_enabled; });
+          setPermissionStates(states);
+        }
+        const { data: tabsData } = await supabase
+          .from('pending_view_tabs')
+          .select('*')
+          .eq('email', email);
+        setViewTabs((tabsData || []).map((t: { id: string; tab_key: string; is_visible: boolean; granted_by?: string | null; granted_at?: string; updated_at?: string }) => ({
+          id: t.id,
+          user_id: selectedUserId,
+          cohort_id: null,
+          program_id: null,
+          tab_key: t.tab_key,
+          is_visible: t.is_visible,
+          granted_by: t.granted_by ?? null,
+          granted_at: t.granted_at ?? new Date().toISOString(),
+          updated_at: t.updated_at ?? new Date().toISOString()
+        })));
+        const tabStates: Record<string, boolean> = {};
+        (tabsData || []).forEach((t: { tab_key: string; is_visible: boolean }) => { tabStates[t.tab_key] = t.is_visible; });
+        setTabVisibilityStates(prev => ({ ...prev, ...tabStates }));
+      } else {
+        const { data, error: permError } = await supabase
+          .from('user_permissions')
+          .select('*')
+          .eq('user_id', selectedUserId);
+        if (isTableMissingError(permError)) {
+          setSnack({ message: 'Permission tables missing. Run CREATE_USER_PERMISSIONS_TABLE.sql in Supabase SQL Editor.', severity: 'error' });
+        }
+        if (data) {
+          setUserPermissions(data);
+          const states: Record<string, boolean> = {};
+          data.forEach(p => { states[p.permission_key] = p.is_enabled; });
+          setPermissionStates(states);
+        }
+        const { data: userTabsData } = await supabase
+          .from('view_tabs')
+          .select('*')
+          .eq('user_id', selectedUserId);
+        setViewTabs(userTabsData || []);
+        const tabStates: Record<string, boolean> = {};
+        (userTabsData || []).forEach(t => { tabStates[t.tab_key] = t.is_visible; });
+        setTabVisibilityStates(prev => ({ ...prev, ...tabStates }));
       }
-      if (data) {
-        setUserPermissions(data);
-        const states: Record<string, boolean> = {};
-        data.forEach(p => { states[p.permission_key] = p.is_enabled; });
-        setPermissionStates(states);
-      }
-      const { data: userTabsData } = await supabase
-        .from('view_tabs')
-        .select('*')
-        .eq('user_id', selectedUserId);
-      setViewTabs(userTabsData || []);
-      const tabStates: Record<string, boolean> = {};
-      (userTabsData || []).forEach(t => { tabStates[t.tab_key] = t.is_visible; });
-      setTabVisibilityStates(prev => ({ ...prev, ...tabStates }));
     }
     
     if (selectedCohortId) {
@@ -461,7 +542,30 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   
   const handleSaveUserPermission = async (permissionKey: string, enabled: boolean) => {
     if (!selectedUserId) return;
-    
+
+    const pending = isPendingUser(selectedUserId);
+    const email = getEmailFromPendingId(selectedUserId);
+
+    if (pending && email) {
+      const { error } = await supabase
+        .from('pending_user_permissions')
+        .upsert({
+          email: email.trim().toLowerCase(),
+          permission_key: permissionKey,
+          is_enabled: enabled,
+          granted_by: userProfile?.id,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'email,permission_key' });
+      if (!error) {
+        setSnack({ message: 'Permission saved. Will apply when they create an account.', severity: 'success' });
+        await loadPermissions();
+      } else {
+        const msg = isTableMissingError(error) ? 'Run PENDING_USER_PERMISSIONS_MIGRATION.sql in Supabase SQL Editor.' : 'Failed to save permission.';
+        setSnack({ message: msg, severity: 'error' });
+      }
+      return;
+    }
+
     const { error } = await supabase
       .from('user_permissions')
       .upsert({
@@ -471,7 +575,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         granted_by: userProfile?.id,
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id,permission_key' });
-    
+
     if (!error) {
       setSnack({ message: 'Permission saved.', severity: 'success' });
       await loadPermissions();
@@ -482,7 +586,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   };
 
   const handleSavePrimaryProgram = async (programId: string | null) => {
-    if (!selectedUserId) return;
+    if (!selectedUserId || isPendingUser(selectedUserId)) return;
     const { error } = await supabase
       .from('users')
       .update({ primary_program_id: programId || null, updated_at: new Date().toISOString() })
@@ -547,6 +651,27 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   const handleSaveTabVisibility = async (tabKey: string, visible: boolean, scope: 'user' | 'cohort' | 'program') => {
     const scopeId = scope === 'user' ? selectedUserId : scope === 'cohort' ? selectedCohortId : selectedProgramId;
     if (!scopeId) return;
+
+    if (scope === 'user' && isPendingUser(scopeId)) {
+      const email = getEmailFromPendingId(scopeId);
+      const { error } = await supabase
+        .from('pending_view_tabs')
+        .upsert({
+          email: email.trim().toLowerCase(),
+          tab_key: tabKey,
+          is_visible: visible,
+          granted_by: userProfile?.id,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'email,tab_key' });
+      if (!error) {
+        setSnack({ message: 'Tab visibility saved. Will apply when they create an account.', severity: 'success' });
+        await loadPermissions();
+      } else {
+        setSnack({ message: 'Failed to save tab visibility.', severity: 'error' });
+      }
+      return;
+    }
+
     const payload: Partial<ViewTab> = {
       tab_key: tabKey,
       is_visible: visible,
@@ -581,7 +706,13 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   };
   
   const handleDeletePermission = async (type: 'user' | 'cohort' | 'program', id: string) => {
-    const table = type === 'user' ? 'user_permissions' : type === 'cohort' ? 'cohort_permissions' : 'program_permissions';
+    const table = type === 'user' && isPendingUser(selectedUserId)
+      ? 'pending_user_permissions'
+      : type === 'user'
+        ? 'user_permissions'
+        : type === 'cohort'
+          ? 'cohort_permissions'
+          : 'program_permissions';
     const { error } = await supabase.from(table).delete().eq('id', id);
     if (!error) {
       setSnack({ message: 'Permission removed.', severity: 'success' });
@@ -708,23 +839,27 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                   </Grid>
                 ))}
               </Grid>
-              <Typography variant="subtitle1" gutterBottom sx={{ mt: 3 }}>Primary program (navbar logo)</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                The logo shown in the top left of the app is determined by this user&apos;s primary program. They can be in multiple programs; this selects which program&apos;s logo to display.
-              </Typography>
-              <FormControl fullWidth sx={{ maxWidth: 400 }}>
-                <InputLabel>Primary program</InputLabel>
-                <Select
-                  value={(selectedUser as User & { primary_program_id?: string | null })?.primary_program_id ?? ''}
-                  label="Primary program"
-                  onChange={(e) => handleSavePrimaryProgram((e.target.value as string) || null)}
-                >
-                  <MenuItem value=""><em>None (default ImPACTS logo)</em></MenuItem>
-                  {programs.map(p => (
-                    <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              {!isPendingUser(selectedUserId) && (
+                <>
+                  <Typography variant="subtitle1" gutterBottom sx={{ mt: 3 }}>Primary program (navbar logo)</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    The logo shown in the top left of the app is determined by this user&apos;s primary program. They can be in multiple programs; this selects which program&apos;s logo to display.
+                  </Typography>
+                  <FormControl fullWidth sx={{ maxWidth: 400 }}>
+                    <InputLabel>Primary program</InputLabel>
+                    <Select
+                      value={(selectedUser as User & { primary_program_id?: string | null })?.primary_program_id ?? ''}
+                      label="Primary program"
+                      onChange={(e) => handleSavePrimaryProgram((e.target.value as string) || null)}
+                    >
+                      <MenuItem value=""><em>None (default ImPACTS logo)</em></MenuItem>
+                      {programs.map(p => (
+                        <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </>
+              )}
             </Box>
           );
           })()}
