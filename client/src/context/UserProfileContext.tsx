@@ -311,7 +311,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       const profWithRole = { ...prof, role: normalizedRole };
       let sid: string | null = prof.hospital_facility_id ?? null;
       let tabs: string[] = [...PECC_TAB_KEYS];
-      if (normalizedRole === UserRole.PECC) {
+      const isPeccOrAdmin = normalizedRole === UserRole.PECC || normalizedRole === UserRole.ADMIN;
+      if (isPeccOrAdmin) {
         if (!sid) {
           const { data: memberRow } = await supabase
             .from('site_members')
@@ -323,17 +324,18 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
             sid = (memberRow as { site_id: string }).site_id;
           }
         }
-        const { data: userTabRows } = await supabase
+        const { data: userTabRows, error: viewTabsError } = await supabase
           .from('view_tabs')
           .select('tab_key, is_visible')
           .eq('user_id', userId);
-        if (userTabRows && userTabRows.length > 0) {
+        if (!viewTabsError && userTabRows && userTabRows.length > 0) {
           const byKey = (userTabRows as { tab_key: string; is_visible: boolean }[]).reduce((acc, r) => {
             acc[r.tab_key] = r.is_visible;
             return acc;
           }, {} as Record<string, boolean>);
-          tabs = PECC_TAB_KEYS.filter(tab => (byKey[tab] ?? true));
-        } else if (sid) {
+          const filtered = PECC_TAB_KEYS.filter(tab => (byKey[tab] ?? true));
+          tabs = filtered.length > 0 ? filtered : [...PECC_TAB_KEYS];
+        } else if (sid && !viewTabsError) {
           const { data: tabRows } = await supabase
             .from('site_tab_visibility')
             .select('tab_key, visible')
@@ -343,6 +345,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
               .filter(r => r.visible).map(r => r.tab_key);
           }
         }
+        if (normalizedRole === UserRole.ADMIN) sid = null;
       } else {
         sid = null;
         tabs = [];
