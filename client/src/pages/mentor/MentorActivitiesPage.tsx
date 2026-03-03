@@ -46,6 +46,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../../utils/userData';
@@ -133,6 +134,7 @@ type SortOrder = 'asc' | 'desc';
 
 const MentorActivitiesPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   
   // State
   const [activities, setActivities] = useState<MentorActivity[]>([]);
@@ -503,6 +505,9 @@ const MentorActivitiesPage: React.FC = () => {
         <Alert severity="info" sx={{ mb: 2 }} icon={false}>
           <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in activities, descriptions, or notes.
         </Alert>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Log PRISM activities and simulations by hospital. Link activities to hospitals from the <strong>Hospitals</strong> page so they appear in Site Milestones and your Snapshot.
+        </Typography>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4">My Activities</Typography>
           <Box>
@@ -523,6 +528,22 @@ const MentorActivitiesPage: React.FC = () => {
             </Button>
           </Box>
         </Box>
+
+        {/* Empty state */}
+        {activities.length === 0 && (
+          <Paper sx={{ p: 4, mb: 3, textAlign: 'center' }}>
+            <Typography variant="h6" gutterBottom>No activities yet</Typography>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>
+              Add hospitals from the Hospitals page, then log your first activity and associate it with a hospital so it counts toward Site Milestones and reporting.
+            </Typography>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddNew} sx={{ mr: 1 }}>
+              Add your first activity
+            </Button>
+            <Button variant="outlined" onClick={() => navigate('/mentor/hospitals')}>
+              Go to Hospitals
+            </Button>
+          </Paper>
+        )}
 
         {/* Summary Statistics */}
         {activities.length > 0 && (

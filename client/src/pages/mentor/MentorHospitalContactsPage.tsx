@@ -272,6 +272,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     const uid = currentUser?.id;
     if (!uid) return;
 
+    try {
     const isOldMockHospital = (name: string) =>
       name === 'Memorial General Hospital' || name === "Children's Regional Medical Center" || name === "St. Mary's Community Hospital";
     const isOldMockContact = (f: string, l: string) =>
@@ -349,6 +350,10 @@ const MentorHospitalContactsPage: React.FC = () => {
     setHospitals(hospitals);
     setSelectedHospital(hospitals.length > 0 ? hospitals[0] : null);
     setContacts(contacts);
+    } catch (err) {
+      console.error('Error loading hospitals and contacts:', err);
+      setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to load data. Try refreshing.', severity: 'error' });
+    }
   };
 
   const saveHospitals = async (newHospitals: Hospital[]) => {
@@ -935,12 +940,15 @@ const MentorHospitalContactsPage: React.FC = () => {
       <Alert severity="info" sx={{ mb: 2 }} icon={false}>
         <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital or contact notes.
       </Alert>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Typography variant="h4">Hospital Contacts</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddHospital}>
           Add Hospital
         </Button>
       </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Manage your hospital list and PECC contacts. Add hospitals from the CRM list below; they will appear in Activities, Site Milestones, and your Dashboard.
+      </Typography>
 
       {/* List View - Table */}
       <Box>
@@ -1117,11 +1125,16 @@ const MentorHospitalContactsPage: React.FC = () => {
                 {filteredAndSortedHospitals.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                      <Typography color="textSecondary">
+                      <Typography color="textSecondary" gutterBottom>
                         {displayedHospitals.length === 0
-                          ? 'No hospitals found. Click "Add Hospital" to get started.'
+                          ? 'No hospitals yet. Add hospitals from the CRM list to track contacts, log activities, and monitor Site Milestones.'
                           : 'No hospitals match the current filters. Try changing search or filters.'}
                       </Typography>
+                      {displayedHospitals.length === 0 && (
+                        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddHospital} sx={{ mt: 2 }}>
+                          Add Hospital
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 )}

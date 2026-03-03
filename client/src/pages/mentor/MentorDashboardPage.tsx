@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   Button,
+  Alert,
   List,
   ListItem,
   ListItemText,
@@ -112,6 +113,7 @@ const MentorDashboardPage: React.FC = () => {
   });
   const [hospitalSummaries, setHospitalSummaries] = useState<HospitalSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedHospital, setSelectedHospital] = useState<HospitalSummary | null>(null);
   const [hospitalDrawerOpen, setHospitalDrawerOpen] = useState(false);
 
@@ -121,7 +123,8 @@ const MentorDashboardPage: React.FC = () => {
       setLoading(false);
       return;
     }
-
+    setLoadError(null);
+    try {
     const [activitiesVal, hospitalsVal, contactsVal] = await Promise.all([
       getUserData<any[]>(uid, 'mentorActivities'),
       getUserData<any[]>(uid, 'mentorHospitals'),
@@ -194,7 +197,12 @@ const MentorDashboardPage: React.FC = () => {
     });
 
     setHospitalSummaries(summaries);
-    setLoading(false);
+    } catch (err) {
+      console.error('Mentor dashboard load error:', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load dashboard. Try refreshing.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -251,6 +259,11 @@ const MentorDashboardPage: React.FC = () => {
 
   return (
     <Box sx={{ py: 3 }}>
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+          {loadError} <Button size="small" onClick={() => loadDashboardData()}>Retry</Button>
+        </Alert>
+      )}
       <Typography variant="h4" gutterBottom>
         Welcome, {userProfile?.first_name || 'Mentor'}!
       </Typography>

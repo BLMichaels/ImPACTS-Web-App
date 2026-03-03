@@ -28,6 +28,7 @@ import {
   LocalHospital as HospitalIcon,
   Slideshow as SimulationIcon
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
@@ -68,6 +69,7 @@ interface HospitalMetrics {
 }
 
 const MentorSnapshotPage = () => {
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { userProfile } = useUserProfile();
   
@@ -186,7 +188,7 @@ const MentorSnapshotPage = () => {
             const mentorHours = hospitalActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
             
             // Count simulations
-            const simulations = hospitalActivities.filter((a: any) => a.category === 'Simulation Case Facilitation').length;
+            const simulations = hospitalActivities.filter((a: any) => a.category === 'SC' || a.category === 'Simulation Case Facilitation').length;
             
             // Count PECCs at this hospital
             const peccCount = resolvedPeccData.filter(p => p.hospitalId === hospitalId).length;
@@ -279,7 +281,7 @@ const MentorSnapshotPage = () => {
 
   // Calculate simulation breakdown across all activities
   const simulationBreakdown = useMemo(() => {
-    const simActivities = activities.filter(a => a.category === 'Simulation Case Facilitation' || a.simulation);
+    const simActivities = activities.filter(a => a.category === 'SC' || a.category === 'Simulation Case Facilitation' || a.simulation);
     const breakdown: Record<string, number> = {};
     simActivities.forEach(a => {
       const simType = a.simulation || 'Other';
@@ -352,6 +354,21 @@ const MentorSnapshotPage = () => {
           Refresh Page
         </Button>
       </Box>
+    );
+  }
+
+  // Empty state: no assigned hospitals (Snapshot uses mentor_hospital_assignments; add hospitals there or in Hospitals page)
+  if (assignedHospitals.length === 0) {
+    return (
+      <Container maxWidth="md" sx={{ py: 4, textAlign: 'center' }}>
+        <Typography variant="h5" gutterBottom>No assigned hospitals</Typography>
+        <Typography color="text.secondary" sx={{ mb: 2 }}>
+          Your snapshot shows data for hospitals assigned to you. Add or link hospitals from the <strong>Hospitals</strong> page, or ask your manager to assign you in the CRM.
+        </Typography>
+        <Button variant="contained" onClick={() => navigate('/mentor/hospitals')}>
+          Go to Hospitals
+        </Button>
+      </Container>
     );
   }
 

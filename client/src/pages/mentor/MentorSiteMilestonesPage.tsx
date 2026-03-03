@@ -781,12 +781,15 @@ const MentorSiteMilestonesPage: React.FC = () => {
           Site Milestones
         </Typography>
         <Typography variant="body2" color="textSecondary" sx={{ mb: 2, fontSize: '0.75rem' }}>
-          Track checklist progress for each hospital site. Changes sync with PECC accounts.
+          Track PECC checklist progress and your mentor hours per site. Completing stages here syncs with the PECC&apos;s Checklist view. Add hospitals on the <strong>Hospitals</strong> page first.
         </Typography>
 
         {hospitals.length === 0 ? (
-          <Paper sx={{ p: 3, textAlign: 'center' }}>
-            <Typography color="textSecondary">No hospitals assigned yet. Add hospitals from the Hospital Contacts page.</Typography>
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
+            <Typography color="textSecondary" gutterBottom>No hospitals yet. Add hospitals from the Hospitals page so you can track checklist progress and mentor hours per site.</Typography>
+            <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate('/mentor/hospitals')}>
+              Go to Hospitals
+            </Button>
           </Paper>
         ) : (
           <>

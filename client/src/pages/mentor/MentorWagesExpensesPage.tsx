@@ -299,12 +299,15 @@ const MentorWagesExpensesPage: React.FC = () => {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ py: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="h4">Wages & Expenses</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddExpense}>
             Add Expense
           </Button>
         </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Hours are calculated from your logged activities; stipends from Site Milestones stage completions. Log expenses for reimbursement; your manager can approve or reject.
+        </Typography>
 
         {wagesData.receiptsFolderLink && (
           <Alert severity="info" sx={{ mb: 3 }}>
@@ -422,7 +425,10 @@ const MentorWagesExpensesPage: React.FC = () => {
                 {currentYearExpenses.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
-                      <Typography color="textSecondary">No expenses recorded yet</Typography>
+                      <Typography color="textSecondary" gutterBottom>No expenses recorded yet for {currentYear}</Typography>
+                      <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={handleAddExpense}>
+                        Add expense
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ) : (
