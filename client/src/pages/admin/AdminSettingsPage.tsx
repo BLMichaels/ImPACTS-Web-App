@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -96,11 +96,38 @@ const PERMISSION_GROUPS: Record<string, string[]> = {
   'User Management': [PERMISSIONS.VIEW_USERS, PERMISSIONS.MANAGE_USERS, PERMISSIONS.SEND_INVITATIONS],
   'Assessments & Plans': [PERMISSIONS.VIEW_PRS, PERMISSIONS.VIEW_GAP_PLANS, PERMISSIONS.VIEW_MILESTONES, PERMISSIONS.VIEW_SIMULATIONS],
   'Wages & Expenses': [PERMISSIONS.VIEW_OWN_WAGES, PERMISSIONS.VIEW_TEAM_WAGES, PERMISSIONS.MANAGE_WAGES],
+  'Cohorts & Programs': [PERMISSIONS.VIEW_COHORTS, PERMISSIONS.MANAGE_COHORTS, PERMISSIONS.COHORT_INVITE, PERMISSIONS.COHORT_ANNOUNCE, PERMISSIONS.COHORT_MODERATE, PERMISSIONS.VIEW_PROGRAMS, PERMISSIONS.MANAGE_PROGRAMS, PERMISSIONS.PROGRAM_ANNOUNCE],
   'Administration': [PERMISSIONS.MANAGE_PERMISSIONS, PERMISSIONS.SYSTEM_SETTINGS]
 };
 const formatPermissionLabel = (key: string) => key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 const ROLES: UserRole[] = [UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC];
 const getRoleColor = (role: string) => ({ manager: '#9c27b0', mentor: '#ff9800', pecc: '#2196f3' }[role] || '#757575');
+
+const DEFAULT_PECC_CATEGORIES = [
+  'General Administration Tasks',
+  'PECC role education and advancement',
+  'Meeting with Pediatric Readiness Mentor',
+  'Simulation Case Preparations',
+  'Simulation Facilitation',
+  'Simulation Debrief & Gap Analysis',
+  'Hospital-based Pediatric Educational Activities (NOT including simulation)',
+  'Ensuring all Pediatric Policies and Procedures are implemented and updated',
+  'Facilitating and participating in ED pediatric QI/PI activities',
+  'Collaborative work with PECC counterpart, EMS, or other EDs',
+  'Staffing competency evaluations',
+  'Promoting pediatric disaster preparedness',
+  'Promoting patient and family education in injury prevention',
+  'Ensuring equipment, medication, and supplies are available to all ED staff',
+  'Ensuring ED staff are prepared to care for all children, including those with special health needs'
+];
+const DEFAULT_MENTOR_CATEGORIES: Array<{ value: string; label: string }> = [
+  { value: 'PE', label: 'PE - PRISM Education & Training' },
+  { value: 'TR', label: 'TR - Training with PECC' },
+  { value: 'AD', label: 'AD - General Administration Tasks' },
+  { value: 'RA', label: 'RA - Readiness Assessment' },
+  { value: 'SC', label: 'SC - Simulation Case Facilitation' },
+  { value: 'DM', label: 'DM - Domain Implementation' }
+];
 
 interface TierUser {
   id: string;
@@ -112,7 +139,7 @@ interface TierUser {
 }
 
 export default function AdminSettingsPage() {
-  useAuth();
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tierUsers, setTierUsers] = useState<TierUser[]>([]);
@@ -257,6 +284,7 @@ export default function AdminSettingsPage() {
 
   // ---- Permissions state ----
   const [permissions, setPermissions] = useState<PermissionState>({});
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
@@ -340,36 +368,9 @@ export default function AdminSettingsPage() {
     }
   };
   useEffect(() => { loadSimulations(); }, []);
-  
-  // Default PECC/Mentor categories (used when no value in DB)
-  const DEFAULT_PECC_CATEGORIES = [
-    'General Administration Tasks',
-    'PECC role education and advancement',
-    'Meeting with Pediatric Readiness Mentor',
-    'Simulation Case Preparations',
-    'Simulation Facilitation',
-    'Simulation Debrief & Gap Analysis',
-    'Hospital-based Pediatric Educational Activities (NOT including simulation)',
-    'Ensuring all Pediatric Policies and Procedures are implemented and updated',
-    'Facilitating and participating in ED pediatric QI/PI activities',
-    'Collaborative work with PECC counterpart, EMS, or other EDs',
-    'Staffing competency evaluations',
-    'Promoting pediatric disaster preparedness',
-    'Promoting patient and family education in injury prevention',
-    'Ensuring equipment, medication, and supplies are available to all ED staff',
-    'Ensuring ED staff are prepared to care for all children, including those with special health needs'
-  ];
-  const DEFAULT_MENTOR_CATEGORIES = [
-    { value: 'PE', label: 'PE - PRISM Education & Training' },
-    { value: 'TR', label: 'TR - Training with PECC' },
-    { value: 'AD', label: 'AD - General Administration Tasks' },
-    { value: 'RA', label: 'RA - Readiness Assessment' },
-    { value: 'SC', label: 'SC - Simulation Case Facilitation' },
-    { value: 'DM', label: 'DM - Domain Implementation' }
-  ];
 
   // Load all app settings from Supabase (syncs across devices)
-  const loadAppSettings = async () => {
+  const loadAppSettings = useCallback(async () => {
     const keys = ['email_confirmation_message', 'pecc_activity_categories', 'mentor_activity_categories', 'education_questions'];
     const { data: rows } = await supabase.from('app_settings').select('key, value').in('key', keys);
     const byKey = new Map((rows || []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
@@ -394,11 +395,11 @@ export default function AdminSettingsPage() {
     } else {
       setEducationQuestions([]);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadAppSettings();
-  }, []);
+  }, [loadAppSettings]);
 
   // Load Hospital System & Hiring Group users when Tiers tab is selected
   useEffect(() => {
@@ -596,14 +597,42 @@ export default function AdminSettingsPage() {
     await saveAppSetting('email_confirmation_message', emailConfirmationMessage);
     setSnackbar({ open: true, message: 'Email settings saved successfully', severity: 'success' });
   };
-  useEffect(() => {
-    const init: PermissionState = {};
-    ROLES.forEach(role => {
-      init[role] = {};
-      Object.values(PERMISSIONS).forEach(perm => { init[role][perm] = DEFAULT_ROLE_PERMISSIONS[role]?.includes(perm) || false; });
-    });
-    setPermissions(init);
+  // Load role_permissions from DB when Permissions tab is shown
+  const loadRolePermissions = useCallback(async () => {
+    setPermissionsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('role_permissions')
+        .select('role, permission_key, is_enabled')
+        .in('role', ROLES);
+      if (error) throw error;
+      const init: PermissionState = {};
+      ROLES.forEach(role => {
+        init[role] = {};
+        Object.values(PERMISSIONS).forEach(perm => {
+          const row = (data || []).find((r: { role: string; permission_key: string }) => r.role === role && r.permission_key === perm);
+          init[role][perm] = row ? Boolean(row.is_enabled) : (DEFAULT_ROLE_PERMISSIONS[role]?.includes(perm) || false);
+        });
+      });
+      setPermissions(init);
+      setHasChanges(false);
+    } catch (e) {
+      console.error('Load role_permissions:', e);
+      const init: PermissionState = {};
+      ROLES.forEach(role => {
+        init[role] = {};
+        Object.values(PERMISSIONS).forEach(perm => { init[role][perm] = DEFAULT_ROLE_PERMISSIONS[role]?.includes(perm) || false; });
+      });
+      setPermissions(init);
+      setSnackbar({ open: true, message: 'Could not load permissions; showing defaults.', severity: 'error' });
+    } finally {
+      setPermissionsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (tabIndex === 1) loadRolePermissions();
+  }, [tabIndex, loadRolePermissions]);
 
   const openAdd = () => {
     setEditingId(null);
@@ -714,20 +743,59 @@ export default function AdminSettingsPage() {
     setPermissions(prev => ({ ...prev, [role]: { ...prev[role], [permission]: !prev[role][permission] } }));
     setHasChanges(true);
   };
-  const handlePermSave = () => {
-    console.log('Saving permissions:', permissions);
-    setSnackbar({ open: true, message: 'Permissions saved successfully', severity: 'success' });
-    setHasChanges(false);
+  const handlePermSave = async () => {
+    const rows: { role: string; permission_key: string; is_enabled: boolean; updated_by: string | null; updated_at: string }[] = [];
+    for (const role of ROLES) {
+      for (const perm of Object.values(PERMISSIONS)) {
+        rows.push({
+          role,
+          permission_key: perm,
+          is_enabled: permissions[role]?.[perm] ?? false,
+          updated_by: currentUser?.id ?? null,
+          updated_at: new Date().toISOString()
+        });
+      }
+    }
+    try {
+      const { error } = await supabase
+        .from('role_permissions')
+        .upsert(rows, { onConflict: 'role,permission_key' });
+      if (error) throw error;
+      setSnackbar({ open: true, message: 'Permissions saved successfully', severity: 'success' });
+      setHasChanges(false);
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to save permissions', severity: 'error' });
+    }
   };
-  const handlePermReset = () => {
+  const handlePermReset = async () => {
     const init: PermissionState = {};
     ROLES.forEach(role => {
       init[role] = {};
       Object.values(PERMISSIONS).forEach(perm => { init[role][perm] = DEFAULT_ROLE_PERMISSIONS[role]?.includes(perm) || false; });
     });
     setPermissions(init);
-    setHasChanges(false);
-    setSnackbar({ open: true, message: 'Permissions reset to defaults', severity: 'success' });
+    const rows: { role: string; permission_key: string; is_enabled: boolean; updated_by: string | null; updated_at: string }[] = [];
+    for (const role of ROLES) {
+      for (const perm of Object.values(PERMISSIONS)) {
+        rows.push({
+          role,
+          permission_key: perm,
+          is_enabled: init[role][perm],
+          updated_by: currentUser?.id ?? null,
+          updated_at: new Date().toISOString()
+        });
+      }
+    }
+    try {
+      const { error } = await supabase
+        .from('role_permissions')
+        .upsert(rows, { onConflict: 'role,permission_key' });
+      if (error) throw error;
+      setHasChanges(false);
+      setSnackbar({ open: true, message: 'Permissions reset to defaults', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to reset permissions', severity: 'error' });
+    }
   };
 
   return (
@@ -861,6 +929,10 @@ export default function AdminSettingsPage() {
       {/* Permissions */}
       {tabIndex === 1 && (
         <Box>
+          {permissionsLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 4 }}><CircularProgress size={24} /><Typography>Loading permissions…</Typography></Box>
+          ) : (
+          <>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Box>
               <Typography variant="h6">Role Permissions</Typography>
@@ -913,6 +985,8 @@ export default function AdminSettingsPage() {
               ))}
             </Box>
           </Paper>
+          </>
+          )}
         </Box>
       )}
 
@@ -1301,7 +1375,7 @@ export default function AdminSettingsPage() {
       {tabIndex === 10 && (
         <Box>
           <Typography variant="h6" gutterBottom>Tiers</Typography>
-          <Typography color="text.secondary" sx={{ mb: 2 }}>
+          <Typography color="textSecondary" sx={{ mb: 2 }}>
             Two additional access tiers: <strong>Hospital System</strong> (see PECC data and aggregated data for their assigned systems) and <strong>Hiring Group</strong> (read-only snapshot view for assigned systems). Assign users and their hospital systems from the CRM Team tab.
           </Typography>
           <Alert severity="info" sx={{ mb: 2 }}>
