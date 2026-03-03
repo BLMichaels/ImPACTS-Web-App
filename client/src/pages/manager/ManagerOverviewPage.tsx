@@ -9,8 +9,6 @@ import {
   Avatar,
   List,
   ListItem,
-  ListItemText,
-  ListItemAvatar,
   Divider,
   Button,
   LinearProgress,
@@ -23,7 +21,6 @@ import {
   LocalHospital as HospitalIcon,
   Assignment as ActivityIcon,
   TrendingUp as TrendingIcon,
-  AttachMoney as MoneyIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Visibility as ViewIcon
@@ -59,7 +56,7 @@ interface DashboardStats {
 }
 
 const ManagerOverviewPage: React.FC = () => {
-  const { currentUser } = useAuth();
+  useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
   

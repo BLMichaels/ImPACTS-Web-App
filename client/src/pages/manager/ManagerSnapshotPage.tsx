@@ -14,7 +14,6 @@ import {
   Avatar,
   List,
   ListItem,
-  ListItemText,
   Divider,
   IconButton,
   Collapse

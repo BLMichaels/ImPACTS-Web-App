@@ -22,7 +22,7 @@ import {
   Add as AddIcon,
   Group as GroupIcon
 } from '@mui/icons-material';
-import { Cohort, CohortWithStats, UserRole } from '../../types/database';
+import { Cohort, CohortWithStats } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { CohortCard, CohortDetail, PendingInvitationsPanel } from '../../components/cohorts';

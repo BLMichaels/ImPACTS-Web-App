@@ -112,7 +112,7 @@ interface TierUser {
 }
 
 export default function AdminSettingsPage() {
-  const { currentUser } = useAuth();
+  useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tierUsers, setTierUsers] = useState<TierUser[]>([]);

@@ -14,11 +14,8 @@ import {
   Divider
 } from '@mui/material';
 import {
-  Dashboard as DashboardIcon,
   Work as WorkIcon,
   Assessment as AssessmentIcon,
-  Assignment as AssignmentIcon,
-  Timeline as TimelineIcon,
   People as PeopleIcon,
   Business as BusinessIcon,
   TrendingUp as TrendingUpIcon,

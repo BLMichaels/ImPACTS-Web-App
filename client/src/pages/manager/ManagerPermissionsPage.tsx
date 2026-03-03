@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Container } from '@mui/material';
+import { Typography, Container } from '@mui/material';
 import GranularPermissionsManager from '../../components/admin/GranularPermissionsManager';
 
 const ManagerPermissionsPage: React.FC = () => {

@@ -29,11 +29,9 @@ import {
   Alert,
   Snackbar,
   CircularProgress,
-  Switch,
   FormControlLabel,
   IconButton,
   Checkbox,
-  FormGroup,
   Table,
   TableBody,
   TableCell,
@@ -114,7 +112,7 @@ interface TabVisibilitySettings {
 }
 
 const ManagerCRMPage: React.FC = () => {
-  const { currentUser } = useAuth();
+  useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -123,7 +121,7 @@ const ManagerCRMPage: React.FC = () => {
   const [hospitals, setHospitals] = useState<HospitalData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [selectedHospital, setSelectedHospital] = useState<HospitalData | null>(null);
+  const [, setSelectedHospital] = useState<HospitalData | null>(null);
   
   // Add Hospital Dialog: default = select from existing CRM list; option = add unlisted site
   const [addHospitalDialog, setAddHospitalDialog] = useState(false);
@@ -168,7 +166,6 @@ const ManagerCRMPage: React.FC = () => {
   const [visibilityDialog, setVisibilityDialog] = useState(false);
   const [visibilitySettings, setVisibilitySettings] = useState<TabVisibilitySettings[]>([]);
   const [visibilityFilter, setVisibilityFilter] = useState({ role: '', search: '' });
-  const [massAction, setMassAction] = useState<{ tab: string; visible: boolean } | null>(null);
   
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 

@@ -12,7 +12,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   IconButton,
   TextField,
@@ -24,12 +23,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider
+  DialogActions
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -39,7 +33,6 @@ import {
   Delete as DeleteIcon,
   Work as WorkIcon,
   Business as BusinessIcon,
-  Schedule as ScheduleIcon,
   CheckCircle as CheckCircleIcon,
   Assignment as AssignmentIcon
 } from '@mui/icons-material';

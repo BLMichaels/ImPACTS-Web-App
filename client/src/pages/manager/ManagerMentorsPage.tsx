@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -22,7 +22,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar,
   Tab,
   Tabs,
   LinearProgress,
@@ -108,7 +107,7 @@ const TabPanel = (props: TabPanelProps) => {
 };
 
 const ManagerMentorsPage: React.FC = () => {
-  const { currentUser } = useAuth();
+  useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
   

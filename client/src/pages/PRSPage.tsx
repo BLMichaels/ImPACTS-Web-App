@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -28,18 +28,13 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Chip,
   Divider,
   FormControlLabel,
-  Radio,
-  RadioGroup,
   Accordion,
   AccordionSummary,
   AccordionDetails,
   FormGroup,
   Checkbox,
-  FormLabel,
-  LinearProgress,
   Link
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, Upload as UploadIcon, Image as ImageIcon, Visibility as VisibilityIcon, Warning as WarningIcon, CloudUpload as CloudUploadIcon, Send as SendIcon } from '@mui/icons-material';
@@ -48,7 +43,6 @@ import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
-import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
 interface ReadinessScore {
