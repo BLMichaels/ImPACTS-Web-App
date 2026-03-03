@@ -751,10 +751,28 @@ const MentorActivitiesPage: React.FC = () => {
             <TableBody>
               {filteredActivities.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    <Typography color="textSecondary" sx={{ py: 4 }}>
-                      No activities recorded yet. Click "Add Activity" to get started.
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                    <Typography color="textSecondary" gutterBottom>
+                      {activities.length === 0
+                        ? 'No activities recorded yet. Click "Add Activity" to get started.'
+                        : 'No activities match your current filters.'}
                     </Typography>
+                    {activities.length > 0 && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          setCategoryFilter([]);
+                          setHospitalFilter([]);
+                          setReadinessDomainFilter([]);
+                          setSimulationTypeFilter([]);
+                          setDateFilter({ start: null, end: null });
+                        }}
+                        sx={{ mt: 1 }}
+                      >
+                        Clear filters
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -776,8 +794,8 @@ const MentorActivitiesPage: React.FC = () => {
                       </Typography>
                     </TableCell>
                     <TableCell>
-<Chip 
-                        label={activity.category} 
+                      <Chip
+                        label={getCategoryLabel(activity.category)}
                         size="small"
                         color={getCategoryChipColor(activity.category)}
                       />
@@ -1033,6 +1051,11 @@ const MentorActivitiesPage: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
+                {hospitals.length === 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    Add hospitals on the <strong>Hospitals</strong> page first so you can link activities to sites for Site Milestones and reporting.
+                  </Typography>
+                )}
               </Grid>
               
               {/* Description - for all categories */}

@@ -20,7 +20,8 @@ import {
   Menu,
   MenuItem,
   Divider,
-  Chip
+  Chip,
+  LinearProgress
 } from '@mui/material';
 import {
   MoreVert as MoreIcon,
@@ -727,7 +728,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const metrics = hospitalMetrics[hospitalId];
     if (metrics?.peccUserId) {
       handleHospitalMenuClose();
-      alert(`Viewing PECC account for ${normalizeHospitalOrOrgName(hospitals.find(h => h.id === hospitalId)?.name)}`);
+      // View-as is done from CRM; managers/admins can use "View as this user" on the contact
+      const siteName = normalizeHospitalOrOrgName(hospitals.find(h => h.id === hospitalId)?.name);
+      alert(`To view the app as this site's PECC, open them in CRM (Team or Contacts) and click "View as this user." Site: ${siteName}`);
     }
   };
 
@@ -769,7 +772,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
   if (loading) {
     return (
       <Box sx={{ py: 3 }}>
-        <Typography>Loading milestones...</Typography>
+        <Typography variant="body2" color="text.secondary" gutterBottom>Loading milestones...</Typography>
+        <LinearProgress sx={{ maxWidth: 400, mt: 1 }} />
       </Box>
     );
   }

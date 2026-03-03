@@ -154,14 +154,6 @@ const MentorDashboardPage: React.FC = () => {
     const thisMonthActivities = activities.filter((a: StoredActivity) => new Date(a.date) >= startOfMonth);
     const simulationsThisMonth = thisMonthActivities.filter((a: StoredActivity) => a.category === 'SC').length;
 
-    setStats({
-      totalHospitals: workingHospitals.length,
-      totalPeccs: workingHospitals.length,
-      activitiesThisMonth: thisMonthActivities.length,
-      hoursThisMonth: thisMonthActivities.reduce((sum: number, a: StoredActivity) => sum + (a.hours || 0), 0),
-      simulationsThisMonth
-    });
-
     const summaries: HospitalSummary[] = workingHospitals.map((h: StoredHospital) => {
       const hContacts = contacts.filter((c: StoredContact) => c.hospitalId === h.id);
       const primary = hContacts.find((c: StoredContact) => c.isPrimaryContact) || hContacts[0];
@@ -196,6 +188,16 @@ const MentorDashboardPage: React.FC = () => {
       };
     });
 
+    const distinctPeccEmails = new Set(
+      summaries.map(s => s.peccEmail).filter(e => e && e !== '—')
+    );
+    setStats({
+      totalHospitals: workingHospitals.length,
+      totalPeccs: distinctPeccEmails.size,
+      activitiesThisMonth: thisMonthActivities.length,
+      hoursThisMonth: thisMonthActivities.reduce((sum: number, a: StoredActivity) => sum + (a.hours || 0), 0),
+      simulationsThisMonth
+    });
     setHospitalSummaries(summaries);
     } catch (err) {
       console.error('Mentor dashboard load error:', err);
@@ -298,7 +300,7 @@ const MentorDashboardPage: React.FC = () => {
           <StatCard title="Simulations This Month" value={stats.simulationsThisMonth} icon={<TrendingIcon />} color="#7b1fa2" />
         </Grid>
         <Grid item xs={6} md={3}>
-          <StatCard title="PECCs" value={stats.totalPeccs} icon={<PeopleIcon />} color="#388e3c" />
+          <StatCard title="PECC Contacts" value={stats.totalPeccs} icon={<PeopleIcon />} color="#388e3c" />
         </Grid>
       </Grid>
 
