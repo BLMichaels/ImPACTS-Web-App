@@ -164,14 +164,10 @@ const Navbar: React.FC = () => {
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
         const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
-        let filteredItems = peccItems;
-        if (visibleTabs) {
-          if (visibleTabs.length === 0) {
-            filteredItems = [];
-          } else {
-            filteredItems = peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''));
-          }
-        }
+        // Empty visibleTabs = show all PECC tabs (e.g. view-as before load or no restrictions). Non-empty = filter to allowed tabs.
+        let filteredItems = visibleTabs && visibleTabs.length > 0
+          ? peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''))
+          : peccItems;
         // Cohorts is always available (not site-specific)
         filteredItems.push({ path: '/cohorts', label: 'Cohorts', icon: <CohortsIcon /> });
         return filteredItems;

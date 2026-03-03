@@ -346,6 +346,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           }
         }
         if (normalizedRole === UserRole.ADMIN) sid = null;
+        // Ensure view-as PECC never ends up with no tabs (e.g. RLS or missing data)
+        if (normalizedRole === UserRole.PECC && tabs.length === 0) tabs = [...PECC_TAB_KEYS];
       } else {
         sid = null;
         tabs = [];
