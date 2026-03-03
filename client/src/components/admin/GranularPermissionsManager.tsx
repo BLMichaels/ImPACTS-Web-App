@@ -148,12 +148,31 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         primary_program_id?: string | null;
       }> | null = null;
       if (mode === 'admin') {
-        const { data, error } = await supabase.rpc('get_users_for_granular_permissions');
-        if (!error && data != null) usersData = data as typeof usersData;
-        if (usersData == null) {
-          // Fallback if RPC not deployed: use table (may still be restricted by RLS)
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_users_for_granular_permissions');
+        if (!rpcError && rpcData != null && Array.isArray(rpcData) && rpcData.length > 0) {
+          usersData = rpcData as Array<{
+            id: string;
+            email: string;
+            first_name: string;
+            last_name: string;
+            phone: string | null;
+            role: string;
+            is_admin?: boolean;
+            is_active: boolean;
+            created_at: string;
+            updated_at: string;
+            last_login: string | null;
+            manager_id: string | null;
+            mentor_id: string | null;
+            manager_id_for_pecc: string | null;
+            primary_program_id?: string | null;
+          }>;
+        } else {
           const { data: tableData } = await supabase.from('users').select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id');
-          usersData = tableData;
+          if (tableData != null && Array.isArray(tableData)) usersData = tableData;
+          if (usersData != null && usersData.length > 0 && rpcError) {
+            console.warn('[GranularPermissions] get_users_for_granular_permissions failed; using table. Run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase to show all tiers.', rpcError.message);
+          }
         }
       } else {
         let usersQuery = supabase.from('users').select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id');

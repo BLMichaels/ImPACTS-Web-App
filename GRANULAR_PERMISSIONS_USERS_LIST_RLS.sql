@@ -7,6 +7,7 @@
 -- Run in Supabase SQL Editor.
 
 -- 1. Function: does the current user have permission to view all users? (SECURITY DEFINER = no RLS recursion)
+-- Use LOWER(TRIM(role)) so 'Admin', 'admin', 'Manager', etc. all match (DB may store mixed case).
 CREATE OR REPLACE FUNCTION public.current_user_can_view_all_users()
 RETURNS boolean
 LANGUAGE sql
@@ -17,7 +18,7 @@ AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.users
     WHERE id = auth.uid()
-    AND (role IN ('admin', 'manager') OR is_admin = true)
+    AND (LOWER(TRIM(COALESCE(role::text, ''))) IN ('admin', 'manager') OR is_admin = true)
   );
 $$;
 
