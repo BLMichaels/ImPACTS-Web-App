@@ -191,10 +191,11 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
             if (byEmail && Array.isArray(byEmail) && byEmail.length > 0) {
               const existingIds = new Set((usersData || []).map((u: { id: string }) => u.id));
               const merged = [...(usersData || [])];
-              for (const u of byEmail as typeof usersData) {
+              const byEmailArr = byEmail as Array<{ id: string; email: string; first_name?: string; last_name?: string; phone?: string | null; role: string; is_admin?: boolean; is_active: boolean; created_at: string; updated_at: string; last_login?: string | null; manager_id?: string | null; mentor_id?: string | null; manager_id_for_pecc?: string | null; primary_program_id?: string | null }>;
+              for (const u of byEmailArr) {
                 if (!existingIds.has(u.id)) {
                   existingIds.add(u.id);
-                  merged.push(u);
+                  merged.push(u as (typeof merged)[0]);
                 }
               }
               usersData = merged;
