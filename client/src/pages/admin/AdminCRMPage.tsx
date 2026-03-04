@@ -706,7 +706,8 @@ const AdminCRMPage: React.FC = () => {
               crmCreated: false
             });
           }
-          // Critical: for any contact that matches a user by email, use the user's current role for type AND set user_id (so "view as" and recategorization are correct)
+          // Critical: for any contact that matches a user by email, use the user's current role for type AND set user_id (so "view as" and recategorization are correct).
+          // Also use the user's current name so PECC/hospital name changes in users table are reflected.
           const emailToUser = new Map(userRows.map((u) => [u.email?.trim().toLowerCase() ?? '', u]));
           for (let i = 0; i < list.length; i++) {
             const c = list[i];
@@ -715,7 +716,17 @@ const AdminCRMPage: React.FC = () => {
             if (user) {
               const role = normalizeUserRole(user.role);
               const type = roleToContactType[role as string];
-              if (type) list[i] = { ...c, type, user_id: user.id };
+              if (type) {
+                const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.email || '—';
+                list[i] = {
+                  ...c,
+                  type,
+                  user_id: user.id,
+                  name: displayName,
+                  firstName: user.first_name ?? '',
+                  lastName: user.last_name ?? ''
+                };
+              }
             }
           }
 
@@ -1902,29 +1913,45 @@ const AdminCRMPage: React.FC = () => {
           setSaveError(`Failed to update contact: ${error.message || 'Database error'}. Please check your RLS policies.`);
           return; // Don't close dialog
         }
-        // Sync users.role so reload shows correct type (list overwrites from users.role)
-        const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
-        if (userRole != null) {
-          const uid = editingContact.user_id ?? (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle()).data?.id : null);
-          if (uid) {
-            await supabase.from('users').update({
-              role: userRole,
-              is_admin: formData.type === 'staff' ? (formData.is_admin ?? false) : false,
-              updated_at: new Date().toISOString()
-            }).eq('id', uid);
+        // Sync users.role and name so platform and CRM stay in sync (pairing stays by user_id; name reflects change)
+        const uid = editingContact.user_id ?? (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle()).data?.id : null);
+        if (uid) {
+          const userUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+          const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
+          if (userRole != null) {
+            userUpdates.role = userRole;
+            userUpdates.is_admin = formData.type === 'staff' ? (formData.is_admin ?? false) : false;
           }
+          if (isPersonType(formData.type)) {
+            userUpdates.first_name = formData.firstName?.trim() || null;
+            userUpdates.last_name = formData.lastName?.trim() || null;
+          }
+          if (Object.keys(userUpdates).length > 1) await supabase.from('users').update(userUpdates).eq('id', uid);
+        }
+        // When system or hiring_group contact name changes, keep hospital_system_assignments, hiring_group_assignments, and hospitals.hospital_system in sync so links remain
+        const oldName = (editingContact.name ?? '').trim();
+        const newName = (formData.name ?? '').trim();
+        if ((formData.type === 'system' || formData.type === 'hiring_group') && oldName && newName && oldName !== newName) {
+          await supabase.from('hospital_system_assignments').update({ hospital_system_name: newName }).eq('hospital_system_name', oldName);
+          await supabase.from('hiring_group_assignments').update({ hospital_system_name: newName }).eq('hospital_system_name', oldName);
+          await supabase.from('hospitals').update({ hospital_system: newName }).eq('hospital_system', oldName);
         }
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
         setSaveError(null);
       } else if (isUserSourced && editingContact) {
-        // Sync users.role and is_admin first so type change persists on reload
-        const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
-        if (userRole != null && editingContact.user_id) {
-          await supabase.from('users').update({
-            role: userRole,
-            is_admin: formData.type === 'staff' ? (formData.is_admin ?? false) : false,
+        // Sync users.role, is_admin, and name so platform and CRM stay in sync (pairing by user_id; name reflects change)
+        if (editingContact.user_id) {
+          const userUpdates: Record<string, unknown> = {
+            first_name: formData.firstName?.trim() || null,
+            last_name: formData.lastName?.trim() || null,
             updated_at: new Date().toISOString()
-          }).eq('id', editingContact.user_id);
+          };
+          const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
+          if (userRole != null) {
+            userUpdates.role = userRole;
+            userUpdates.is_admin = formData.type === 'staff' ? (formData.is_admin ?? false) : false;
+          }
+          await supabase.from('users').update(userUpdates).eq('id', editingContact.user_id);
         }
         // For user-sourced contacts, we need to create a CRM record to store any CRM-specific data
         // that can't be stored in the users table (which only has: email, first_name, last_name, phone, role)
