@@ -22,6 +22,14 @@ import {
   Chip,
   TextField,
   SelectChangeEvent,
+  Tabs,
+  Tab,
+  LinearProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Stack,
+  alpha,
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import PageviewIcon from '@mui/icons-material/Pageview';
@@ -32,6 +40,11 @@ import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import GroupIcon from '@mui/icons-material/Group';
 import WorkIcon from '@mui/icons-material/Work';
+import LinkIcon from '@mui/icons-material/Link';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import AnalyticsIcon from '@mui/icons-material/Analytics';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { supabase } from '../../supabase';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 
@@ -42,6 +55,13 @@ const PERIODS = [
   { value: 'all', label: 'All time' },
   { value: 'custom', label: 'Custom range' },
 ];
+
+const MENTOR_HOURS_PERIODS = [
+  { value: 'month', label: 'This month' },
+  { value: '3months', label: 'Last 3 months' },
+];
+
+const TABLE_LIMITS = [5, 10, 15, 25];
 
 interface UsageEvent {
   id: string;
@@ -74,12 +94,17 @@ interface AggregatedPlatformData {
   avgPeccProgress: number;
   mentorHoursThisMonth: number;
   mentorActivitiesThisMonth: number;
+  mentorHoursLast3Months: number;
+  mentorActivitiesLast3Months: number;
 }
 
 export default function AdminSnapshotPage() {
+  const [activeTab, setActiveTab] = useState<0 | 1>(0);
   const [periodValue, setPeriodValue] = useState<string>('30');
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
+  const [mentorHoursPeriod, setMentorHoursPeriod] = useState<string>('month');
+  const [tableLimit, setTableLimit] = useState(10);
   const [events, setEvents] = useState<UsageEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -174,13 +199,19 @@ export default function AdminSnapshotPage() {
         const mentorIds = ((mentorsRes.data || []) as { id: string }[]).map((m) => m.id);
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
         let mentorHoursThisMonth = 0;
         let mentorActivitiesThisMonth = 0;
+        let mentorHoursLast3Months = 0;
+        let mentorActivitiesLast3Months = 0;
         for (const mid of mentorIds) {
           const acts = await getMentorActivitiesForUser(mid);
           const thisMonth = acts.filter((a: { date: string }) => new Date(a.date) >= monthStart);
+          const last3Months = acts.filter((a: { date: string }) => new Date(a.date) >= threeMonthsAgo);
           mentorActivitiesThisMonth += thisMonth.length;
           mentorHoursThisMonth += thisMonth.reduce((s: number, a: { hours?: number }) => s + (a.hours || 0), 0);
+          mentorActivitiesLast3Months += last3Months.length;
+          mentorHoursLast3Months += last3Months.reduce((s: number, a: { hours?: number }) => s + (a.hours || 0), 0);
         }
         if (!mounted) return;
         setAggregated({
@@ -191,7 +222,9 @@ export default function AdminSnapshotPage() {
           contacts,
           avgPeccProgress,
           mentorHoursThisMonth,
-          mentorActivitiesThisMonth
+          mentorActivitiesThisMonth,
+          mentorHoursLast3Months,
+          mentorActivitiesLast3Months
         });
       } catch (e: unknown) {
         if (!mounted) return;
@@ -262,36 +295,37 @@ export default function AdminSnapshotPage() {
       activityCountByAction[action] = (activityCountByAction[action] || 0) + 1;
     });
 
+    const limit = tableLimit;
     const mostUsedPages = Object.entries(pageCountByPath)
       .map(([path, count]) => ({ path, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 15);
+      .slice(0, limit);
 
     const avgTimeByPath = Object.entries(timeByPath)
       .map(([path, { total, count }]) => ({ path, avgSeconds: total / count, viewsWithTime: count }))
       .filter((x) => x.avgSeconds >= 1)
       .sort((a, b) => b.avgSeconds - a.avgSeconds)
-      .slice(0, 15);
+      .slice(0, limit);
 
     const topClicks = Object.entries(clickCountByTarget)
       .map(([target, count]) => ({ target, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 15);
+      .slice(0, limit);
 
     const topLinkClicks = Object.entries(linkClickCountByLabel)
       .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 15);
+      .slice(0, limit);
 
     const topChecklistActions = Object.entries(checklistCountByAction)
       .map(([action, count]) => ({ action, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+      .slice(0, limit);
 
     const topActivityActions = Object.entries(activityCountByAction)
       .map(([action, count]) => ({ action, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+      .slice(0, limit);
 
     return {
       totalLogins: logins.length,
@@ -309,7 +343,7 @@ export default function AdminSnapshotPage() {
       totalActivityEvents: activityEvents.length,
       topActivityActions,
     };
-  }, [events]);
+  }, [events, tableLimit]);
 
   const pathLabel = (path: string) => {
     if (path === '/') return 'Home';
@@ -326,442 +360,519 @@ export default function AdminSnapshotPage() {
     return s ? `${m}m ${s}s` : `${m}m`;
   };
 
+  const mentorHours = mentorHoursPeriod === '3months' ? aggregated?.mentorHoursLast3Months ?? 0 : aggregated?.mentorHoursThisMonth ?? 0;
+  const mentorActivities = mentorHoursPeriod === '3months' ? aggregated?.mentorActivitiesLast3Months ?? 0 : aggregated?.mentorActivitiesThisMonth ?? 0;
+
   return (
     <Box sx={{ py: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <TimelineIcon fontSize="large" />
-        Snapshot
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Aggregate readiness, activities, site progress, and usage metrics to evaluate designs and materials.
-      </Typography>
-
-      <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Usage analytics
-        </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 2 }}>
-          <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Period</InputLabel>
-            <Select
-              value={periodValue}
-              label="Period"
-              onChange={(e: SelectChangeEvent) => setPeriodValue(e.target.value)}
-            >
-              {PERIODS.map((p) => (
-                <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          {periodValue === 'custom' && (
-            <>
-              <TextField
-                size="small"
-                label="From"
-                type="date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ width: 160 }}
-              />
-              <TextField
-                size="small"
-                label="To"
-                type="date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ width: 160 }}
-              />
-            </>
-          )}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+        <Box>
+          <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TimelineIcon fontSize="large" />
+            Snapshot
+          </Typography>
+          <Typography color="text.secondary">
+            Platform overview, usage analytics, and cross-tier metrics.
+          </Typography>
         </Box>
+      </Box>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} action={
-            <Button color="inherit" size="small" onClick={() => { setError(null); setRetryCount(c => c + 1); }}>
-              Retry
-            </Button>
-          }>
-            {error}
-          </Alert>
-        )}
-        {loading ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4, gap: 2 }}>
-            <CircularProgress />
-            <Typography variant="body2" color="text.secondary">Loading usage analytics...</Typography>
-          </Box>
-        ) : (
-          <Grid container spacing={3}>
-            {/* Logins */}
-            <Grid item xs={12} md={6} lg={3}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <PeopleIcon color="primary" />
-                    <Typography variant="subtitle1" fontWeight={600}>Logins</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{metrics.totalLogins}</Typography>
-                  <Typography variant="body2" color="text.secondary">total in period</Typography>
-                  <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {Object.entries(metrics.uniqueLoginsByRole).map(([role, set]) => (
-                      <Chip key={role} label={`${role}: ${set.size}`} size="small" variant="outlined" sx={{ mr: 0.5, mb: 0.5 }} />
+      <Tabs
+        value={activeTab}
+        onChange={(_, v: number) => setActiveTab(v as 0 | 1)}
+        sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
+      >
+        <Tab icon={<DashboardIcon />} iconPosition="start" label="Platform overview" />
+        <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Usage analytics" />
+      </Tabs>
+
+      {activeTab === 0 && (
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+              <Box>
+                <Typography variant="h6" fontWeight={600}>Platform overview</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Aggregated counts from managers, mentors, and PECC tiers.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel>Mentor hours</InputLabel>
+                  <Select
+                    value={mentorHoursPeriod}
+                    label="Mentor hours"
+                    onChange={(e: SelectChangeEvent) => setMentorHoursPeriod(e.target.value)}
+                  >
+                    {MENTOR_HOURS_PERIODS.map((p) => (
+                      <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
                     ))}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <PageviewIcon color="primary" />
-                    <Typography variant="subtitle1" fontWeight={600}>Page views</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{metrics.totalPageViews}</Typography>
-                  <Typography variant="body2" color="text.secondary">in period</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <ScheduleIcon color="primary" />
-                    <Typography variant="subtitle1" fontWeight={600}>Time on page</Typography>
-                  </Box>
-                  <Typography variant="body2" color="text.secondary">Avg by page below</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <TouchAppIcon color="primary" />
-                    <Typography variant="subtitle1" fontWeight={600}>Clicks</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{metrics.totalClicks}</Typography>
-                  <Typography variant="body2" color="text.secondary">tracked in period</Typography>
-                  {Object.keys(metrics.clickCountByRole).length > 0 && (
-                    <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {Object.entries(metrics.clickCountByRole).map(([role, count]) => (
-                        <Chip key={role} label={`${role}: ${count}`} size="small" variant="outlined" />
-                      ))}
-                    </Box>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Most used pages */}
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Most used pages</Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Page</TableCell>
-                          <TableCell align="right">Views</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {metrics.mostUsedPages.length === 0 ? (
-                          <TableRow><TableCell colSpan={2} color="text.secondary">No page views in period</TableCell></TableRow>
-                        ) : (
-                          metrics.mostUsedPages.map(({ path, count }) => (
-                            <TableRow key={path}>
-                              <TableCell>{pathLabel(path)}</TableCell>
-                              <TableCell align="right">{count}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Avg time on page */}
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Avg time on page</Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Page</TableCell>
-                          <TableCell align="right">Avg time</TableCell>
-                          <TableCell align="right">Samples</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {metrics.avgTimeByPath.length === 0 ? (
-                          <TableRow><TableCell colSpan={3} color="text.secondary">No duration data in period</TableCell></TableRow>
-                        ) : (
-                          metrics.avgTimeByPath.map(({ path, avgSeconds, viewsWithTime }) => (
-                            <TableRow key={path}>
-                              <TableCell>{pathLabel(path)}</TableCell>
-                              <TableCell align="right">{formatDuration(avgSeconds)}</TableCell>
-                              <TableCell align="right">{viewsWithTime}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Top clickthroughs */}
-            <Grid item xs={12}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Top clickthroughs (tracked actions)</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Buttons/links that use trackClick() appear here.
-                  </Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Action / target</TableCell>
-                          <TableCell align="right">Clicks</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {metrics.topClicks.length === 0 ? (
-                          <TableRow><TableCell colSpan={2} color="text.secondary">No click events in period</TableCell></TableRow>
-                        ) : (
-                          metrics.topClicks.map(({ target, count }) => (
-                            <TableRow key={target}>
-                              <TableCell>{target}</TableCell>
-                              <TableCell align="right">{count}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Link clicks (nav and in-app links) */}
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Link clicks</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Total: {metrics.totalLinkClicks}</Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Link / label</TableCell>
-                          <TableCell align="right">Clicks</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {metrics.topLinkClicks.length === 0 ? (
-                          <TableRow><TableCell colSpan={2} color="text.secondary">No link clicks in period</TableCell></TableRow>
-                        ) : (
-                          metrics.topLinkClicks.map(({ label, count }) => (
-                            <TableRow key={label}>
-                              <TableCell>{label}</TableCell>
-                              <TableCell align="right">{count}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Checklist actions */}
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Checklist actions</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Total: {metrics.totalChecklistEvents}</Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Action</TableCell>
-                          <TableCell align="right">Count</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {metrics.topChecklistActions.length === 0 ? (
-                          <TableRow><TableCell colSpan={2} color="text.secondary">No checklist events in period</TableCell></TableRow>
-                        ) : (
-                          metrics.topChecklistActions.map(({ action, count }) => (
-                            <TableRow key={action}>
-                              <TableCell>{action}</TableCell>
-                              <TableCell align="right">{count}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Activity actions */}
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>Activity actions</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Total: {metrics.totalActivityEvents}</Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Action</TableCell>
-                          <TableCell align="right">Count</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {metrics.topActivityActions.length === 0 ? (
-                          <TableRow><TableCell colSpan={2} color="text.secondary">No activity events in period</TableCell></TableRow>
-                        ) : (
-                          metrics.topActivityActions.map(({ action, count }) => (
-                            <TableRow key={action}>
-                              <TableCell>{action}</TableCell>
-                              <TableCell align="right">{count}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        )}
-      </Paper>
-
-      <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
-        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <GroupIcon color="primary" />
-          Aggregated platform data
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Combined counts from managers, mentors, and PECC tiers across the platform.
-        </Typography>
-        {aggregatedError && (
-          <Alert severity="error" sx={{ mb: 2 }} action={
-            <Button color="inherit" size="small" onClick={() => { setAggregatedError(null); setRetryCount(c => c + 1); }}>
-              Retry
-            </Button>
-          }>
-            {aggregatedError}
-          </Alert>
-        )}
-        {aggregatedLoading ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}>
-            <CircularProgress size={24} />
-            <Typography variant="body2" color="text.secondary">Loading platform metrics...</Typography>
+                  </Select>
+                </FormControl>
+                <Button
+                  size="small"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => setRetryCount((c) => c + 1)}
+                  disabled={aggregatedLoading}
+                >
+                  Refresh
+                </Button>
+              </Stack>
+            </Box>
           </Box>
-        ) : aggregated ? (
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
-              <Card variant="outlined" sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <PeopleIcon color="primary" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight={600}>Managers</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{aggregated.managers}</Typography>
-                  <Typography variant="caption" color="text.secondary">Platform-wide</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
-              <Card variant="outlined" sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <AssignmentIcon color="primary" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight={600}>Mentors</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{aggregated.mentors}</Typography>
-                  <Typography variant="caption" color="text.secondary">Platform-wide</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
-              <Card variant="outlined" sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <GroupIcon color="primary" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight={600}>PECCs</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{aggregated.peccs}</Typography>
-                  <Typography variant="caption" color="text.secondary">At assigned sites</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
-              <Card variant="outlined" sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <LocalHospitalIcon color="primary" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight={600}>Sites</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{aggregated.sites}</Typography>
-                  <Typography variant="caption" color="text.secondary">Assigned to mentors</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
-              <Card variant="outlined" sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <PeopleIcon color="secondary" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight={600}>Contacts</Typography>
-                  </Box>
-                  <Typography variant="h4" color="secondary.main">{aggregated.contacts}</Typography>
-                  <Typography variant="caption" color="text.secondary">Hospital CRM contacts</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
-              <Card variant="outlined" sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <TimelineIcon color="primary" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight={600}>PECC progress</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{aggregated.avgPeccProgress}%</Typography>
-                  <Typography variant="caption" color="text.secondary">Avg checklist completion</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <Card variant="outlined" sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <WorkIcon color="primary" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight={600}>Mentor hours (this month)</Typography>
-                  </Box>
-                  <Typography variant="h4" color="primary">{aggregated.mentorHoursThisMonth.toFixed(1)}h</Typography>
-                  <Typography variant="caption" color="text.secondary">{aggregated.mentorActivitiesThisMonth} activities logged</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        ) : null}
-      </Paper>
+          <Box sx={{ p: 3 }}>
+            {aggregatedError && (
+              <Alert severity="error" sx={{ mb: 2 }} action={
+                <Button color="inherit" size="small" onClick={() => { setAggregatedError(null); setRetryCount((c) => c + 1); }}>
+                  Retry
+                </Button>
+              }>
+                {aggregatedError}
+              </Alert>
+            )}
+            {aggregatedLoading ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 2 }}>
+                <CircularProgress />
+                <Typography variant="body2" color="text.secondary">Loading platform metrics...</Typography>
+              </Box>
+            ) : aggregated ? (
+              <>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  People by tier
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <PeopleIcon color="primary" />
+                          <Typography variant="subtitle1" fontWeight={600}>Managers</Typography>
+                        </Box>
+                        <Typography variant="h4" color="primary">{aggregated.managers}</Typography>
+                        <Typography variant="caption" color="text.secondary">Active platform-wide</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <AssignmentIcon color="primary" />
+                          <Typography variant="subtitle1" fontWeight={600}>Mentors</Typography>
+                        </Box>
+                        <Typography variant="h4" color="primary">{aggregated.mentors}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {aggregated.managers > 0 ? `~${(aggregated.mentors / aggregated.managers).toFixed(0)} per manager` : 'Active platform-wide'}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <GroupIcon color="primary" />
+                          <Typography variant="subtitle1" fontWeight={600}>PECCs</Typography>
+                        </Box>
+                        <Typography variant="h4" color="primary">{aggregated.peccs}</Typography>
+                        <Typography variant="caption" color="text.secondary">At assigned sites</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Sites & contacts
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <LocalHospitalIcon color="info" />
+                          <Typography variant="subtitle1" fontWeight={600}>Sites</Typography>
+                        </Box>
+                        <Typography variant="h4" color="info.main">{aggregated.sites}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {aggregated.peccs > 0 ? `~${(aggregated.sites / aggregated.peccs).toFixed(1)} per PECC` : 'Assigned to mentors'}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'secondary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <PeopleIcon color="secondary" />
+                          <Typography variant="subtitle1" fontWeight={600}>Contacts</Typography>
+                        </Box>
+                        <Typography variant="h4" color="secondary.main">{aggregated.contacts}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {aggregated.sites > 0 ? `~${(aggregated.contacts / aggregated.sites).toFixed(0)} per site` : 'Hospital CRM'}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Engagement
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'success.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <TimelineIcon color="success" />
+                          <Typography variant="subtitle1" fontWeight={600}>PECC checklist progress</Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 1 }}>
+                          <Typography variant="h4" color="success.main">{aggregated.avgPeccProgress}%</Typography>
+                          <Typography variant="body2" color="text.secondary">avg completion</Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.min(aggregated.avgPeccProgress, 100)}
+                          sx={{ height: 8, borderRadius: 1, bgcolor: (t) => alpha(t.palette.success.main, 0.2) }}
+                          color="success"
+                        />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <WorkIcon color="primary" />
+                          <Typography variant="subtitle1" fontWeight={600}>
+                            Mentor hours ({mentorHoursPeriod === '3months' ? 'last 3 months' : 'this month'})
+                          </Typography>
+                        </Box>
+                        <Typography variant="h4" color="primary">{mentorHours.toFixed(1)}h</Typography>
+                        <Typography variant="caption" color="text.secondary">{mentorActivities} activities logged</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </>
+            ) : null}
+          </Box>
+        </Paper>
+      )}
+
+      {activeTab === 1 && (
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel>Period</InputLabel>
+                <Select
+                  value={periodValue}
+                  label="Period"
+                  onChange={(e: SelectChangeEvent) => setPeriodValue(e.target.value)}
+                >
+                  {PERIODS.map((p) => (
+                    <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {periodValue === 'custom' && (
+                <>
+                  <TextField
+                    size="small"
+                    label="From"
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ width: 150 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="To"
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ width: 150 }}
+                  />
+                </>
+              )}
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <InputLabel>Table rows</InputLabel>
+                <Select
+                  value={String(tableLimit)}
+                  label="Table rows"
+                  onChange={(e: SelectChangeEvent) => setTableLimit(Number(e.target.value))}
+                >
+                  {TABLE_LIMITS.map((n) => (
+                    <MenuItem key={n} value={String(n)}>Top {n}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={() => setRetryCount((c) => c + 1)}
+                disabled={loading}
+              >
+                Refresh
+              </Button>
+            </Box>
+          </Box>
+
+          <Box sx={{ p: 3 }}>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }} action={
+                <Button color="inherit" size="small" onClick={() => { setError(null); setRetryCount((c) => c + 1); }}>
+                  Retry
+                </Button>
+              }>
+                {error}
+              </Alert>
+            )}
+            {loading ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 2 }}>
+                <CircularProgress />
+                <Typography variant="body2" color="text.secondary">Loading usage analytics...</Typography>
+              </Box>
+            ) : (
+              <>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <PeopleIcon color="primary" fontSize="small" />
+                          <Typography variant="subtitle2" fontWeight={600}>Logins</Typography>
+                        </Box>
+                        <Typography variant="h5" color="primary">{metrics.totalLogins}</Typography>
+                        <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {Object.entries(metrics.uniqueLoginsByRole).map(([role, set]) => (
+                            <Chip key={role} label={`${role}: ${set.size}`} size="small" variant="outlined" />
+                          ))}
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <PageviewIcon color="primary" fontSize="small" />
+                          <Typography variant="subtitle2" fontWeight={600}>Page views</Typography>
+                        </Box>
+                        <Typography variant="h5" color="primary">{metrics.totalPageViews}</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <TouchAppIcon color="primary" fontSize="small" />
+                          <Typography variant="subtitle2" fontWeight={600}>Clicks</Typography>
+                        </Box>
+                        <Typography variant="h5" color="primary">{metrics.totalClicks}</Typography>
+                        {Object.keys(metrics.clickCountByRole).length > 0 && (
+                          <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {Object.entries(metrics.clickCountByRole).map(([role, count]) => (
+                              <Chip key={role} label={`${role}: ${count}`} size="small" variant="outlined" />
+                            ))}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <LinkIcon color="primary" fontSize="small" />
+                          <Typography variant="subtitle2" fontWeight={600}>Link clicks</Typography>
+                        </Box>
+                        <Typography variant="h5" color="primary">{metrics.totalLinkClicks}</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                <Accordion defaultExpanded disableGutters sx={{ '&:before': { display: 'none' }, boxShadow: 'none', border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 2 }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography fontWeight={600}>Pages & engagement</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Most used pages</Typography>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Page</TableCell>
+                                <TableCell align="right">Views</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {metrics.mostUsedPages.length === 0 ? (
+                                <TableRow><TableCell colSpan={2}>No page views in period</TableCell></TableRow>
+                              ) : (
+                                metrics.mostUsedPages.map(({ path, count }) => (
+                                  <TableRow key={path}>
+                                    <TableCell>{pathLabel(path)}</TableCell>
+                                    <TableCell align="right">{count}</TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Avg time on page</Typography>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Page</TableCell>
+                                <TableCell align="right">Avg time</TableCell>
+                                <TableCell align="right">Samples</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {metrics.avgTimeByPath.length === 0 ? (
+                                <TableRow><TableCell colSpan={3}>No duration data</TableCell></TableRow>
+                              ) : (
+                                metrics.avgTimeByPath.map(({ path, avgSeconds, viewsWithTime }) => (
+                                  <TableRow key={path}>
+                                    <TableCell>{pathLabel(path)}</TableCell>
+                                    <TableCell align="right">{formatDuration(avgSeconds)}</TableCell>
+                                    <TableCell align="right">{viewsWithTime}</TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+
+                <Accordion defaultExpanded disableGutters sx={{ '&:before': { display: 'none' }, boxShadow: 'none', border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 2 }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography fontWeight={600}>Clickthroughs & actions</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Top clickthroughs</Typography>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Action / target</TableCell>
+                                <TableCell align="right">Clicks</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {metrics.topClicks.length === 0 ? (
+                                <TableRow><TableCell colSpan={2}>No click events</TableCell></TableRow>
+                              ) : (
+                                metrics.topClicks.map(({ target, count }) => (
+                                  <TableRow key={target}>
+                                    <TableCell>{target}</TableCell>
+                                    <TableCell align="right">{count}</TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Link clicks</Typography>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Link / label</TableCell>
+                                <TableCell align="right">Clicks</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {metrics.topLinkClicks.length === 0 ? (
+                                <TableRow><TableCell colSpan={2}>No link clicks</TableCell></TableRow>
+                              ) : (
+                                metrics.topLinkClicks.map(({ label, count }) => (
+                                  <TableRow key={label}>
+                                    <TableCell>{label}</TableCell>
+                                    <TableCell align="right">{count}</TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Checklist actions</Typography>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Action</TableCell>
+                                <TableCell align="right">Count</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {metrics.topChecklistActions.length === 0 ? (
+                                <TableRow><TableCell colSpan={2}>No checklist events</TableCell></TableRow>
+                              ) : (
+                                metrics.topChecklistActions.map(({ action, count }) => (
+                                  <TableRow key={action}>
+                                    <TableCell>{action}</TableCell>
+                                    <TableCell align="right">{count}</TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Activity actions</Typography>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Action</TableCell>
+                                <TableCell align="right">Count</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {metrics.topActivityActions.length === 0 ? (
+                                <TableRow><TableCell colSpan={2}>No activity events</TableCell></TableRow>
+                              ) : (
+                                metrics.topActivityActions.map(({ action, count }) => (
+                                  <TableRow key={action}>
+                                    <TableCell>{action}</TableCell>
+                                    <TableCell align="right">{count}</TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+              </>
+            )}
+          </Box>
+        </Paper>
+      )}
     </Box>
   );
 }
