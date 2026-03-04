@@ -3895,6 +3895,10 @@ const AdminCRMPage: React.FC = () => {
           contactEmail={detailContact.email}
           contactName={contactDisplayName(detailContact)}
           contactId={detailContact.id}
+          initialHospitalId={detailContact.linkedHospitalIds?.[0] ?? null}
+          initialProgramIds={detailContact.programs ?? []}
+          initialCohortIds={detailContact.cohorts ?? []}
+          initialRole={CONTACT_TYPE_TO_USER_ROLE[detailContact.type] ? (normalizeUserRole(CONTACT_TYPE_TO_USER_ROLE[detailContact.type]!) as UserRole) : undefined}
           onSuccess={(code) => {
             // Optionally add activity log entry
             if (detailContact) {
@@ -5539,8 +5543,11 @@ const AdminCRMPage: React.FC = () => {
           contactEmail={detailContact.email}
           contactName={contactDisplayName(detailContact)}
           contactId={detailContact.id}
+          initialHospitalId={detailContact.linkedHospitalIds?.[0] ?? null}
+          initialProgramIds={detailContact.programs ?? []}
+          initialCohortIds={detailContact.cohorts ?? []}
+          initialRole={CONTACT_TYPE_TO_USER_ROLE[detailContact.type] ? (normalizeUserRole(CONTACT_TYPE_TO_USER_ROLE[detailContact.type]!) as UserRole) : undefined}
           onSuccess={(code) => {
-            // Optionally add activity log entry
             if (detailContact) {
               addActivityEntry(detailContact, {
                 type: 'communication',

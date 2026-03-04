@@ -31,6 +31,11 @@ interface SendInvitationDialogProps {
   contactEmail?: string;
   contactName?: string;
   contactId?: string;
+  /** Prefill from CRM: hospital, programs, cohorts, and role when sending from a contact that already has these set */
+  initialHospitalId?: string | null;
+  initialProgramIds?: string[];
+  initialCohortIds?: string[];
+  initialRole?: UserRole;
   onSuccess?: (code: string) => void;
 }
 
@@ -40,6 +45,10 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   contactEmail = '',
   contactName = '',
   contactId,
+  initialHospitalId = null,
+  initialProgramIds = [],
+  initialCohortIds = [],
+  initialRole,
   onSuccess
 }) => {
   const { userProfile, actualRole } = useUserProfile();
@@ -68,16 +77,16 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   useEffect(() => {
     if (open) {
       setEmail(contactEmail);
-      setRole(UserRole.PECC);
-      setHospitalId(null);
+      setRole(initialRole ?? UserRole.PECC);
+      setHospitalId(initialHospitalId ?? null);
       setMentorId(null);
       setManagerId(null);
       setManagerIdForPECC(null);
       setError(null);
       setSuccess(false);
       setInvitationCode('');
-      setCohortIds([]);
-      setProgramIds([]);
+      setCohortIds(Array.isArray(initialCohortIds) ? [...initialCohortIds] : []);
+      setProgramIds(Array.isArray(initialProgramIds) ? [...initialProgramIds] : []);
       setCustomMessage('');
       setMentors([]);
       setManagers([]);
@@ -86,7 +95,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setPrograms([]);
       loadOptions();
     }
-  }, [open, contactEmail]);
+  }, [open, contactEmail, initialHospitalId, initialProgramIds, initialCohortIds, initialRole]);
   
   const loadOptions = async () => {
     setOptionsLoading(true);
@@ -286,7 +295,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   };
   
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
         <Box>
           Send Account Invitation
@@ -322,7 +331,11 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         ) : (
           <>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            
+            {(initialHospitalId || (initialProgramIds?.length ?? 0) > 0 || (initialCohortIds?.length ?? 0) > 0) && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Hospital, program(s), and cohort(s) are pre-filled from this contact&apos;s CRM profile. You can change them if needed.
+              </Alert>
+            )}
             <TextField
               label="Email"
               type="email"
@@ -418,7 +431,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                   value={programs.filter(p => programIds.includes(p.id))}
                   onChange={(_, value) => setProgramIds(value.map(p => p.id))}
                   renderInput={(params) => (
-                    <TextField {...params} label="Program (optional)" placeholder="Select programs" sx={{ mb: 2 }} />
+                    <TextField {...params} label="Program(s) (optional)" placeholder="Select programs" sx={{ mb: 2 }} />
                   )}
                   disabled={loading}
                 />
