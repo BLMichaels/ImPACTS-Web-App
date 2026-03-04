@@ -3648,6 +3648,22 @@ const AdminCRMPage: React.FC = () => {
                 </>
               )}
               <ListItem disablePadding><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
+              <ListItem disablePadding>
+                <ListItemText
+                  primary="Email"
+                  secondary={
+                    detailContact.email?.trim() ? (
+                      <Box
+                        component="a"
+                        href={`mailto:${encodeURIComponent(detailContact.email.trim())}`}
+                        sx={{ color: 'primary.main', textDecoration: 'underline', '&:hover': { textDecoration: 'underline' } }}
+                      >
+                        {detailContact.email}
+                      </Box>
+                    ) : '—'
+                  }
+                />
+              </ListItem>
               {isPersonType(detailContact.type) && detailContact.is_admin && (
                 <ListItem disablePadding><ListItemText primary="Admin Status" secondary={<Chip label="Admin" size="small" color="primary" sx={{ mt: 0.5 }} />} /></ListItem>
               )}
@@ -3736,31 +3752,6 @@ const AdminCRMPage: React.FC = () => {
                   <ListItemText primary="My reminders" secondary={`${reminders.filter(r => r.contact_id === detailContact.id).length} upcoming for this contact.`} />
                 </ListItem>
               )}
-              {isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
-                <ListItem disablePadding sx={{ flexWrap: 'wrap', gap: 1 }}>
-                  <Box sx={{ width: '100%' }}>
-                    <ListItemText primary="Primary program (navbar logo)" secondary="Logo shown in top-left for this user." secondaryTypographyProps={{ variant: 'body2' }} />
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                      {detailUserPrimaryProgramLogoUrl && (
-                        <Box component="img" src={detailUserPrimaryProgramLogoUrl} alt="" sx={{ height: 24, objectFit: 'contain', flexShrink: 0 }} onError={() => setDetailUserPrimaryProgramLogoUrl(null)} />
-                      )}
-                      <FormControl size="small" sx={{ minWidth: 180 }}>
-                        <Select
-                          value={detailUserPrimaryProgramId ?? ''}
-                          displayEmpty
-                          onChange={(e) => handleCrmSavePrimaryProgram(e.target.value || null)}
-                          renderValue={(v) => v ? (crmProgramsForPrimary.find(p => p.id === v)?.name ?? v) : 'None'}
-                        >
-                          <MenuItem value="">None</MenuItem>
-                          {crmProgramsForPrimary.map(p => (
-                            <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Box>
-                  </Box>
-                </ListItem>
-              )}
               {(detailContact.type === 'organization' || detailContact.type === 'hospital' || detailContact.type === 'system' || detailContact.type === 'hiring_group') && (() => {
                 const hospitalIds = detailContact.type === 'hospital'
                   ? [detailContact.id, detailContact.facilityId, detailContact.hospitalId].filter(Boolean) as string[]
@@ -3802,18 +3793,6 @@ const AdminCRMPage: React.FC = () => {
                 }}>
                   Edit
                 </Button>
-                <Button size="small" variant="outlined" startIcon={<EmailIcon />} fullWidth onClick={() => detailContact?.email?.trim() && window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`)} disabled={!detailContact?.email?.trim()}>Email</Button>
-                {isPersonType(detailContact.type) && detailContactUserId && (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<SettingsIcon />}
-                    fullWidth
-                    onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}
-                  >
-                    Manage permissions
-                  </Button>
-                )}
                 {canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
                   <Button
                     size="small"
@@ -3857,18 +3836,6 @@ const AdminCRMPage: React.FC = () => {
                       ))}
                     </Menu>
                   </>
-                )}
-                {isPersonType(detailContact.type) && detailContact.email && (
-                  <Button 
-                    size="small" 
-                    variant="contained" 
-                    startIcon={<SendIcon />} 
-                    fullWidth
-                    sx={{ mt: 1 }}
-                    onClick={() => setInvitationDialogOpen(true)}
-                  >
-                    Send Invitation
-                  </Button>
                 )}
               </Box>
             </Box>
@@ -4197,6 +4164,9 @@ const AdminCRMPage: React.FC = () => {
                     {(detailContact.cohorts ?? []).length > 0 && (
                       <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><GroupsIcon fontSize="small" /></ListItemIcon><ListItemText primary="Cohort(s)" secondary={(detailContact.cohorts ?? []).join(', ')} /></ListItem>
                     )}
+                    {isPersonType(detailContact.type) && (
+                      <ListItem disablePadding><ListItemText primary="Primary program (navbar logo)" secondary={detailUserPrimaryProgramId ? (crmProgramsForPrimary.find(p => p.id === detailUserPrimaryProgramId)?.name ?? '—') : 'None'} /></ListItem>
+                    )}
                     {/* Show linked people for organizations/hospitals */}
                     {!isPersonType(detailContact.type) && (() => {
                       // For hospitals, check all possible identifiers (id, facilityId, hospitalId)
@@ -4433,6 +4403,11 @@ const AdminCRMPage: React.FC = () => {
                   {detailContact && isPersonType(detailContact.type) && detailContactUserId && (
                     <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}>
                       Manage permissions
+                    </Button>
+                  )}
+                  {detailContact && isPersonType(detailContact.type) && detailContact.email?.trim() && (
+                    <Button variant="contained" startIcon={<SendIcon />} onClick={() => setInvitationDialogOpen(true)}>
+                      Send Invitation
                     </Button>
                   )}
                   {detailContact && canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
