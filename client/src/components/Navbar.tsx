@@ -108,8 +108,8 @@ const Navbar: React.FC = () => {
 
     switch (userRole) {
       case UserRole.ADMIN:
+        // No Dashboard tab: Admins reach home by clicking the logo in the top left.
         return [
-          { path: '/admin/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/admin/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/admin/pipeline', label: 'Project Pipeline', icon: <PipelineIcon /> },

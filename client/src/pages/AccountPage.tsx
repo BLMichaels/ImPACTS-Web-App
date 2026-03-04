@@ -108,18 +108,21 @@ const AccountPage = () => {
   const getLastName = () => userProfile?.lastName || userProfile?.last_name || '';
   const getTier = () => userProfile?.tier || userProfile?.role || 'PECC';
   const getDepartment = () => userProfile?.department || '';
+  const profileHospitalId = (userProfile as { hospital_facility_id?: string | null })?.hospital_facility_id ?? null;
 
   const [hospitalInfo, setHospitalInfo] = useState<HospitalInfo>({
-    name: 'General Hospital',
-    type: 'General Acute Care',
-    address: '123 Main Street',
-    city: 'Anytown',
-    state: 'CA',
-    zipCode: '90210',
-    phone: '(555) 987-6543',
-    emergencyDepartment: 'Level II Trauma Center',
-    pediatricVolume: '15-20%'
+    name: '',
+    type: '',
+    address: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    phone: '',
+    emergencyDepartment: '',
+    pediatricVolume: ''
   });
+  const [hospitalLoadId, setHospitalLoadId] = useState<string | null>(null); // primary hospital id from CRM for save
+  const [primaryHospitalContactId, setPrimaryHospitalContactId] = useState<string | null>(null);
 
   const [editingUser, setEditingUser] = useState(false);
   const [editingHospital, setEditingHospital] = useState(false);
@@ -160,24 +163,106 @@ const AccountPage = () => {
     }
   }, [userProfile?.gapPlanReminders]);
 
-  const handleUserSave = () => {
-    // Update the user profile context
+  // Load hospital and CRM contact data for Account (personal/hospital from CRM + registration)
+  useEffect(() => {
+    if (!accountUserId) return;
+    const loadCrmData = async () => {
+      const hid = profileHospitalId;
+      if (hid) {
+        const { data: hospital } = await supabase
+          .from('hospitals')
+          .select('id, name, address, city, state, zip, phone, trauma_level, ed_size, region')
+          .eq('id', hid)
+          .maybeSingle();
+        if (hospital) {
+          setHospitalLoadId((hospital as { id: string }).id);
+          setHospitalInfo(prev => ({
+            ...prev,
+            name: (hospital as { name?: string }).name ?? '',
+            type: (hospital as { region?: string }).region ?? 'General Acute Care',
+            address: (hospital as { address?: string }).address ?? '',
+            city: (hospital as { city?: string }).city ?? '',
+            state: (hospital as { state?: string }).state ?? '',
+            zipCode: (hospital as { zip?: string }).zip ?? '',
+            phone: (hospital as { phone?: string }).phone ?? '',
+            emergencyDepartment: (hospital as { ed_size?: string }).ed_size ?? (hospital as { trauma_level?: string }).trauma_level ?? '',
+            pediatricVolume: (hospital as { region?: string }).region ?? ''
+          }));
+        }
+      }
+      const { data: contacts } = await supabase
+        .from('hospital_contacts')
+        .select('id, hospital_id, first_name, last_name, email, phone')
+        .eq('user_id', accountUserId);
+      if (contacts && contacts.length > 0) {
+        const primary = hid ? contacts.find((c: { hospital_id: string }) => c.hospital_id === hid) : contacts[0];
+        if (primary) setPrimaryHospitalContactId((primary as { id: string }).id);
+      }
+      if (!hid) {
+        setHospitalInfo(prev => ({
+          name: prev.name || '—',
+          type: prev.type || '—',
+          address: prev.address || '—',
+          city: prev.city || '—',
+          state: prev.state || '—',
+          zipCode: prev.zipCode || '—',
+          phone: prev.phone || '—',
+          emergencyDepartment: prev.emergencyDepartment || '—',
+          pediatricVolume: prev.pediatricVolume || '—'
+        }));
+      }
+    };
+    loadCrmData();
+  }, [accountUserId, profileHospitalId]);
+
+  const handleUserSave = async () => {
+    const firstName = getFirstName();
+    const lastName = getLastName();
+    const phone = userProfile?.phone || '';
     updateUserProfile({
-      firstName: getFirstName(),
-      lastName: getLastName(),
-      phone: userProfile?.phone || '',
+      firstName,
+      lastName,
+      phone,
       tier: getTier(),
       department: getDepartment()
     } as any);
+    if (accountUserId) {
+      await supabase
+        .from('hospital_contacts')
+        .update({ first_name: firstName, last_name: lastName, phone: phone || null, updated_at: new Date().toISOString() })
+        .eq('user_id', accountUserId);
+    }
     setEditingUser(false);
-    setAlert({ type: 'success', message: 'User information updated successfully!' });
+    setAlert({ type: 'success', message: 'Personal information updated successfully!' });
     setTimeout(() => setAlert(null), 3000);
   };
 
-  const handleHospitalSave = () => {
-    // Here you would typically save to your backend
+  const handleHospitalSave = async () => {
     setEditingHospital(false);
-    setAlert({ type: 'success', message: 'Hospital information updated successfully!' });
+    if (hospitalLoadId && (actualRole === 'admin' || actualRole === 'manager')) {
+      const { error } = await supabase
+        .from('hospitals')
+        .update({
+          name: hospitalInfo.name || null,
+          address: hospitalInfo.address || null,
+          city: hospitalInfo.city || null,
+          state: hospitalInfo.state || null,
+          zip: hospitalInfo.zipCode || null,
+          phone: hospitalInfo.phone || null,
+          ed_size: hospitalInfo.emergencyDepartment || null,
+          region: hospitalInfo.type || hospitalInfo.pediatricVolume || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', hospitalLoadId);
+      if (error) {
+        setAlert({ type: 'error', message: 'Could not update hospital. You may not have permission.' });
+        setTimeout(() => setAlert(null), 5000);
+        return;
+      }
+      setAlert({ type: 'success', message: 'Hospital information updated successfully!' });
+    } else {
+      setAlert({ type: 'info', message: 'Hospital details are managed by your organization administrator.' });
+    }
     setTimeout(() => setAlert(null), 3000);
   };
 
@@ -233,7 +318,7 @@ const AccountPage = () => {
           Account Settings
         </Typography>
         <Typography variant="h6" color="text.secondary" paragraph>
-          Manage your personal information, hospital details, and account security.
+          Manage your personal information, hospital details, and account security. Personal and hospital information are synced with the CRM when available.
         </Typography>
 
         {alert && (

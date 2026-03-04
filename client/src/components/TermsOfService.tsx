@@ -230,6 +230,13 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
           7. Data Security, Privacy, and Compliance
         </Typography>
         <Typography variant="body1" paragraph>
+          <strong>Account and CRM Data:</strong> Personal and facility information you provide in 
+          Account Settings may be stored and synced with the platform’s CRM and registration data 
+          for administration, cohort management, and program operations. By updating your account 
+          information, you consent to this use and to your organization’s administrators viewing 
+          and managing contact details as needed for the service.
+        </Typography>
+        <Typography variant="body1" paragraph>
           <strong>Security Measures:</strong> While ImPACTS implements reasonable administrative, 
           technical, and physical security measures to protect data, you acknowledge and agree that:
         </Typography>
