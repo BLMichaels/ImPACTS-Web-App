@@ -222,10 +222,14 @@ export default function AdminSettingsPage() {
     example: string;
     sustainability: string;
     resources: string[]; // Format: "Title (URL)" or just "URL"
+    /** If true, question is scored in the assessment; if false, unscored. Admin can filter list by this. */
+    is_scored?: boolean;
   }
   const [educationQuestions, setEducationQuestions] = useState<EducationQuestion[]>([]);
   const [educationDialogOpen, setEducationDialogOpen] = useState(false);
   const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
+  /** Admin-only filter for Gap Closure table: show all, scored only, or unscored only */
+  const [gapClosureShowFilter, setGapClosureShowFilter] = useState<'all' | 'scored' | 'unscored'>('all');
   const [educationForm, setEducationForm] = useState<EducationQuestion>({
     questionId: '',
     domain: '',
@@ -235,7 +239,8 @@ export default function AdminSettingsPage() {
     background: '',
     example: '',
     sustainability: '',
-    resources: []
+    resources: [],
+    is_scored: true
   });
   const [newResource, setNewResource] = useState('');
 
@@ -386,7 +391,12 @@ export default function AdminSettingsPage() {
     }
     const eduVal = byKey.get('education_questions');
     if (eduVal != null && Array.isArray(eduVal)) {
-      setEducationQuestions((eduVal as any[]).map((q: any) => ({ ...q, domain: q.domain ?? '', category: q.category ?? '' })));
+      setEducationQuestions((eduVal as any[]).map((q: any) => ({
+        ...q,
+        domain: q.domain ?? '',
+        category: q.category ?? '',
+        is_scored: q.is_scored !== false
+      })));
     } else {
       setEducationQuestions([]);
     }
@@ -442,7 +452,12 @@ export default function AdminSettingsPage() {
   const handleOpenEducationDialog = (question?: EducationQuestion) => {
     if (question) {
       setEditingEducationId(question.questionId);
-      setEducationForm({ ...question, domain: question.domain ?? '', category: question.category ?? '' });
+      setEducationForm({
+        ...question,
+        domain: question.domain ?? '',
+        category: question.category ?? '',
+        is_scored: question.is_scored !== false
+      });
     } else {
       setEditingEducationId(null);
       setEducationForm({
@@ -454,7 +469,8 @@ export default function AdminSettingsPage() {
         background: '',
         example: '',
         sustainability: '',
-        resources: []
+        resources: [],
+        is_scored: true
       });
     }
     setNewResource('');
@@ -496,6 +512,19 @@ export default function AdminSettingsPage() {
     setEducationQuestions(next);
     await saveAppSetting('education_questions', next);
     setSnackbar({ open: true, message: 'Order updated', severity: 'success' });
+  };
+
+  const handleToggleEducationScored = async (questionId: string, isScored: boolean) => {
+    const next = educationQuestions.map(q =>
+      q.questionId === questionId ? { ...q, is_scored: isScored } : q
+    );
+    setEducationQuestions(next);
+    const toSave = next.map((q: unknown) => {
+      const { notes: _n, ...rest } = q as Record<string, unknown> & { notes?: string };
+      return rest;
+    });
+    await saveAppSetting('education_questions', toSave);
+    setSnackbar({ open: true, message: isScored ? 'Question marked as scored' : 'Question marked as unscored', severity: 'success' });
   };
 
   const openSimDialog = (sim?: PeccSimulation) => {
@@ -1221,99 +1250,141 @@ export default function AdminSettingsPage() {
       {/* Gap Closure (education questions by bucket) */}
       {tabIndex === 8 && (
         <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
             <Box>
               <Typography variant="h6">Gap Closure – Questions</Typography>
               <Typography color="textSecondary">
-                Manage educational content for PRS questions. Assign each question to a category (bucket); they appear in that section on the Gap Plan page. Each question can have a template with Question, Why, Background, Example, Sustainability Practices, Notes, and Additional Resources.
+                Manage educational content for PRS questions. Assign each question to a category (bucket); they appear in that section on the Gap Plan page. Mark questions as <strong>Scored</strong> or <strong>Unscored</strong> and filter the list below.
               </Typography>
             </Box>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => handleOpenEducationDialog()}
-            >
-              Add Question
-            </Button>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel>Show</InputLabel>
+                <Select
+                  value={gapClosureShowFilter}
+                  label="Show"
+                  onChange={(e) => setGapClosureShowFilter(e.target.value as 'all' | 'scored' | 'unscored')}
+                >
+                  <MenuItem value="all">All questions</MenuItem>
+                  <MenuItem value="scored">Scored only</MenuItem>
+                  <MenuItem value="unscored">Unscored only</MenuItem>
+                </Select>
+              </FormControl>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => handleOpenEducationDialog()}
+              >
+                Add Question
+              </Button>
+            </Box>
           </Box>
-          
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Question ID / Category</TableCell>
-                  <TableCell>Domain (accordion)</TableCell>
-                  <TableCell>Question Preview</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {educationQuestions.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} align="center">
-                      <Typography color="textSecondary">No education questions yet. Add your first question.</Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  educationQuestions.map((eq, idx) => (
-                    <TableRow key={eq.questionId}>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                          {eq.category?.trim() ? `Question ${eq.questionId}: ${eq.category}` : `Question ${eq.questionId}`}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {eq.domain || '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ 
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical'
-                        }}>
-                          {eq.question || '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton
-                          size="small"
-                          title="Move up"
-                          disabled={idx === 0}
-                          onClick={() => moveEducationQuestion(idx, 'up')}
-                        >
-                          <ArrowUpwardIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          title="Move down"
-                          disabled={idx === educationQuestions.length - 1}
-                          onClick={() => moveEducationQuestion(idx, 'down')}
-                        >
-                          <ArrowDownwardIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenEducationDialog(eq)}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteEducationQuestion(eq.questionId)}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
+          {(() => {
+            const filtered = gapClosureShowFilter === 'all'
+              ? educationQuestions
+              : educationQuestions.filter(q => gapClosureShowFilter === 'scored' ? (q.is_scored !== false) : (q.is_scored === false));
+            return (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Question ID / Category</TableCell>
+                      <TableCell>Domain (accordion)</TableCell>
+                      <TableCell>Scored</TableCell>
+                      <TableCell>Question Preview</TableCell>
+                      <TableCell align="right">Actions</TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {educationQuestions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography color="textSecondary">No education questions yet. Add your first question.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : filtered.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography color="textSecondary">No questions match the current filter. Change &quot;Show&quot; to see all.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filtered.map((eq) => {
+                        const fullIndex = educationQuestions.findIndex(q => q.questionId === eq.questionId);
+                        return (
+                          <TableRow key={eq.questionId}>
+                            <TableCell>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {eq.category?.trim() ? `Question ${eq.questionId}: ${eq.category}` : `Question ${eq.questionId}`}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {eq.domain || '—'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <FormControlLabel
+                                control={
+                                  <Switch
+                                    size="small"
+                                    checked={eq.is_scored !== false}
+                                    onChange={(_, checked) => handleToggleEducationScored(eq.questionId, checked)}
+                                  />
+                                }
+                                label={eq.is_scored !== false ? 'Scored' : 'Unscored'}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" sx={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical'
+                              }}>
+                                {eq.question || '—'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right">
+                              <IconButton
+                                size="small"
+                                title="Move up"
+                                disabled={fullIndex <= 0}
+                                onClick={() => moveEducationQuestion(fullIndex, 'up')}
+                              >
+                                <ArrowUpwardIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                title="Move down"
+                                disabled={fullIndex >= educationQuestions.length - 1}
+                                onClick={() => moveEducationQuestion(fullIndex, 'down')}
+                              >
+                                <ArrowDownwardIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenEducationDialog(eq)}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteEducationQuestion(eq.questionId)}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            );
+          })()}
         </Box>
       )}
 
@@ -1492,6 +1563,16 @@ export default function AdminSettingsPage() {
               placeholder="e.g. Coordination, Staffing"
               helperText="Short name you type. Shown as the question label next to the question ID on the card."
               inputProps={{ dir: 'ltr' }}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={educationForm.is_scored !== false}
+                  onChange={(_, checked) => setEducationForm(prev => ({ ...prev, is_scored: checked }))}
+                />
+              }
+              label="Scored (this question counts toward the assessment score)"
+              sx={{ display: 'block', mt: 1, mb: 1 }}
             />
             <TextField
               fullWidth
