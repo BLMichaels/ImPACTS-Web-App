@@ -707,7 +707,7 @@ const AdminCRMPage: React.FC = () => {
             });
           }
           // Critical: for any contact that matches a user by email, use the user's current role for type AND set user_id (so "view as" and recategorization are correct).
-          // Also use the user's current name so PECC/hospital name changes in users table are reflected.
+          // Use the user's name when present; otherwise keep the contact's existing names so we don't overwrite good CRM data with empty user fields.
           const emailToUser = new Map(userRows.map((u) => [u.email?.trim().toLowerCase() ?? '', u]));
           for (let i = 0; i < list.length; i++) {
             const c = list[i];
@@ -717,14 +717,18 @@ const AdminCRMPage: React.FC = () => {
               const role = normalizeUserRole(user.role);
               const type = roleToContactType[role as string];
               if (type) {
-                const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.email || '—';
+                const userFirst = (user.first_name != null && String(user.first_name).trim() !== '') ? String(user.first_name).trim() : '';
+                const userLast = (user.last_name != null && String(user.last_name).trim() !== '') ? String(user.last_name).trim() : '';
+                const firstName = userFirst !== '' ? userFirst : (c.firstName ?? '');
+                const lastName = userLast !== '' ? userLast : (c.lastName ?? '');
+                const displayName = [firstName, lastName].filter(Boolean).join(' ').trim() || c.name || user.email || '—';
                 list[i] = {
                   ...c,
                   type,
                   user_id: user.id,
                   name: displayName,
-                  firstName: user.first_name ?? '',
-                  lastName: user.last_name ?? ''
+                  firstName: firstName || undefined,
+                  lastName: lastName || undefined
                 };
               }
             }
