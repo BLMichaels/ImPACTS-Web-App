@@ -124,15 +124,17 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
 
     // Load mentors and managers: use RPC first (includes users + CRM contacts by email), then fallback to direct query
     const { data: rpcData, error: rpcError } = await supabase.rpc('get_mentors_and_managers_for_invite');
+    let mentorOptions: Array<{ id: string; name: string; email: string }> = [];
+    let managerOptions: Array<{ id: string; name: string; email: string }> = [];
+
     if (!rpcError && Array.isArray(rpcData)) {
-      const mentorsList = (rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[])
+      const rows = rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[];
+      mentorOptions = rows
         .filter((r) => normalizeUserRole(r.role) === UserRole.MENTOR)
         .map(mapUserToOption);
-      const managersList = (rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[])
+      managerOptions = rows
         .filter((r) => normalizeUserRole(r.role) === UserRole.MANAGER)
         .map(mapUserToOption);
-      setMentors(mentorsList);
-      setManagers(managersList);
     } else {
       // Fallback: direct queries (may be empty if RLS blocks). Include invited/inactive users as long as they are in the users table.
       const [mentorsRes, managersRes] = await Promise.all([
@@ -140,12 +142,47 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         supabase.from('users').select('id, first_name, last_name, email').eq('role', 'manager')
       ]);
       if (mentorsRes.data) {
-        setMentors(mentorsRes.data.map(mapUserToOption));
+        mentorOptions = mentorsRes.data.map(mapUserToOption);
       }
       if (managersRes.data) {
-        setManagers(managersRes.data.map(mapUserToOption));
+        managerOptions = managersRes.data.map(mapUserToOption);
       }
     }
+
+    // Also include CRM-only Manager/Mentor contacts (no user account yet) so admins can assign PECCs to them by name/email.
+    const { data: crmContacts } = await supabase
+      .from('crm_organizations')
+      .select('id, contact_type, first_name, last_name, name, email')
+      .in('contact_type', ['manager', 'mentor']);
+
+    if (Array.isArray(crmContacts) && crmContacts.length > 0) {
+      const existingEmails = new Set(
+        [...mentorOptions, ...managerOptions].map((o) => (o.email || '').trim().toLowerCase()).filter(Boolean)
+      );
+      crmContacts.forEach((row: any) => {
+        const email = (row.email ?? '').trim();
+        if (!email) return;
+        const lower = email.toLowerCase();
+        if (existingEmails.has(lower)) return;
+        const fullName =
+          [row.first_name, row.last_name].filter(Boolean).join(' ').trim() ||
+          String(row.name ?? '') ||
+          email;
+        const opt = {
+          id: `crm:${String(row.id)}`,
+          name: fullName,
+          email
+        };
+        if (row.contact_type === 'mentor') {
+          mentorOptions.push(opt);
+        } else if (row.contact_type === 'manager') {
+          managerOptions.push(opt);
+        }
+      });
+    }
+
+    setMentors(mentorOptions);
+    setManagers(managerOptions);
     
     // Load cohorts (for PECC pre-designation). Mentors only see cohorts they're allowed to invite to.
     if (actualRole === UserRole.MENTOR && userProfile?.id) {
@@ -258,14 +295,23 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
     setError(null);
     
     try {
+      // Only send mentor/manager IDs for real app users (ids from users table), not CRM-only contacts (prefixed with 'crm:')
+      const selectedMentor = mentors.find((m) => m.id === mentorId) || null;
+      const selectedManager = managers.find((m) => m.id === managerId) || null;
+      const selectedManagerForPecc = managers.find((m) => m.id === managerIdForPECC) || null;
+      const mentorUserId = selectedMentor && !selectedMentor.id.startsWith('crm:') ? selectedMentor.id : null;
+      const managerUserId = selectedManager && !selectedManager.id.startsWith('crm:') ? selectedManager.id : null;
+      const managerForPeccUserId =
+        selectedManagerForPecc && !selectedManagerForPecc.id.startsWith('crm:') ? selectedManagerForPecc.id : null;
+
       const { code } = await createAndSendInvitation({
         email: email.trim(),
         role,
         invitedBy: userProfile.id,
         hospitalId: hospitalId || null,
-        mentorId: role === UserRole.PECC ? (mentorId || null) : null,
-        managerId: role === UserRole.MENTOR ? (managerId || null) : null,
-        managerIdForPECC: role === UserRole.PECC ? (managerIdForPECC || null) : null,
+        mentorId: role === UserRole.PECC ? mentorUserId : null,
+        managerId: role === UserRole.MENTOR ? managerUserId : null,
+        managerIdForPECC: role === UserRole.PECC ? managerForPeccUserId : null,
         cohortIds: role === UserRole.PECC && cohortIds.length > 0 ? cohortIds : undefined,
         programIds: programIds.length > 0 ? programIds : undefined,
         customMessage: customMessage.trim() || undefined
