@@ -239,22 +239,16 @@ const ManagerCRMPage: React.FC = () => {
         }
       });
 
-      // Count mentors and PECCs for each hospital
+      // Count mentors, PECCs, and contacts for each hospital
       for (const hospital of hospitalList) {
-        const { count: mentorCount } = await supabase
-          .from('mentor_hospital_assignments')
-          .select('*', { count: 'exact', head: true })
-          .eq('hospital_id', hospital.id)
-          .eq('is_active', true);
-
-        const { count: peccCount } = await supabase
-          .from('users')
-          .select('*', { count: 'exact', head: true })
-          .eq('role', 'pecc')
-          .eq('hospital_facility_id', hospital.id);
-
-        hospital.mentorCount = mentorCount || 0;
-        hospital.peccCount = peccCount || 0;
+        const [mentorRes, peccRes, contactRes] = await Promise.all([
+          supabase.from('mentor_hospital_assignments').select('*', { count: 'exact', head: true }).eq('hospital_id', hospital.id).eq('is_active', true),
+          supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'pecc').eq('hospital_facility_id', hospital.id),
+          supabase.from('hospital_contacts').select('*', { count: 'exact', head: true }).eq('hospital_id', hospital.id)
+        ]);
+        hospital.mentorCount = mentorRes.count || 0;
+        hospital.peccCount = peccRes.count || 0;
+        hospital.contactCount = contactRes.count || 0;
       }
 
       setHospitals(hospitalList.sort((a, b) => a.name.localeCompare(b.name)));
@@ -453,11 +447,21 @@ const ManagerCRMPage: React.FC = () => {
       return;
     }
     try {
+      const email = contactForm.email.trim();
+      if (!email) {
+        setSnackbar({ open: true, message: 'Email is required', severity: 'error' });
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setSnackbar({ open: true, message: 'Please enter a valid email address', severity: 'error' });
+        return;
+      }
       const payload = {
         hospital_id: contactForm.hospitalId,
         first_name: contactForm.firstName.trim(),
         last_name: contactForm.lastName.trim(),
-        email: contactForm.email.trim(),
+        email,
         phone: contactForm.phone?.trim() || null,
         contact_status: contactForm.contactStatus,
         role_at_hospital: contactForm.roleAtHospital?.trim() || null,
@@ -706,7 +710,7 @@ const ManagerCRMPage: React.FC = () => {
                       <Divider sx={{ my: 2 }} />
 
                       <Grid container spacing={2}>
-                        <Grid item xs={6}>
+                        <Grid item xs={4}>
                           <Box sx={{ textAlign: 'center' }}>
                             <Typography variant="h5" color="primary">
                               {hospital.mentorCount}
@@ -716,13 +720,23 @@ const ManagerCRMPage: React.FC = () => {
                             </Typography>
                           </Box>
                         </Grid>
-                        <Grid item xs={6}>
+                        <Grid item xs={4}>
                           <Box sx={{ textAlign: 'center' }}>
                             <Typography variant="h5" color="success.main">
                               {hospital.peccCount}
                             </Typography>
                             <Typography variant="caption" color="textSecondary">
                               PECCs
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={4}>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="h5" color="info.main">
+                              {hospital.contactCount}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              Contacts
                             </Typography>
                           </Box>
                         </Grid>
@@ -741,7 +755,7 @@ const ManagerCRMPage: React.FC = () => {
                         fullWidth
                         variant="outlined"
                         sx={{ mt: 2 }}
-                        onClick={() => navigate(`/manager/overview`)}
+                        onClick={() => navigate(`/manager/overview?hospital=${hospital.id}`)}
                       >
                         View Details
                       </Button>
@@ -853,10 +867,10 @@ const ManagerCRMPage: React.FC = () => {
                         {c.is_primary_contact ? <Chip size="small" color="primary" label="Primary" /> : '—'}
                       </TableCell>
                       <TableCell align="right">
-                        <IconButton size="small" onClick={() => openEditContact(c)} title="Edit">
+                        <IconButton size="small" onClick={() => openEditContact(c)} title="Edit" aria-label={`Edit contact ${c.first_name} ${c.last_name}`}>
                           <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" onClick={() => handleDeleteContact(c)} title="Remove" color="error">
+                        <IconButton size="small" onClick={() => handleDeleteContact(c)} title="Remove" aria-label={`Remove contact ${c.first_name} ${c.last_name}`} color="error">
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </TableCell>

@@ -381,6 +381,7 @@ const AdminCRMPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [usersLoadError, setUsersLoadError] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState<PageSize>(25);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
@@ -518,6 +519,7 @@ const AdminCRMPage: React.FC = () => {
 
   const loadAllContactsFromSupabase = useCallback(async (background = false) => {
     if (!background) setLoading(true);
+    if (!background) setLoadError(null);
     const list: Contact[] = [];
     try {
       const chunk = 1000;
@@ -752,11 +754,12 @@ const AdminCRMPage: React.FC = () => {
             existingEmails.add(inv.email);
           }
         }
-      } catch (_) {
+      } catch (err) {
         list.length = 0;
+        if (!background) setLoadError(err instanceof Error ? err.message : 'Failed to load contacts');
       }
       setContacts(list);
-      if (!background) setLoading(false);
+      if (!background) { setLoading(false); }
     }, []);
 
   useEffect(() => {
@@ -2991,6 +2994,11 @@ const AdminCRMPage: React.FC = () => {
         </Box>
       </Box>
 
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+          Could not load CRM contacts: {loadError}. Check your connection and try refreshing.
+        </Alert>
+      )}
       {usersLoadError && tabValue !== TEAM_TAB_INDEX && (
         <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setUsersLoadError(null)}>
           Team members (managers, mentors, PECCs) could not be loaded: {usersLoadError}. Check your connection and that you have access. You can manage users in the Team tab.

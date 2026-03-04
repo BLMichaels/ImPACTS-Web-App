@@ -112,10 +112,20 @@ const AdminTeamTab: React.FC = () => {
     assignedManagerId: '' as string,
     assignedMentorId: '' as string,
     assignedManagerIdForPECC: '' as string,
+    assignedHospitalId: '' as string,
     assignedHospitalSystems: [] as string[]
   });
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [hospitalSystemOptions, setHospitalSystemOptions] = useState<string[]>([]);
+  const [hospitalOptions, setHospitalOptions] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    const loadHospitals = async () => {
+      const { data } = await supabase.from('hospitals').select('id, name').order('name');
+      setHospitalOptions((data || []).map((r: { id: string; name: string }) => ({ id: r.id, name: r.name || '' })));
+    };
+    loadHospitals();
+  }, []);
 
   useEffect(() => {
     const loadHospitalSystems = async () => {
@@ -238,6 +248,7 @@ const AdminTeamTab: React.FC = () => {
           email: formData.email,
           role: userRole,
           invitedBy: userProfile.id,
+          hospitalId: formData.role === 'pecc' && formData.assignedHospitalId ? formData.assignedHospitalId : null,
           mentorId: formData.role === 'pecc' && formData.assignedMentorId ? formData.assignedMentorId : null,
           managerId: formData.role === 'mentor' && formData.assignedManagerId ? formData.assignedManagerId : null,
           managerIdForPECC: formData.role === 'pecc' && formData.assignedManagerIdForPECC ? formData.assignedManagerIdForPECC : null
@@ -271,6 +282,7 @@ const AdminTeamTab: React.FC = () => {
         assignedManagerId: '',
         assignedMentorId: '',
         assignedManagerIdForPECC: '',
+        assignedHospitalId: '',
         assignedHospitalSystems: []
       });
       
@@ -779,6 +791,7 @@ const AdminTeamTab: React.FC = () => {
                     assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId,
                     assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId,
                     assignedManagerIdForPECC: role !== 'pecc' ? '' : prev.assignedManagerIdForPECC,
+                    assignedHospitalId: role !== 'pecc' ? '' : prev.assignedHospitalId,
                     assignedHospitalSystems: (role === 'hospital_system' || role === 'hiring_group') ? prev.assignedHospitalSystems : []
                   }));
                 }}>
@@ -810,6 +823,18 @@ const AdminTeamTab: React.FC = () => {
             )}
             {formData.role === 'pecc' && (
               <>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Hospital (site for PECC)</InputLabel>
+                    <Select value={formData.assignedHospitalId} onChange={(e) => setFormData((prev) => ({ ...prev, assignedHospitalId: e.target.value }))} label="Hospital (site for PECC)">
+                      <MenuItem value=""><em>None – assign later</em></MenuItem>
+                      {hospitalOptions.map((h) => <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>)}
+                    </Select>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      Pre-assigns the PECC to this hospital when they accept the invitation.
+                    </Typography>
+                  </FormControl>
+                </Grid>
                 <Grid item xs={12}>
                   <FormControl fullWidth>
                     <InputLabel>Assign to Mentor (optional)</InputLabel>
