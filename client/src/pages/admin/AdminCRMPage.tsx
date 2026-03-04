@@ -3736,33 +3736,6 @@ const AdminCRMPage: React.FC = () => {
                   <ListItemText primary="My reminders" secondary={`${reminders.filter(r => r.contact_id === detailContact.id).length} upcoming for this contact.`} />
                 </ListItem>
               )}
-              {(isPersonType(detailContact.type) || (detailContact.type === 'hospital' && detailContact.hospitalId)) && (
-                <ListItem disablePadding sx={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <ListItemText primary="Usage" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
-                    <FormControl size="small" variant="outlined" sx={{ minWidth: 120 }}>
-                      <Select
-                        value={contactUsagePeriod}
-                        onChange={(e) => setContactUsagePeriod(e.target.value as '7' | '30' | '90' | 'all')}
-                        sx={{ height: 28, fontSize: '0.875rem' }}
-                      >
-                        <MenuItem value="7">Last 7 days</MenuItem>
-                        <MenuItem value="30">Last 30 days</MenuItem>
-                        <MenuItem value="90">Last 90 days</MenuItem>
-                        <MenuItem value="all">All time</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  <ListItemText
-                    secondary={
-                      contactUsageLoading ? 'Loading…' : contactUsage != null
-                        ? `${contactUsage.logins} login(s), ${contactUsage.pageViews} page view(s); ${formatUsageDuration(contactUsage.totalTimeSeconds)} total time; ${contactUsage.linkClicksCount} link click(s); ${contactUsage.checklistCount} checklist, ${contactUsage.activityCount} activity`
-                        : '—'
-                    }
-                    secondaryTypographyProps={{ variant: 'body2' }}
-                  />
-                </ListItem>
-              )}
               {isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
                 <ListItem disablePadding sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <Box sx={{ width: '100%' }}>
@@ -4126,7 +4099,19 @@ const AdminCRMPage: React.FC = () => {
               </Grid>
             ) : (
               <>
-            <Tabs value={fullScreenDetailTab} onChange={(_, v) => setFullScreenDetailTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs
+              value={fullScreenDetailTab}
+              onChange={(_, v) => setFullScreenDetailTab(v)}
+              variant="fullWidth"
+              TabIndicatorProps={{ sx: { display: 'none' } }}
+              sx={{
+                mb: 2,
+                minHeight: 48,
+                '& .MuiTabs-flexContainer': { gap: 0, bgcolor: 'grey.100', borderRadius: '12px 12px 0 0', p: 0.5, border: '1px solid', borderColor: 'divider', borderBottom: 'none' },
+                '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: '0.95rem', minHeight: 44, borderRadius: '8px', color: 'text.secondary' },
+                '& .Mui-selected': { bgcolor: 'primary.main', color: 'primary.contrastText', boxShadow: 1 },
+              }}
+            >
               <Tab label="Profile" />
               <Tab label="Permissions" />
               <Tab label="Notes" />
@@ -4377,17 +4362,36 @@ const AdminCRMPage: React.FC = () => {
                   })()}
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Notes &amp; activity</Typography>
-                  <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      {(detailContact.notesLog?.length ?? 0) === 0 ? 'No dated notes yet.' : `${detailContact.notesLog!.length} note(s).`}
-                    </Typography>
-                    <Button size="small" variant="outlined" onClick={() => setFullScreenDetailTab(2)} sx={{ mr: 1 }}>View Notes tab</Button>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
-                      {(detailContact.activityLog?.length ?? 0) === 0 ? 'No activity entries yet.' : `${detailContact.activityLog!.length} activity entries.`}
-                    </Typography>
-                    <Button size="small" variant="outlined" onClick={() => setFullScreenDetailTab(3)}>View Activity tab</Button>
-                  </Paper>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>Notes &amp; activity</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => setFullScreenDetailTab(2)}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        borderRadius: 2,
+                        px: 2,
+                        py: 1.25,
+                      }}
+                    >
+                      Notes {(detailContact.notesLog?.length ?? 0) > 0 && `(${detailContact.notesLog!.length})`}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={() => setFullScreenDetailTab(3)}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        borderRadius: 2,
+                        px: 2,
+                        py: 1.25,
+                      }}
+                    >
+                      Activity {(detailContact.activityLog?.length ?? 0) > 0 && `(${detailContact.activityLog!.length})`}
+                    </Button>
+                  </Box>
                 </Grid>
               </Grid>
               <Grid container spacing={3} sx={{ mt: 1 }}>
