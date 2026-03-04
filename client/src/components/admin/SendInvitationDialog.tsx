@@ -122,57 +122,24 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setHospitals(hospitalsData.map(h => ({ id: h.id, name: normalizeHospitalOrOrgName(h.name) })));
     }
 
-    // Load mentors and managers: use RPC first (includes users + CRM contacts by email), then fallback to direct query
-    const { data: rpcData, error: rpcError } = await supabase.rpc('get_mentors_and_managers_for_invite');
-    let mentorOptions: Array<{ id: string; name: string; email: string }> = [];
-    let managerOptions: Array<{ id: string; name: string; email: string }> = [];
-
-    if (!rpcError && Array.isArray(rpcData)) {
-      const rows = rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[];
-      mentorOptions = rows
-        .filter((r) => normalizeUserRole(r.role) === UserRole.MENTOR)
-        .map(mapUserToOption);
-      managerOptions = rows
-        .filter((r) => normalizeUserRole(r.role) === UserRole.MANAGER)
-        .map(mapUserToOption);
-    } else {
-      // Fallback: direct queries (may be empty if RLS blocks). Include invited/inactive users as long as they are in the users table.
-      const [mentorsRes, managersRes] = await Promise.all([
-        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'mentor'),
-        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'manager')
-      ]);
-      if (mentorsRes.data) {
-        mentorOptions = mentorsRes.data.map(mapUserToOption);
-      }
-      if (managersRes.data) {
-        managerOptions = managersRes.data.map(mapUserToOption);
-      }
-    }
-
-    // Also include CRM-only Manager/Mentor contacts (no user account yet) so admins can assign PECCs to them by name/email.
+    // 1) Load ALL managers and mentors from CRM first (same source as CRM list) so every CRM entry appears in dropdowns.
     const { data: crmContacts } = await supabase
       .from('crm_organizations')
       .select('id, contact_type, first_name, last_name, name, email')
       .in('contact_type', ['manager', 'mentor']);
 
+    let mentorOptions: Array<{ id: string; name: string; email: string }> = [];
+    let managerOptions: Array<{ id: string; name: string; email: string }> = [];
+
     if (Array.isArray(crmContacts) && crmContacts.length > 0) {
-      const existingEmails = new Set(
-        [...mentorOptions, ...managerOptions].map((o) => (o.email || '').trim().toLowerCase()).filter(Boolean)
-      );
-      crmContacts.forEach((row: any) => {
-        const email = (row.email ?? '').trim();
-        if (!email) return;
-        const lower = email.toLowerCase();
-        if (existingEmails.has(lower)) return;
+      crmContacts.forEach((row: { id: string; contact_type?: string; first_name?: string | null; last_name?: string | null; name?: string | null; email?: string | null }) => {
+        const email = (row.email ?? '').trim() || '';
         const fullName =
           [row.first_name, row.last_name].filter(Boolean).join(' ').trim() ||
-          String(row.name ?? '') ||
-          email;
-        const opt = {
-          id: `crm:${String(row.id)}`,
-          name: fullName,
-          email
-        };
+          String(row.name ?? '').trim() ||
+          email ||
+          'No name';
+        const opt = { id: `crm:${String(row.id)}`, name: fullName, email };
         if (row.contact_type === 'mentor') {
           mentorOptions.push(opt);
         } else if (row.contact_type === 'manager') {
@@ -180,6 +147,43 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         }
       });
     }
+
+    // 2) Load app users (mentors/managers) and merge: replace CRM entry by email with user entry so we can send real user id when they have an account.
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_mentors_and_managers_for_invite');
+    let userMentors: Array<{ id: string; name: string; email: string }> = [];
+    let userManagers: Array<{ id: string; name: string; email: string }> = [];
+
+    if (!rpcError && Array.isArray(rpcData)) {
+      const rows = rpcData as { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role: string }[];
+      userMentors = rows.filter((r) => normalizeUserRole(r.role) === UserRole.MENTOR).map(mapUserToOption);
+      userManagers = rows.filter((r) => normalizeUserRole(r.role) === UserRole.MANAGER).map(mapUserToOption);
+    } else {
+      const [mentorsRes, managersRes] = await Promise.all([
+        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'mentor'),
+        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'manager')
+      ]);
+      if (mentorsRes.data) userMentors = mentorsRes.data.map(mapUserToOption);
+      if (managersRes.data) userManagers = managersRes.data.map(mapUserToOption);
+    }
+
+    const mergeByEmail = (
+      crmList: Array<{ id: string; name: string; email: string }>,
+      userList: Array<{ id: string; name: string; email: string }>
+    ) => {
+      const byEmail = new Map<string, { id: string; name: string; email: string }>();
+      crmList.forEach((o) => {
+        const key = (o.email || '').trim().toLowerCase();
+        byEmail.set(key || `crm:${o.id}`, o); // no-email: keep CRM entry keyed by id so we don't overwrite
+      });
+      userList.forEach((u) => {
+        const key = (u.email || '').trim().toLowerCase();
+        if (key) byEmail.set(key, u); // user wins when same email so we send real user id
+      });
+      return Array.from(byEmail.values());
+    };
+
+    mentorOptions = mergeByEmail(mentorOptions, userMentors);
+    managerOptions = mergeByEmail(managerOptions, userManagers);
 
     setMentors(mentorOptions);
     setManagers(managerOptions);
