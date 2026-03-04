@@ -41,6 +41,8 @@ import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { UserRole } from '../types/database';
+import { getRoleColorHex, getRoleLabel } from '../utils/roleUtils';
+import { getUserDisplayName } from '../utils/displayName';
 import { useCohortNotifications } from '../hooks/useCohortNotifications';
 import { Badge } from '@mui/material';
 
@@ -193,28 +195,6 @@ const Navbar: React.FC = () => {
     }
   };
 
-  const getRoleColor = (): string => {
-    switch (userRole) {
-      case UserRole.ADMIN: return '#d32f2f';
-      case UserRole.MANAGER: return '#9c27b0';
-      case UserRole.MENTOR: return '#ff9800';
-      case UserRole.HOSPITAL_SYSTEM: return '#2e7d32';
-      case UserRole.HIRING_GROUP: return '#1565c0';
-      default: return '#1976d2';
-    }
-  };
-
-  const getRoleLabel = (): string => {
-    switch (userRole) {
-      case UserRole.ADMIN: return 'Admin';
-      case UserRole.MANAGER: return 'Manager';
-      case UserRole.MENTOR: return 'Mentor';
-      case UserRole.HOSPITAL_SYSTEM: return 'Hospital System';
-      case UserRole.HIRING_GROUP: return 'Hiring Group';
-      default: return 'PECC';
-    }
-  };
-
   const navigationItems = getNavigationItems();
 
   // Mobile Drawer
@@ -231,9 +211,9 @@ const Navbar: React.FC = () => {
             ImPACTS
           </Typography>
           <Chip 
-            label={getRoleLabel()} 
-            size="small" 
-            sx={{ bgcolor: getRoleColor(), color: 'white' }}
+label={getRoleLabel(userRole)}
+            size="small"
+            sx={{ bgcolor: getRoleColorHex(userRole), color: 'white' }}
           />
         </Box>
         
@@ -274,10 +254,10 @@ const Navbar: React.FC = () => {
         
         <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
           <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-            {getRoleLabel()}
+            {getRoleLabel(userRole)}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {userProfile?.first_name} {userProfile?.last_name}
+            {getUserDisplayName(userProfile)}
           </Typography>
         </Box>
         
@@ -324,7 +304,7 @@ const Navbar: React.FC = () => {
         >
           <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
             {isViewingAsUser && viewAsUserProfile
-              ? `👁️ Viewing as ${viewAsUserProfile.first_name} ${viewAsUserProfile.last_name} (${(userRole ?? viewAsUserProfile.role)?.toString().toUpperCase().replace('_', ' ') ?? 'User'})`
+              ? `👁️ Viewing as ${getUserDisplayName(viewAsUserProfile)} (${(userRole ?? viewAsUserProfile.role)?.toString().toUpperCase().replace('_', ' ') ?? 'User'})`
               : `👁️ Viewing as ${viewAsRole?.toUpperCase()}`}
           </Typography>
           <Button 
@@ -458,10 +438,10 @@ const Navbar: React.FC = () => {
           }}>
             {/* Role Badge */}
             <Chip 
-              label={getRoleLabel()} 
+              label={getRoleLabel(userRole)} 
               size="small"
               sx={{ 
-                bgcolor: getRoleColor(), 
+                bgcolor: getRoleColorHex(userRole), 
                 color: 'white',
                 fontWeight: 'bold',
                 fontSize: '0.7rem'
@@ -477,7 +457,7 @@ const Navbar: React.FC = () => {
                 display: isTablet ? 'none' : 'block'
               }}
             >
-              {userProfile?.first_name} {userProfile?.last_name}
+              {getUserDisplayName(userProfile)}
             </Typography>
 
             <IconButton

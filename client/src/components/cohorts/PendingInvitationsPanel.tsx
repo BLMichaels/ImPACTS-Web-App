@@ -22,7 +22,8 @@ import {
   ExpandLess as CollapseIcon,
   Notifications as NotificationIcon
 } from '@mui/icons-material';
-import { CohortInvitation, UserRole } from '../../types/database';
+import { CohortInvitation } from '../../types/database';
+import { getRoleLabel, getRoleMuiColor } from '../../utils/roleUtils';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { formatDistanceToNow } from 'date-fns';
@@ -141,24 +142,6 @@ const PendingInvitationsPanel: React.FC<PendingInvitationsPanelProps> = ({
     }
   };
 
-  const getRoleBadgeColor = (role?: UserRole) => {
-    switch (role) {
-      case UserRole.ADMIN: return 'error';
-      case UserRole.MANAGER: return 'secondary';
-      case UserRole.MENTOR: return 'warning';
-      default: return 'primary';
-    }
-  };
-
-  const getRoleLabel = (role?: UserRole) => {
-    switch (role) {
-      case UserRole.ADMIN: return 'Admin';
-      case UserRole.MANAGER: return 'Manager';
-      case UserRole.MENTOR: return 'Mentor';
-      default: return 'PECC';
-    }
-  };
-
   if (loading) {
     return (
       <Paper sx={{ p: 2 }}>
@@ -210,7 +193,7 @@ const PendingInvitationsPanel: React.FC<PendingInvitationsPanelProps> = ({
               sx={{ py: 2 }}
             >
               <ListItemAvatar>
-                <Avatar sx={{ bgcolor: getRoleBadgeColor(invitation.invitee?.role) + '.main' }}>
+                <Avatar sx={{ bgcolor: `${getRoleMuiColor(invitation.invitee?.role)}.main` }}>
                   {invitation.invitee?.first_name?.charAt(0) || '?'}
                 </Avatar>
               </ListItemAvatar>
@@ -225,7 +208,7 @@ const PendingInvitationsPanel: React.FC<PendingInvitationsPanelProps> = ({
                     <Chip
                       label={getRoleLabel(invitation.invitee?.role)}
                       size="small"
-                      color={getRoleBadgeColor(invitation.invitee?.role) as any}
+                      color={getRoleMuiColor(invitation.invitee?.role)}
                       variant="outlined"
                       sx={{ height: 20, fontSize: '0.7rem' }}
                     />

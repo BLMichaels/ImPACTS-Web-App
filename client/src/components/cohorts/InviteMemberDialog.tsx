@@ -15,6 +15,7 @@ import {
   Alert
 } from '@mui/material';
 import { CohortMember, UserRole } from '../../types/database';
+import { getRoleMuiColor, getRoleLabel } from '../../utils/roleUtils';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 
@@ -168,24 +169,6 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
     }
   };
 
-  const getRoleBadgeColor = (role?: UserRole) => {
-    switch (role) {
-      case UserRole.ADMIN: return 'error';
-      case UserRole.MANAGER: return 'secondary';
-      case UserRole.MENTOR: return 'warning';
-      default: return 'primary';
-    }
-  };
-
-  const getRoleLabel = (role?: UserRole) => {
-    switch (role) {
-      case UserRole.ADMIN: return 'Admin';
-      case UserRole.MANAGER: return 'Manager';
-      case UserRole.MENTOR: return 'Mentor';
-      default: return 'PECC';
-    }
-  };
-
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
@@ -240,7 +223,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                   sx={{ 
                     width: 32, 
                     height: 32,
-                    bgcolor: getRoleBadgeColor(option.role) + '.main',
+                    bgcolor: getRoleMuiColor(option.role) + '.main',
                     fontSize: '0.875rem'
                   }}
                 >
@@ -257,7 +240,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                 <Chip
                   label={getRoleLabel(option.role)}
                   size="small"
-                  color={getRoleBadgeColor(option.role) as any}
+                  color={getRoleMuiColor(option.role)}
                   variant="outlined"
                 />
               </Box>

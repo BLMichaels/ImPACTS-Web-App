@@ -51,16 +51,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
-
-// Default Mentor categories - will be overridden by localStorage if available
-const DEFAULT_CATEGORIES = [
-  { value: 'PE', label: 'PE - PRISM Education & Training' },
-  { value: 'TR', label: 'TR - Training with PECC' },
-  { value: 'AD', label: 'AD - General Administration Tasks' },
-  { value: 'RA', label: 'RA - Readiness Assessment' },
-  { value: 'SC', label: 'SC - Simulation Case Facilitation' },
-  { value: 'DM', label: 'DM - Domain Implementation' }
-];
+import { DEFAULT_ACTIVITY_CATEGORIES, SIMULATION_CASE_OPTIONS } from '../../types/database';
 
 // Consistent chip colors per category (PE, TR, SC, etc.)
 const CATEGORY_CHIP_COLOR: Record<string, 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'default'> = {
@@ -72,26 +63,6 @@ const CATEGORY_CHIP_COLOR: Record<string, 'primary' | 'secondary' | 'success' | 
   DM: 'success'
 };
 const getCategoryChipColor = (value: string) => CATEGORY_CHIP_COLOR[value] ?? 'default';
-
-// Simulation cases
-const SIMULATION_CASES = [
-  'Bronchiolitis/Respiratory Distress',
-  'Severe Head Trauma',
-  'Asthma/Child with a Wheeze',
-  'Newborn Resuscitation',
-  'Postpartum Hemorrhage',
-  'Scald Burn',
-  'Agitation',
-  'Vomiting Infant',
-  'Fussy Baby',
-  'Pediatric Trauma/Abdominal',
-  'Sick Neonate',
-  'Seizing Infant',
-  'Seizing Child',
-  'Anaphylaxis',
-  'Altered Mental Status',
-  'Other'
-];
 
 // Hours options (0-10 in 15 min increments)
 const HOURS_OPTIONS = Array.from({ length: 41 }, (_, i) => i * 0.25);
@@ -139,7 +110,7 @@ const MentorActivitiesPage: React.FC = () => {
   // State
   const [activities, setActivities] = useState<MentorActivity[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
-  const [categories, setCategories] = useState<Array<{ value: string; label: string }>>(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState<Array<{ value: string; label: string }>>(DEFAULT_ACTIVITY_CATEGORIES);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [viewingActivity, setViewingActivity] = useState<MentorActivity | null>(null);
@@ -682,7 +653,7 @@ const MentorActivitiesPage: React.FC = () => {
                   input={<OutlinedInput label="Simulation Type" />}
                   renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
                 >
-                  {SIMULATION_CASES.map((simCase) => (
+                  {SIMULATION_CASE_OPTIONS.map((simCase) => (
                     <MenuItem key={simCase} value={simCase}>
                       <Checkbox checked={simulationTypeFilter.includes(simCase)} />
                       <ListItemText primary={simCase} />
@@ -1114,7 +1085,7 @@ const MentorActivitiesPage: React.FC = () => {
                         onChange={(e) => setFormData(prev => ({ ...prev, simulationCase: e.target.value }))}
                         label="Which simulation was it?"
                       >
-                        {SIMULATION_CASES.map((sim) => (
+                        {SIMULATION_CASE_OPTIONS.map((sim) => (
                           <MenuItem key={sim} value={sim}>
                             {sim}
                           </MenuItem>

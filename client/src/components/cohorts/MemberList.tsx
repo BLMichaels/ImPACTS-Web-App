@@ -25,6 +25,7 @@ import {
   Group as GroupIcon
 } from '@mui/icons-material';
 import { CohortMember, UserRole } from '../../types/database';
+import { getRoleMuiColor, getRoleLabel } from '../../utils/roleUtils';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import InviteMemberDialog from './InviteMemberDialog';
@@ -54,24 +55,6 @@ const MemberList: React.FC<MemberListProps> = ({
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<CohortMember | null>(null);
   const [removing, setRemoving] = useState(false);
-
-  const getRoleBadgeColor = (role?: UserRole) => {
-    switch (role) {
-      case UserRole.ADMIN: return 'error';
-      case UserRole.MANAGER: return 'secondary';
-      case UserRole.MENTOR: return 'warning';
-      default: return 'primary';
-    }
-  };
-
-  const getRoleLabel = (role?: UserRole) => {
-    switch (role) {
-      case UserRole.ADMIN: return 'Admin';
-      case UserRole.MANAGER: return 'Manager';
-      case UserRole.MENTOR: return 'Mentor';
-      default: return 'PECC';
-    }
-  };
 
   const handleRemoveClick = (member: CohortMember) => {
     setRemovingMember(member);
@@ -157,7 +140,7 @@ const MemberList: React.FC<MemberListProps> = ({
                   <Chip
                     label={`${getRoleLabel(role)}s`}
                     size="small"
-                    color={getRoleBadgeColor(role) as any}
+                    color={getRoleMuiColor(role) as any}
                   />
                   <Typography variant="body2" color="text.secondary">
                     ({roleMembers.length})
@@ -172,7 +155,7 @@ const MemberList: React.FC<MemberListProps> = ({
                         divider={index < roleMembers.length - 1}
                       >
                         <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: getRoleBadgeColor(member.user?.role) + '.main' }}>
+                          <Avatar sx={{ bgcolor: `${getRoleMuiColor(member.user?.role)}.main` }}>
                             {member.user?.first_name?.charAt(0) || '?'}
                           </Avatar>
                         </ListItemAvatar>

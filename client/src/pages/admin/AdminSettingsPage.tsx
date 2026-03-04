@@ -44,7 +44,8 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { supabase } from '../../supabase';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../../types/database';
-import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '../../types/database';
+import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole, DEFAULT_ACTIVITY_CATEGORIES } from '../../types/database';
+import { getRoleColorHex } from '../../utils/roleUtils';
 import ScormPackagesSection from '../../components/ScormPackagesSection';
 import { useAuth } from '../../context/AuthContext';
 import EducationRichTextEditor from '../../components/admin/EducationRichTextEditor';
@@ -101,7 +102,6 @@ const PERMISSION_GROUPS: Record<string, string[]> = {
 };
 const formatPermissionLabel = (key: string) => key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 const ROLES: UserRole[] = [UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC];
-const getRoleColor = (role: string) => ({ manager: '#9c27b0', mentor: '#ff9800', pecc: '#2196f3' }[role] || '#757575');
 
 const DEFAULT_PECC_CATEGORIES = [
   'General Administration Tasks',
@@ -120,15 +120,6 @@ const DEFAULT_PECC_CATEGORIES = [
   'Ensuring equipment, medication, and supplies are available to all ED staff',
   'Ensuring ED staff are prepared to care for all children, including those with special health needs'
 ];
-const DEFAULT_MENTOR_CATEGORIES: Array<{ value: string; label: string }> = [
-  { value: 'PE', label: 'PE - PRISM Education & Training' },
-  { value: 'TR', label: 'TR - Training with PECC' },
-  { value: 'AD', label: 'AD - General Administration Tasks' },
-  { value: 'RA', label: 'RA - Readiness Assessment' },
-  { value: 'SC', label: 'SC - Simulation Case Facilitation' },
-  { value: 'DM', label: 'DM - Domain Implementation' }
-];
-
 interface TierUser {
   id: string;
   email: string;
@@ -387,7 +378,7 @@ export default function AdminSettingsPage() {
     if (mentorVal != null && Array.isArray(mentorVal)) {
       setMentorCategories(mentorVal as Array<{ value: string; label: string }>);
     } else {
-      setMentorCategories(DEFAULT_MENTOR_CATEGORIES);
+      setMentorCategories(DEFAULT_ACTIVITY_CATEGORIES);
     }
     const eduVal = byKey.get('education_questions');
     if (eduVal != null && Array.isArray(eduVal)) {
@@ -954,7 +945,7 @@ export default function AdminSettingsPage() {
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ width: '40%' }}>Permission</TableCell>
-                        {ROLES.map(role => <TableCell key={role} align="center"><Chip label={role.toUpperCase()} size="small" sx={{ bgcolor: getRoleColor(role), color: 'white' }} /></TableCell>)}
+                        {ROLES.map(role => <TableCell key={role} align="center"><Chip label={role.toUpperCase()} size="small" sx={{ bgcolor: getRoleColorHex(role), color: 'white' }} /></TableCell>)}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -979,7 +970,7 @@ export default function AdminSettingsPage() {
             <Box sx={{ display: 'flex', gap: 3 }}>
               {ROLES.map(role => (
                 <Box key={role}>
-                  <Chip label={role.toUpperCase()} size="small" sx={{ bgcolor: getRoleColor(role), color: 'white', mb: 0.5 }} />
+                  <Chip label={role.toUpperCase()} size="small" sx={{ bgcolor: getRoleColorHex(role), color: 'white', mb: 0.5 }} />
                   <Typography variant="body2">{Object.values(permissions[role] || {}).filter(Boolean).length} of {Object.values(PERMISSIONS).length} enabled</Typography>
                 </Box>
               ))}

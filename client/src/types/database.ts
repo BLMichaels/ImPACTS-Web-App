@@ -50,6 +50,9 @@ export enum ActivityCategory {
   DM = 'DM - Domain Implementation'
 }
 
+/** Default activity categories for mentor/PECC logging (single source from ActivityCategory) */
+export const DEFAULT_ACTIVITY_CATEGORIES = Object.entries(ActivityCategory).map(([value, label]) => ({ value, label }));
+
 export enum SimulationCase {
   BRONCHIOLITIS = 'Bronchiolitis/Respiratory Distress',
   SEVERE_HEAD_TRAUMA = 'Severe Head Trauma',
@@ -68,6 +71,9 @@ export enum SimulationCase {
   ALTERED_MENTAL_STATUS = 'Altered Mental Status',
   OTHER = 'Other'
 }
+
+/** Simulation case display strings for activity logging dropdowns (single source from SimulationCase) */
+export const SIMULATION_CASE_OPTIONS = Object.values(SimulationCase);
 
 export enum InvitationStatus {
   PENDING = 'pending',

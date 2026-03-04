@@ -237,9 +237,16 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           setVisibleTabs([]);
         }
 
-        // Load gap plan reminders from user_data (persisted on Account page)
-        const gapPlanReminders = await getUserData<{ enabled?: boolean; emailNotifications?: boolean; reminderDays?: number; emailFrequency?: string }>(currentUser.id, 'gap_plan_reminders');
-        const profWithUserData = gapPlanReminders != null ? { ...prof, gapPlanReminders } : prof;
+        // Load from user_data: gap plan reminders (Account page), wages_enabled (mentors, admin-controlled)
+        const [gapPlanReminders, wagesEnabled] = await Promise.all([
+          getUserData<{ enabled?: boolean; emailNotifications?: boolean; reminderDays?: number; emailFrequency?: string }>(currentUser.id, 'gap_plan_reminders'),
+          normalizedRole === UserRole.MENTOR ? getUserData<boolean>(currentUser.id, 'wages_enabled') : Promise.resolve(null)
+        ]);
+        const profWithUserData = {
+          ...prof,
+          ...(gapPlanReminders != null ? { gapPlanReminders } : {}),
+          ...(wagesEnabled !== undefined && wagesEnabled !== null ? { wages_enabled: !!wagesEnabled } : {})
+        };
 
         // Resolve hospital/site name from CRM (hospitals table) so tabs and UI show current name after CRM updates
         const siteIdToResolve = prof.hospital_facility_id ?? (normalizedRole === UserRole.PECC ? sid : null);

@@ -20,7 +20,7 @@ export async function getUserData<T = unknown>(userId: string, dataKey: string):
     .eq('user_id', userId)
     .eq('data_key', dataKey)
     .maybeSingle();
-  if (!error && (data != null || data === null)) {
+  if (!error) {
     return (data?.value as T) ?? null;
   }
   // Table missing or RLS error: fall back to localStorage so data persists across refresh

@@ -1385,9 +1385,17 @@ const PRSPage: React.FC = () => {
   const [unansweredQuestions, setUnansweredQuestions] = useState<string[]>([]);
   const [legalWarningDialogOpen, setLegalWarningDialogOpen] = useState(false);
 
-  // Clear localStorage and reload questions with new structure
+  // Clear PRS-related localStorage only (not entire localStorage) and reload
   const clearLocalStorageAndReload = () => {
-    localStorage.clear();
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k === 'prsQuestions' || k === 'prsReadinessScores' || k === 'prsGapPlans') keysToRemove.push(k);
+      else if (k.startsWith('gapPlans_')) keysToRemove.push(k);
+      else if (k.startsWith('ud_') && (k.endsWith('_prsQuestions') || k.endsWith('_prsReadinessScores') || k.endsWith('_gapPlans'))) keysToRemove.push(k);
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
     setQuestions(ASSESSMENT_QUESTIONS);
     setReadinessScores([]);
     setGapPlans([]);

@@ -48,6 +48,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
+import { getRoleMuiColor } from '../../utils/roleUtils';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
@@ -202,18 +203,6 @@ const AdminTeamTab: React.FC = () => {
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
     return matchesSearch && matchesRole;
   });
-
-  const getRoleColor = (role: string) => {
-    const colors: Record<string, 'error' | 'secondary' | 'warning' | 'primary' | 'success' | 'info'> = {
-      admin: 'error',
-      manager: 'secondary',
-      mentor: 'warning',
-      pecc: 'primary',
-      hospital_system: 'success',
-      hiring_group: 'info'
-    };
-    return colors[role] || 'default';
-  };
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, 'success' | 'warning' | 'error'> = {
@@ -556,7 +545,7 @@ const AdminTeamTab: React.FC = () => {
                 <TableRow key={user.id} hover>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar sx={{ width: 32, height: 32, bgcolor: `${getRoleColor(user.role)}.main`, fontSize: '0.875rem' }}>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: `${getRoleMuiColor(user.role)}.main`, fontSize: '0.875rem' }}>
                         {(user.firstName || user.lastName || user.email || '?')[0].toUpperCase()}
                       </Avatar>
                       <Box>
@@ -571,7 +560,7 @@ const AdminTeamTab: React.FC = () => {
                   <TableCell>{user.phone}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                      <Chip label={user.role.toUpperCase()} size="small" color={getRoleColor(user.role)} />
+                      <Chip label={user.role.toUpperCase()} size="small" color={getRoleMuiColor(user.role)} />
                       {user.is_admin && <Chip label="Admin" size="small" color="error" variant="outlined" />}
                     </Box>
                   </TableCell>
@@ -766,7 +755,7 @@ const AdminTeamTab: React.FC = () => {
                   {(selectedUser.firstName || selectedUser.lastName).trim() ? `${selectedUser.firstName} ${selectedUser.lastName}`.trim() : (selectedUser.email || 'No name')}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', my: 1 }}>
-                  <Chip label={selectedUser.role} size="small" color={getRoleColor(selectedUser.role)} />
+                  <Chip label={selectedUser.role} size="small" color={getRoleMuiColor(selectedUser.role)} />
                   {selectedUser.is_admin && <Chip label="Admin" size="small" color="error" variant="outlined" />}
                 </Box>
                 <List dense disablePadding>
