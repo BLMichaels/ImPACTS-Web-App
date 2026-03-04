@@ -27,8 +27,16 @@ export function sanitizeHtml(html: string): string {
     let attrStr = '';
     if (attrs && el.hasAttributes()) {
       attrs.forEach((a) => {
-        const v = el.getAttribute(a);
-        if (v) attrStr += ` ${a}="${v.replace(/"/g, '&quot;')}"`;
+        let v = el.getAttribute(a);
+        if (v) {
+          if (a === 'href') {
+            const lower = v.trim().toLowerCase();
+            // Reject script-like schemes (no-script-url: we block these, not use them)
+            const bad = /^(javascript|data|vbscript):/i;
+            if (bad.test(lower)) v = '#';
+          }
+          attrStr += ` ${a}="${v.replace(/"/g, '&quot;')}"`;
+        }
       });
     }
     const inner = Array.from(node.childNodes).map(walk).join('');

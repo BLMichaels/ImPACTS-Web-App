@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -15,13 +15,15 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Snackbar
 } from '@mui/material';
 import { 
   ArrowBack as BackIcon,
   Send as SendIcon,
   MoreVert as MoreIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  PushPin as PinIcon
 } from '@mui/icons-material';
 import { CohortDiscussionTopic, CohortDiscussionReply } from '../../types/database';
 import { supabase } from '../../supabase';
@@ -37,6 +39,7 @@ interface DiscussionTopicViewProps {
   canModerate: boolean;
   canReply?: boolean;
   onMarkAsRead?: () => void;
+  onTopicUpdated?: (topicId: string, updates: Partial<CohortDiscussionTopic>) => void;
 }
 
 const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
@@ -45,7 +48,8 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   onBack,
   canModerate,
   canReply = false,
-  onMarkAsRead
+  onMarkAsRead,
+  onTopicUpdated
 }) => {
   const { userProfile } = useUserProfile();
   const [replies, setReplies] = useState<CohortDiscussionReply[]>([]);
@@ -57,8 +61,9 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; reply: CohortDiscussionReply } | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [snackMessage, setSnackMessage] = useState<string | null>(null);
 
-  const loadReplies = async () => {
+  const loadReplies = useCallback(async () => {
     const { data } = await supabase
       .from('cohort_discussion_replies')
       .select(`
@@ -68,12 +73,12 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
       .eq('topic_id', topic.id)
       .order('created_at', { ascending: true });
     setReplies(data || []);
-  };
+  }, [topic.id]);
 
   useEffect(() => {
     onMarkAsRead?.();
     loadReplies().finally(() => setLoading(false));
-  }, [topic.id, onMarkAsRead]);
+  }, [topic.id, onMarkAsRead, loadReplies]);
 
   const authorName = topic.author ? getUserDisplayName(topic.author as any) : 'Unknown';
 
@@ -129,19 +134,21 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
         setReplies(prev => [...prev, data]);
         setReplyHtml('');
         setReplyAttachments([]);
-        
-        // Update reply count in the topic
+        const newCount = (topic.reply_count || 0) + 1;
+        const now = new Date().toISOString();
         await supabase
           .from('cohort_discussion_topics')
           .update({
-            reply_count: (topic.reply_count || 0) + 1,
-            last_reply_at: new Date().toISOString(),
+            reply_count: newCount,
+            last_reply_at: now,
             last_reply_by: userProfile.id
           })
           .eq('id', topic.id);
+        onTopicUpdated?.(topic.id, { reply_count: newCount, last_reply_at: now, last_reply_by: userProfile.id });
       }
     } catch (err) {
       console.error('Error posting reply:', err);
+      setSnackMessage('Failed to post reply. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -187,18 +194,28 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
 
         if (error) throw error;
 
-        setReplies(prev => prev.filter(r => r.id !== deletingId));
-        
-        // Update reply count in the topic
+        const remaining = replies.filter(r => r.id !== deletingId);
+        setReplies(remaining);
+
+        const lastReply = remaining.length > 0 ? remaining[remaining.length - 1] : null;
         await supabase
           .from('cohort_discussion_topics')
           .update({
-            reply_count: Math.max(0, (topic.reply_count || 1) - 1)
+            reply_count: remaining.length,
+            last_reply_at: lastReply ? lastReply.created_at : null,
+            last_reply_by: lastReply?.created_by ?? null
           })
           .eq('id', topic.id);
+
+        onTopicUpdated?.(topic.id, {
+          reply_count: remaining.length,
+          last_reply_at: lastReply?.created_at ?? null,
+          last_reply_by: lastReply?.created_by ?? null
+        });
       }
     } catch (err) {
       console.error('Error deleting:', err);
+      setSnackMessage('Failed to delete. Please try again.');
     } finally {
       setDeleteConfirmOpen(false);
       setDeletingId(null);
@@ -222,7 +239,12 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
       <Paper sx={{ p: 3, mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" gutterBottom>{topic.title}</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>{topic.title}</Typography>
+              {topic.is_pinned && (
+                <PinIcon fontSize="small" color="primary" sx={{ mt: 0.5 }} aria-label="Pinned" />
+              )}
+            </Box>
             <Typography variant="caption" color="text.secondary">
               {authorName} • {format(new Date(topic.created_at), 'MMM d, yyyy \'at\' h:mm a')}
             </Typography>
@@ -249,6 +271,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
                 setDeleteConfirmOpen(true);
               }}
               sx={{ color: 'error.main' }}
+              aria-label="Delete discussion topic"
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
@@ -263,8 +286,9 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
       )}
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-          <CircularProgress />
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 2, gap: 1 }}>
+          <CircularProgress size={32} />
+          <Typography variant="caption" color="text.secondary">Loading replies…</Typography>
         </Box>
       ) : replies.length > 0 ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 3 }}>
@@ -275,7 +299,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
               : '?';
             
             return (
-              <Paper key={reply.id} sx={{ p: 2, pl: 3, borderLeft: 2, borderColor: 'divider' }}>
+              <Paper key={reply.id} sx={{ p: 2, pl: 3, borderLeft: 2, borderColor: 'divider', transition: 'background-color 0.2s', '&:hover': { bgcolor: 'action.hover' } }}>
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
                   <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: '0.875rem' }}>
                     {replyAuthorInitial}
@@ -328,9 +352,14 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
         </Typography>
       )}
 
-      {/* Reply input */}
-      {canReply && (
-        <Paper sx={{ p: 2, mt: 3 }}>
+      {/* Reply input – hidden when topic is locked */}
+      {topic.is_locked && (
+        <Typography variant="body2" color="text.secondary" sx={{ py: 2, mt: 2, fontStyle: 'italic' }}>
+          This discussion is locked. No new replies can be added.
+        </Typography>
+      )}
+      {canReply && !topic.is_locked && (
+        <Paper component="section" aria-label="Add a reply" sx={{ p: 2, mt: 3, borderTop: 1, borderColor: 'divider', pt: 3 }}>
           <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Add a reply</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
             Use toolbar for bold, italic, link, or attach files
@@ -349,6 +378,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
             <Button
               variant="contained"
               startIcon={<SendIcon />}
+              aria-label="Post reply"
               onClick={handleSubmitReply}
               disabled={!stripHtmlToText(replyHtml).trim() || submitting}
             >
@@ -367,11 +397,11 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
       </Menu>
 
       {/* Delete confirmation dialog */}
-      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
-        <DialogTitle>
+      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
+        <DialogTitle id="delete-dialog-title">
           {deletingId === topic.id ? 'Delete discussion topic?' : 'Delete reply?'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent id="delete-dialog-description">
           {deletingId === topic.id 
             ? 'This will permanently remove this discussion topic and all its replies. This cannot be undone.'
             : 'This will permanently remove this reply. This cannot be undone.'
@@ -384,6 +414,13 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={Boolean(snackMessage)}
+        autoHideDuration={6000}
+        onClose={() => setSnackMessage(null)}
+        message={snackMessage}
+      />
     </Box>
   );
 };

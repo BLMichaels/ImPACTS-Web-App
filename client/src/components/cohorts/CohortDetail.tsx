@@ -259,6 +259,13 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
     setSelectedTopic(topic);
   };
 
+  const handleTopicUpdated = (topicId: string, updates: Partial<CohortDiscussionTopic>) => {
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, ...updates } : t));
+    if (selectedTopic?.id === topicId) {
+      setSelectedTopic(prev => prev ? { ...prev, ...updates } : null);
+    }
+  };
+
   const handleMarkDiscussionAsRead = async () => {
     if (!userProfile?.id || unreadDiscussions === 0) return;
     
@@ -295,6 +302,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         canModerate={canManage}
         canReply={true}
         onMarkAsRead={handleMarkDiscussionAsRead}
+        onTopicUpdated={handleTopicUpdated}
       />
     );
   }
@@ -378,6 +386,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             onTopicClick={handleTopicClick}
             onTopicCreated={handleTopicCreated}
             onTopicDeleted={handleTopicDeleted}
+            onTopicUpdated={handleTopicUpdated}
             loading={loading}
             canManage={canManage}
             canPost={true}
@@ -436,6 +445,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                 onTopicClick={handleTopicClick}
                 onTopicCreated={handleTopicCreated}
                 onTopicDeleted={handleTopicDeleted}
+                onTopicUpdated={handleTopicUpdated}
                 loading={loading}
                 canManage={canManage}
                 canPost={true}
@@ -528,6 +538,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                   onTopicClick={handleTopicClick}
                   onTopicCreated={handleTopicCreated}
                   onTopicDeleted={handleTopicDeleted}
+                  onTopicUpdated={handleTopicUpdated}
                   loading={loading}
                   canManage={canManage}
                   canPost={true}

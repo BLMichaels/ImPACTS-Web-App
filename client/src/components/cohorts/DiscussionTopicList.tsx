@@ -15,7 +15,8 @@ import {
   DialogActions,
   TextField,
   CircularProgress,
-  Chip
+  Chip,
+  Snackbar
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -37,6 +38,7 @@ interface DiscussionTopicListProps {
   onTopicClick: (topic: CohortDiscussionTopic) => void;
   onTopicCreated: (topic: CohortDiscussionTopic) => void;
   onTopicDeleted: (topicId: string) => void;
+  onTopicUpdated?: (topicId: string, updates: Partial<CohortDiscussionTopic>) => void;
   loading: boolean;
   canManage: boolean;
   canPost?: boolean; // Allow creating new discussions (for Mentors)
@@ -48,6 +50,7 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
   onTopicClick,
   onTopicCreated,
   onTopicDeleted,
+  onTopicUpdated,
   loading,
   canManage,
   canPost = false
@@ -62,6 +65,7 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; topic: CohortDiscussionTopic } | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleOpenDialog = () => {
     setTitle('');
@@ -119,6 +123,22 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
 
   const handleMenuClose = () => setMenuAnchor(null);
 
+  const handleTogglePin = async () => {
+    const t = menuAnchor?.topic;
+    if (!t || !onTopicUpdated) return;
+    handleMenuClose();
+    try {
+      const { error: err } = await supabase
+        .from('cohort_discussion_topics')
+        .update({ is_pinned: !t.is_pinned })
+        .eq('id', t.id);
+      if (err) throw err;
+      onTopicUpdated(t.id, { is_pinned: !t.is_pinned });
+    } catch (e: any) {
+      setDeleteError(e?.message || 'Failed to update pin.');
+    }
+  };
+
   const handleDeleteClick = () => {
     if (menuAnchor?.topic) {
       setDeletingId(menuAnchor.topic.id);
@@ -129,15 +149,17 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
 
   const handleConfirmDelete = async () => {
     if (!deletingId) return;
+    setDeleteError(null);
     try {
-      const { error: deleteError } = await supabase
+      const { error: err } = await supabase
         .from('cohort_discussion_topics')
         .delete()
         .eq('id', deletingId);
-      if (deleteError) throw deleteError;
+      if (err) throw err;
       onTopicDeleted(deletingId);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting topic:', err);
+      setDeleteError(err?.message || 'Failed to delete discussion. Please try again.');
     } finally {
       setDeleteConfirmOpen(false);
       setDeletingId(null);
@@ -146,8 +168,9 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-        <CircularProgress />
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 4, gap: 2 }}>
+        <CircularProgress size={40} />
+        <Typography variant="body2" color="text.secondary">Loading discussions…</Typography>
       </Box>
     );
   }
@@ -163,25 +186,28 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
       )}
 
       {topics.length === 0 ? (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <DiscussionIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+        <Paper sx={{ p: 5, textAlign: 'center' }}>
+          <DiscussionIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} aria-hidden />
           <Typography variant="h6" color="text.secondary">No discussions yet</Typography>
           {canCreateDiscussion && (
-            <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.disabled" sx={{ mt: 1.5 }}>
               Start a discussion to engage with your cohort
             </Typography>
           )}
         </Paper>
       ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box component="ul" role="list" aria-label="Discussion topics" sx={{ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {topics.map((topic) => (
             <Paper
+              component="li"
               key={topic.id}
               sx={{
                 p: 2,
                 cursor: 'pointer',
                 borderLeft: topic.is_pinned ? 4 : 0,
-                borderColor: 'primary.main'
+                borderColor: 'primary.main',
+                transition: 'box-shadow 0.2s, background-color 0.2s',
+                '&:hover': { boxShadow: 2, bgcolor: 'action.hover' }
               }}
               onClick={() => onTopicClick(topic)}
             >
@@ -189,11 +215,11 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                     {topic.is_pinned && (
-                      <PinIcon fontSize="small" color="primary" />
+                      <PinIcon fontSize="small" color="primary" aria-hidden />
                     )}
                     <Typography variant="subtitle1" fontWeight={600}>{topic.title}</Typography>
                     {topic.reply_count > 0 && (
-                      <Chip size="small" label={`${topic.reply_count} reply`} />
+                      <Chip size="small" label={topic.reply_count === 1 ? '1 reply' : `${topic.reply_count} replies`} />
                     )}
                   </Box>
                   <Typography variant="caption" color="text.secondary" display="block">
@@ -204,7 +230,7 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
                   </Typography>
                 </Box>
                 {canManage && (
-                  <IconButton size="small" onClick={(e) => handleMenuOpen(e, topic)}>
+                  <IconButton size="small" onClick={(e) => handleMenuOpen(e, topic)} aria-label={`Actions for ${topic.title}`}>
                     <MoreIcon />
                   </IconButton>
                 )}
@@ -215,6 +241,12 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
       )}
 
       <Menu anchorEl={menuAnchor?.el} open={Boolean(menuAnchor)} onClose={handleMenuClose}>
+        {canManage && onTopicUpdated && (
+          <MenuItem onClick={handleTogglePin}>
+            <ListItemIcon><PinIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>{menuAnchor?.topic?.is_pinned ? 'Unpin' : 'Pin'}</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem onClick={handleDeleteClick} sx={{ color: 'error.main' }}>
           <ListItemIcon><DeleteIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Delete</ListItemText>
@@ -261,6 +293,13 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={Boolean(deleteError)}
+        autoHideDuration={6000}
+        onClose={() => setDeleteError(null)}
+        message={deleteError}
+      />
     </Box>
   );
 };
