@@ -37,14 +37,37 @@ interface MilestoneStage {
   objectives: string[];
   goal: string;
   tasks: MilestoneTask[];
+  color_hex?: string | null;
+}
+
+// Program checklist types for merge
+interface ProgramChecklistLoaded {
+  id: string;
+  program_id: string;
+  name: string;
+  show_before_default: boolean;
+  stages: Array<{
+    id: string;
+    checklist_id: string;
+    sort_order: number;
+    title: string;
+    subtitle: string | null;
+    color_hex: string | null;
+    objectives: string[];
+    goal: string | null;
+    tasks: Array<{ id: string; stage_id: string; task_id_suffix: string; text_content: string; links: Array<{ text: string; url: string }> }>;
+  }>;
 }
 
 const MilestonesPage = () => {
   useAuth();
-  const { siteId, effectiveUserId } = useUserProfile();
+  const { siteId, effectiveUserId, userProfile } = useUserProfile();
+  const primaryProgramId = (userProfile as { primary_program_id?: string | null })?.primary_program_id ?? null;
   const { trackChecklist } = useUsageAnalytics();
   const dataLoadedRef = useRef(false);
+  const defaultStagesRef = useRef<MilestoneStage[] | null>(null);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
+  const [programChecklists, setProgramChecklists] = useState<ProgramChecklistLoaded[]>([]);
   
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
@@ -58,7 +81,7 @@ const MilestonesPage = () => {
     
     stages.forEach(stage => {
       stage.tasks.forEach(task => {
-        const taskText = task.text.replace(/\n/g, ' ').replace(/"/g, '""');
+        const taskText = (task.text || '').replace(/\n/g, ' ').replace(/"/g, '""');
         csvContent += `"${stage.title}","${taskText}","${task.completed ? 'Yes' : 'No'}","${stage.subtitle}"\n`;
       });
     });
@@ -401,9 +424,73 @@ const MilestonesPage = () => {
     trackChecklist('view', { checklist_id: 'milestones' });
   }, [trackChecklist]);
 
-  // Load checklist from Supabase (shared with Mentor Site Milestones) when hospitalId is set
+  // Capture default stages once for merging with program checklists
   useEffect(() => {
-    if (!hospitalId) return;
+    if (defaultStagesRef.current === null && stages.length > 0 && stages[0]?.id === 'stage1') {
+      defaultStagesRef.current = JSON.parse(JSON.stringify(stages));
+    }
+  }, [stages]);
+
+  // Load program checklists for PECC's primary program
+  useEffect(() => {
+    if (!primaryProgramId) return;
+    let mounted = true;
+    (async () => {
+      const { data: list } = await supabase.from('program_checklists').select('*').eq('program_id', primaryProgramId).order('sort_order');
+      if (!mounted || !list?.length) return;
+      const withStages = await Promise.all(list.map(async (c: ProgramChecklistLoaded) => {
+        const { data: stages } = await supabase.from('program_checklist_stages').select('*').eq('checklist_id', c.id).order('sort_order');
+        const stagesWithTasks = await Promise.all((stages || []).map(async (s: any) => {
+          const { data: tasks } = await supabase.from('program_checklist_tasks').select('*').eq('stage_id', s.id).order('sort_order');
+          return { ...s, tasks: tasks || [] };
+        }));
+        return { ...c, stages: stagesWithTasks };
+      }));
+      if (mounted) setProgramChecklists(withStages);
+    })();
+    return () => { mounted = false; };
+  }, [primaryProgramId]);
+
+  // Build merged stages (program before + default + program after) and apply progress
+  useEffect(() => {
+    const defaultStages = defaultStagesRef.current ?? stages;
+    if (programChecklists.length === 0) return;
+
+    const toMilestoneStage = (checklist: ProgramChecklistLoaded, stage: ProgramChecklistLoaded['stages'][0]): MilestoneStage => ({
+      id: stage.id,
+      title: stage.title,
+      subtitle: stage.subtitle || '',
+      objectives: Array.isArray(stage.objectives) ? stage.objectives : [],
+      goal: stage.goal || '',
+      color_hex: stage.color_hex || null,
+      tasks: (stage.tasks || []).map((t: { task_id_suffix: string; text_content: string; links?: Array<{ text: string; url: string }> }) => ({
+        id: `program:${checklist.id}:${stage.id}.${t.task_id_suffix}`,
+        text: t.text_content,
+        completed: false,
+        links: t.links || []
+      }))
+    });
+
+    const before = programChecklists.filter((c) => c.show_before_default).flatMap((c) => c.stages.map((s) => toMilestoneStage(c, s)));
+    const after = programChecklists.filter((c) => !c.show_before_default).flatMap((c) => c.stages.map((s) => toMilestoneStage(c, s)));
+    const merged: MilestoneStage[] = [...before, ...defaultStages, ...after];
+
+    setStages(merged);
+    if (hospitalId) {
+      supabase.from('site_checklist_progress').select('task_id, completed').eq('hospital_id', hospitalId).then(({ data: rows }) => {
+        const completedByTask: Record<string, boolean> = {};
+        (rows || []).forEach((r: { task_id: string; completed: boolean }) => { completedByTask[r.task_id] = r.completed; });
+        setStages((prev) => prev.map((stage) => ({
+          ...stage,
+          tasks: stage.tasks.map((task) => ({ ...task, completed: completedByTask[task.id] ?? task.completed }))
+        })));
+      });
+    }
+  }, [programChecklists, primaryProgramId, hospitalId]);
+
+  // Load checklist from Supabase (shared with Mentor Site Milestones) when hospitalId is set (default stages only when no program checklists)
+  useEffect(() => {
+    if (!hospitalId || programChecklists.length > 0) return;
     (async () => {
       const { data: rows } = await supabase
         .from('site_checklist_progress')
@@ -422,7 +509,7 @@ const MilestonesPage = () => {
       }
       dataLoadedRef.current = true;
     })();
-  }, [hospitalId]);
+  }, [hospitalId, programChecklists.length]);
 
   const milestonesUserId = effectiveUserId;
   // Load milestone data from user_data when no site/hospital
@@ -554,18 +641,14 @@ const MilestonesPage = () => {
         const progress = getStageProgress(stage);
         
         // Define unique colors for each stage header
-        const getStageColor = (stageId: string) => {
-          switch (stageId) {
-            case 'stage1':
-              return '#2196F3'; // Blue
-            case 'stage2':
-              return '#4CAF50'; // Green
-            case 'stage3':
-              return '#FF9800'; // Orange
-            case 'stage4':
-              return '#9C27B0'; // Purple
-            default:
-              return '#2196F3'; // Default blue
+        const getStageColor = (s: MilestoneStage) => {
+          if (s.color_hex) return s.color_hex;
+          switch (s.id) {
+            case 'stage1': return '#2196F3';
+            case 'stage2': return '#4CAF50';
+            case 'stage3': return '#FF9800';
+            case 'stage4': return '#9C27B0';
+            default: return '#2196F3';
           }
         };
         
@@ -574,10 +657,10 @@ const MilestonesPage = () => {
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               sx={{
-                bgcolor: getStageColor(stage.id),
+                bgcolor: getStageColor(stage),
                 color: 'white',
                 '&:hover': {
-                  bgcolor: getStageColor(stage.id),
+                  bgcolor: getStageColor(stage),
                   opacity: 0.9
                 }
               }}
@@ -595,9 +678,9 @@ const MilestonesPage = () => {
                     variant="outlined"
                     sx={{ 
                       bgcolor: 'white', 
-                      color: getStageColor(stage.id),
+                      color: getStageColor(stage),
                       borderColor: 'white',
-                      '& .MuiChip-label': { color: getStageColor(stage.id) }
+                      '& .MuiChip-label': { color: getStageColor(stage) }
                     }}
                   />
                   <Typography variant="body2" sx={{ color: 'white' }}>

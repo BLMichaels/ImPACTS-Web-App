@@ -830,3 +830,43 @@ export interface ProgramWithStats extends Program {
   last_activity_at?: string;
   is_manager?: boolean;  // Whether current user manages this program
 }
+
+// Program-specific checklists for PECCs (Admin Settings → Program Checklists)
+export interface ProgramChecklist {
+  id: string;
+  program_id: string;
+  name: string;
+  show_before_default: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgramChecklistStage {
+  id: string;
+  checklist_id: string;
+  sort_order: number;
+  title: string;
+  subtitle: string | null;
+  color_hex: string | null;
+  objectives: string[];
+  goal: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgramChecklistTaskLink {
+  text: string;
+  url: string;
+}
+
+export interface ProgramChecklistTask {
+  id: string;
+  stage_id: string;
+  sort_order: number;
+  task_id_suffix: string;
+  text_content: string;
+  links: ProgramChecklistTaskLink[];
+  created_at: string;
+  updated_at: string;
+}

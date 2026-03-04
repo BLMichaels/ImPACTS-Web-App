@@ -56,6 +56,7 @@ import { EDUCATION_BUCKETS } from '../../constants/educationBuckets';
 const AdminProgramsContent = lazy(() => import('./AdminProgramsPage'));
 const AdminCohortsContent = lazy(() => import('./AdminCohortsPage'));
 const GranularPermissionsManager = lazy(() => import('../../components/admin/GranularPermissionsManager'));
+const AdminProgramChecklistsTab = lazy(() => import('./AdminProgramChecklistsTab'));
 
 // ---- Registration section constants ----
 const QUESTION_TYPES: { value: RegistrationQuestionType; label: string }[] = [
@@ -149,7 +150,8 @@ export default function AdminSettingsPage() {
     'activity-categories': 7,
     'gap-closure': 8,
     'simulations': 9,
-    'tiers': 10
+    'tiers': 10,
+    'program-checklists': 11
   }), []);
 
   const tabIndexToParam: Record<number, string> = useMemo(() => ({
@@ -163,7 +165,8 @@ export default function AdminSettingsPage() {
     7: 'activity-categories',
     8: 'gap-closure',
     9: 'simulations',
-    10: 'tiers'
+    10: 'tiers',
+    11: 'program-checklists'
   }), []);
 
   // Initialize tab from URL or default to 0
@@ -816,6 +819,7 @@ export default function AdminSettingsPage() {
         <Tab label="Gap Closure" />
         <Tab label="Simulations" />
         <Tab label="Tiers" />
+        <Tab label="Program Checklists" />
       </Tabs>
 
       {/* Registration Questions */}
@@ -1412,6 +1416,12 @@ export default function AdminSettingsPage() {
             </TableContainer>
           )}
         </Box>
+      )}
+
+      {tabIndex === 11 && (
+        <Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={24} /></Box>}>
+          <AdminProgramChecklistsTab />
+        </Suspense>
       )}
 
       {/* Simulation Add/Edit Dialog */}

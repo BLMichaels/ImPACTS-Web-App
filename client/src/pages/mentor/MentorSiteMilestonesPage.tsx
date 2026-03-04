@@ -459,7 +459,42 @@ const MentorSiteMilestonesPage: React.FC = () => {
           completedByTask[r.task_id] = { completed: r.completed, completed_at: r.completed_at };
         });
 
-        const stagesWithProgress = DEFAULT_STAGES.map(s => ({
+        let stagesToUse = DEFAULT_STAGES;
+        if (peccId) {
+          const { data: peccProfile } = await supabase.from('users').select('primary_program_id').eq('id', peccId).single();
+          const primaryProgramId = (peccProfile as { primary_program_id?: string | null })?.primary_program_id;
+          if (primaryProgramId) {
+            const { data: list } = await supabase.from('program_checklists').select('*').eq('program_id', primaryProgramId).order('sort_order');
+            if (list?.length) {
+              const withStages = await Promise.all(list.map(async (c: any) => {
+                const { data: stages } = await supabase.from('program_checklist_stages').select('*').eq('checklist_id', c.id).order('sort_order');
+                const stagesWithTasks = await Promise.all((stages || []).map(async (s: any) => {
+                  const { data: tasks } = await supabase.from('program_checklist_tasks').select('*').eq('stage_id', s.id).order('sort_order');
+                  return { ...s, tasks: tasks || [] };
+                }));
+                return { ...c, stages: stagesWithTasks };
+              }));
+              const toMilestoneStage = (checklist: any, stage: any): MilestoneStage => ({
+                id: stage.id,
+                title: stage.title,
+                subtitle: stage.subtitle || '',
+                objectives: Array.isArray(stage.objectives) ? stage.objectives : [],
+                goal: stage.goal || '',
+                tasks: (stage.tasks || []).map((t: any) => ({
+                  id: `program:${checklist.id}:${stage.id}.${t.task_id_suffix}`,
+                  text: t.text_content,
+                  completed: false,
+                  links: t.links || []
+                }))
+              });
+              const before = withStages.filter((c: any) => c.show_before_default).flatMap((c: any) => c.stages.map((s: any) => toMilestoneStage(c, s)));
+              const after = withStages.filter((c: any) => !c.show_before_default).flatMap((c: any) => c.stages.map((s: any) => toMilestoneStage(c, s)));
+              stagesToUse = [...before, ...DEFAULT_STAGES, ...after];
+            }
+          }
+        }
+
+        const stagesWithProgress = stagesToUse.map(s => ({
           ...s,
           tasks: s.tasks.map(t => ({
             ...t,
@@ -468,7 +503,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
         }));
 
         const stageCompletions: Record<string, StageCompletion> = {};
-        DEFAULT_STAGES.forEach(stage => {
+        stagesToUse.forEach(stage => {
           const taskIds = stage.tasks.map(t => t.id);
           const allComplete = taskIds.every(tid => completedByTask[tid]?.completed);
           const dates = taskIds.map(tid => completedByTask[tid]?.completed_at).filter(Boolean) as string[];
