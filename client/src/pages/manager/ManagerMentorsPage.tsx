@@ -229,10 +229,10 @@ const ManagerMentorsPage: React.FC = () => {
       setLoading(true);
       setLoadError(null);
 
-      // Load all mentors
+      // Load all mentors (users table has phone and is_active, not phone_number/status)
       const { data: mentorUsers, error: mentorError } = await supabase
         .from('users')
-        .select('id, first_name, last_name, email, phone_number, status')
+        .select('id, first_name, last_name, email, phone, is_active')
         .eq('role', 'mentor');
 
       if (mentorError) throw mentorError;
@@ -354,8 +354,8 @@ const ManagerMentorsPage: React.FC = () => {
             firstName: mentor.first_name,
             lastName: mentor.last_name,
             email: mentor.email,
-            phone: mentor.phone_number || '',
-            status: mentor.status || 'active',
+            phone: mentor.phone || '',
+            status: (mentor.is_active !== false ? 'active' : 'inactive') as 'active' | 'pending' | 'inactive',
             assignedHospitals: hospitalData,
             totalActivities,
             hoursThisMonth,

@@ -85,9 +85,10 @@ function useUsageTracker() {
     return () => { cancelled = true; };
   }, [siteId, userProfile?.hospital_facility_id]);
 
+  const usageEventsDisabledRef = useRef(false);
   const track = useCallback(
     async (eventType: UsageEventType, path: string, metadata: UsageMetadata | Record<string, unknown> = {}) => {
-      if (!currentUser?.id || !actualRole) return;
+      if (!currentUser?.id || !actualRole || usageEventsDisabledRef.current) return;
       try {
         const roleStr = typeof actualRole === 'string' ? actualRole : String(actualRole ?? '');
         const payload: Record<string, unknown> = {
@@ -100,11 +101,10 @@ function useUsageTracker() {
         if (hospitalIdRef.current) payload.hospital_id = hospitalIdRef.current;
         const { error } = await supabase.from('usage_events').insert(payload);
         if (error) {
-          // Table may not exist or schema may differ; avoid surfacing 400 to user
-          return;
+          usageEventsDisabledRef.current = true;
         }
       } catch {
-        // Fire-and-forget; don't block UI or surface errors
+        usageEventsDisabledRef.current = true;
       }
     },
     [currentUser?.id, actualRole]
