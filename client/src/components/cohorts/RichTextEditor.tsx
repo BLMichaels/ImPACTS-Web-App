@@ -9,6 +9,7 @@ import {
 import FormatBoldIcon from '@mui/icons-material/FormatBold';
 import FormatItalicIcon from '@mui/icons-material/FormatItalic';
 import LinkIcon from '@mui/icons-material/Link';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 
 const ALLOWED_TAGS = ['b', 'i', 'em', 'strong', 'a', 'br', 'p', 'span', 'ul', 'ol', 'li'];
@@ -79,7 +80,10 @@ const editableSx = {
   '& a': {
     color: 'primary.main',
     textDecoration: 'underline'
-  }
+  },
+  '& ul': { paddingLeft: 24, margin: '0.25em 0' },
+  '& ol': { paddingLeft: 24, margin: '0.25em 0' },
+  '& li': { display: 'list-item', marginBottom: 2 }
 };
 
 function getSelectionOffsets(root: Node): { start: number; end: number } | null {
@@ -188,6 +192,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const url = window.prompt('Enter URL:');
     if (url) exec('createLink', url);
   };
+  const handleBulletList = () => exec('insertUnorderedList');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -211,6 +216,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <Tooltip title="Insert link">
           <IconButton onClick={handleLink} disabled={disabled} aria-label="Insert link">
             <LinkIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Bullet list">
+          <IconButton onClick={handleBulletList} disabled={disabled} aria-label="Bullet list">
+            <FormatListBulletedIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         {onAttach && (
