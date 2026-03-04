@@ -30,6 +30,7 @@ import {
   AccordionDetails,
   Stack,
   alpha,
+  InputAdornment,
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import PageviewIcon from '@mui/icons-material/Pageview';
@@ -50,6 +51,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
+import TableChartIcon from '@mui/icons-material/TableChart';
 import { supabase } from '../../supabase';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 
@@ -66,7 +69,31 @@ const MENTOR_HOURS_PERIODS = [
   { value: '3months', label: 'Last 3 months' },
 ];
 
-const TABLE_LIMITS = [5, 10, 15, 25];
+const TABLE_LIMITS = [5, 10, 15, 25, 50];
+
+interface ProgramBreakdown {
+  id: string;
+  name: string;
+  mentorCount: number;
+  peccCount: number;
+  sites: number;
+  mentorHoursThisMonth: number;
+  mentorActivitiesThisMonth: number;
+  avgPeccProgress: number;
+}
+
+interface CohortBreakdown {
+  id: string;
+  name: string;
+  program_id: string | null;
+  programName: string | null;
+  mentorCount: number;
+  peccCount: number;
+  sites: number;
+  mentorHoursThisMonth: number;
+  mentorActivitiesThisMonth: number;
+  avgPeccProgress: number;
+}
 
 interface UsageEvent {
   id: string;
@@ -116,7 +143,7 @@ interface AggregatedPlatformData {
 }
 
 export default function AdminSnapshotPage() {
-  const [activeTab, setActiveTab] = useState<0 | 1>(0);
+  const [activeTab, setActiveTab] = useState<0 | 1 | 2>(0);
   const [periodValue, setPeriodValue] = useState<string>('30');
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
@@ -127,8 +154,13 @@ export default function AdminSnapshotPage() {
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [aggregated, setAggregated] = useState<AggregatedPlatformData | null>(null);
+  const [programBreakdowns, setProgramBreakdowns] = useState<ProgramBreakdown[]>([]);
+  const [cohortBreakdowns, setCohortBreakdowns] = useState<CohortBreakdown[]>([]);
   const [aggregatedLoading, setAggregatedLoading] = useState(true);
   const [aggregatedError, setAggregatedError] = useState<string | null>(null);
+  const [breakdownSearch, setBreakdownSearch] = useState('');
+  const [breakdownFilterProgram, setBreakdownFilterProgram] = useState<string>('all');
+  const [usageSearch, setUsageSearch] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -194,7 +226,11 @@ export default function AdminSnapshotPage() {
           cohortsRes,
           invitationsRes,
           milestonesRes,
-          peccActivitiesRes
+          peccActivitiesRes,
+          programsListRes,
+          cohortsListRes,
+          programMembersRes,
+          cohortMembersRes
         ] = await Promise.all([
           supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'manager').eq('is_active', true),
           supabase.from('users').select('id').eq('role', 'mentor').eq('is_active', true),
@@ -206,7 +242,11 @@ export default function AdminSnapshotPage() {
           supabase.from('cohorts').select('id', { count: 'exact', head: true }).eq('is_active', true),
           supabase.from('invitations').select('id, status, accepted_at').in('status', ['pending', 'accepted']),
           supabase.from('site_milestones').select('id, status'),
-          supabase.from('pecc_activities').select('hours, date').gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
+          supabase.from('pecc_activities').select('hours, date').gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)),
+          supabase.from('programs').select('id, name').eq('is_active', true).order('name'),
+          supabase.from('cohorts').select('id, name, program_id').eq('is_active', true).order('name'),
+          supabase.from('program_members').select('program_id, user_id').eq('status', 'active'),
+          supabase.from('cohort_members').select('cohort_id, user_id').eq('status', 'active')
         ]);
         if (!mounted) return;
         const managers = managersRes.count ?? 0;
@@ -237,6 +277,7 @@ export default function AdminSnapshotPage() {
         const peccList = (peccsRes.data || []) as { id: string; hospital_facility_id: string }[];
         let progressSum = 0;
         let progressCount = 0;
+        const peccProgressByPecc: Record<string, number> = {};
         for (const p of peccList) {
           if (!p.hospital_facility_id) continue;
           const { data: checklistData } = await supabase
@@ -248,6 +289,7 @@ export default function AdminSnapshotPage() {
           const pct = totalTasks > 0 ? Math.round((completed / totalTasks) * 100) : 0;
           progressSum += pct;
           progressCount += 1;
+          peccProgressByPecc[p.id] = pct;
         }
         const avgPeccProgress = progressCount > 0 ? Math.round(progressSum / progressCount) : 0;
         const mentorIds = ((mentorsRes.data || []) as { id: string }[]).map((m) => m.id);
@@ -258,16 +300,85 @@ export default function AdminSnapshotPage() {
         let mentorActivitiesThisMonth = 0;
         let mentorHoursLast3Months = 0;
         let mentorActivitiesLast3Months = 0;
+        const mentorHoursByMentor: Record<string, number> = {};
+        const mentorActivitiesByMentor: Record<string, number> = {};
         for (const mid of mentorIds) {
           const acts = await getMentorActivitiesForUser(mid);
           const thisMonth = acts.filter((a: { date: string }) => new Date(a.date) >= monthStart);
           const last3Months = acts.filter((a: { date: string }) => new Date(a.date) >= threeMonthsAgo);
+          const h = thisMonth.reduce((s: number, a: { hours?: number }) => s + (a.hours || 0), 0);
+          mentorHoursByMentor[mid] = h;
+          mentorActivitiesByMentor[mid] = thisMonth.length;
           mentorActivitiesThisMonth += thisMonth.length;
-          mentorHoursThisMonth += thisMonth.reduce((s: number, a: { hours?: number }) => s + (a.hours || 0), 0);
+          mentorHoursThisMonth += h;
           mentorActivitiesLast3Months += last3Months.length;
           mentorHoursLast3Months += last3Months.reduce((s: number, a: { hours?: number }) => s + (a.hours || 0), 0);
         }
         if (!mounted) return;
+
+        const programsList = (programsListRes.data || []) as { id: string; name: string }[];
+        const cohortsList = (cohortsListRes.data || []) as { id: string; name: string; program_id: string | null }[];
+        const programMembers = (programMembersRes.data || []) as { program_id: string; user_id: string }[];
+        const cohortMembers = (cohortMembersRes.data || []) as { cohort_id: string; user_id: string }[];
+        const programMap = new Map(programsList.map((p) => [p.id, p.name]));
+        const cohortSitesByMentor: Record<string, Set<string>> = {};
+        assignmentsData.forEach((a) => {
+          if (!cohortSitesByMentor[a.mentor_id]) cohortSitesByMentor[a.mentor_id] = new Set();
+          cohortSitesByMentor[a.mentor_id].add(a.hospital_id);
+        });
+
+        const progBreakdowns: ProgramBreakdown[] = programsList.map((prog) => {
+          const memberIds = new Set(programMembers.filter((pm) => pm.program_id === prog.id).map((pm) => pm.user_id));
+          const progMentorIds = mentorIds.filter((id) => memberIds.has(id));
+          const progPeccIds = peccList.filter((p) => memberIds.has(p.id)).map((p) => p.id);
+          const progSiteIds = new Set<string>();
+          progMentorIds.forEach((mid) => {
+            (cohortSitesByMentor[mid] || new Set()).forEach((hid) => progSiteIds.add(hid));
+          });
+          const hours = progMentorIds.reduce((s, mid) => s + (mentorHoursByMentor[mid] || 0), 0);
+          const acts = progMentorIds.reduce((s, mid) => s + (mentorActivitiesByMentor[mid] || 0), 0);
+          const progProgressSum = progPeccIds.reduce((s, pid) => s + (peccProgressByPecc[pid] || 0), 0);
+          const avgProg = progPeccIds.length > 0 ? Math.round(progProgressSum / progPeccIds.length) : 0;
+          return {
+            id: prog.id,
+            name: prog.name,
+            mentorCount: progMentorIds.length,
+            peccCount: progPeccIds.length,
+            sites: progSiteIds.size,
+            mentorHoursThisMonth: hours,
+            mentorActivitiesThisMonth: acts,
+            avgPeccProgress: avgProg
+          };
+        });
+
+        const cohortBreakdowns: CohortBreakdown[] = cohortsList.map((coh) => {
+          const memberIds = new Set(cohortMembers.filter((cm) => cm.cohort_id === coh.id).map((cm) => cm.user_id));
+          const cohMentorIds = mentorIds.filter((id) => memberIds.has(id));
+          const cohPeccIds = peccList.filter((p) => memberIds.has(p.id)).map((p) => p.id);
+          const cohSiteIds = new Set<string>();
+          cohMentorIds.forEach((mid) => {
+            (cohortSitesByMentor[mid] || new Set()).forEach((hid) => cohSiteIds.add(hid));
+          });
+          const hours = cohMentorIds.reduce((s, mid) => s + (mentorHoursByMentor[mid] || 0), 0);
+          const acts = cohMentorIds.reduce((s, mid) => s + (mentorActivitiesByMentor[mid] || 0), 0);
+          const cohProgressSum = cohPeccIds.reduce((s, pid) => s + (peccProgressByPecc[pid] || 0), 0);
+          const avgCoh = cohPeccIds.length > 0 ? Math.round(cohProgressSum / cohPeccIds.length) : 0;
+          return {
+            id: coh.id,
+            name: coh.name,
+            program_id: coh.program_id,
+            programName: coh.program_id ? programMap.get(coh.program_id) || null : null,
+            mentorCount: cohMentorIds.length,
+            peccCount: cohPeccIds.length,
+            sites: cohSiteIds.size,
+            mentorHoursThisMonth: hours,
+            mentorActivitiesThisMonth: acts,
+            avgPeccProgress: avgCoh
+          };
+        });
+
+        setProgramBreakdowns(progBreakdowns);
+        setCohortBreakdowns(cohortBreakdowns);
         setAggregated({
           managers,
           mentors,
@@ -428,6 +539,41 @@ export default function AdminSnapshotPage() {
   const mentorHours = mentorHoursPeriod === '3months' ? aggregated?.mentorHoursLast3Months ?? 0 : aggregated?.mentorHoursThisMonth ?? 0;
   const mentorActivities = mentorHoursPeriod === '3months' ? aggregated?.mentorActivitiesLast3Months ?? 0 : aggregated?.mentorActivitiesThisMonth ?? 0;
 
+  const filteredProgramBreakdowns = useMemo(() => {
+    let list = programBreakdowns;
+    if (breakdownSearch.trim()) {
+      const q = breakdownSearch.trim().toLowerCase();
+      list = list.filter((p) => p.name.toLowerCase().includes(q));
+    }
+    return list;
+  }, [programBreakdowns, breakdownSearch]);
+
+  const filteredCohortBreakdowns = useMemo(() => {
+    let list = cohortBreakdowns;
+    if (breakdownSearch.trim()) {
+      const q = breakdownSearch.trim().toLowerCase();
+      list = list.filter((c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.programName || '').toLowerCase().includes(q)
+      );
+    }
+    if (breakdownFilterProgram && breakdownFilterProgram !== 'all') {
+      list = list.filter((c) => c.program_id === breakdownFilterProgram);
+    }
+    return list;
+  }, [cohortBreakdowns, breakdownSearch, breakdownFilterProgram]);
+
+  const filterUsageTable = <T extends { path?: string; target?: string; label?: string; action?: string }>(rows: T[], search: string): T[] => {
+    if (!search.trim()) return rows;
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) =>
+      (r.path || '').toLowerCase().includes(q) ||
+      (r.target || '').toLowerCase().includes(q) ||
+      (r.label || '').toLowerCase().includes(q) ||
+      (r.action || '').toLowerCase().includes(q)
+    );
+  };
+
   return (
     <Box sx={{ py: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
@@ -444,10 +590,11 @@ export default function AdminSnapshotPage() {
 
       <Tabs
         value={activeTab}
-        onChange={(_, v: number) => setActiveTab(v as 0 | 1)}
+        onChange={(_, v: number) => setActiveTab(v as 0 | 1 | 2)}
         sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
       >
         <Tab icon={<DashboardIcon />} iconPosition="start" label="Platform overview" />
+        <Tab icon={<TableChartIcon />} iconPosition="start" label="By program & cohort" />
         <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Usage analytics" />
       </Tabs>
 
@@ -737,6 +884,144 @@ export default function AdminSnapshotPage() {
         <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
           <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+              <TextField
+                size="small"
+                placeholder="Search programs & cohorts..."
+                value={breakdownSearch}
+                onChange={(e) => setBreakdownSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  )
+                }}
+                sx={{ minWidth: 240 }}
+              />
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Cohorts by program</InputLabel>
+                <Select
+                  value={breakdownFilterProgram}
+                  label="Cohorts by program"
+                  onChange={(e: SelectChangeEvent) => setBreakdownFilterProgram(e.target.value)}
+                >
+                  <MenuItem value="all">All programs</MenuItem>
+                  {programBreakdowns.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={() => setRetryCount((c) => c + 1)}
+                disabled={aggregatedLoading}
+              >
+                Refresh
+              </Button>
+            </Box>
+          </Box>
+          <Box sx={{ p: 3 }}>
+            {aggregatedLoading ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 2 }}>
+                <CircularProgress />
+                <Typography variant="body2" color="text.secondary">Loading breakdowns...</Typography>
+              </Box>
+            ) : (
+              <>
+                <Typography variant="subtitle1" fontWeight={600} gutterBottom>By program</Typography>
+                <TableContainer sx={{ mb: 4 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Program</TableCell>
+                        <TableCell align="right">Mentors</TableCell>
+                        <TableCell align="right">PECCs</TableCell>
+                        <TableCell align="right">Sites</TableCell>
+                        <TableCell align="right">Hours (mo)</TableCell>
+                        <TableCell align="right">Activities</TableCell>
+                        <TableCell align="right">PECC progress</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filteredProgramBreakdowns.length === 0 ? (
+                        <TableRow><TableCell colSpan={7}>No programs match</TableCell></TableRow>
+                      ) : (
+                        filteredProgramBreakdowns.map((p) => (
+                          <TableRow key={p.id}>
+                            <TableCell>{p.name}</TableCell>
+                            <TableCell align="right">{p.mentorCount}</TableCell>
+                            <TableCell align="right">{p.peccCount}</TableCell>
+                            <TableCell align="right">{p.sites}</TableCell>
+                            <TableCell align="right">{p.mentorHoursThisMonth.toFixed(1)}h</TableCell>
+                            <TableCell align="right">{p.mentorActivitiesThisMonth}</TableCell>
+                            <TableCell align="right">{p.avgPeccProgress}%</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                <Typography variant="subtitle1" fontWeight={600} gutterBottom>By cohort</Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Cohort</TableCell>
+                        <TableCell>Program</TableCell>
+                        <TableCell align="right">Mentors</TableCell>
+                        <TableCell align="right">PECCs</TableCell>
+                        <TableCell align="right">Sites</TableCell>
+                        <TableCell align="right">Hours (mo)</TableCell>
+                        <TableCell align="right">Activities</TableCell>
+                        <TableCell align="right">PECC progress</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filteredCohortBreakdowns.length === 0 ? (
+                        <TableRow><TableCell colSpan={8}>No cohorts match</TableCell></TableRow>
+                      ) : (
+                        filteredCohortBreakdowns.map((c) => (
+                          <TableRow key={c.id}>
+                            <TableCell>{c.name}</TableCell>
+                            <TableCell>{c.programName || '—'}</TableCell>
+                            <TableCell align="right">{c.mentorCount}</TableCell>
+                            <TableCell align="right">{c.peccCount}</TableCell>
+                            <TableCell align="right">{c.sites}</TableCell>
+                            <TableCell align="right">{c.mentorHoursThisMonth.toFixed(1)}h</TableCell>
+                            <TableCell align="right">{c.mentorActivitiesThisMonth}</TableCell>
+                            <TableCell align="right">{c.avgPeccProgress}%</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+          </Box>
+        </Paper>
+      )}
+
+      {activeTab === 2 && (
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+              <TextField
+                size="small"
+                placeholder="Search tables..."
+                value={usageSearch}
+                onChange={(e) => setUsageSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  )
+                }}
+                sx={{ minWidth: 200 }}
+              />
               <FormControl size="small" sx={{ minWidth: 160 }}>
                 <InputLabel>Period</InputLabel>
                 <Select
@@ -887,16 +1172,19 @@ export default function AdminSnapshotPage() {
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {metrics.mostUsedPages.length === 0 ? (
-                                <TableRow><TableCell colSpan={2}>No page views in period</TableCell></TableRow>
-                              ) : (
-                                metrics.mostUsedPages.map(({ path, count }) => (
-                                  <TableRow key={path}>
-                                    <TableCell>{pathLabel(path)}</TableCell>
-                                    <TableCell align="right">{count}</TableCell>
-                                  </TableRow>
-                                ))
-                              )}
+                              {(() => {
+                                const filtered = filterUsageTable(metrics.mostUsedPages, usageSearch);
+                                return filtered.length === 0 ? (
+                                  <TableRow><TableCell colSpan={2}>No page views match</TableCell></TableRow>
+                                ) : (
+                                  filtered.map(({ path, count }) => (
+                                    <TableRow key={path}>
+                                      <TableCell>{pathLabel(path)}</TableCell>
+                                      <TableCell align="right">{count}</TableCell>
+                                    </TableRow>
+                                  ))
+                                );
+                              })()}
                             </TableBody>
                           </Table>
                         </TableContainer>
@@ -913,17 +1201,20 @@ export default function AdminSnapshotPage() {
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {metrics.avgTimeByPath.length === 0 ? (
-                                <TableRow><TableCell colSpan={3}>No duration data</TableCell></TableRow>
-                              ) : (
-                                metrics.avgTimeByPath.map(({ path, avgSeconds, viewsWithTime }) => (
-                                  <TableRow key={path}>
-                                    <TableCell>{pathLabel(path)}</TableCell>
-                                    <TableCell align="right">{formatDuration(avgSeconds)}</TableCell>
-                                    <TableCell align="right">{viewsWithTime}</TableCell>
-                                  </TableRow>
-                                ))
-                              )}
+                              {(() => {
+                                const filtered = filterUsageTable(metrics.avgTimeByPath, usageSearch);
+                                return filtered.length === 0 ? (
+                                  <TableRow><TableCell colSpan={3}>No duration data match</TableCell></TableRow>
+                                ) : (
+                                  filtered.map(({ path, avgSeconds, viewsWithTime }) => (
+                                    <TableRow key={path}>
+                                      <TableCell>{pathLabel(path)}</TableCell>
+                                      <TableCell align="right">{formatDuration(avgSeconds)}</TableCell>
+                                      <TableCell align="right">{viewsWithTime}</TableCell>
+                                    </TableRow>
+                                  ))
+                                );
+                              })()}
                             </TableBody>
                           </Table>
                         </TableContainer>
@@ -949,16 +1240,19 @@ export default function AdminSnapshotPage() {
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {metrics.topClicks.length === 0 ? (
-                                <TableRow><TableCell colSpan={2}>No click events</TableCell></TableRow>
-                              ) : (
-                                metrics.topClicks.map(({ target, count }) => (
-                                  <TableRow key={target}>
-                                    <TableCell>{target}</TableCell>
-                                    <TableCell align="right">{count}</TableCell>
-                                  </TableRow>
-                                ))
-                              )}
+                              {(() => {
+                                const filtered = filterUsageTable(metrics.topClicks, usageSearch);
+                                return filtered.length === 0 ? (
+                                  <TableRow><TableCell colSpan={2}>No click events match</TableCell></TableRow>
+                                ) : (
+                                  filtered.map(({ target, count }) => (
+                                    <TableRow key={target}>
+                                      <TableCell>{target}</TableCell>
+                                      <TableCell align="right">{count}</TableCell>
+                                    </TableRow>
+                                  ))
+                                );
+                              })()}
                             </TableBody>
                           </Table>
                         </TableContainer>
@@ -974,16 +1268,19 @@ export default function AdminSnapshotPage() {
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {metrics.topLinkClicks.length === 0 ? (
-                                <TableRow><TableCell colSpan={2}>No link clicks</TableCell></TableRow>
-                              ) : (
-                                metrics.topLinkClicks.map(({ label, count }) => (
-                                  <TableRow key={label}>
-                                    <TableCell>{label}</TableCell>
-                                    <TableCell align="right">{count}</TableCell>
-                                  </TableRow>
-                                ))
-                              )}
+                              {(() => {
+                                const filtered = filterUsageTable(metrics.topLinkClicks, usageSearch);
+                                return filtered.length === 0 ? (
+                                  <TableRow><TableCell colSpan={2}>No link clicks match</TableCell></TableRow>
+                                ) : (
+                                  filtered.map(({ label, count }) => (
+                                    <TableRow key={label}>
+                                      <TableCell>{label}</TableCell>
+                                      <TableCell align="right">{count}</TableCell>
+                                    </TableRow>
+                                  ))
+                                );
+                              })()}
                             </TableBody>
                           </Table>
                         </TableContainer>
@@ -999,16 +1296,19 @@ export default function AdminSnapshotPage() {
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {metrics.topChecklistActions.length === 0 ? (
-                                <TableRow><TableCell colSpan={2}>No checklist events</TableCell></TableRow>
-                              ) : (
-                                metrics.topChecklistActions.map(({ action, count }) => (
-                                  <TableRow key={action}>
-                                    <TableCell>{action}</TableCell>
-                                    <TableCell align="right">{count}</TableCell>
-                                  </TableRow>
-                                ))
-                              )}
+                              {(() => {
+                                const filtered = filterUsageTable(metrics.topChecklistActions, usageSearch);
+                                return filtered.length === 0 ? (
+                                  <TableRow><TableCell colSpan={2}>No checklist events match</TableCell></TableRow>
+                                ) : (
+                                  filtered.map(({ action, count }) => (
+                                    <TableRow key={action}>
+                                      <TableCell>{action}</TableCell>
+                                      <TableCell align="right">{count}</TableCell>
+                                    </TableRow>
+                                  ))
+                                );
+                              })()}
                             </TableBody>
                           </Table>
                         </TableContainer>
@@ -1024,16 +1324,19 @@ export default function AdminSnapshotPage() {
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {metrics.topActivityActions.length === 0 ? (
-                                <TableRow><TableCell colSpan={2}>No activity events</TableCell></TableRow>
-                              ) : (
-                                metrics.topActivityActions.map(({ action, count }) => (
-                                  <TableRow key={action}>
-                                    <TableCell>{action}</TableCell>
-                                    <TableCell align="right">{count}</TableCell>
-                                  </TableRow>
-                                ))
-                              )}
+                              {(() => {
+                                const filtered = filterUsageTable(metrics.topActivityActions, usageSearch);
+                                return filtered.length === 0 ? (
+                                  <TableRow><TableCell colSpan={2}>No activity events match</TableCell></TableRow>
+                                ) : (
+                                  filtered.map(({ action, count }) => (
+                                    <TableRow key={action}>
+                                      <TableCell>{action}</TableCell>
+                                      <TableCell align="right">{count}</TableCell>
+                                    </TableRow>
+                                  ))
+                                );
+                              })()}
                             </TableBody>
                           </Table>
                         </TableContainer>
