@@ -49,6 +49,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { getRoleMuiColor } from '../../utils/roleUtils';
+import { getUserDisplayName } from '../../utils/displayName';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
@@ -550,7 +551,7 @@ const AdminTeamTab: React.FC = () => {
                       </Avatar>
                       <Box>
                         <Typography variant="body2">
-                          {(user.firstName || user.lastName).trim() ? `${user.firstName} ${user.lastName}`.trim() : (user.email || 'No name')}
+                          {getUserDisplayName(user)}
                         </Typography>
                         <Typography variant="caption" color="textSecondary">Joined {user.createdAt}</Typography>
                       </Box>
@@ -752,7 +753,7 @@ const AdminTeamTab: React.FC = () => {
                   {(selectedUser.firstName || selectedUser.lastName || selectedUser.email || '?')[0].toUpperCase()}
                 </Avatar>
                 <Typography variant="h6">
-                  {(selectedUser.firstName || selectedUser.lastName).trim() ? `${selectedUser.firstName} ${selectedUser.lastName}`.trim() : (selectedUser.email || 'No name')}
+                  {getUserDisplayName(selectedUser)}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', my: 1 }}>
                   <Chip label={selectedUser.role} size="small" color={getRoleMuiColor(selectedUser.role)} />

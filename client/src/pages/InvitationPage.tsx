@@ -25,7 +25,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
-import { normalizeHospitalOrOrgName } from '../utils/displayName';
+import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface InvitationData {
@@ -122,7 +122,7 @@ const InvitationPage: React.FC = () => {
           .eq('id', invitationData.mentor_id)
           .single();
         if (mentor) {
-          mentorName = [mentor.first_name, mentor.last_name].filter(Boolean).join(' ') || mentor.email;
+          mentorName = getUserDisplayName(mentor);
         }
       }
       
@@ -133,7 +133,7 @@ const InvitationPage: React.FC = () => {
           .eq('id', invitationData.manager_id)
           .single();
         if (manager) {
-          managerName = [manager.first_name, manager.last_name].filter(Boolean).join(' ') || manager.email;
+          managerName = getUserDisplayName(manager);
         }
       }
       

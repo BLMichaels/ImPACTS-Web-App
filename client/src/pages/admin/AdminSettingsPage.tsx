@@ -46,6 +46,7 @@ import { supabase } from '../../supabase';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../../types/database';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole, DEFAULT_ACTIVITY_CATEGORIES } from '../../types/database';
 import { getRoleColorHex } from '../../utils/roleUtils';
+import { getUserDisplayName } from '../../utils/displayName';
 import ScormPackagesSection from '../../components/ScormPackagesSection';
 import { useAuth } from '../../context/AuthContext';
 import EducationRichTextEditor from '../../components/admin/EducationRichTextEditor';
@@ -1394,7 +1395,7 @@ export default function AdminSettingsPage() {
                 <TableBody>
                   {tierUsers.map((u) => (
                     <TableRow key={u.id}>
-                      <TableCell>{(u.firstName || u.lastName).trim() ? `${u.firstName} ${u.lastName}`.trim() : '—'}</TableCell>
+                      <TableCell>{(u.firstName || u.lastName)?.trim() ? getUserDisplayName(u) : '—'}</TableCell>
                       <TableCell>{u.email}</TableCell>
                       <TableCell>
                         <Chip

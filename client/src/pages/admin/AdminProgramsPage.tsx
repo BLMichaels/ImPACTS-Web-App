@@ -33,6 +33,7 @@ import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { ProgramWithStats, UserRole, Program } from '../../types/database';
 import { ProgramCard, ProgramDetail } from '../../components/programs';
+import { getUserDisplayName } from '../../utils/displayName';
 
 const PROGRAM_LOGOS_BUCKET = 'program-logos';
 
@@ -448,7 +449,7 @@ const AdminProgramsPage: React.FC = () => {
           <Autocomplete
             multiple
             options={managers}
-            getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+            getOptionLabel={(option) => getUserDisplayName(option)}
             value={managers.filter(m => formData.manager_ids.includes(m.id))}
             onChange={(_, value) => setFormData(prev => ({ 
               ...prev, 
@@ -465,7 +466,7 @@ const AdminProgramsPage: React.FC = () => {
             renderTags={(value, getTagProps) =>
               value.map((option, index) => (
                 <Chip
-                  label={`${option.first_name} ${option.last_name}`}
+                  label={getUserDisplayName(option)}
                   {...getTagProps({ index })}
                   key={option.id}
                 />
@@ -474,7 +475,7 @@ const AdminProgramsPage: React.FC = () => {
             renderOption={(props, option) => (
               <li {...props}>
                 <Box>
-                  <Typography>{option.first_name} {option.last_name}</Typography>
+                  <Typography>{getUserDisplayName(option)}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {option.email} • {option.role}
                   </Typography>
