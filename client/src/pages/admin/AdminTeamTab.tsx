@@ -247,7 +247,7 @@ const AdminTeamTab: React.FC = () => {
         };
         const userRole = roleMap[formData.role] || UserRole.PECC;
         
-        const { code } = await createAndSendInvitation({
+        const { code, emailSent } = await createAndSendInvitation({
           email: formData.email,
           role: userRole,
           invitedBy: userProfile.id,
@@ -256,11 +256,13 @@ const AdminTeamTab: React.FC = () => {
           managerId: formData.role === 'mentor' && formData.assignedManagerId ? formData.assignedManagerId : null,
           managerIdForPECC: formData.role === 'pecc' && formData.assignedManagerIdForPECC ? formData.assignedManagerIdForPECC : null
         });
-        
-        setSnackbar({ 
-          open: true, 
-          message: `Invitation sent to ${formData.email}. Invitation code: ${code}`, 
-          severity: 'success' 
+        const inviteUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/invite/${code}`;
+        setSnackbar({
+          open: true,
+          message: emailSent
+            ? `Invitation sent to ${formData.email}. Code: ${code}`
+            : `Invitation created. Email was not sent — copy and send this link to ${formData.email}: ${inviteUrl}`,
+          severity: 'success'
         });
       } else {
         // Create user directly (for admins who want to create accounts without invitation)

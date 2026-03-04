@@ -16,9 +16,10 @@ import {
   Box,
   Typography,
   IconButton,
-  Tooltip
+  Tooltip,
+  InputAdornment
 } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { Refresh as RefreshIcon, ContentCopy as CopyIcon } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole, normalizeUserRole } from '../../types/database';
@@ -62,6 +63,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [invitationCode, setInvitationCode] = useState<string>('');
+  const [invitationEmailSent, setInvitationEmailSent] = useState<boolean>(true);
   
   // Options for dropdowns
   const [hospitals, setHospitals] = useState<Array<{ id: string; name: string }>>([]);
@@ -85,6 +87,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setError(null);
       setSuccess(false);
       setInvitationCode('');
+      setInvitationEmailSent(true);
       setCohortIds(Array.isArray(initialCohortIds) ? [...initialCohortIds] : []);
       setProgramIds(Array.isArray(initialProgramIds) ? [...initialProgramIds] : []);
       setCustomMessage('');
@@ -308,7 +311,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       const managerForPeccUserId =
         selectedManagerForPecc && !selectedManagerForPecc.id.startsWith('crm:') ? selectedManagerForPecc.id : null;
 
-      const { code } = await createAndSendInvitation({
+      const { code, emailSent } = await createAndSendInvitation({
         email: email.trim(),
         role,
         invitedBy: userProfile.id,
@@ -322,13 +325,14 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       });
       
       setInvitationCode(code);
+      setInvitationEmailSent(emailSent);
       setSuccess(true);
       if (onSuccess) onSuccess(code);
       
-      // Auto-close after 3 seconds
-      setTimeout(() => {
-        handleClose();
-      }, 3000);
+      // Auto-close after 3 seconds only when email was sent (so they can copy link if not)
+      if (emailSent) {
+        setTimeout(() => handleClose(), 3000);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to send invitation');
     } finally {
@@ -372,12 +376,47 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       </DialogTitle>
       <DialogContent>
         {success ? (
-          <Alert severity="success" sx={{ mb: 2 }}>
-            Invitation sent successfully! Invitation code: <strong>{invitationCode}</strong>
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              The user will receive an email with a link to complete their registration.
-            </Typography>
-          </Alert>
+          <Box sx={{ mb: 2 }}>
+            {!invitationEmailSent && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                The invitation was created but the email could not be sent automatically. Please copy the link below and send it to the invitee yourself (e.g. by email or message).
+              </Alert>
+            )}
+            <Alert severity="success" sx={{ mb: 2 }}>
+              Invitation created. Code: <strong>{invitationCode}</strong>
+              {invitationEmailSent && (
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  An email with the registration link has been sent to the invitee.
+                </Typography>
+              )}
+            </Alert>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Registration link (copy and share if needed):</Typography>
+            <TextField
+              fullWidth
+              size="small"
+              value={typeof window !== 'undefined' ? `${window.location.origin}/invite/${invitationCode}` : `/invite/${invitationCode}`}
+              readOnly
+              InputProps={{
+                readOnly: true,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Tooltip title="Copy link">
+                      <IconButton
+                        onClick={() => {
+                          const url = typeof window !== 'undefined' ? `${window.location.origin}/invite/${invitationCode}` : `${invitationCode}`;
+                          navigator.clipboard.writeText(url).then(() => {}, () => {});
+                        }}
+                        size="small"
+                        aria-label="Copy invitation link"
+                      >
+                        <CopyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                )
+              }}
+            />
+          </Box>
         ) : (
           <>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

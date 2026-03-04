@@ -391,7 +391,7 @@ const ManagerMentorsPage: React.FC = () => {
     }
     setInviteSending(true);
     try {
-      const { code } = await createAndSendInvitation({
+      const { code, emailSent } = await createAndSendInvitation({
         email,
         role: UserRole.MENTOR,
         invitedBy: userProfile.id,
@@ -403,11 +403,12 @@ const ManagerMentorsPage: React.FC = () => {
       setDialogOpen(false);
       setFormData({ firstName: '', lastName: '', email: '', phone: '' });
       setInviteCohortIds([]);
+      const baseMsg = inviteCohortIds.length > 0
+        ? `Invitation created! Link copied. Mentor will be able to invite PECCs to ${inviteCohortIds.length} cohort(s).`
+        : `Invitation link copied! Send to ${email}`;
       setSnackbar({
         open: true,
-        message: inviteCohortIds.length > 0
-          ? `Invitation created! Link copied. Mentor will be able to invite PECCs to ${inviteCohortIds.length} cohort(s).`
-          : `Invitation link copied! Send to ${email}`,
+        message: emailSent ? baseMsg : `${baseMsg} (Email was not sent — please send the copied link to the invitee.)`,
         severity: 'success'
       });
     } catch (err: any) {

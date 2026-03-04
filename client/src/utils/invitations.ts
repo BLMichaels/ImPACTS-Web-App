@@ -26,10 +26,18 @@ function generateInvitationCode(): string {
   return result;
 }
 
+export interface CreateInvitationResult {
+  code: string;
+  invitationId: string;
+  /** True if the invitation email was sent successfully; false if not (link must be shared manually). */
+  emailSent: boolean;
+}
+
 /**
- * Create an invitation and send email
+ * Create an invitation and send email via Supabase Edge Function (Resend).
+ * If the Edge Function is not deployed or fails, invitation is still created; emailSent will be false.
  */
-export async function createAndSendInvitation(params: CreateInvitationParams): Promise<{ code: string; invitationId: string }> {
+export async function createAndSendInvitation(params: CreateInvitationParams): Promise<CreateInvitationResult> {
   const { email, role, invitedBy, hospitalId, mentorId, managerId, managerIdForPECC, cohortIds, programIds, customMessage } = params;
   
   // Generate unique code
@@ -85,36 +93,30 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
     throw new Error(`Failed to create invitation: ${insertError.message}`);
   }
   
-  // Send invitation email via Supabase Edge Function or email service
-  // For now, we'll use Supabase's built-in email (if configured) or a custom function
+  const invitationUrl = `${window.location.origin}/invite/${code}`;
+  let emailSent = false;
+
   try {
-    // Get invitation URL
-    const invitationUrl = `${window.location.origin}/invite/${code}`;
-    
-    // Call a Supabase Edge Function to send email (if available)
-    // Or use a third-party email service
-    // For now, we'll create a function that can be called
-    const { error: emailError } = await supabase.functions.invoke('send-invitation-email', {
+    const { data: emailData, error: emailError } = await supabase.functions.invoke('send-invitation-email', {
       body: {
         email: email.trim(),
         code,
         role,
         invitationUrl,
-        expiresAt: expiresAt.toISOString()
+        expiresAt: expiresAt.toISOString(),
+        customMessage: customMessage != null && customMessage.trim() !== '' ? customMessage.trim() : null
       }
     });
-    
-    // If Edge Function doesn't exist, that's okay - we'll handle it manually
-    if (emailError && !emailError.message.includes('Function not found')) {
-      console.warn('Failed to send invitation email:', emailError);
-      // Still return success - invitation was created, email can be sent manually
+    if (!emailError && emailData?.ok !== false) {
+      emailSent = true;
+    } else {
+      console.warn('Invitation email not sent:', emailError?.message ?? emailData?.error ?? 'unknown');
     }
   } catch (err) {
-    console.warn('Email sending not configured:', err);
-    // Invitation was created successfully, email can be sent manually
+    console.warn('Invitation email error:', err);
   }
-  
-  return { code, invitationId: invitation.id };
+
+  return { code, invitationId: invitation.id, emailSent };
 }
 
 /**
