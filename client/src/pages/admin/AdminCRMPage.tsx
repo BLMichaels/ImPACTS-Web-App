@@ -2717,21 +2717,18 @@ const AdminCRMPage: React.FC = () => {
           }
         }
       } else {
-        // For organizations/hospitals: name similarity
+        // For organizations/hospitals: require same city AND state for name-based duplicate.
+        // Same-name hospitals in different cities/states are typically same health system, not duplicates.
         const nameSim = stringSimilarity(contactName, other.name.toLowerCase().trim());
-        if (nameSim > 0.85) {
+        const sameState = contact.state && other.state && contact.state === other.state;
+        const sameCity = contact.city && other.city && contact.city.toLowerCase().trim() === (other.city || '').toLowerCase().trim();
+        if (sameState && sameCity && nameSim > 0.85) {
           matchScore += 8;
           matchReasons.push('Name');
-        }
-        
-        // Same location + similar name
-        if (contact.state && other.state && contact.state === other.state) {
-          if (contact.city && other.city && contact.city.toLowerCase() === other.city.toLowerCase()) {
-            if (nameSim > 0.7) {
-              matchScore += 4;
-              if (!matchReasons.includes('Location')) matchReasons.push('Location');
-            }
-          }
+          matchReasons.push('Location');
+        } else if (sameState && sameCity && nameSim > 0.7) {
+          matchScore += 6;
+          if (!matchReasons.includes('Location')) matchReasons.push('Location');
         }
       }
       
