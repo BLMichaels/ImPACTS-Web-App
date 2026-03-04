@@ -55,7 +55,10 @@ import {
   RadioGroup,
   Radio,
   CircularProgress,
-  Switch
+  Switch,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -85,7 +88,8 @@ import {
   LocalHospital as LocalHospitalIcon,
   Upload as UploadIcon,
   Groups as GroupsIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'system' | 'hiring_group' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -3890,14 +3894,6 @@ const AdminCRMPage: React.FC = () => {
                   </Button>
                 )}
               </Box>
-              {isPersonType(detailContact.type) && detailContactUserId && (
-                <ContactGranularPermissions
-                  userId={detailContactUserId}
-                  contactName={contactDisplayName(detailContact)}
-                  userRole={CONTACT_TYPE_TO_USER_ROLE[detailContact.type] || 'pecc'}
-                  isAdmin={detailContact.is_admin ?? false}
-                />
-              )}
             </Box>
           </Box>
         )}
@@ -4528,12 +4524,19 @@ const AdminCRMPage: React.FC = () => {
                 )}
               </Grid>
               {isPersonType(detailContact.type) && detailContactUserId && (
-                <ContactGranularPermissions
-                  userId={detailContactUserId}
-                  contactName={contactDisplayName(detailContact)}
-                  userRole={CONTACT_TYPE_TO_USER_ROLE[detailContact.type] || 'pecc'}
-                  isAdmin={detailContact.is_admin ?? false}
-                />
+                <Accordion defaultExpanded={false} sx={{ mt: 2 }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle1" fontWeight={600}>Granular permissions</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <ContactGranularPermissions
+                      userId={detailContactUserId}
+                      contactName={contactDisplayName(detailContact)}
+                      userRole={CONTACT_TYPE_TO_USER_ROLE[detailContact.type] || 'pecc'}
+                      isAdmin={detailContact.is_admin ?? false}
+                    />
+                  </AccordionDetails>
+                </Accordion>
               )}
               {/* PECC page (site) settings: tab visibility + shared access — only for hospital contacts */}
               {detailContact.type === 'hospital' && (detailContact.facilityId != null || detailContact.id) && (
