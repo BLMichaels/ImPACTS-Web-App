@@ -286,10 +286,13 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
 
   const handleMemberAdded = (member: CohortMember) => {
     setMembers(prev => [member, ...prev]);
+    // Refetch so list matches server (handles insert response shape and RLS)
+    loadData();
   };
 
   const handleMemberRemoved = (memberId: string) => {
     setMembers(prev => prev.filter(m => m.id !== memberId));
+    loadData();
   };
 
   // If viewing a specific topic

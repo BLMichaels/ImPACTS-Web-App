@@ -64,43 +64,62 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
       setSelectedUser(null);
 
       try {
-        let query = supabase
-          .from('users')
-          .select('id, first_name, last_name, email, role')
-          .eq('is_active', true)
-          .order('first_name');
+        let data: UserOption[] = [];
 
-        // If user is a mentor, they can only invite PECCs they mentor
-        if (userRole === UserRole.MENTOR && !canAddDirectly) {
-          query = query.eq('mentor_id', userProfile?.id);
-        }
-        // If user is a manager, they can add mentors under them and PECCs
-        else if (userRole === UserRole.MANAGER) {
-          // Get mentors managed by this manager and their PECCs
-          const { data: mentors } = await supabase
-            .from('users')
-            .select('id')
-            .eq('manager_id', userProfile?.id);
-          
-          const mentorIds = mentors?.map(m => m.id) || [];
-          
-          // Get PECCs under those mentors
-          if (mentorIds.length > 0) {
-            query = query.or(`manager_id.eq.${userProfile?.id},mentor_id.in.(${mentorIds.join(',')})`);
-          } else {
-            query = query.eq('manager_id', userProfile?.id);
+        // Admins: load everyone via RPC so we see all users (avoids users table RLS limiting the list)
+        if (userRole === UserRole.ADMIN) {
+          const { data: rpcData, error: rpcError } = await supabase.rpc('get_users_for_granular_permissions');
+          if (rpcError) {
+            console.warn('InviteMemberDialog: get_users_for_granular_permissions failed, falling back to users table', rpcError);
+            const { data: fallback } = await supabase
+              .from('users')
+              .select('id, first_name, last_name, email, role')
+              .eq('is_active', true)
+              .order('first_name');
+            data = (fallback || []) as UserOption[];
+          } else if (Array.isArray(rpcData) && rpcData.length > 0) {
+            data = rpcData
+              .filter((row: { is_active?: boolean }) => row.is_active !== false)
+              .map((row: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role?: string | null }) => ({
+                id: row.id,
+                first_name: row.first_name ?? '',
+                last_name: row.last_name ?? '',
+                email: (row.email ?? '').trim(),
+                role: (row.role as UserRole) || UserRole.PECC
+              }));
           }
-        }
-        // Admins can see everyone
+        } else {
+          let query = supabase
+            .from('users')
+            .select('id, first_name, last_name, email, role')
+            .eq('is_active', true)
+            .order('first_name');
 
-        const { data, error: fetchError } = await query;
-        if (fetchError) throw fetchError;
+          // If user is a mentor, they can only invite PECCs they mentor
+          if (userRole === UserRole.MENTOR && !canAddDirectly) {
+            query = query.eq('mentor_id', userProfile?.id);
+          }
+          // If user is a manager, they can add mentors under them and PECCs
+          else if (userRole === UserRole.MANAGER) {
+            const { data: mentors } = await supabase
+              .from('users')
+              .select('id')
+              .eq('manager_id', userProfile?.id);
+            const mentorIds = mentors?.map(m => m.id) || [];
+            if (mentorIds.length > 0) {
+              query = query.or(`manager_id.eq.${userProfile?.id},mentor_id.in.(${mentorIds.join(',')})`);
+            } else {
+              query = query.eq('manager_id', userProfile?.id);
+            }
+          }
+
+          const { data: queryData, error: fetchError } = await query;
+          if (fetchError) throw fetchError;
+          data = (queryData || []) as UserOption[];
+        }
 
         // Filter out existing members
-        const availableUsers = (data || []).filter(
-          u => !existingMemberIds.includes(u.id)
-        );
-
+        const availableUsers = data.filter(u => !existingMemberIds.includes(u.id));
         setUsers(availableUsers);
       } catch (err: any) {
         console.error('Error loading users:', err);
@@ -137,7 +156,25 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           .single();
 
         if (insertError) throw insertError;
-        onMemberAdded(data);
+        // Normalize: Supabase sometimes returns user as array from join
+        const rawUser = (data as any).user;
+        const userObj = Array.isArray(rawUser) ? rawUser[0] : rawUser;
+        const normalized: CohortMember = {
+          id: data.id,
+          cohort_id: data.cohort_id,
+          user_id: data.user_id,
+          added_by: data.added_by,
+          status: data.status,
+          added_at: data.added_at,
+          user: userObj ? {
+            id: userObj.id,
+            first_name: userObj.first_name,
+            last_name: userObj.last_name,
+            email: userObj.email,
+            role: userObj.role
+          } : undefined
+        };
+        onMemberAdded(normalized);
         onClose();
       } else {
         // Create an invitation that needs approval
@@ -228,7 +265,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                     fontSize: '0.875rem'
                   }}
                 >
-                  {option.first_name.charAt(0)}
+                  {(option.first_name || option.last_name || option.email || '?').toString().charAt(0)}
                 </Avatar>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body1">

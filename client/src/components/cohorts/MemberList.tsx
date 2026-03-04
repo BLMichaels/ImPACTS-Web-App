@@ -91,7 +91,14 @@ const MemberList: React.FC<MemberListProps> = ({
     return acc;
   }, {} as Record<UserRole, CohortMember[]>);
 
-  const roleOrder = [UserRole.ADMIN, UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC];
+  const roleOrder: UserRole[] = [
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.MENTOR,
+    UserRole.PECC,
+    UserRole.HOSPITAL_SYSTEM,
+    UserRole.HIRING_GROUP
+  ];
 
   if (loading) {
     return (

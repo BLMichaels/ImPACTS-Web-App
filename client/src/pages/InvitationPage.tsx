@@ -349,7 +349,7 @@ const InvitationPage: React.FC = () => {
         if (invitation.role === 'pecc' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
           for (const cohortId of cohortIds) {
             await supabase.from('cohort_members').upsert(
-              { cohort_id: cohortId, user_id: data.user.id, added_by: invitedBy },
+              { cohort_id: cohortId, user_id: data.user.id, added_by: invitedBy, status: 'active' },
               { onConflict: 'cohort_id,user_id' }
             );
           }
