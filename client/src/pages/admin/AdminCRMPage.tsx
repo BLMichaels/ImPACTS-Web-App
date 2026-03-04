@@ -4377,147 +4377,20 @@ const AdminCRMPage: React.FC = () => {
                   })()}
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Notes log</Typography>
-                  <Paper variant="outlined" sx={{ p: 2, minHeight: 120, maxHeight: 220, overflow: 'auto' }}>
-                    {(detailContact.notesLog?.length ?? 0) === 0 ? (
-                      <Typography variant="body2" color="text.secondary">No dated notes yet.</Typography>
-                    ) : (
-                      <List dense disablePadding>
-                        {(detailContact.notesLog ?? []).map((e, i) => (
-                          <ListItem 
-                            key={i} 
-                            disablePadding 
-                            sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 0.5, position: 'relative', pr: 6 }}
-                          >
-                            {editingNoteIndex === i ? (
-                              <Box sx={{ width: '100%' }}>
-                                <TextField
-                                  size="small"
-                                  type="date"
-                                  value={editingNoteDate}
-                                  onChange={(e) => setEditingNoteDate(e.target.value)}
-                                  sx={{ mb: 1, width: '100%' }}
-                                  InputLabelProps={{ shrink: true }}
-                                  label="Date"
-                                />
-                                <TextField
-                                  size="small"
-                                  multiline
-                                  minRows={2}
-                                  value={editingNoteText}
-                                  onChange={(e) => setEditingNoteText(e.target.value)}
-                                  sx={{ mb: 1, width: '100%' }}
-                                  placeholder="Note text..."
-                                />
-                                <Box sx={{ display: 'flex', gap: 1 }}>
-                                  <Button 
-                                    size="small" 
-                                    variant="contained" 
-                                    onClick={() => {
-                                      if (editingNoteText.trim() && editingNoteDate) {
-                                        updateNote(detailContact, i, { date: editingNoteDate, text: editingNoteText.trim() });
-                                        setEditingNoteIndex(null);
-                                        setEditingNoteText('');
-                                        setEditingNoteDate('');
-                                      }
-                                    }}
-                                  >
-                                    Save
-                                  </Button>
-                                  <Button 
-                                    size="small" 
-                                    variant="outlined" 
-                                    onClick={() => {
-                                      setEditingNoteIndex(null);
-                                      setEditingNoteText('');
-                                      setEditingNoteDate('');
-                                    }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </Box>
-                              </Box>
-                            ) : (
-                              <>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start' }}>
-                                  <Box sx={{ flex: 1 }}>
-                                    <Typography variant="caption" color="text.secondary">{e.date}</Typography>
-                                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{e.text}</Typography>
-                                  </Box>
-                                  <Box sx={{ display: 'flex', gap: 0.5, position: 'absolute', right: 0, top: 0 }}>
-                                    <IconButton
-                                      size="small"
-                                      onClick={() => {
-                                        setEditingNoteIndex(i);
-                                        setEditingNoteText(e.text);
-                                        setEditingNoteDate(e.date);
-                                      }}
-                                      sx={{ p: 0.5 }}
-                                    >
-                                      <EditIcon fontSize="small" />
-                                    </IconButton>
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={() => setNoteDeleteConfirmIndex(i)}
-                                      sx={{ p: 0.5 }}
-                                      aria-label="Delete this note"
-                                    >
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
-                                  </Box>
-                                </Box>
-                              </>
-                            )}
-                          </ListItem>
-                        ))}
-                      </List>
-                    )}
-                    <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                      <TextField size="small" placeholder="Add note…" value={addNoteText} onChange={(e) => setAddNoteText(e.target.value)} multiline minRows={1} maxRows={3} sx={{ flex: 1 }} />
-                      <Button size="small" variant="contained" onClick={() => { if (addNoteText.trim()) { addNote(detailContact, { date: new Date().toISOString().slice(0, 10), text: addNoteText.trim() }); setAddNoteText(''); } }}>Add</Button>
-                    </Box>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Notes &amp; activity</Typography>
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      {(detailContact.notesLog?.length ?? 0) === 0 ? 'No dated notes yet.' : `${detailContact.notesLog!.length} note(s).`}
+                    </Typography>
+                    <Button size="small" variant="outlined" onClick={() => setFullScreenDetailTab(2)} sx={{ mr: 1 }}>View Notes tab</Button>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
+                      {(detailContact.activityLog?.length ?? 0) === 0 ? 'No activity entries yet.' : `${detailContact.activityLog!.length} activity entries.`}
+                    </Typography>
+                    <Button size="small" variant="outlined" onClick={() => setFullScreenDetailTab(3)}>View Activity tab</Button>
                   </Paper>
                 </Grid>
               </Grid>
               <Grid container spacing={3} sx={{ mt: 1 }}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Activity log (communications, visits, follow-ups)</Typography>
-                  <Paper variant="outlined" sx={{ p: 2, minHeight: 120, maxHeight: 260, overflow: 'auto' }}>
-                    {(detailContact.activityLog?.length ?? 0) === 0 ? (
-                      <Typography variant="body2" color="text.secondary">No activity entries yet.</Typography>
-                    ) : (
-                      <List dense disablePadding>
-                        {(detailContact.activityLog ?? []).map((e, i) => (
-                          <ListItem key={i} disablePadding sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 0.5 }}>
-                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                              <Chip size="small" label={ACTIVITY_TYPE_LABELS[e.type]} sx={{ fontSize: '0.7rem' }} />
-                              <Typography variant="caption" color="text.secondary">{e.date}</Typography>
-                            </Box>
-                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{e.text}</Typography>
-                          </ListItem>
-                        ))}
-                      </List>
-                    )}
-                    <Box sx={{ mt: 1 }}>
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-                        <FormControl size="small" sx={{ minWidth: 140 }}>
-                          <InputLabel>Type</InputLabel>
-                          <Select value={addActivityType} onChange={(e) => setAddActivityType(e.target.value as ActivityLogType)} label="Type">
-                            {(Object.keys(ACTIVITY_TYPE_LABELS) as ActivityLogType[]).map(t => (
-                              <MenuItem key={t} value={t}>{ACTIVITY_TYPE_LABELS[t]}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                        <TextField size="small" type="date" value={addActivityDate || new Date().toISOString().slice(0, 10)} onChange={(e) => setAddActivityDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 140 }} />
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                        <TextField size="small" placeholder="Details…" value={addActivityText} onChange={(e) => setAddActivityText(e.target.value)} multiline minRows={1} maxRows={2} sx={{ flex: 1 }} />
-                        <Button size="small" variant="contained" onClick={() => { if (addActivityText.trim()) { addActivityEntry(detailContact, { type: addActivityType, date: (addActivityDate || new Date().toISOString().slice(0, 10)), text: addActivityText.trim() }); setAddActivityText(''); } }}>Add</Button>
-                      </Box>
-                    </Box>
-                  </Paper>
-                </Grid>
                 {canSeeReminders && (
                   <Grid item xs={12} md={6}>
                     <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>My follow-up reminders (this contact)</Typography>
