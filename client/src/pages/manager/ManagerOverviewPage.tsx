@@ -26,7 +26,7 @@ import {
   ExpandLess as ExpandLessIcon,
   Visibility as ViewIcon
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
@@ -61,14 +61,42 @@ const ManagerOverviewPage: React.FC = () => {
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
   
+  const [searchParams] = useSearchParams();
   const [mentors, setMentors] = useState<MentorData[]>([]);
   const [expandedMentor, setExpandedMentor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [hospitalNotes, setHospitalNotes] = useState<Array<{ date: string; text: string }>>([]);
+  const [hospitalNotesName, setHospitalNotesName] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
   }, [userProfile?.id]);
+
+  const selectedHospitalId = searchParams.get('hospital');
+  useEffect(() => {
+    if (!selectedHospitalId) {
+      setHospitalNotes([]);
+      setHospitalNotesName(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('hospitals')
+        .select('name, notes_log')
+        .eq('id', selectedHospitalId)
+        .maybeSingle();
+      if (cancelled || error) return;
+      setHospitalNotesName((data as any)?.name ?? null);
+      const raw = (data as { notes_log?: unknown })?.notes_log;
+      const log = Array.isArray(raw)
+        ? raw.map((e: any) => ({ date: e.date ?? '', text: e.text ?? '' })).filter((n) => n.date && n.text)
+        : [];
+      setHospitalNotes(log.sort((a, b) => b.date.localeCompare(a.date)));
+    })();
+    return () => { cancelled = true; };
+  }, [selectedHospitalId]);
 
   const loadData = async () => {
     if (!userProfile?.id) return;
@@ -236,6 +264,32 @@ const ManagerOverviewPage: React.FC = () => {
       <Typography variant="h4" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 3 }}>
         Manager Overview
       </Typography>
+
+      {selectedHospitalId && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Site notes: {hospitalNotesName ?? 'Hospital'}
+            </Typography>
+            <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+              Notes about this site from mentors, managers, and admins (also in CRM and Hospitals page).
+            </Typography>
+            {hospitalNotes.length === 0 ? (
+              <Typography variant="body2" color="textSecondary">No notes yet.</Typography>
+            ) : (
+              <List dense>
+                {hospitalNotes.map((entry, i) => (
+                  <ListItem key={i} alignItems="flex-start" sx={{ flexDirection: 'column', alignItems: 'stretch', py: 0.5 }}>
+                    <Typography variant="caption" color="primary">{entry.date}</Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
+                    {i < hospitalNotes.length - 1 && <Divider sx={{ my: 1 }} />}
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>

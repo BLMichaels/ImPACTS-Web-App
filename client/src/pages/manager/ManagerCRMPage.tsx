@@ -38,7 +38,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tooltip
+  Tooltip,
+  Drawer
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
@@ -52,13 +53,15 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   Delete as DeleteIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Notes as NotesIcon
 } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
+import { getUserDisplayName } from '../../utils/displayName';
 import { PECC_TAB_KEYS } from '../../types/database';
 
 const CONTACT_STATUSES = [
@@ -168,6 +171,12 @@ const ManagerCRMPage: React.FC = () => {
   const [visibilityFilter, setVisibilityFilter] = useState({ role: '', search: '' });
   
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+
+  // Hospital notes drawer (notes about this site from mentors/managers/admins)
+  const [hospitalNotesDrawerOpen, setHospitalNotesDrawerOpen] = useState(false);
+  const [hospitalNotesDrawerHospital, setHospitalNotesDrawerHospital] = useState<HospitalData | null>(null);
+  const [hospitalNotesLog, setHospitalNotesLog] = useState<Array<{ date: string; text: string }>>([]);
+  const [hospitalNotesLoading, setHospitalNotesLoading] = useState(false);
 
   useEffect(() => {
     loadHospitals();
@@ -300,6 +309,31 @@ const ManagerCRMPage: React.FC = () => {
     }
   };
 
+  const openHospitalNotesDrawer = async (hospital: HospitalData) => {
+    setHospitalNotesDrawerHospital(hospital);
+    setHospitalNotesDrawerOpen(true);
+    setHospitalNotesLog([]);
+    setHospitalNotesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('hospitals')
+        .select('notes_log')
+        .eq('id', hospital.id)
+        .maybeSingle();
+      if (!error && data) {
+        const raw = (data as { notes_log?: unknown }).notes_log;
+        const log: Array<{ date: string; text: string }> = Array.isArray(raw)
+          ? raw.map((e: any) => ({ date: e.date ?? '', text: e.text ?? '' })).filter((n) => n.date && n.text)
+          : [];
+        setHospitalNotesLog(log.sort((a, b) => b.date.localeCompare(a.date)));
+      }
+    } catch {
+      setHospitalNotesLog([]);
+    } finally {
+      setHospitalNotesLoading(false);
+    }
+  };
+
   const loadTabVisibilitySettings = async () => {
     try {
       const { data: users, error } = await supabase
@@ -338,7 +372,7 @@ const ManagerCRMPage: React.FC = () => {
           }
           return {
             userId: user.id,
-            userName: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown',
+            userName: getUserDisplayName(user),
             userRole: user.role,
             visibleTabs
           };
@@ -776,14 +810,23 @@ const ManagerCRMPage: React.FC = () => {
                         />
                       </Box>
 
-                      <Button
-                        fullWidth
-                        variant="outlined"
-                        sx={{ mt: 2 }}
-                        onClick={() => navigate(`/manager/overview?hospital=${hospital.id}`)}
-                      >
-                        View Details
-                      </Button>
+                      <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          startIcon={<NotesIcon />}
+                          onClick={() => openHospitalNotesDrawer(hospital)}
+                        >
+                          Notes
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          onClick={() => navigate(`/manager/overview?hospital=${hospital.id}`)}
+                        >
+                          View Details
+                        </Button>
+                      </Box>
                     </CardContent>
                   </Card>
                 </Grid>
@@ -792,6 +835,44 @@ const ManagerCRMPage: React.FC = () => {
           )}
         </Box>
       )}
+
+      {/* Hospital notes drawer: notes about this site from mentors, managers, admins */}
+      <Drawer
+        anchor="right"
+        open={hospitalNotesDrawerOpen}
+        onClose={() => { setHospitalNotesDrawerOpen(false); setHospitalNotesDrawerHospital(null); }}
+      >
+        <Box sx={{ width: { xs: '100%', sm: 380 }, p: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h6">{hospitalNotesDrawerHospital?.name ?? 'Hospital notes'}</Typography>
+            <IconButton size="small" onClick={() => { setHospitalNotesDrawerOpen(false); setHospitalNotesDrawerHospital(null); }}><CloseIcon /></IconButton>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Dated notes about this site from mentors, managers, and admins. Also visible in Admin CRM and on the Hospitals page.
+          </Typography>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+            For activities, hours, and PECC counts at this site, use &quot;View full overview&quot; below.
+          </Typography>
+          {hospitalNotesLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
+          ) : hospitalNotesLog.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">No notes yet.</Typography>
+          ) : (
+            <List dense>
+              {hospitalNotesLog.map((entry, i) => (
+                <ListItem key={i} alignItems="flex-start" sx={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                  <Typography variant="caption" color="primary">{entry.date}</Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
+                  {i < hospitalNotesLog.length - 1 && <Divider sx={{ mt: 1 }} />}
+                </ListItem>
+              ))}
+            </List>
+          )}
+          <Button fullWidth variant="outlined" sx={{ mt: 2 }} onClick={() => navigate(`/manager/overview?hospital=${hospitalNotesDrawerHospital?.id}`)}>
+            View full overview
+          </Button>
+        </Box>
+      </Drawer>
 
       {activeTab === 1 && (
         <Box>
@@ -869,9 +950,16 @@ const ManagerCRMPage: React.FC = () => {
                   {filteredContacts.map((c) => (
                     <TableRow key={c.id} hover>
                       <TableCell>
-                        <Typography variant="body2" fontWeight={600}>
-                          {c.first_name} {c.last_name}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="body2" fontWeight={600}>
+                            {getUserDisplayName(c)}
+                          </Typography>
+                          {c.notes?.trim() && (
+                            <Tooltip title="Has notes">
+                              <NotesIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                            </Tooltip>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell>{c.hospitalName}</TableCell>
                       <TableCell>
