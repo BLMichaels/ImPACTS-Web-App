@@ -64,11 +64,37 @@ const MilestonesPage = () => {
   useAuth();
   const { siteId, effectiveUserId, userProfile } = useUserProfile();
   const primaryProgramId = (userProfile as { primary_program_id?: string | null })?.primary_program_id ?? null;
+  const [resolvedProgramId, setResolvedProgramId] = useState<string | null>(primaryProgramId);
   const { trackChecklist } = useUsageAnalytics();
   const dataLoadedRef = useRef(false);
   const defaultStagesRef = useRef<MilestoneStage[] | null>(null);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
   const [programChecklists, setProgramChecklists] = useState<ProgramChecklistLoaded[]>([]);
+
+  // Resolve program for checklists: use primary_program_id, or first program from program_members if member
+  useEffect(() => {
+    if (primaryProgramId) {
+      setResolvedProgramId(primaryProgramId);
+      return;
+    }
+    if (!effectiveUserId) {
+      setResolvedProgramId(null);
+      return;
+    }
+    let mounted = true;
+    (async () => {
+      const { data: members } = await supabase
+        .from('program_members')
+        .select('program_id')
+        .eq('user_id', effectiveUserId)
+        .eq('status', 'active')
+        .order('program_id')
+        .limit(1);
+      const first = (members && members[0]) ? (members[0] as { program_id: string }).program_id : null;
+      if (mounted) setResolvedProgramId(first);
+    })();
+    return () => { mounted = false; };
+  }, [primaryProgramId, effectiveUserId]);
   
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
@@ -432,13 +458,19 @@ const MilestonesPage = () => {
     }
   }, [stages]);
 
-  // Load program checklists for PECC's primary program
+  // Load program checklists for user's program (primary_program_id or first program_members)
   useEffect(() => {
-    if (!primaryProgramId) return;
+    if (!resolvedProgramId) {
+      setProgramChecklists([]);
+      return;
+    }
     let mounted = true;
     (async () => {
-      const { data: list } = await supabase.from('program_checklists').select('*').eq('program_id', primaryProgramId).order('sort_order');
-      if (!mounted || !list?.length) return;
+      const { data: list } = await supabase.from('program_checklists').select('*').eq('program_id', resolvedProgramId).order('sort_order');
+      if (!mounted || !list?.length) {
+        if (mounted) setProgramChecklists([]);
+        return;
+      }
       const withStages = await Promise.all(list.map(async (c: ProgramChecklistLoaded) => {
         const { data: stages } = await supabase.from('program_checklist_stages').select('*').eq('checklist_id', c.id).order('sort_order');
         const stagesWithTasks = await Promise.all((stages || []).map(async (s: any) => {
@@ -450,7 +482,7 @@ const MilestonesPage = () => {
       if (mounted) setProgramChecklists(withStages);
     })();
     return () => { mounted = false; };
-  }, [primaryProgramId]);
+  }, [resolvedProgramId]);
 
   // Build merged stages (program before + default + program after) and apply progress
   useEffect(() => {
@@ -487,7 +519,7 @@ const MilestonesPage = () => {
         })));
       });
     }
-  }, [programChecklists, primaryProgramId, hospitalId]);
+  }, [programChecklists, resolvedProgramId, hospitalId]);
 
   // Load checklist from Supabase (shared with Mentor Site Milestones) when hospitalId is set (default stages only when no program checklists)
   useEffect(() => {

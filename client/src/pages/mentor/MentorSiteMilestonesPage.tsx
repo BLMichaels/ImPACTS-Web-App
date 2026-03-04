@@ -470,7 +470,11 @@ const MentorSiteMilestonesPage: React.FC = () => {
         let stagesToUse = DEFAULT_STAGES;
         if (peccId) {
           const { data: peccProfile } = await supabase.from('users').select('primary_program_id').eq('id', peccId).single();
-          const primaryProgramId = (peccProfile as { primary_program_id?: string | null })?.primary_program_id;
+          let primaryProgramId = (peccProfile as { primary_program_id?: string | null })?.primary_program_id;
+          if (!primaryProgramId) {
+            const { data: members } = await supabase.from('program_members').select('program_id').eq('user_id', peccId).eq('status', 'active').order('program_id').limit(1);
+            primaryProgramId = (members && members[0]) ? (members[0] as { program_id: string }).program_id : undefined;
+          }
           if (primaryProgramId) {
             const { data: list } = await supabase.from('program_checklists').select('*').eq('program_id', primaryProgramId).order('sort_order');
             if (list?.length) {
