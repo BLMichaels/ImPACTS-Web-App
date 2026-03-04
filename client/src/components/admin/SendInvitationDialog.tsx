@@ -134,10 +134,10 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setMentors(mentorsList);
       setManagers(managersList);
     } else {
-      // Fallback: direct queries (may be empty if RLS blocks)
+      // Fallback: direct queries (may be empty if RLS blocks). Include invited/inactive users as long as they are in the users table.
       const [mentorsRes, managersRes] = await Promise.all([
-        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'mentor').eq('is_active', true),
-        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'manager').eq('is_active', true)
+        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'mentor'),
+        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'manager')
       ]);
       if (mentorsRes.data) {
         setMentors(mentorsRes.data.map(mapUserToOption));
