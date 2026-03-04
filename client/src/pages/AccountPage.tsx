@@ -40,10 +40,11 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
-import { getUserData } from '../utils/userData';
+import { getUserData, setUserData } from '../utils/userData';
 import { UserRole } from '../types/database';
 import { useNavigate } from 'react-router-dom';
 import TermsOfService from '../components/TermsOfService';
+import { supabase } from '../supabase';
 
 interface HospitalInfo {
   name: string;
@@ -89,12 +90,12 @@ const AccountPage = () => {
   }, [accountUserId]);
   const { 
     userProfile: rawUserProfile, 
-    updateUserProfile, 
+    updateUserProfile,
+    refreshProfile, 
     actualRole,
     viewAsRole, 
     setViewAsRole,
     isViewingAs,
-    refreshProfile,
     viewAsUserProfile,
     clearViewAsUser,
     isViewingAsUser
@@ -145,6 +146,19 @@ const AccountPage = () => {
       emailFrequency: userProfile?.gapPlanReminders?.emailFrequency ?? 'weekly' as 'daily' | 'weekly' | 'monthly'
     }
   });
+  useEffect(() => {
+    if (userProfile?.gapPlanReminders) {
+      setNotificationSettings(prev => ({
+        ...prev,
+        gapPlanReminders: {
+          enabled: userProfile.gapPlanReminders?.enabled ?? true,
+          emailNotifications: userProfile.gapPlanReminders?.emailNotifications ?? false,
+          reminderDays: userProfile.gapPlanReminders?.reminderDays ?? 7,
+          emailFrequency: (userProfile.gapPlanReminders?.emailFrequency ?? 'weekly') as 'daily' | 'weekly' | 'monthly'
+        }
+      }));
+    }
+  }, [userProfile?.gapPlanReminders]);
 
   const handleUserSave = () => {
     // Update the user profile context
@@ -167,13 +181,10 @@ const AccountPage = () => {
     setTimeout(() => setAlert(null), 3000);
   };
 
-  const handleNotificationSave = () => {
-    // Update the user profile with notification settings
-    if (userProfile?.role === 'pecc') {
-      updateUserProfile({
-        ...userProfile,
-        gapPlanReminders: notificationSettings.gapPlanReminders
-      } as any);
+  const handleNotificationSave = async () => {
+    if (userProfile?.role === 'pecc' && accountUserId) {
+      await setUserData(accountUserId, 'gap_plan_reminders', notificationSettings.gapPlanReminders);
+      await refreshProfile();
     }
     setEditingNotifications(false);
     setAlert({ type: 'success', message: 'Settings updated successfully!' });
@@ -191,11 +202,19 @@ const AccountPage = () => {
       return;
     }
 
-    // Here you would typically call your backend to change the password
-    setAlert({ type: 'success', message: 'Password updated successfully!' });
-    setPasswordDialogOpen(false);
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    setTimeout(() => setAlert(null), 3000);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: passwordData.newPassword });
+      if (error) {
+        setAlert({ type: 'error', message: error.message || 'Failed to update password.' });
+        return;
+      }
+      setAlert({ type: 'success', message: 'Password updated successfully!' });
+      setPasswordDialogOpen(false);
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setTimeout(() => setAlert(null), 3000);
+    } catch (err) {
+      setAlert({ type: 'error', message: 'Failed to update password. Please try again.' });
+    }
   };
 
   const handleLogout = async () => {

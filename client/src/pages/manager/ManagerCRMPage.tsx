@@ -58,7 +58,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
-import { getUserData, setUserData } from '../../utils/userData';
+import { getUserData } from '../../utils/userData';
+import { PECC_TAB_KEYS } from '../../types/database';
 
 const CONTACT_STATUSES = [
   'ED Employee (general contact)',
@@ -100,17 +101,13 @@ interface MentorOption {
   email: string;
 }
 
+/** Tab keys match PECC_TAB_KEYS so Manager saves to view_tabs (source of truth for Navbar). */
+type TabKey = string;
 interface TabVisibilitySettings {
   userId: string;
   userName: string;
   userRole: string;
-  visibleTabs: {
-    snapshot: boolean;
-    activities: boolean;
-    milestones: boolean;
-    gapPlan: boolean;
-    simulation: boolean;
-  };
+  visibleTabs: Record<TabKey, boolean>;
 }
 
 const ManagerCRMPage: React.FC = () => {
@@ -305,7 +302,6 @@ const ManagerCRMPage: React.FC = () => {
 
   const loadTabVisibilitySettings = async () => {
     try {
-      // Get all PECCs and Mentors (live from DB; exclude admins/managers so only pecc/mentor show in tab visibility)
       const { data: users, error } = await supabase
         .from('users')
         .select('id, first_name, last_name, role')
@@ -315,22 +311,36 @@ const ManagerCRMPage: React.FC = () => {
 
       if (error) throw error;
 
-      // Load visibility settings from Supabase (user_data) per user
-      const defaults = {
-        snapshot: true,
-        activities: true,
-        milestones: true,
-        gapPlan: true,
-        simulation: true
-      };
+      const defaults: Record<string, boolean> = Object.fromEntries(PECC_TAB_KEYS.map(k => [k, true]));
+
       const visibilityList = await Promise.all(
         (users || []).map(async (user) => {
-          const saved = await getUserData<any>(user.id, 'tab_visibility');
+          const { data: tabRows } = await supabase
+            .from('view_tabs')
+            .select('tab_key, is_visible')
+            .eq('user_id', user.id)
+            .is('cohort_id', null)
+            .is('program_id', null);
+
+          let visibleTabs = { ...defaults };
+          if (tabRows && tabRows.length > 0) {
+            tabRows.forEach((r: { tab_key: string; is_visible: boolean }) => {
+              if (PECC_TAB_KEYS.includes(r.tab_key as any)) visibleTabs[r.tab_key] = r.is_visible;
+            });
+          } else {
+            const legacy = await getUserData<any>(user.id, 'tab_visibility');
+            if (legacy && typeof legacy === 'object') {
+              PECC_TAB_KEYS.forEach(k => {
+                const v = legacy[k] ?? legacy[k === 'gap-plan' ? 'gapPlan' : k];
+                if (typeof v === 'boolean') visibleTabs[k] = v;
+              });
+            }
+          }
           return {
             userId: user.id,
-            userName: `${user.first_name} ${user.last_name}`,
+            userName: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown',
             userRole: user.role,
-            visibleTabs: saved && typeof saved === 'object' ? { ...defaults, ...saved } : defaults
+            visibleTabs
           };
         })
       );
@@ -1239,11 +1249,11 @@ const ManagerCRMPage: React.FC = () => {
               Quickly show or hide tabs for all users or specific roles
             </Typography>
             <Grid container spacing={2}>
-              {['snapshot', 'activities', 'milestones', 'gapPlan', 'simulation'].map(tab => (
+              {PECC_TAB_KEYS.map(tab => (
                 <Grid item xs={12} sm={6} key={tab}>
                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ flex: 1, textTransform: 'capitalize' }}>
-                      {tab.replace(/([A-Z])/g, ' $1').trim()}:
+                    <Typography variant="body2" sx={{ flex: 1 }}>
+                      {tab === 'gap-plan' ? 'Gap Closure' : tab.charAt(0).toUpperCase() + tab.slice(1)}:
                     </Typography>
                     <Tooltip title="Show this tab for all users">
                       <Button

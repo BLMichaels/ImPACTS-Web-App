@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext';
 import { supabase } from '../supabase';
 import { UserRole, normalizeUserRole, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } from '../types/database';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
+import { getUserData } from '../utils/userData';
 
 // Re-export UserRole as UserTier for backward compatibility
 export { UserRole as UserTier } from '../types/database';
@@ -32,6 +33,8 @@ export interface UserProfile {
   // Mentor-specific fields
   wages_enabled?: boolean;  // If true, mentor can see wages tab (admin-controlled)
   primary_program_id?: string | null;  // Which program's logo to show in navbar
+  // From user_data (Account page): gap plan reminder preferences for PECCs
+  gapPlanReminders?: { enabled?: boolean; emailNotifications?: boolean; reminderDays?: number; emailFrequency?: string };
 }
 
 interface UserProfileContextType {
@@ -234,6 +237,10 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           setVisibleTabs([]);
         }
 
+        // Load gap plan reminders from user_data (persisted on Account page)
+        const gapPlanReminders = await getUserData<{ enabled?: boolean; emailNotifications?: boolean; reminderDays?: number; emailFrequency?: string }>(currentUser.id, 'gap_plan_reminders');
+        const profWithUserData = gapPlanReminders != null ? { ...prof, gapPlanReminders } : prof;
+
         // Resolve hospital/site name from CRM (hospitals table) so tabs and UI show current name after CRM updates
         const siteIdToResolve = prof.hospital_facility_id ?? (normalizedRole === UserRole.PECC ? sid : null);
         if (siteIdToResolve) {
@@ -244,9 +251,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
             .limit(1)
             .maybeSingle();
           const hospitalName = (hospitalRow as { name?: string } | null)?.name;
-          setUserProfile({ ...prof, hospital_name: hospitalName != null ? normalizeHospitalOrOrgName(hospitalName) : prof.hospital_name });
+          setUserProfile({ ...profWithUserData, hospital_name: hospitalName != null ? normalizeHospitalOrOrgName(hospitalName) : prof.hospital_name });
         } else {
-          setUserProfile(prof);
+          setUserProfile(profWithUserData);
         }
 
         // Update last login
