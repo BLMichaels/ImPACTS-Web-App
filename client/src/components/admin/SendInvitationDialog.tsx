@@ -348,6 +348,13 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
     }
   };
   
+  // Prevent root from getting aria-hidden so the focused button is not hidden from assistive tech
+  useEffect(() => {
+    if (!open) return;
+    const root = document.getElementById('root');
+    if (root) root.removeAttribute('aria-hidden');
+  }, [open]);
+
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>

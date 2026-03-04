@@ -6,10 +6,11 @@
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const FROM_EMAIL = Deno.env.get('INVITATION_FROM_EMAIL') || 'ImPACTS <onboarding@resend.dev>';
 
-const corsHeaders = {
+const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 };
 
 function htmlEmail(params: {
@@ -53,79 +54,88 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#039;');
 }
 
+const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+
 Deno.serve(async (req: Request): Promise<Response> => {
+  // CORS preflight: must return 2xx with CORS headers so the browser allows the actual request
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { status: 200, headers: corsHeaders });
   }
 
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
+  try {
+    if (req.method !== 'POST') {
+      return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+        status: 405,
+        headers: jsonHeaders,
+      });
+    }
 
-  const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+    if (!RESEND_API_KEY) {
+      console.error('RESEND_API_KEY is not set');
+      return new Response(
+        JSON.stringify({ error: 'Email service not configured (RESEND_API_KEY missing)' }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
 
-  if (!RESEND_API_KEY) {
-    console.error('RESEND_API_KEY is not set');
+    let body: { email?: string; code?: string; role?: string; invitationUrl?: string; expiresAt?: string; customMessage?: string | null };
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: jsonHeaders,
+      });
+    }
+
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const invitationUrl = typeof body.invitationUrl === 'string' ? body.invitationUrl : '';
+    if (!email || !invitationUrl) {
+      return new Response(
+        JSON.stringify({ error: 'email and invitationUrl are required' }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
+
+    const role = typeof body.role === 'string' ? body.role : 'user';
+    const expiresAt = typeof body.expiresAt === 'string' ? body.expiresAt : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const customMessage = body.customMessage != null ? body.customMessage : null;
+
+    const html = htmlEmail({ invitationUrl, role, expiresAt, customMessage });
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+      },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to: [email],
+        subject: 'Complete your ImPACTS registration',
+        html,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error('Resend API error:', res.status, data);
+      return new Response(
+        JSON.stringify({ error: data.message || data.error || 'Failed to send email', details: data }),
+        { status: 502, headers: jsonHeaders }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, id: data.id }), {
+      status: 200,
+      headers: jsonHeaders,
+    });
+  } catch (err) {
+    console.error('send-invitation-email error:', err);
     return new Response(
-      JSON.stringify({ error: 'Email service not configured (RESEND_API_KEY missing)' }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: jsonHeaders }
     );
   }
-
-  let body: { email?: string; code?: string; role?: string; invitationUrl?: string; expiresAt?: string; customMessage?: string | null };
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(
-      JSON.stringify({ error: 'Invalid JSON body' }),
-      { status: 400, headers: jsonHeaders }
-    );
-  }
-
-  const email = typeof body.email === 'string' ? body.email.trim() : '';
-  const invitationUrl = typeof body.invitationUrl === 'string' ? body.invitationUrl : '';
-  if (!email || !invitationUrl) {
-    return new Response(
-      JSON.stringify({ error: 'email and invitationUrl are required' }),
-      { status: 400, headers: jsonHeaders }
-    );
-  }
-
-  const role = typeof body.role === 'string' ? body.role : 'user';
-  const expiresAt = typeof body.expiresAt === 'string' ? body.expiresAt : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const customMessage = body.customMessage != null ? body.customMessage : null;
-
-  const html = htmlEmail({ invitationUrl, role, expiresAt, customMessage });
-
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: [email],
-      subject: 'Complete your ImPACTS registration',
-      html,
-    }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    console.error('Resend API error:', res.status, data);
-    return new Response(
-      JSON.stringify({ error: data.message || data.error || 'Failed to send email', details: data }),
-      { status: 502, headers: jsonHeaders }
-    );
-  }
-
-  return new Response(JSON.stringify({ ok: true, id: data.id }), {
-    status: 200,
-    headers: jsonHeaders,
-  });
 });

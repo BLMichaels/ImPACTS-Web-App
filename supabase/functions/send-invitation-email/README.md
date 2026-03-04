@@ -17,3 +17,8 @@ Supabase Edge Function that sends invitation emails via [Resend](https://resend.
    - Optional: `INVITATION_FROM_EMAIL` = e.g. `ImPACTS <noreply@yourdomain.com>` (defaults to `ImPACTS <onboarding@resend.dev>` which is for testing only)
 
 Without this deployment and `RESEND_API_KEY`, invitations are still created and the app shows the registration link so you can copy and share it manually; the invitee will not receive an email automatically.
+
+**If you see a CORS error** in the browser when sending an invitation (e.g. "blocked by CORS policy" or "Response to preflight request doesn't pass access control check"):
+- Ensure the function is deployed: `supabase functions deploy send-invitation-email --no-verify-jwt`
+- The `--no-verify-jwt` flag is required so the browser preflight (OPTIONS) request succeeds; otherwise the request may be rejected before the function runs and the response will not include CORS headers.
+- After changing the function code, redeploy so the updated CORS handling is live.
