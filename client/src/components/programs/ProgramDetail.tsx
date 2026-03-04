@@ -35,7 +35,8 @@ import {
   Delete as DeleteIcon,
   PersonAdd as AddMemberIcon,
   MoreVert as MoreIcon,
-  Schedule as ScheduleIcon
+  Schedule as ScheduleIcon,
+  Timeline as SnapshotIcon
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -48,6 +49,7 @@ import {
 } from '../../types/database';
 import { format } from 'date-fns';
 import ProgramAnnouncementList from './ProgramAnnouncementList';
+import ProgramSnapshotTab from './ProgramSnapshotTab';
 
 interface ProgramDetailProps {
   programId: string;
@@ -116,6 +118,7 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
     (userProfile?.role === UserRole.ADMIN) ||
     isManager;
 
+  const showSnapshotTab = canManageProgram; // Admins and program managers see snapshot
   const canAnnounce = canManageProgram || hasPermission('program_announce');
 
   const loadProgram = useCallback(async () => {
@@ -308,7 +311,7 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
       </Box>
 
       {/* Tabs */}
-      {(showAnnouncementsTab || showMembersTab) && (
+      {(showAnnouncementsTab || showMembersTab || showSnapshotTab) && (
         <Paper sx={{ mb: 3 }}>
           <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)}>
             {showAnnouncementsTab && (
@@ -325,6 +328,13 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
                 label={`Members (${members.length})`} 
               />
             )}
+            {showSnapshotTab && (
+              <Tab 
+                icon={<SnapshotIcon />} 
+                iconPosition="start" 
+                label="Snapshot" 
+              />
+            )}
           </Tabs>
         </Paper>
       )}
@@ -333,10 +343,12 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
       {(() => {
         const visibleTabs = [
           showAnnouncementsTab ? 'announcements' : null,
-          showMembersTab ? 'members' : null
+          showMembersTab ? 'members' : null,
+          showSnapshotTab ? 'snapshot' : null
         ].filter(Boolean);
         
         const activeTab = visibleTabs[tabValue];
+        const snapshotIndex = [showAnnouncementsTab, showMembersTab].filter(Boolean).length;
         
         if (activeTab === 'announcements') {
           return (
@@ -414,6 +426,13 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
                   </List>
                 )}
               </Paper>
+            </TabPanel>
+          );
+        }
+        if (activeTab === 'snapshot') {
+          return (
+            <TabPanel value={tabValue} index={snapshotIndex}>
+              <ProgramSnapshotTab programId={programId} programName={program?.name || 'Program'} />
             </TabPanel>
           );
         }

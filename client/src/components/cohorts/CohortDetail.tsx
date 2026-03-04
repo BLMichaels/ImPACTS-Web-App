@@ -18,7 +18,8 @@ import {
   Forum as DiscussionIcon,
   Group as GroupIcon,
   MenuBook as ResourcesIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Timeline as SnapshotIcon
 } from '@mui/icons-material';
 import { 
   Cohort, 
@@ -36,6 +37,7 @@ import DiscussionTopicView from './DiscussionTopicView';
 import MemberList from './MemberList';
 import CohortResourcesSection from './CohortResourcesSection';
 import ScormPackagesSection from '../ScormPackagesSection';
+import CohortSnapshotTab from './CohortSnapshotTab';
 
 interface CohortDetailProps {
   cohort: Cohort;
@@ -66,6 +68,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   const showAnnouncementsTab = useTabVisibility('announcements', cohort.id);
   const showDiscussionsTab = useTabVisibility('discussions', cohort.id);
   const showMembersTab = useTabVisibility('members', cohort.id);
+  const showSnapshotTab = canManage || userRole === UserRole.ADMIN;
   const [announcements, setAnnouncements] = useState<CohortAnnouncement[]>([]);
   const [topics, setTopics] = useState<CohortDiscussionTopic[]>([]);
   const [members, setMembers] = useState<CohortMember[]>([]);
@@ -404,6 +407,9 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
               {showMembersTab && (
                 <Tab icon={<GroupIcon />} iconPosition="start" label="Members" />
               )}
+              {showSnapshotTab && (
+                <Tab icon={<SnapshotIcon />} iconPosition="start" label="Snapshot" />
+              )}
             </Tabs>
           </Box>
           {tabValue === 0 ? (
@@ -440,7 +446,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
               </Typography>
               <CohortResourcesSection cohortId={cohort.id} canManage={canManage} loading={loading} />
             </Box>
-          ) : (
+          ) : (tabValue === 1 && showMembersTab) ? (
             <MemberList
               cohortId={cohort.id}
               members={members}
@@ -450,7 +456,9 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
               onMemberRemoved={handleMemberRemoved}
               loading={loading}
             />
-          )}
+          ) : (tabValue === 1 && !showMembersTab && showSnapshotTab) || (tabValue === 2 && showSnapshotTab) ? (
+            <CohortSnapshotTab cohortId={cohort.id} cohortName={cohort.name} />
+          ) : null}
         </>
       ) : (
         <>
@@ -483,6 +491,9 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                 {showMembersTab && (
                   <Tab icon={<GroupIcon />} iconPosition="start" label="Members" />
                 )}
+                {showSnapshotTab && (
+                  <Tab icon={<SnapshotIcon />} iconPosition="start" label="Snapshot" />
+                )}
               </Tabs>
             </Box>
           )}
@@ -492,7 +503,8 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             const visibleTabs = [
               showAnnouncementsTab ? 'announcements' : null,
               showDiscussionsTab ? 'discussions' : null,
-              showMembersTab ? 'members' : null
+              showMembersTab ? 'members' : null,
+              showSnapshotTab ? 'snapshot' : null
             ].filter(Boolean);
             const activeTab = visibleTabs[tabValue];
             if (activeTab === 'announcements') {
@@ -533,6 +545,11 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                   onMemberRemoved={handleMemberRemoved}
                   loading={loading}
                 />
+              );
+            }
+            if (activeTab === 'snapshot') {
+              return (
+                <CohortSnapshotTab cohortId={cohort.id} cohortName={cohort.name} />
               );
             }
             return null;
