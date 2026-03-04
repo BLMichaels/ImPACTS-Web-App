@@ -58,7 +58,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
-import { getUserData } from '../../utils/userData';
+import { getUserData, setUserData } from '../../utils/userData';
 import { PECC_TAB_KEYS } from '../../types/database';
 
 const CONTACT_STATUSES = [
