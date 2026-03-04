@@ -28,7 +28,12 @@ import PageviewIcon from '@mui/icons-material/Pageview';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import TouchAppIcon from '@mui/icons-material/TouchApp';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import GroupIcon from '@mui/icons-material/Group';
+import WorkIcon from '@mui/icons-material/Work';
 import { supabase } from '../../supabase';
+import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 
 const PERIODS = [
   { value: '7', label: 'Last 7 days' },
@@ -60,6 +65,17 @@ interface UsageEvent {
   created_at: string;
 }
 
+interface AggregatedPlatformData {
+  managers: number;
+  mentors: number;
+  peccs: number;
+  sites: number;
+  contacts: number;
+  avgPeccProgress: number;
+  mentorHoursThisMonth: number;
+  mentorActivitiesThisMonth: number;
+}
+
 export default function AdminSnapshotPage() {
   const [periodValue, setPeriodValue] = useState<string>('30');
   const [customFrom, setCustomFrom] = useState<string>('');
@@ -68,6 +84,9 @@ export default function AdminSnapshotPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [aggregated, setAggregated] = useState<AggregatedPlatformData | null>(null);
+  const [aggregatedLoading, setAggregatedLoading] = useState(true);
+  const [aggregatedError, setAggregatedError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -114,6 +133,75 @@ export default function AdminSnapshotPage() {
     runQuery();
     return () => { mounted = false; };
   }, [periodValue, customFrom, customTo, retryCount]);
+
+  // Load aggregated platform data (managers, mentors, PECCs, sites, contacts, progress)
+  useEffect(() => {
+    let mounted = true;
+    setAggregatedLoading(true);
+    setAggregatedError(null);
+    (async () => {
+      try {
+        const [managersRes, mentorsRes, peccsRes, assignmentsRes, contactsRes] = await Promise.all([
+          supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'manager').eq('is_active', true),
+          supabase.from('users').select('id').eq('role', 'mentor').eq('is_active', true),
+          supabase.from('users').select('id, hospital_facility_id').eq('role', 'pecc').eq('is_active', true),
+          supabase.from('mentor_hospital_assignments').select('hospital_id').eq('is_active', true),
+          supabase.from('hospital_contacts').select('id', { count: 'exact', head: true })
+        ]);
+        if (!mounted) return;
+        const managers = managersRes.count ?? 0;
+        const mentors = (mentorsRes.data || []).length;
+        const peccs = (peccsRes.data || []).length;
+        const contacts = contactsRes.count ?? 0;
+        const hospitalIds = [...new Set((assignmentsRes.data || []).map((a: { hospital_id: string }) => a.hospital_id).filter(Boolean))];
+        const sites = hospitalIds.length;
+        const peccList = (peccsRes.data || []) as { id: string; hospital_facility_id: string }[];
+        let progressSum = 0;
+        let progressCount = 0;
+        for (const p of peccList) {
+          if (!p.hospital_facility_id) continue;
+          const { data: checklistData } = await supabase
+            .from('site_checklist_progress')
+            .select('completed')
+            .eq('hospital_id', p.hospital_facility_id);
+          const completed = (checklistData || []).filter((t: { completed: boolean }) => t.completed).length;
+          const totalTasks = 100;
+          const pct = totalTasks > 0 ? Math.round((completed / totalTasks) * 100) : 0;
+          progressSum += pct;
+          progressCount += 1;
+        }
+        const avgPeccProgress = progressCount > 0 ? Math.round(progressSum / progressCount) : 0;
+        const mentorIds = ((mentorsRes.data || []) as { id: string }[]).map((m) => m.id);
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        let mentorHoursThisMonth = 0;
+        let mentorActivitiesThisMonth = 0;
+        for (const mid of mentorIds) {
+          const acts = await getMentorActivitiesForUser(mid);
+          const thisMonth = acts.filter((a: { date: string }) => new Date(a.date) >= monthStart);
+          mentorActivitiesThisMonth += thisMonth.length;
+          mentorHoursThisMonth += thisMonth.reduce((s: number, a: { hours?: number }) => s + (a.hours || 0), 0);
+        }
+        if (!mounted) return;
+        setAggregated({
+          managers,
+          mentors,
+          peccs,
+          sites,
+          contacts,
+          avgPeccProgress,
+          mentorHoursThisMonth,
+          mentorActivitiesThisMonth
+        });
+      } catch (e: unknown) {
+        if (!mounted) return;
+        setAggregatedError(e instanceof Error ? e.message : 'Failed to load platform data');
+      } finally {
+        if (mounted) setAggregatedLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [retryCount]);
 
   const metrics = useMemo(() => {
     const logins = events.filter((e) => e.event_type === 'login');
@@ -564,10 +652,115 @@ export default function AdminSnapshotPage() {
       </Paper>
 
       <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
-        <Typography variant="h6" gutterBottom>Cross-site summaries</Typography>
-        <Typography color="text.secondary">
-          For aggregate readiness scores, activities, and site progress across all hospitals, use the CRM to view and export contact-level data. Manager and Mentor snapshots provide team-wide metrics.
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <GroupIcon color="primary" />
+          Aggregated platform data
         </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Combined counts from managers, mentors, and PECC tiers across the platform.
+        </Typography>
+        {aggregatedError && (
+          <Alert severity="error" sx={{ mb: 2 }} action={
+            <Button color="inherit" size="small" onClick={() => { setAggregatedError(null); setRetryCount(c => c + 1); }}>
+              Retry
+            </Button>
+          }>
+            {aggregatedError}
+          </Alert>
+        )}
+        {aggregatedLoading ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}>
+            <CircularProgress size={24} />
+            <Typography variant="body2" color="text.secondary">Loading platform metrics...</Typography>
+          </Box>
+        ) : aggregated ? (
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6} md={4} lg={2}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <PeopleIcon color="primary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={600}>Managers</Typography>
+                  </Box>
+                  <Typography variant="h4" color="primary">{aggregated.managers}</Typography>
+                  <Typography variant="caption" color="text.secondary">Platform-wide</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <AssignmentIcon color="primary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={600}>Mentors</Typography>
+                  </Box>
+                  <Typography variant="h4" color="primary">{aggregated.mentors}</Typography>
+                  <Typography variant="caption" color="text.secondary">Platform-wide</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <GroupIcon color="primary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={600}>PECCs</Typography>
+                  </Box>
+                  <Typography variant="h4" color="primary">{aggregated.peccs}</Typography>
+                  <Typography variant="caption" color="text.secondary">At assigned sites</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <LocalHospitalIcon color="primary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={600}>Sites</Typography>
+                  </Box>
+                  <Typography variant="h4" color="primary">{aggregated.sites}</Typography>
+                  <Typography variant="caption" color="text.secondary">Assigned to mentors</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <PeopleIcon color="secondary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={600}>Contacts</Typography>
+                  </Box>
+                  <Typography variant="h4" color="secondary.main">{aggregated.contacts}</Typography>
+                  <Typography variant="caption" color="text.secondary">Hospital CRM contacts</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <TimelineIcon color="primary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={600}>PECC progress</Typography>
+                  </Box>
+                  <Typography variant="h4" color="primary">{aggregated.avgPeccProgress}%</Typography>
+                  <Typography variant="caption" color="text.secondary">Avg checklist completion</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <WorkIcon color="primary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={600}>Mentor hours (this month)</Typography>
+                  </Box>
+                  <Typography variant="h4" color="primary">{aggregated.mentorHoursThisMonth.toFixed(1)}h</Typography>
+                  <Typography variant="caption" color="text.secondary">{aggregated.mentorActivitiesThisMonth} activities logged</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        ) : null}
       </Paper>
     </Box>
   );
