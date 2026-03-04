@@ -4093,7 +4093,8 @@ const AdminCRMPage: React.FC = () => {
                 minHeight: 48,
                 '& .MuiTabs-flexContainer': { gap: 0, bgcolor: 'grey.100', borderRadius: '12px 12px 0 0', p: 0.5, border: '1px solid', borderColor: 'divider', borderBottom: 'none' },
                 '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: '0.95rem', minHeight: 44, borderRadius: '8px', color: 'text.secondary' },
-                '& .Mui-selected': { bgcolor: 'primary.main', color: '#fff', boxShadow: 1 },
+                '& .MuiTab-root.Mui-selected': { bgcolor: '#1976d2', color: '#fff', boxShadow: 1 },
+                '& .MuiTab-root.Mui-selected *': { color: '#fff' },
               }}
             >
               <Tab label="Profile" />
