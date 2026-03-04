@@ -65,6 +65,8 @@ interface RichTextEditorProps {
 
 const editableSx = {
   minHeight: 120,
+  maxHeight: 280,
+  overflowY: 'auto' as const,
   padding: '14px',
   border: '1px solid rgba(0, 0, 0, 0.23)',
   borderRadius: 1,
@@ -80,6 +82,68 @@ const editableSx = {
   }
 };
 
+function getSelectionOffsets(root: Node): { start: number; end: number } | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+  let current = 0;
+  let start = -1;
+  let end = -1;
+  const walk = (node: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const len = (node.textContent || '').length;
+      if (node === range.startContainer) start = current + range.startOffset;
+      if (node === range.endContainer) end = current + range.endOffset;
+      current += len;
+      return;
+    }
+    for (let i = 0; i < node.childNodes.length; i++) walk(node.childNodes[i]);
+  };
+  walk(root);
+  if (start < 0) start = current;
+  if (end < 0) end = current;
+  return { start, end };
+}
+
+function setSelectionOffsets(root: Node, start: number, end: number): void {
+  const sel = window.getSelection();
+  if (!sel) return;
+  let cur = 0;
+  let startNode: Node | null = null;
+  let startOff = 0;
+  let endNode: Node | null = null;
+  let endOff = 0;
+  const walk = (node: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const len = (node.textContent || '').length;
+      if (startNode == null && cur + len >= start) {
+        startNode = node;
+        startOff = Math.min(start - cur, len);
+      }
+      if (endNode == null && cur + len >= end) {
+        endNode = node;
+        endOff = Math.min(end - cur, len);
+        return;
+      }
+      cur += len;
+      return;
+    }
+    for (let i = 0; i < node.childNodes.length; i++) {
+      walk(node.childNodes[i]);
+      if (endNode) return;
+    }
+  };
+  walk(root);
+  if (startNode && endNode) {
+    const range = document.createRange();
+    range.setStart(startNode, startOff);
+    range.setEnd(endNode, endOff);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
   onChange,
@@ -91,18 +155,25 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   onRemoveAttachment
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const lastValueRef = useRef<string | null>(null);
 
   useEffect(() => {
     const el = editorRef.current;
-    if (!el) return;
-    if (el.innerHTML !== value) {
-      el.innerHTML = value || '';
+    if (!el || value === lastValueRef.current) return;
+    lastValueRef.current = value;
+    const saved = getSelectionOffsets(el);
+    el.innerHTML = value || '';
+    if (saved) {
+      requestAnimationFrame(() => setSelectionOffsets(el, saved.start, saved.end));
     }
   }, [value]);
 
   const handleInput = useCallback(() => {
     const el = editorRef.current;
-    if (el) onChange(sanitizeHtml(el.innerHTML));
+    if (!el) return;
+    const newVal = sanitizeHtml(el.innerHTML);
+    lastValueRef.current = newVal;
+    onChange(newVal);
   }, [onChange]);
 
   const exec = useCallback((cmd: string, value?: string) => {
