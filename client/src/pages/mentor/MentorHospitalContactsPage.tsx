@@ -705,8 +705,14 @@ const MentorHospitalContactsPage: React.FC = () => {
       setSnackbar({ open: true, message: 'Name is required', severity: 'error' });
       return;
     }
-    if (!contactForm.email.trim()) {
+    const email = contactForm.email.trim();
+    if (!email) {
       setSnackbar({ open: true, message: 'Email is required', severity: 'error' });
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setSnackbar({ open: true, message: 'Please enter a valid email address', severity: 'error' });
       return;
     }
 
@@ -1036,6 +1042,7 @@ const MentorHospitalContactsPage: React.FC = () => {
               size="small"
               onClick={() => setHospitalSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
               title={hospitalSortOrder === 'asc' ? 'Ascending (click for descending)' : 'Descending (click for ascending)'}
+              aria-label={hospitalSortOrder === 'asc' ? 'Sort hospitals ascending, click to sort descending' : 'Sort hospitals descending, click to sort ascending'}
             >
               {hospitalSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
             </IconButton>
@@ -1241,6 +1248,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                           size="small"
                           onClick={() => setContactSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
                           title={contactSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                          aria-label={contactSortOrder === 'asc' ? 'Sort contacts ascending, click to sort descending' : 'Sort contacts descending, click to sort ascending'}
                         >
                           {contactSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
                         </IconButton>
@@ -1250,7 +1258,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                   <Divider sx={{ mb: 2 }} />
                   {hospitalContacts.length === 0 ? (
                     <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
-                      No contacts for this hospital yet
+                      No contacts for this hospital yet. Add a contact to get started.
                     </Typography>
                   ) : filteredAndSortedContacts.length === 0 ? (
                     <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
@@ -1537,8 +1545,9 @@ const MentorHospitalContactsPage: React.FC = () => {
               </Grid>
               {crmLoading ? (
                 <Grid item xs={12}>
-                  <Box sx={{ py: 2, display: 'flex', justifyContent: 'center' }}>
+                  <Box sx={{ py: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                     <CircularProgress size={24} />
+                    <Typography variant="body2" color="text.secondary">Loading hospital list...</Typography>
                   </Box>
                 </Grid>
               ) : (

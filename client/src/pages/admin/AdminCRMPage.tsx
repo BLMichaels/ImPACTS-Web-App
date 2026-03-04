@@ -3313,7 +3313,7 @@ const AdminCRMPage: React.FC = () => {
                       <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
                         <DragIndicatorIcon sx={{ fontSize: 16, color: 'action.disabled' }} aria-hidden />
                         {col.sortable ? (
-                          <Box component="span" role="button" tabIndex={0} sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleSort(col.id as SortField)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSort(col.id as SortField); } }}>
+                          <Box component="span" role="button" tabIndex={0} aria-label={`Sort by ${col.label}${sortField === col.id ? ` (${sortOrder})` : ''}`} sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleSort(col.id as SortField)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSort(col.id as SortField); } }}>
                             {col.label}
                             <SortIcon sx={{ fontSize: 16, ml: 0.5, opacity: sortField === col.id ? 1 : 0.4 }} />
                             {sortField === col.id && <Typography component="span" variant="caption" sx={{ ml: 0.25 }}>({sortOrder})</Typography>}
@@ -3471,7 +3471,7 @@ const AdminCRMPage: React.FC = () => {
           {remindersLoading ? (
             <Typography color="text.secondary">Loading…</Typography>
           ) : reminders.length === 0 ? (
-            <Typography color="text.secondary">No upcoming reminders. Add reminders from a contact&#39;s full view.</Typography>
+            <Typography color="text.secondary">No upcoming reminders. Add reminders from a contact&apos;s full view to stay on top of follow-ups.</Typography>
           ) : (
             <List dense>
               {reminders.map((r) => (

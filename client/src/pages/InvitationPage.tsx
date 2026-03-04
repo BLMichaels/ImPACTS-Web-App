@@ -313,11 +313,15 @@ const InvitationPage: React.FC = () => {
         // Add assignments based on invitation
         const { data: invData } = await supabase
           .from('invitations')
-          .select('mentor_id, manager_id, cohort_ids, invited_by')
+          .select('mentor_id, manager_id, hospital_id, cohort_ids, invited_by')
           .eq('code', code)
           .single();
         
         if (invitation.role === 'pecc') {
+          // Pre-assign PECC to hospital when invitation has hospital_id
+          if (invData?.hospital_id) {
+            updatePayload.hospital_facility_id = String(invData.hospital_id);
+          }
           // For PECC: if mentor_id exists, use it; if manager_id exists but no mentor_id, it's a direct manager assignment
           if (invData?.mentor_id) {
             updatePayload.mentor_id = invData.mentor_id;
@@ -368,12 +372,9 @@ const InvitationPage: React.FC = () => {
           // Continue anyway
         }
         
-        // Show success message and inform about email confirmation
+        // Show success message and navigate (no alert - use URL param for login page to show message)
         setError(null);
-        alert('Account created successfully! Please check your email to confirm your account before logging in.');
-        
-        // Navigate to login
-        navigate('/login?message=Please check your email to confirm your account');
+        navigate('/login?registered=success&message=Please check your email to confirm your account');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to create account. Please try again.');
@@ -401,7 +402,7 @@ const InvitationPage: React.FC = () => {
             Invalid Invitation
           </Typography>
           <Typography color="textSecondary" sx={{ mb: 3 }}>
-            {error || 'This invitation link is invalid or has expired.'}
+            {error || 'This invitation link is invalid or has expired. Contact your administrator for a new invitation link if you believe this is an error.'}
           </Typography>
           <Button variant="contained" onClick={() => navigate('/login')}>
             Go to Login
@@ -607,8 +608,9 @@ const InvitationPage: React.FC = () => {
             fullWidth
             size="large"
             disabled={submitting}
+            startIcon={submitting ? <CircularProgress size={20} color="inherit" /> : undefined}
           >
-            {submitting ? <CircularProgress size={24} /> : 'Complete Registration'}
+            {submitting ? 'Creating account...' : 'Complete Registration'}
           </Button>
         </form>
 

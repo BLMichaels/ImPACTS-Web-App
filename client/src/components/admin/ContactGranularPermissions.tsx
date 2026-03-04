@@ -72,6 +72,10 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
 
   const loadPermissions = async () => {
     try {
+      if (!userId?.trim()) {
+        setLoading(false);
+        return;
+      }
       if (isPending && email) {
         const [permsRes, tabsRes] = await Promise.all([
           supabase.from('pending_user_permissions').select('*').eq('email', email),
@@ -185,8 +189,9 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
 
   if (loading) {
     return (
-      <Box sx={{ py: 2 }}>
+      <Box sx={{ py: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
         <CircularProgress size={24} />
+        <Typography variant="body2" color="text.secondary">Loading permissions...</Typography>
       </Box>
     );
   }

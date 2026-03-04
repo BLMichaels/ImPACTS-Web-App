@@ -229,6 +229,19 @@ const AdminTeamTab: React.FC = () => {
       setSnackbar({ open: true, message: 'You must be logged in to create users', severity: 'error' });
       return;
     }
+    if (!formData.email?.trim()) {
+      setSnackbar({ open: true, message: 'Email is required', severity: 'error' });
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      setSnackbar({ open: true, message: 'Please enter a valid email address', severity: 'error' });
+      return;
+    }
+    if (formData.role === 'mentor' && !formData.assignedManagerId) {
+      setSnackbar({ open: true, message: 'Mentors must be assigned to a manager', severity: 'error' });
+      return;
+    }
     
     try {
       // If sendInvite is true, create an invitation
@@ -454,8 +467,10 @@ const AdminTeamTab: React.FC = () => {
       status: profileForm.status,
       manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
       mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
+      manager_id_for_pecc: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? profileForm.assignedManagerIdForPECC : null,
       managerName: profileForm.role === 'mentor' && profileForm.assignedManagerId ? (() => { const m = users.find(u => u.id === profileForm.assignedManagerId); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined,
-      mentorName: profileForm.role === 'pecc' && profileForm.assignedMentorId ? (() => { const m = users.find(u => u.id === profileForm.assignedMentorId); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined
+      mentorName: profileForm.role === 'pecc' && profileForm.assignedMentorId ? (() => { const m = users.find(u => u.id === profileForm.assignedMentorId); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined,
+      managerNameForPECC: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? (() => { const m = users.find(u => u.id === profileForm.assignedManagerIdForPECC); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined
     } : null);
     setProfileEditMode(false);
   };
@@ -529,7 +544,15 @@ const AdminTeamTab: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredUsers.map((user) => (
+              {filteredUsers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                    <Typography color="textSecondary">
+                      {users.length === 0 ? 'No users yet. Add your first user above.' : 'No users match your search or filters.'}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : filteredUsers.map((user) => (
                 <TableRow key={user.id} hover>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -560,7 +583,7 @@ const AdminTeamTab: React.FC = () => {
                   </TableCell>
                   <TableCell>{user.lastLogin || 'Never'}</TableCell>
                   <TableCell>
-                    <IconButton size="small" onClick={(e) => handleMenuOpen(e, user)}><MoreIcon /></IconButton>
+                    <IconButton size="small" onClick={(e) => handleMenuOpen(e, user)} aria-label={`Actions for ${(user.firstName || user.lastName || user.email || 'user').trim() || 'user'}`}><MoreIcon /></IconButton>
                   </TableCell>
                 </TableRow>
               ))}

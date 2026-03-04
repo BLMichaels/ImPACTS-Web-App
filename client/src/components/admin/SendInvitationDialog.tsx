@@ -223,6 +223,11 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setError('Email is required');
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError('Please enter a valid email address');
+      return;
+    }
     
     if (!userProfile?.id) {
       setError('You must be logged in to send invitations');
@@ -326,6 +331,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
               fullWidth
               required
               disabled={loading}
+              autoFocus
               sx={{ mb: 2 }}
             />
             

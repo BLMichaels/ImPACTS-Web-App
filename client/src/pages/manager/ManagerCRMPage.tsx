@@ -37,7 +37,8 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  Tooltip
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
@@ -588,10 +589,12 @@ const ManagerCRMPage: React.FC = () => {
   };
 
   const filteredHospitals = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return hospitals;
     return hospitals.filter(h =>
-      h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      h.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      h.state.toLowerCase().includes(searchQuery.toLowerCase())
+      (h.name ?? '').toLowerCase().includes(q) ||
+      (h.city ?? '').toLowerCase().includes(q) ||
+      (h.state ?? '').toLowerCase().includes(q)
     );
   }, [hospitals, searchQuery]);
 
@@ -798,9 +801,13 @@ const ManagerCRMPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openAddContact} disabled={hospitals.length === 0}>
-              Add Contact
-            </Button>
+            <Tooltip title={hospitals.length === 0 ? 'Add a hospital first to add contacts' : 'Add a new contact'}>
+              <span>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openAddContact} disabled={hospitals.length === 0}>
+                  Add Contact
+                </Button>
+              </span>
+            </Tooltip>
           </Box>
 
           {contactsLoading ? (
@@ -1226,20 +1233,24 @@ const ManagerCRMPage: React.FC = () => {
                     <Typography variant="body2" sx={{ flex: 1, textTransform: 'capitalize' }}>
                       {tab.replace(/([A-Z])/g, ' $1').trim()}:
                     </Typography>
-                    <Button
-                      size="small"
-                      startIcon={<VisibilityIcon />}
-                      onClick={() => handleMassToggle(tab as any, true)}
-                    >
-                      Show All
-                    </Button>
-                    <Button
-                      size="small"
-                      startIcon={<VisibilityOffIcon />}
-                      onClick={() => handleMassToggle(tab as any, false)}
-                    >
-                      Hide All
-                    </Button>
+                    <Tooltip title="Show this tab for all users">
+                      <Button
+                        size="small"
+                        startIcon={<VisibilityIcon />}
+                        onClick={() => handleMassToggle(tab as any, true)}
+                      >
+                        Show All
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title="Hide this tab for all users">
+                      <Button
+                        size="small"
+                        startIcon={<VisibilityOffIcon />}
+                        onClick={() => handleMassToggle(tab as any, false)}
+                      >
+                        Hide All
+                      </Button>
+                    </Tooltip>
                   </Box>
                 </Grid>
               ))}
@@ -1271,7 +1282,15 @@ const ManagerCRMPage: React.FC = () => {
 
           {/* User List */}
           <List sx={{ maxHeight: 400, overflow: 'auto' }}>
-            {filteredVisibilitySettings.map((setting, index) => (
+            {filteredVisibilitySettings.length === 0 ? (
+              <ListItem>
+                <ListItemText
+                  primary="No users to configure"
+                  secondary={visibilitySettings.length === 0 ? 'No PECCs or Mentors in the app yet. Add users and assign them to hospitals first.' : 'No users match your search or role filter.'}
+                  primaryTypographyProps={{ color: 'text.secondary' }}
+                />
+              </ListItem>
+            ) : filteredVisibilitySettings.map((setting, index) => (
               <React.Fragment key={setting.userId}>
                 {index > 0 && <Divider />}
                 <ListItem>
