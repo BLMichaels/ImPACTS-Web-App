@@ -178,6 +178,10 @@ const ManagerCRMPage: React.FC = () => {
   const [hospitalNotesLog, setHospitalNotesLog] = useState<Array<{ date: string; text: string }>>([]);
   const [hospitalNotesLoading, setHospitalNotesLoading] = useState(false);
 
+  // Contact record panel (click row to view)
+  const [contactDetailOpen, setContactDetailOpen] = useState(false);
+  const [contactDetailContact, setContactDetailContact] = useState<ContactData | null>(null);
+
   useEffect(() => {
     loadHospitals();
   }, [userProfile?.id]);
@@ -307,6 +311,11 @@ const ManagerCRMPage: React.FC = () => {
     } finally {
       setContactsLoading(false);
     }
+  };
+
+  const openContactDetail = (c: ContactData) => {
+    setContactDetailContact(c);
+    setContactDetailOpen(true);
   };
 
   const openHospitalNotesDrawer = async (hospital: HospitalData) => {
@@ -750,81 +759,75 @@ const ManagerCRMPage: React.FC = () => {
             <Grid container spacing={3}>
               {filteredHospitals.map((hospital) => (
                 <Grid item xs={12} md={6} lg={4} key={hospital.id}>
-                  <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { boxShadow: 6 } }}>
-                    <CardContent>
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      transition: 'box-shadow 0.2s, border-color 0.2s',
+                      '&:hover': { boxShadow: 2, borderColor: 'primary.light' }
+                    }}
+                  >
+                    <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2.5 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                        <Avatar sx={{ bgcolor: 'primary.main' }}>
+                        <Avatar sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
                           <HospitalIcon />
                         </Avatar>
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="h6" fontWeight={600} noWrap>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle1" fontWeight={600} noWrap>
                             {hospital.name}
                           </Typography>
-                          <Typography variant="body2" color="textSecondary">
+                          <Typography variant="body2" color="text.secondary">
                             {hospital.city}, {hospital.state}
                           </Typography>
                         </Box>
                       </Box>
-
-                      <Divider sx={{ my: 2 }} />
-
-                      <Grid container spacing={2}>
-                        <Grid item xs={4}>
-                          <Box sx={{ textAlign: 'center' }}>
-                            <Typography variant="h5" color="primary">
-                              {hospital.mentorCount}
-                            </Typography>
-                            <Typography variant="caption" color="textSecondary">
-                              Mentors
-                            </Typography>
-                          </Box>
-                        </Grid>
-                        <Grid item xs={4}>
-                          <Box sx={{ textAlign: 'center' }}>
-                            <Typography variant="h5" color="success.main">
-                              {hospital.peccCount}
-                            </Typography>
-                            <Typography variant="caption" color="textSecondary">
-                              PECCs
-                            </Typography>
-                          </Box>
-                        </Grid>
-                        <Grid item xs={4}>
-                          <Box sx={{ textAlign: 'center' }}>
-                            <Typography variant="h5" color="info.main">
-                              {hospital.contactCount}
-                            </Typography>
-                            <Typography variant="caption" color="textSecondary">
-                              Contacts
-                            </Typography>
-                          </Box>
-                        </Grid>
-                      </Grid>
-
-                      <Box sx={{ mt: 2 }}>
-                        <Chip
-                          size="small"
-                          label={hospital.traumaLevel}
-                          variant="outlined"
-                          sx={{ mr: 1 }}
-                        />
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 2 }}>
+                        <Chip size="small" label={hospital.traumaLevel} variant="outlined" />
                       </Box>
-
-                      <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr 1fr',
+                          gap: 1,
+                          py: 1.5,
+                          px: 1,
+                          bgcolor: 'grey.50',
+                          borderRadius: 1,
+                          mb: 2
+                        }}
+                      >
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="h6" color="primary" sx={{ lineHeight: 1.2 }}>{hospital.mentorCount}</Typography>
+                          <Typography variant="caption" color="text.secondary">Mentors</Typography>
+                        </Box>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="h6" color="success.main" sx={{ lineHeight: 1.2 }}>{hospital.peccCount}</Typography>
+                          <Typography variant="caption" color="text.secondary">PECCs</Typography>
+                        </Box>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="h6" color="info.main" sx={{ lineHeight: 1.2 }}>{hospital.contactCount}</Typography>
+                          <Typography variant="caption" color="text.secondary">Contacts</Typography>
+                        </Box>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, mt: 'auto' }}>
                         <Button
-                          fullWidth
+                          size="small"
                           variant="outlined"
                           startIcon={<NotesIcon />}
-                          onClick={() => openHospitalNotesDrawer(hospital)}
+                          onClick={(e) => { e.stopPropagation(); openHospitalNotesDrawer(hospital); }}
+                          fullWidth
                         >
                           Notes
                         </Button>
                         <Button
-                          fullWidth
-                          variant="outlined"
+                          size="small"
+                          variant="contained"
                           onClick={() => navigate(`/manager/overview?hospital=${hospital.id}`)}
+                          fullWidth
                         >
-                          View Details
+                          View
                         </Button>
                       </Box>
                     </CardContent>
@@ -836,41 +839,169 @@ const ManagerCRMPage: React.FC = () => {
         </Box>
       )}
 
-      {/* Hospital notes drawer: notes about this site from mentors, managers, admins */}
+      {/* Site record panel (HubSpot/Salesforce-style): header, properties, activity timeline, actions */}
       <Drawer
         anchor="right"
         open={hospitalNotesDrawerOpen}
         onClose={() => { setHospitalNotesDrawerOpen(false); setHospitalNotesDrawerHospital(null); }}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 420 }, maxWidth: '100%' } }}
       >
-        <Box sx={{ width: { xs: '100%', sm: 380 }, p: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h6">{hospitalNotesDrawerHospital?.name ?? 'Hospital notes'}</Typography>
-            <IconButton size="small" onClick={() => { setHospitalNotesDrawerOpen(false); setHospitalNotesDrawerHospital(null); }}><CloseIcon /></IconButton>
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50' }}>
+          {/* Record header */}
+          <Box sx={{ p: 2, pb: 1.5, bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
+                <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
+                  <HospitalIcon />
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="h6" fontWeight={600} noWrap sx={{ lineHeight: 1.3 }}>
+                    {hospitalNotesDrawerHospital?.name ?? 'Site'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {hospitalNotesDrawerHospital?.city}, {hospitalNotesDrawerHospital?.state}
+                  </Typography>
+                </Box>
+              </Box>
+              <IconButton size="small" onClick={() => { setHospitalNotesDrawerOpen(false); setHospitalNotesDrawerHospital(null); }} aria-label="Close">
+                <CloseIcon />
+              </IconButton>
+            </Box>
+            {hospitalNotesDrawerHospital && (
+              <Box sx={{ display: 'flex', gap: 2, mt: 2, flexWrap: 'wrap' }}>
+                <Chip size="small" label={`${hospitalNotesDrawerHospital.mentorCount} Mentors`} variant="outlined" color="primary" />
+                <Chip size="small" label={`${hospitalNotesDrawerHospital.peccCount} PECCs`} variant="outlined" color="success" />
+                <Chip size="small" label={`${hospitalNotesDrawerHospital.contactCount} Contacts`} variant="outlined" color="info" />
+                <Chip size="small" label={hospitalNotesDrawerHospital.traumaLevel} variant="outlined" />
+              </Box>
+            )}
           </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Dated notes about this site from mentors, managers, and admins. Also visible in Admin CRM and on the Hospitals page.
-          </Typography>
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-            For activities, hours, and PECC counts at this site, use &quot;View full overview&quot; below.
-          </Typography>
-          {hospitalNotesLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
-          ) : hospitalNotesLog.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">No notes yet.</Typography>
-          ) : (
-            <List dense>
-              {hospitalNotesLog.map((entry, i) => (
-                <ListItem key={i} alignItems="flex-start" sx={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                  <Typography variant="caption" color="primary">{entry.date}</Typography>
-                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
-                  {i < hospitalNotesLog.length - 1 && <Divider sx={{ mt: 1 }} />}
-                </ListItem>
-              ))}
-            </List>
+
+          <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+            {/* About this site */}
+            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, mb: 1.5 }}>
+                About this site
+              </Typography>
+              <Typography variant="body2">
+                Notes and activity here are from mentors, managers, and admins. Same content appears in Admin CRM and on the Hospitals page.
+              </Typography>
+            </Paper>
+
+            {/* Activity timeline */}
+            <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, mb: 1.5 }}>
+              Activity & notes
+            </Typography>
+            {hospitalNotesLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
+            ) : hospitalNotesLog.length === 0 ? (
+              <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
+                <NotesIcon sx={{ fontSize: 40, color: 'grey.400', mb: 1 }} />
+                <Typography variant="body2" color="text.secondary">No notes yet</Typography>
+                <Typography variant="caption" color="text.secondary" display="block">Add notes from the Hospitals page or Admin CRM</Typography>
+              </Paper>
+            ) : (
+              <Box sx={{ position: 'relative', pl: 2, borderLeft: 2, borderColor: 'divider', ml: 0.5 }}>
+                {hospitalNotesLog.map((entry, i) => (
+                  <Box key={i} sx={{ mb: 2, '&:last-child': { mb: 0 } }}>
+                    <Typography variant="caption" fontWeight={600} color="primary" sx={{ display: 'block', mb: 0.25 }}>
+                      {entry.date}
+                    </Typography>
+                    <Paper variant="outlined" sx={{ p: 1.5, py: 1, bgcolor: 'background.paper' }}>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{entry.text}</Typography>
+                    </Paper>
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+            {/* Actions */}
+            <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<HospitalIcon />}
+                onClick={() => navigate(`/manager/overview?hospital=${hospitalNotesDrawerHospital?.id}`)}
+              >
+                View full overview
+              </Button>
+              <Button fullWidth variant="outlined" onClick={() => { setHospitalNotesDrawerOpen(false); setHospitalNotesDrawerHospital(null); }}>
+                Close
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+      </Drawer>
+
+      {/* Contact record panel: click a contact row to view */}
+      <Drawer
+        anchor="right"
+        open={contactDetailOpen}
+        onClose={() => { setContactDetailOpen(false); setContactDetailContact(null); }}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 420 }, maxWidth: '100%' } }}
+      >
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50' }}>
+          {contactDetailContact && (
+            <>
+              <Box sx={{ p: 2, pb: 1.5, bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
+                    <Avatar sx={{ bgcolor: 'secondary.main', width: 48, height: 48 }}>
+                      {(contactDetailContact.first_name?.[0] || contactDetailContact.last_name?.[0] || '?').toUpperCase()}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="h6" fontWeight={600} sx={{ lineHeight: 1.3 }}>
+                        {getUserDisplayName(contactDetailContact)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">{contactDetailContact.hospitalName}</Typography>
+                    </Box>
+                  </Box>
+                  <IconButton size="small" onClick={() => { setContactDetailOpen(false); setContactDetailContact(null); }} aria-label="Close">
+                    <CloseIcon />
+                  </IconButton>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
+                  <Chip size="small" label={contactDetailContact.contact_status} color="primary" variant="outlined" />
+                  {contactDetailContact.is_primary_contact && <Chip size="small" label="Primary" color="primary" />}
+                </Box>
+              </Box>
+              <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, mb: 1.5 }}>
+                    Contact details
+                  </Typography>
+                  <List dense disablePadding>
+                    <ListItem disablePadding sx={{ py: 0.5 }}>
+                      <ListItemText primary="Email" secondary={contactDetailContact.email || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} />
+                    </ListItem>
+                    <ListItem disablePadding sx={{ py: 0.5 }}>
+                      <ListItemText primary="Phone" secondary={contactDetailContact.phone || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} />
+                    </ListItem>
+                    <ListItem disablePadding sx={{ py: 0.5 }}>
+                      <ListItemText primary="Role at hospital" secondary={contactDetailContact.role_at_hospital || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} />
+                    </ListItem>
+                  </List>
+                </Paper>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, mb: 1.5 }}>
+                  Notes
+                </Typography>
+                <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }} color={contactDetailContact.notes?.trim() ? 'text.primary' : 'text.secondary'}>
+                    {contactDetailContact.notes?.trim() || 'No notes'}
+                  </Typography>
+                </Paper>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Button fullWidth variant="contained" startIcon={<EditIcon />} onClick={() => { setContactDetailOpen(false); openEditContact(contactDetailContact); }}>
+                    Edit contact
+                  </Button>
+                  <Button fullWidth variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { setContactDetailOpen(false); handleDeleteContact(contactDetailContact); }}>
+                    Remove contact
+                  </Button>
+                  <Button fullWidth variant="outlined" onClick={() => { setContactDetailOpen(false); setContactDetailContact(null); }}>Close</Button>
+                </Box>
+              </Box>
+            </>
           )}
-          <Button fullWidth variant="outlined" sx={{ mt: 2 }} onClick={() => navigate(`/manager/overview?hospital=${hospitalNotesDrawerHospital?.id}`)}>
-            View full overview
-          </Button>
         </Box>
       </Drawer>
 
@@ -933,22 +1064,30 @@ const ManagerCRMPage: React.FC = () => {
               )}
             </Paper>
           ) : (
-            <TableContainer component={Paper}>
+            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, py: 1, bgcolor: 'grey.50', borderBottom: 1, borderColor: 'divider' }}>
+                Click a row to open the contact record. Use the action icons to edit or remove.
+              </Typography>
               <Table size="small">
                 <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Hospital</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Phone</TableCell>
-                    <TableCell>Role / Status</TableCell>
-                    <TableCell align="center">Primary</TableCell>
-                    <TableCell align="right">Actions</TableCell>
+                  <TableRow sx={{ bgcolor: 'grey.50' }}>
+                    <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Hospital</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Phone</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Role / Status</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>Primary</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredContacts.map((c) => (
-                    <TableRow key={c.id} hover>
+                    <TableRow
+                      key={c.id}
+                      hover
+                      sx={{ cursor: 'pointer' }}
+                      onClick={() => openContactDetail(c)}
+                    >
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <Typography variant="body2" fontWeight={600}>
@@ -983,11 +1122,11 @@ const ManagerCRMPage: React.FC = () => {
                       <TableCell align="center">
                         {c.is_primary_contact ? <Chip size="small" color="primary" label="Primary" /> : '—'}
                       </TableCell>
-                      <TableCell align="right">
-                        <IconButton size="small" onClick={() => openEditContact(c)} title="Edit" aria-label={`Edit contact ${c.first_name} ${c.last_name}`}>
+                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                        <IconButton size="small" onClick={() => openEditContact(c)} title="Edit" aria-label="Edit contact">
                           <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" onClick={() => handleDeleteContact(c)} title="Remove" aria-label={`Remove contact ${c.first_name} ${c.last_name}`} color="error">
+                        <IconButton size="small" onClick={() => handleDeleteContact(c)} title="Remove" aria-label="Remove contact" color="error">
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </TableCell>
