@@ -272,13 +272,15 @@ const USER_DATA_CRM_PREFS = 'crm_prefs';
 const USER_DATA_CRM_CUSTOM_FIELDS = 'crm_custom_field_defs';
 
 export type CustomFieldType = 'checkbox' | 'radio' | 'date' | 'numeric' | 'short_answer' | 'paragraph' | 'dropdown' | 'dropdown_csv';
+export type CustomFieldShowInCrm = 'both' | 'quick_view_only' | 'full_view_only';
 type CustomFieldDefinition = {
   id: string;
   label: string;
   applicableTypes: ContactType[];
   fieldType: CustomFieldType;
   options?: string[];
-  allowMultiple?: boolean; // If true, allows multiple dated entries (like a log)
+  allowMultiple?: boolean;
+  showInCrm?: CustomFieldShowInCrm; // where to show in CRM: both (default), quick view only, or full view only
 };
 
 // Type for multiple entry custom field values
@@ -468,6 +470,7 @@ const AdminCRMPage: React.FC = () => {
   const [newDefFieldType, setNewDefFieldType] = useState<CustomFieldType>('short_answer');
   const [newDefOptions, setNewDefOptions] = useState('');
   const [newDefAllowMultiple, setNewDefAllowMultiple] = useState(false);
+  const [newDefShowInCrm, setNewDefShowInCrm] = useState<CustomFieldShowInCrm>('both');
   const [csvUploadError, setCsvUploadError] = useState<string | null>(null);
   const [saveInProgress, setSaveInProgress] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -879,7 +882,7 @@ const AdminCRMPage: React.FC = () => {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data, error } = await supabase.from('crm_custom_field_definitions').select('id, label, applicable_types, field_type, options, sort_order, allow_multiple').order('sort_order', { ascending: true });
+      const { data, error } = await supabase.from('crm_custom_field_definitions').select('id, label, applicable_types, field_type, options, sort_order, allow_multiple, show_in_crm').order('sort_order', { ascending: true });
       if (!mounted) return;
       if (!error && data && data.length > 0) {
         const mapped: CustomFieldDefinition[] = (data as Record<string, unknown>[]).map((row) => ({
@@ -888,7 +891,8 @@ const AdminCRMPage: React.FC = () => {
           applicableTypes: (Array.isArray(row.applicable_types) ? row.applicable_types as string[] : ['hospital']).filter(t => CONTACT_TYPES.includes(t as ContactType)) as ContactType[],
           fieldType: (['checkbox', 'radio', 'date', 'numeric', 'short_answer', 'paragraph', 'dropdown', 'dropdown_csv'].includes(String(row.field_type)) ? row.field_type : 'short_answer') as CustomFieldType,
           options: Array.isArray(row.options) ? (row.options as string[]).filter(Boolean) : undefined,
-          allowMultiple: Boolean(row.allow_multiple)
+          allowMultiple: Boolean(row.allow_multiple),
+          showInCrm: (['both', 'quick_view_only', 'full_view_only'].includes(String(row.show_in_crm)) ? row.show_in_crm : 'both') as CustomFieldShowInCrm
         }));
         setCustomFieldDefs(mapped);
       }
@@ -3708,35 +3712,48 @@ const AdminCRMPage: React.FC = () => {
                   </ListItem>
                 ) : null;
               })()}
-              {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type)).length > 0 && (
-                <>
-                  {customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
-                    <ListItem key={d.id} disablePadding>
-                      {d.allowMultiple ? (
-                        <ListItemText 
-                          primary={d.label} 
-                          secondary={
-                            <Box component="span" sx={{ display: 'block' }}>
-                              {parseMultiEntryValue(detailContact.customFields![d.id]).length === 0 ? '—' : 
-                                parseMultiEntryValue(detailContact.customFields![d.id]).slice(0, 5).map((entry, idx) => (
-                                  <Typography key={idx} variant="body2" component="span" sx={{ display: 'block' }}>
-                                    {formatEntryDate(entry.date)}: {entry.value}
-                                  </Typography>
-                                ))
-                              }
-                              {parseMultiEntryValue(detailContact.customFields![d.id]).length > 5 && (
-                                <Typography variant="caption" color="text.secondary">+{parseMultiEntryValue(detailContact.customFields![d.id]).length - 5} more entries</Typography>
-                              )}
-                            </Box>
-                          } 
-                        />
-                      ) : (
-                        <ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} />
-                      )}
+              {(() => {
+                const quickViewDefs = customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && (d.showInCrm === 'both' || d.showInCrm === 'quick_view_only' || !d.showInCrm) && detailContact.customFields?.[d.id]);
+                if (quickViewDefs.length === 0) return null;
+                return (
+                  <>
+                    <ListItem disablePadding sx={{ pt: 1, mt: 0.5, borderTop: 1, borderColor: 'divider' }}>
+                      <ListItemText primary={<Typography variant="overline" color="text.secondary">Custom fields</Typography>} primaryTypographyProps={{ sx: { mb: 0.5 } }} />
                     </ListItem>
-                  ))}
-                </>
-              )}
+                    {quickViewDefs.map((d) => (
+                      <ListItem key={d.id} disablePadding sx={{ py: 0.25, pl: 1 }}>
+                        {d.allowMultiple ? (
+                          <ListItemText
+                            primary={d.label}
+                            primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                            secondary={
+                              <Box component="span" sx={{ display: 'block', mt: 0.25 }}>
+                                {parseMultiEntryValue(detailContact.customFields![d.id]).length === 0 ? '—' : 
+                                  parseMultiEntryValue(detailContact.customFields![d.id]).slice(0, 5).map((entry, idx) => (
+                                    <Typography key={idx} variant="body2" component="span" sx={{ display: 'block', color: 'text.secondary' }}>
+                                      {formatEntryDate(entry.date)}: {entry.value}
+                                    </Typography>
+                                  ))
+                                }
+                                {parseMultiEntryValue(detailContact.customFields![d.id]).length > 5 && (
+                                  <Typography variant="caption" color="text.secondary">+{parseMultiEntryValue(detailContact.customFields![d.id]).length - 5} more</Typography>
+                                )}
+                              </Box>
+                            }
+                          />
+                        ) : (
+                          <ListItemText 
+                            primary={d.label} 
+                            primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                            secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} 
+                            secondaryTypographyProps={{ variant: 'body2', color: 'text.secondary' }}
+                          />
+                        )}
+                      </ListItem>
+                    ))}
+                  </>
+                );
+              })()}
               {(detailContact.notesLog?.length ?? 0) > 0 && (
                 <ListItem disablePadding>
                   <ListItemText primary="Notes log" secondary={`${detailContact.notesLog!.length} dated note(s). Expand for full log.`} />
@@ -4076,7 +4093,7 @@ const AdminCRMPage: React.FC = () => {
                 minHeight: 48,
                 '& .MuiTabs-flexContainer': { gap: 0, bgcolor: 'grey.100', borderRadius: '12px 12px 0 0', p: 0.5, border: '1px solid', borderColor: 'divider', borderBottom: 'none' },
                 '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: '0.95rem', minHeight: 44, borderRadius: '8px', color: 'text.secondary' },
-                '& .Mui-selected': { bgcolor: 'primary.main', color: 'primary.contrastText', boxShadow: 1 },
+                '& .Mui-selected': { bgcolor: 'primary.main', color: '#fff', boxShadow: 1 },
               }}
             >
               <Tab label="Profile" />
@@ -4200,31 +4217,48 @@ const AdminCRMPage: React.FC = () => {
                         </ListItem>
                       ) : null;
                     })()}
-                    {detailContact.customFields && Object.keys(detailContact.customFields).length > 0 && customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && detailContact.customFields![d.id]).map((d) => (
-                      <ListItem key={d.id} disablePadding>
-                        {d.allowMultiple ? (
-                          <ListItemText 
-                            primary={d.label} 
-                            secondary={
-                              <Box component="span" sx={{ display: 'block' }}>
-                                {parseMultiEntryValue(detailContact.customFields![d.id]).length === 0 ? '—' : 
-                                  parseMultiEntryValue(detailContact.customFields![d.id]).slice(0, 3).map((entry, idx) => (
-                                    <Typography key={idx} variant="body2" component="span" sx={{ display: 'block' }}>
-                                      {formatEntryDate(entry.date)}: {entry.value}
-                                    </Typography>
-                                  ))
-                                }
-                                {parseMultiEntryValue(detailContact.customFields![d.id]).length > 3 && (
-                                  <Typography variant="caption" color="text.secondary">+{parseMultiEntryValue(detailContact.customFields![d.id]).length - 3} more</Typography>
-                                )}
-                              </Box>
-                            } 
-                          />
-                        ) : (
-                          <ListItemText primary={d.label} secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} />
-                        )}
-                      </ListItem>
-                    ))}
+                    {(() => {
+                      const fullViewDefs = customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && (d.showInCrm === 'both' || d.showInCrm === 'full_view_only' || !d.showInCrm) && detailContact.customFields?.[d.id]);
+                      if (fullViewDefs.length === 0) return null;
+                      return (
+                        <>
+                          <ListItem disablePadding sx={{ py: 0.5, mt: 1, pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+                            <ListItemText primary={<Typography variant="overline" color="text.secondary">Custom fields</Typography>} primaryTypographyProps={{ sx: { mb: 0.5 } }} />
+                          </ListItem>
+                          {fullViewDefs.map((d) => (
+                            <ListItem key={d.id} disablePadding sx={{ py: 0.25, pl: 1 }}>
+                              {d.allowMultiple ? (
+                                <ListItemText
+                                  primary={d.label}
+                                  primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                                  secondary={
+                                    <Box component="span" sx={{ display: 'block', mt: 0.25 }}>
+                                      {parseMultiEntryValue(detailContact.customFields![d.id]).length === 0 ? '—' : 
+                                        parseMultiEntryValue(detailContact.customFields![d.id]).slice(0, 5).map((entry, idx) => (
+                                          <Typography key={idx} variant="body2" component="span" sx={{ display: 'block', color: 'text.secondary' }}>
+                                            {formatEntryDate(entry.date)}: {entry.value}
+                                          </Typography>
+                                        ))
+                                      }
+                                      {parseMultiEntryValue(detailContact.customFields![d.id]).length > 5 && (
+                                        <Typography variant="caption" color="text.secondary">+{parseMultiEntryValue(detailContact.customFields![d.id]).length - 5} more</Typography>
+                                      )}
+                                    </Box>
+                                  }
+                                />
+                              ) : (
+                                <ListItemText 
+                                  primary={d.label} 
+                                  primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                                  secondary={d.fieldType === 'checkbox' ? (detailContact.customFields![d.id] === 'true' ? 'Yes' : 'No') : (detailContact.customFields![d.id] || '—')} 
+                                  secondaryTypographyProps={{ variant: 'body2', color: 'text.secondary' }}
+                                />
+                              )}
+                            </ListItem>
+                          ))}
+                        </>
+                      );
+                    })()}
                     {(isPersonType(detailContact.type) || (detailContact.type === 'hospital' && detailContact.hospitalId)) && (
                       <ListItem disablePadding sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider', flexDirection: 'column', alignItems: 'flex-start' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', mb: 0.5 }}>
@@ -4930,7 +4964,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Manage custom fields (Admins only) */}
-      <Dialog open={customFieldsDialogOpen} onClose={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false); setCsvUploadError(null); }} maxWidth="sm" fullWidth>
+      <Dialog open={customFieldsDialogOpen} onClose={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false); setNewDefShowInCrm('both'); setCsvUploadError(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>Manage custom fields</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -4975,6 +5009,17 @@ const AdminCRMPage: React.FC = () => {
                 }
               />
             </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Show in CRM</InputLabel>
+                <Select value={newDefShowInCrm} onChange={(e) => setNewDefShowInCrm(e.target.value as CustomFieldShowInCrm)} label="Show in CRM">
+                  <MenuItem value="both">Quick view and full view</MenuItem>
+                  <MenuItem value="quick_view_only">Quick view only</MenuItem>
+                  <MenuItem value="full_view_only">Full view only</MenuItem>
+                </Select>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Choose where this field appears when viewing a contact.</Typography>
+              </FormControl>
+            </Grid>
             {OPTIONS_FIELD_TYPES.includes(newDefFieldType) && (
               <Grid item xs={12}>
                 {newDefFieldType === 'dropdown_csv' ? (
@@ -5014,30 +5059,30 @@ const AdminCRMPage: React.FC = () => {
                   
                   if (editingDefId) {
                     // Update existing field
-                    const updatePayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, updated_at: new Date().toISOString() };
+                    const updatePayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, show_in_crm: newDefShowInCrm, updated_at: new Date().toISOString() };
                     const { error } = await supabase.from('crm_custom_field_definitions').update(updatePayload).eq('id', editingDefId);
                     if (error) {
                       console.error('Failed to update custom field:', error);
                       setCsvUploadError(`Failed to update field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
                       return;
                     }
-                    const updatedDef: CustomFieldDefinition = { id: editingDefId, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple };
+                    const updatedDef: CustomFieldDefinition = { id: editingDefId, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple, showInCrm: newDefShowInCrm };
                     setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? updatedDef : d));
                     setEditingDefId(null);
                   } else {
                     // Insert new field - don't send id, let database generate UUID
-                    const insertPayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, sort_order: 0 };
+                    const insertPayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, show_in_crm: newDefShowInCrm, sort_order: 0 };
                     const { data, error } = await supabase.from('crm_custom_field_definitions').insert(insertPayload).select().single();
                     if (error) {
                       console.error('Failed to add custom field:', error);
                       setCsvUploadError(`Failed to add field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
                       return;
                     }
-                    const newDef: CustomFieldDefinition = { id: String(data.id), label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple };
+                    const newDef: CustomFieldDefinition = { id: String(data.id), label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple, showInCrm: newDefShowInCrm };
                     setCustomFieldDefs(prev => [...prev, newDef]);
                   }
                   setCsvUploadError(null);
-                  setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false);
+                  setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false); setNewDefShowInCrm('both');
                 }}
               >
                 {editingDefId ? 'Update field' : 'Add field'}
@@ -5048,15 +5093,15 @@ const AdminCRMPage: React.FC = () => {
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Existing fields</Typography>
           <List dense>
             {customFieldDefs.map((def) => (
-              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); setNewDefAllowMultiple(def.allowMultiple ?? false); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { const { error } = await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); if (error) { console.error('Failed to delete custom field:', error); setCsvUploadError(`Failed to delete field: ${error.message}`); return; } setCsvUploadError(null); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
-                <ListItemText primary={def.label} secondary={`${CUSTOM_FIELD_TYPE_LABELS[def.fieldType]}${def.allowMultiple ? ' (multiple entries)' : ''} · ${def.applicableTypes.map(t => TYPE_LABELS[t]).join(', ')}`} />
+              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); setNewDefAllowMultiple(def.allowMultiple ?? false); setNewDefShowInCrm(def.showInCrm ?? 'both'); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { const { error } = await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); if (error) { console.error('Failed to delete custom field:', error); setCsvUploadError(`Failed to delete field: ${error.message}`); return; } setCsvUploadError(null); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
+                <ListItemText primary={def.label} secondary={`${CUSTOM_FIELD_TYPE_LABELS[def.fieldType]}${def.allowMultiple ? ' (multiple entries)' : ''} · ${def.applicableTypes.map(t => TYPE_LABELS[t]).join(', ')} · Show: ${def.showInCrm === 'quick_view_only' ? 'Quick view only' : def.showInCrm === 'full_view_only' ? 'Full view only' : 'Both'}`} />
               </ListItem>
             ))}
             {customFieldDefs.length === 0 && <ListItem><ListItemText primary="No custom fields yet. Use the form above to add one." /></ListItem>}
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); }}>Done</Button>
+          <Button onClick={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefShowInCrm('both'); }}>Done</Button>
         </DialogActions>
       </Dialog>
 
