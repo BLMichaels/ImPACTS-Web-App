@@ -69,6 +69,7 @@ const SnapshotPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [renderError, setRenderError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
   const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
@@ -283,7 +284,7 @@ const SnapshotPage = () => {
     };
 
     loadData();
-  }, [userId, prsSectionVisible]);
+  }, [userId, prsSectionVisible, retryCount]);
 
   const exportToComprehensivePDF = () => {
     try {
@@ -1019,10 +1020,17 @@ const SnapshotPage = () => {
           Error Loading Snapshot
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          There was an error loading your snapshot data. Please try refreshing the page.
+          There was an error loading your snapshot data. Please try again.
         </Typography>
         <Button 
           variant="contained" 
+          onClick={() => setRetryCount(c => c + 1)}
+          sx={{ mr: 1 }}
+        >
+          Retry
+        </Button>
+        <Button 
+          variant="outlined" 
           onClick={() => window.location.reload()}
         >
           Refresh Page

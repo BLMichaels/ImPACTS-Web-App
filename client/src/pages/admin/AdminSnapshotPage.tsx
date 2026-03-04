@@ -14,6 +14,7 @@ import {
   TableRow,
   CircularProgress,
   Alert,
+  Button,
   FormControl,
   InputLabel,
   Select,
@@ -66,6 +67,7 @@ export default function AdminSnapshotPage() {
   const [events, setEvents] = useState<UsageEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -111,7 +113,7 @@ export default function AdminSnapshotPage() {
 
     runQuery();
     return () => { mounted = false; };
-  }, [periodValue, customFrom, customTo]);
+  }, [periodValue, customFrom, customTo, retryCount]);
 
   const metrics = useMemo(() => {
     const logins = events.filter((e) => e.event_type === 'login');
@@ -288,13 +290,18 @@ export default function AdminSnapshotPage() {
         </Box>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mb: 2 }} action={
+            <Button color="inherit" size="small" onClick={() => { setError(null); setRetryCount(c => c + 1); }}>
+              Retry
+            </Button>
+          }>
             {error}
           </Alert>
         )}
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4, gap: 2 }}>
             <CircularProgress />
+            <Typography variant="body2" color="text.secondary">Loading usage analytics...</Typography>
           </Box>
         ) : (
           <Grid container spacing={3}>
@@ -556,10 +563,10 @@ export default function AdminSnapshotPage() {
         )}
       </Paper>
 
-      <Paper variant="outlined" sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>Cross-site summaries (placeholder)</Typography>
+      <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>Cross-site summaries</Typography>
         <Typography color="text.secondary">
-          Snapshot content such as aggregate readiness, activities, and site progress can be added here (e.g. cross-site summaries, exports, dashboards).
+          For aggregate readiness scores, activities, and site progress across all hospitals, use the CRM to view and export contact-level data. Manager and Mentor snapshots provide team-wide metrics.
         </Typography>
       </Paper>
     </Box>

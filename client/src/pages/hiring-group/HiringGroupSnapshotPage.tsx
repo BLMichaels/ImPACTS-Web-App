@@ -11,8 +11,10 @@ import {
   Chip,
   CircularProgress,
   Alert,
+  Button,
   Collapse,
   IconButton,
+  Container,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -38,6 +40,7 @@ const HiringGroupSnapshotPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSystem, setExpandedSystem] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -71,40 +74,49 @@ const HiringGroupSnapshotPage: React.FC = () => {
       }
     };
     load();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, retryCount]);
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: 200, gap: 2 }}>
         <CircularProgress />
+        <Typography variant="body2" color="text.secondary">Loading snapshot...</Typography>
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Box sx={{ p: 2 }}>
-        <Alert severity="error">{error}</Alert>
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography variant="h5" gutterBottom color="error">Error Loading Snapshot</Typography>
+        <Alert severity="error" sx={{ mb: 2, textAlign: 'left' }} action={
+          <Button color="inherit" size="small" onClick={() => { setError(null); setRetryCount(c => c + 1); }}>
+            Retry
+          </Button>
+        }>
+          {error}
+        </Alert>
       </Box>
     );
   }
 
   if (systemNames.length === 0) {
     return (
-      <Box sx={{ p: 2 }}>
-        <Alert severity="info">
+      <Container maxWidth="md" sx={{ py: 4, textAlign: 'center' }}>
+        <Typography variant="h5" gutterBottom color="text.secondary">No systems assigned</Typography>
+        <Alert severity="info" sx={{ textAlign: 'left' }}>
           You are not assigned to any hospital system yet. An admin can assign you via the CRM (Team tab) by setting your role to Hiring Group and selecting one or more systems.
         </Alert>
-      </Box>
+      </Container>
     );
   }
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h5" gutterBottom>
+    <Container maxWidth="lg" sx={{ py: 3 }}>
+      <Typography variant="h4" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
         Snapshot – Hiring Group
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
         Read-only view of hospital systems and their sites to track progress. You can only view snapshots for the systems you are assigned to.
       </Typography>
 
@@ -118,7 +130,7 @@ const HiringGroupSnapshotPage: React.FC = () => {
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <IconButton size="small" onClick={() => setExpandedSystem(isExpanded ? null : sysName)}>
+                      <IconButton size="small" onClick={() => setExpandedSystem(isExpanded ? null : sysName)} aria-label={isExpanded ? `Collapse ${sysName}` : `Expand ${sysName}`}>
                         {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                       </IconButton>
                       <BusinessIcon color="action" />
@@ -153,10 +165,10 @@ const HiringGroupSnapshotPage: React.FC = () => {
         })}
       </Grid>
 
-      <Alert severity="info" sx={{ mt: 2 }}>
-        This view shows the hospital systems and sites you have access to. Detailed snapshot data (readiness scores, gap closure, milestones) for these sites can be added in a future update. For now, use this list to track which systems and hospitals you work with.
+      <Alert severity="info" sx={{ mt: 3 }}>
+        This view shows the hospital systems and sites you have access to. Use this list to track which systems and hospitals you work with.
       </Alert>
-    </Box>
+    </Container>
   );
 };
 

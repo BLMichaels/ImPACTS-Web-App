@@ -88,6 +88,7 @@ const ManagerSnapshotPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [expandedMentor, setExpandedMentor] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -253,7 +254,7 @@ const ManagerSnapshotPage: React.FC = () => {
     };
 
     loadData();
-  }, [userProfile?.id]);
+  }, [userProfile?.id, retryCount]);
 
   const teamHoursThisMonth = useMemo(
     () => mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0),
@@ -291,9 +292,12 @@ const ManagerSnapshotPage: React.FC = () => {
           Error Loading Snapshot
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          There was an error loading snapshot data. Please try refreshing the page.
+          There was an error loading snapshot data. Please try again.
         </Typography>
-        <Button variant="contained" onClick={() => window.location.reload()}>
+        <Button variant="contained" onClick={() => setRetryCount(c => c + 1)} sx={{ mr: 1 }}>
+          Retry
+        </Button>
+        <Button variant="outlined" onClick={() => window.location.reload()}>
           Refresh Page
         </Button>
       </Box>

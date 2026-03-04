@@ -80,6 +80,7 @@ const MentorSnapshotPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [selectedHospitals, setSelectedHospitals] = useState<string[]>([]);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Load all data for mentor snapshot
   useEffect(() => {
@@ -218,7 +219,7 @@ const MentorSnapshotPage = () => {
     };
 
     loadData();
-  }, [currentUser?.uid, userProfile?.id]);
+  }, [currentUser?.uid, userProfile?.id, retryCount]);
 
   // Calculate metrics
   const totalHours = useMemo(() => 
@@ -348,9 +349,12 @@ const MentorSnapshotPage = () => {
           Error Loading Snapshot
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          There was an error loading your snapshot data. Please try refreshing the page.
+          There was an error loading your snapshot data. Please try again.
         </Typography>
-        <Button variant="contained" onClick={() => window.location.reload()}>
+        <Button variant="contained" onClick={() => setRetryCount(c => c + 1)} sx={{ mr: 1 }}>
+          Retry
+        </Button>
+        <Button variant="outlined" onClick={() => window.location.reload()}>
           Refresh Page
         </Button>
       </Box>

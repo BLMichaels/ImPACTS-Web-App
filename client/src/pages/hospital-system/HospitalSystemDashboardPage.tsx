@@ -65,6 +65,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [savingStep, setSavingStep] = useState<number | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -87,7 +88,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
       }
     };
     load();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, retryCount]);
 
   useEffect(() => {
     if (!selectedSystem) {
@@ -152,16 +153,24 @@ const HospitalSystemDashboardPage: React.FC = () => {
 
   if (loading && systemNames.length === 0) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: 200, gap: 2 }}>
         <CircularProgress />
+        <Typography variant="body2" color="text.secondary">Loading dashboard...</Typography>
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Box sx={{ p: 2 }}>
-        <Alert severity="error">{error}</Alert>
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography variant="h5" gutterBottom color="error">Error Loading Dashboard</Typography>
+        <Alert severity="error" sx={{ mb: 2, textAlign: 'left' }} action={
+          <Button color="inherit" size="small" onClick={() => { setError(null); setRetryCount(c => c + 1); }}>
+            Retry
+          </Button>
+        }>
+          {error}
+        </Alert>
       </Box>
     );
   }
