@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { CohortMember, UserRole } from '../../types/database';
 import { getRoleMuiColor, getRoleLabel } from '../../utils/roleUtils';
+import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 
@@ -198,7 +199,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           loading={loading}
           value={selectedUser}
           onChange={(_, value) => setSelectedUser(value)}
-          getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+          getOptionLabel={(option) => getUserDisplayName(option)}
           isOptionEqualToValue={(option, value) => option.id === value.id}
           renderInput={(params) => (
             <TextField
@@ -231,7 +232,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                 </Avatar>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body1">
-                    {option.first_name} {option.last_name}
+                    {getUserDisplayName(option)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {option.email}

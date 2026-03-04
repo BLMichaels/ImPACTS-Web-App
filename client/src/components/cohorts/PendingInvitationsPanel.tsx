@@ -24,6 +24,7 @@ import {
 } from '@mui/icons-material';
 import { CohortInvitation } from '../../types/database';
 import { getRoleLabel, getRoleMuiColor } from '../../utils/roleUtils';
+import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { formatDistanceToNow } from 'date-fns';
@@ -201,9 +202,9 @@ const PendingInvitationsPanel: React.FC<PendingInvitationsPanelProps> = ({
                 primary={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                     <Typography variant="body1">
-                      <strong>{invitation.inviter?.first_name} {invitation.inviter?.last_name}</strong>
+                      <strong>{getUserDisplayName(invitation.inviter)}</strong>
                       {' wants to add '}
-                      <strong>{invitation.invitee?.first_name} {invitation.invitee?.last_name}</strong>
+                      <strong>{getUserDisplayName(invitation.invitee)}</strong>
                     </Typography>
                     <Chip
                       label={getRoleLabel(invitation.invitee?.role)}

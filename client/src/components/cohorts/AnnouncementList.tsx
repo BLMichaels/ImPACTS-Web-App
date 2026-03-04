@@ -32,6 +32,7 @@ import { CohortAnnouncement } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
+import { getUserDisplayName } from '../../utils/displayName';
 
 interface AnnouncementListProps {
   cohortId: string;
@@ -287,7 +288,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
                   </Typography>
                   
                   <Typography variant="caption" color="text.secondary">
-                    Posted by {announcement.author?.first_name} {announcement.author?.last_name}
+                    Posted by {getUserDisplayName(announcement.author)}
                     {' • '}
                     {format(new Date(announcement.created_at), 'MMM d, yyyy \'at\' h:mm a')}
                     {announcement.updated_at !== announcement.created_at && ' (edited)'}

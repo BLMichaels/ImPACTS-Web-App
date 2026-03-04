@@ -28,6 +28,7 @@ import { CohortDiscussionTopic } from '../../types/database';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
+import { getUserDisplayName } from '../../utils/displayName';
 import RichTextEditor, { sanitizeHtml } from './RichTextEditor';
 
 interface DiscussionTopicListProps {
@@ -196,7 +197,7 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
                     )}
                   </Box>
                   <Typography variant="caption" color="text.secondary" display="block">
-                    {topic.author ? `${(topic.author as any).first_name} ${(topic.author as any).last_name}` : 'Unknown'}
+                    {topic.author ? getUserDisplayName(topic.author as any) : 'Unknown'}
                     {' • '}
                     {format(new Date(topic.created_at), 'MMM d, yyyy')}
                     {topic.last_reply_at && ` • Last reply ${format(new Date(topic.last_reply_at), 'MMM d')}`}

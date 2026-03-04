@@ -26,6 +26,7 @@ import {
 } from '@mui/icons-material';
 import { CohortMember, UserRole } from '../../types/database';
 import { getRoleMuiColor, getRoleLabel } from '../../utils/roleUtils';
+import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import InviteMemberDialog from './InviteMemberDialog';
@@ -162,7 +163,7 @@ const MemberList: React.FC<MemberListProps> = ({
                         <ListItemText
                           primary={
                             <Typography variant="subtitle2">
-                              {member.user?.first_name} {member.user?.last_name}
+                              {getUserDisplayName(member.user)}
                               {member.user_id === userProfile?.id && (
                                 <Chip 
                                   label="You" 
@@ -220,7 +221,7 @@ const MemberList: React.FC<MemberListProps> = ({
         <DialogContent>
           <Typography>
             Are you sure you want to remove{' '}
-            <strong>{removingMember?.user?.first_name} {removingMember?.user?.last_name}</strong>{' '}
+            <strong>{getUserDisplayName(removingMember?.user)}</strong>{' '}
             from this cohort?
           </Typography>
         </DialogContent>

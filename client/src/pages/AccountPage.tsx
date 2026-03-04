@@ -39,7 +39,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
-import { normalizeHospitalOrOrgName } from '../utils/displayName';
+import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
 import { getUserData, setUserData } from '../utils/userData';
 import { UserRole } from '../types/database';
 import { useNavigate } from 'react-router-dom';
@@ -548,7 +548,7 @@ const AccountPage = () => {
                   </Avatar>
                   <Box>
                     <Typography variant="h6">
-                      {getFirstName()} {getLastName()}
+                      {getUserDisplayName(userProfile)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       {getTier()} • {getDepartment()}

@@ -28,6 +28,7 @@ import { CohortResource } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
+import { getUserDisplayName } from '../../utils/displayName';
 import RichTextEditor, { sanitizeHtml } from './RichTextEditor';
 
 interface CohortResourcesSectionProps {
@@ -230,7 +231,7 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
                     />
                   ) : null}
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                    Added by {resource.author?.first_name} {resource.author?.last_name}
+                    Added by {getUserDisplayName(resource.author)}
                     {' • '}
                     {format(new Date(resource.created_at), 'MMM d, yyyy')}
                     {resource.updated_at !== resource.created_at && ' (edited)'}

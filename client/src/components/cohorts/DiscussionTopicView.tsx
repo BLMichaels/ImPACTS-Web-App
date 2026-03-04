@@ -26,6 +26,7 @@ import {
 import { CohortDiscussionTopic, CohortDiscussionReply } from '../../types/database';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
+import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
 import RichTextEditor, { sanitizeHtml, stripHtmlToText } from './RichTextEditor';
 
@@ -74,9 +75,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
     loadReplies().finally(() => setLoading(false));
   }, [topic.id, onMarkAsRead]);
 
-  const authorName = topic.author
-    ? `${(topic.author as any).first_name} ${(topic.author as any).last_name}`
-    : 'Unknown';
+  const authorName = topic.author ? getUserDisplayName(topic.author as any) : 'Unknown';
 
   const uploadFiles = async (files: File[]): Promise<Array<{ name: string; url: string; type: string; size?: number }>> => {
     const bucket = 'cohort-attachments';
@@ -270,9 +269,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
       ) : replies.length > 0 ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 3 }}>
           {replies.map((reply) => {
-            const replyAuthor = reply.author
-              ? `${(reply.author as any).first_name} ${(reply.author as any).last_name}`
-              : 'Unknown';
+            const replyAuthor = reply.author ? getUserDisplayName(reply.author as any) : 'Unknown';
             const replyAuthorInitial = reply.author
               ? (reply.author as any).first_name?.charAt(0) || '?'
               : '?';
