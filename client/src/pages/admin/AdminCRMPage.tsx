@@ -779,6 +779,22 @@ const AdminCRMPage: React.FC = () => {
         if (!background) setLoadError(err instanceof Error ? err.message : 'Failed to load contacts');
       }
       setContacts(list);
+
+      // Refresh programs and cohorts so dropdowns/filters stay in sync after add/edit/delete elsewhere
+      const { data: programsData } = await supabase
+        .from('programs')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      if (programsData) setAvailablePrograms(programsData.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })));
+
+      const { data: cohortsData } = await supabase
+        .from('cohorts')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      if (cohortsData) setAvailableCohorts(cohortsData.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+
       if (!background) { setLoading(false); }
     }, []);
 
@@ -906,33 +922,6 @@ const AdminCRMPage: React.FC = () => {
           showInCrm: (['both', 'quick_view_only', 'full_view_only'].includes(String(row.show_in_crm)) ? row.show_in_crm : 'both') as CustomFieldShowInCrm
         }));
         setCustomFieldDefs(mapped);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  // Load available programs and cohorts from database
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      // Fetch programs
-      const { data: programsData } = await supabase
-        .from('programs')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-      if (mounted && programsData) {
-        setAvailablePrograms(programsData.map(p => ({ id: p.id, name: p.name })));
-      }
-      
-      // Fetch cohorts
-      const { data: cohortsData } = await supabase
-        .from('cohorts')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-      if (mounted && cohortsData) {
-        setAvailableCohorts(cohortsData.map(c => ({ id: c.id, name: c.name })));
       }
     })();
     return () => { mounted = false; };
