@@ -41,6 +41,11 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import GroupIcon from '@mui/icons-material/Group';
 import WorkIcon from '@mui/icons-material/Work';
 import LinkIcon from '@mui/icons-material/Link';
+import EventIcon from '@mui/icons-material/Event';
+import MailIcon from '@mui/icons-material/Mail';
+import SchoolIcon from '@mui/icons-material/School';
+import FlagIcon from '@mui/icons-material/Flag';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
@@ -96,6 +101,18 @@ interface AggregatedPlatformData {
   mentorActivitiesThisMonth: number;
   mentorHoursLast3Months: number;
   mentorActivitiesLast3Months: number;
+  // Additional metrics
+  totalHospitals: number;
+  activeAssignments: number;
+  mentorsWithoutAssignments: number;
+  programs: number;
+  cohorts: number;
+  invitationsPending: number;
+  invitationsAcceptedThisMonth: number;
+  siteMilestonesTotal: number;
+  siteMilestonesCompleted: number;
+  peccHoursThisMonth: number;
+  peccActivitiesThisMonth: number;
 }
 
 export default function AdminSnapshotPage() {
@@ -166,20 +183,57 @@ export default function AdminSnapshotPage() {
     setAggregatedError(null);
     (async () => {
       try {
-        const [managersRes, mentorsRes, peccsRes, assignmentsRes, contactsRes] = await Promise.all([
+        const [
+          managersRes,
+          mentorsRes,
+          peccsRes,
+          assignmentsRes,
+          contactsRes,
+          hospitalsRes,
+          programsRes,
+          cohortsRes,
+          invitationsRes,
+          milestonesRes,
+          peccActivitiesRes
+        ] = await Promise.all([
           supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'manager').eq('is_active', true),
           supabase.from('users').select('id').eq('role', 'mentor').eq('is_active', true),
           supabase.from('users').select('id, hospital_facility_id').eq('role', 'pecc').eq('is_active', true),
-          supabase.from('mentor_hospital_assignments').select('hospital_id').eq('is_active', true),
-          supabase.from('hospital_contacts').select('id', { count: 'exact', head: true })
+          supabase.from('mentor_hospital_assignments').select('hospital_id, mentor_id').eq('is_active', true),
+          supabase.from('hospital_contacts').select('id', { count: 'exact', head: true }),
+          supabase.from('hospitals').select('id', { count: 'exact', head: true }).eq('is_active', true),
+          supabase.from('programs').select('id', { count: 'exact', head: true }).eq('is_active', true),
+          supabase.from('cohorts').select('id', { count: 'exact', head: true }).eq('is_active', true),
+          supabase.from('invitations').select('id, status, accepted_at').in('status', ['pending', 'accepted']),
+          supabase.from('site_milestones').select('id, status'),
+          supabase.from('pecc_activities').select('hours, date').gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
         ]);
         if (!mounted) return;
         const managers = managersRes.count ?? 0;
         const mentors = (mentorsRes.data || []).length;
         const peccs = (peccsRes.data || []).length;
         const contacts = contactsRes.count ?? 0;
-        const hospitalIds = [...new Set((assignmentsRes.data || []).map((a: { hospital_id: string }) => a.hospital_id).filter(Boolean))];
+        const assignmentsData = (assignmentsRes.data || []) as { hospital_id: string; mentor_id: string }[];
+        const hospitalIds = [...new Set(assignmentsData.map((a) => a.hospital_id).filter(Boolean))];
         const sites = hospitalIds.length;
+        const totalHospitals = hospitalsRes.count ?? 0;
+        const activeAssignments = assignmentsData.length;
+        const assignedMentorIds = new Set(assignmentsData.map((a) => a.mentor_id));
+        const mentorsWithoutAssignments = mentors - assignedMentorIds.size;
+        const programs = programsRes.count ?? 0;
+        const cohorts = cohortsRes.count ?? 0;
+        const invitationsData = (invitationsRes.data || []) as { status: string; accepted_at: string | null }[];
+        const invitationsPending = invitationsData.filter((i) => i.status === 'pending').length;
+        const invMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+        const invitationsAcceptedThisMonth = invitationsData.filter(
+          (i) => i.status === 'accepted' && i.accepted_at && i.accepted_at >= invMonthStart
+        ).length;
+        const milestonesData = (milestonesRes.data || []) as { status: string }[];
+        const siteMilestonesTotal = milestonesData.length;
+        const siteMilestonesCompleted = milestonesData.filter((m) => m.status === 'completed').length;
+        const peccActivitiesData = (peccActivitiesRes.data || []) as { hours: number; date: string }[];
+        const peccHoursThisMonth = peccActivitiesData.reduce((s, a) => s + (a.hours || 0), 0);
+        const peccActivitiesThisMonth = peccActivitiesData.length;
         const peccList = (peccsRes.data || []) as { id: string; hospital_facility_id: string }[];
         let progressSum = 0;
         let progressCount = 0;
@@ -224,7 +278,18 @@ export default function AdminSnapshotPage() {
           mentorHoursThisMonth,
           mentorActivitiesThisMonth,
           mentorHoursLast3Months,
-          mentorActivitiesLast3Months
+          mentorActivitiesLast3Months,
+          totalHospitals,
+          activeAssignments,
+          mentorsWithoutAssignments,
+          programs,
+          cohorts,
+          invitationsPending,
+          invitationsAcceptedThisMonth,
+          siteMilestonesTotal,
+          siteMilestonesCompleted,
+          peccHoursThisMonth,
+          peccActivitiesThisMonth
         });
       } catch (e: unknown) {
         if (!mounted) return;
@@ -490,11 +555,11 @@ export default function AdminSnapshotPage() {
                       <CardContent>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <LocalHospitalIcon color="info" />
-                          <Typography variant="subtitle1" fontWeight={600}>Sites</Typography>
+                          <Typography variant="subtitle1" fontWeight={600}>Sites (assigned)</Typography>
                         </Box>
                         <Typography variant="h4" color="info.main">{aggregated.sites}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {aggregated.peccs > 0 ? `~${(aggregated.sites / aggregated.peccs).toFixed(1)} per PECC` : 'Assigned to mentors'}
+                          of {aggregated.totalHospitals} total hospitals
                         </Typography>
                       </CardContent>
                     </Card>
@@ -510,6 +575,114 @@ export default function AdminSnapshotPage() {
                         <Typography variant="caption" color="text.secondary">
                           {aggregated.sites > 0 ? `~${(aggregated.contacts / aggregated.sites).toFixed(0)} per site` : 'Hospital CRM'}
                         </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <AssignmentIcon color="info" fontSize="small" />
+                          <Typography variant="subtitle1" fontWeight={600}>Active assignments</Typography>
+                        </Box>
+                        <Typography variant="h4" color="info.main">{aggregated.activeAssignments}</Typography>
+                        <Typography variant="caption" color="text.secondary">Mentor–site links</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: aggregated.mentorsWithoutAssignments > 0 ? 'warning.main' : 'success.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          {aggregated.mentorsWithoutAssignments > 0 ? <WarningAmberIcon color="warning" /> : <PeopleIcon color="success" />}
+                          <Typography variant="subtitle1" fontWeight={600}>Mentors unassigned</Typography>
+                        </Box>
+                        <Typography variant="h4" color={aggregated.mentorsWithoutAssignments > 0 ? 'warning.main' : 'success.main'}>{aggregated.mentorsWithoutAssignments}</Typography>
+                        <Typography variant="caption" color="text.secondary">No site assignments</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Programs & cohorts
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <SchoolIcon color="primary" />
+                          <Typography variant="subtitle1" fontWeight={600}>Programs</Typography>
+                        </Box>
+                        <Typography variant="h4" color="primary.main">{aggregated.programs}</Typography>
+                        <Typography variant="caption" color="text.secondary">Active programs</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <GroupIcon color="primary" />
+                          <Typography variant="subtitle1" fontWeight={600}>Cohorts</Typography>
+                        </Box>
+                        <Typography variant="h4" color="primary.main">{aggregated.cohorts}</Typography>
+                        <Typography variant="caption" color="text.secondary">Active cohorts</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <MailIcon color="info" />
+                          <Typography variant="subtitle1" fontWeight={600}>Invitations pending</Typography>
+                        </Box>
+                        <Typography variant="h4" color="info.main">{aggregated.invitationsPending}</Typography>
+                        <Typography variant="caption" color="text.secondary">Awaiting acceptance</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'success.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <EventIcon color="success" />
+                          <Typography variant="subtitle1" fontWeight={600}>Accepted this month</Typography>
+                        </Box>
+                        <Typography variant="h4" color="success.main">{aggregated.invitationsAcceptedThisMonth}</Typography>
+                        <Typography variant="caption" color="text.secondary">New users joined</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Milestones & PECC activities
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <FlagIcon color="primary" />
+                          <Typography variant="subtitle1" fontWeight={600}>Site milestones</Typography>
+                        </Box>
+                        <Typography variant="h4" color="primary.main">{aggregated.siteMilestonesCompleted}</Typography>
+                        <Typography variant="caption" color="text.secondary">of {aggregated.siteMilestonesTotal} completed</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'secondary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <WorkIcon color="secondary" />
+                          <Typography variant="subtitle1" fontWeight={600}>PECC hours (this month)</Typography>
+                        </Box>
+                        <Typography variant="h4" color="secondary.main">{aggregated.peccHoursThisMonth.toFixed(1)}h</Typography>
+                        <Typography variant="caption" color="text.secondary">{aggregated.peccActivitiesThisMonth} activities</Typography>
                       </CardContent>
                     </Card>
                   </Grid>
