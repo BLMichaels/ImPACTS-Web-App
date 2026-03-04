@@ -14,7 +14,8 @@ import {
   LinearProgress,
   Chip,
   IconButton,
-  Collapse
+  Collapse,
+  Alert
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -63,6 +64,7 @@ const ManagerOverviewPage: React.FC = () => {
   const [mentors, setMentors] = useState<MentorData[]>([]);
   const [expandedMentor, setExpandedMentor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -73,6 +75,7 @@ const ManagerOverviewPage: React.FC = () => {
     
     try {
       setLoading(true);
+      setLoadError(null);
 
       // Load all mentors managed by this manager
       const { data: mentorUsers, error: mentorError } = await supabase
@@ -154,6 +157,7 @@ const ManagerOverviewPage: React.FC = () => {
       setMentors(mentorData);
     } catch (err) {
       console.error('Error loading manager overview data:', err);
+      setLoadError('Failed to load overview data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -221,6 +225,14 @@ const ManagerOverviewPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+          {loadError}
+          <Button size="small" sx={{ ml: 1 }} onClick={() => { setLoadError(null); loadData(); }}>
+            Retry
+          </Button>
+        </Alert>
+      )}
       <Typography variant="h4" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 3 }}>
         Manager Overview
       </Typography>
@@ -346,7 +358,7 @@ const ManagerOverviewPage: React.FC = () => {
                               color="success"
                               variant="outlined"
                             />
-                            <IconButton size="small">
+                            <IconButton size="small" aria-label={expandedMentor === mentor.id ? 'Collapse mentor details' : 'Expand mentor details'}>
                               {expandedMentor === mentor.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                             </IconButton>
                           </Box>

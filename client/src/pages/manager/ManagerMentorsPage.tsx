@@ -119,6 +119,7 @@ const ManagerMentorsPage: React.FC = () => {
   const [peccDetailTab, setPeccDetailTab] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   
   // Wages feature toggle - stored in user_data for current manager
@@ -226,6 +227,7 @@ const ManagerMentorsPage: React.FC = () => {
     
     try {
       setLoading(true);
+      setLoadError(null);
 
       // Load all mentors
       const { data: mentorUsers, error: mentorError } = await supabase
@@ -365,6 +367,7 @@ const ManagerMentorsPage: React.FC = () => {
       setMentors(mentorData);
     } catch (err) {
       console.error('Error loading mentors:', err);
+      setLoadError('Failed to load mentor data. Please try again.');
       setSnackbar({ open: true, message: 'Error loading mentor data', severity: 'error' });
     } finally {
       setLoading(false);
@@ -372,8 +375,14 @@ const ManagerMentorsPage: React.FC = () => {
   };
 
   const handleInviteMentor = async () => {
-    if (!formData.email?.trim()) {
+    const email = formData.email?.trim();
+    if (!email) {
       setSnackbar({ open: true, message: 'Email is required', severity: 'error' });
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setSnackbar({ open: true, message: 'Please enter a valid email address', severity: 'error' });
       return;
     }
     if (!userProfile?.id) {
@@ -383,7 +392,7 @@ const ManagerMentorsPage: React.FC = () => {
     setInviteSending(true);
     try {
       const { code } = await createAndSendInvitation({
-        email: formData.email.trim(),
+        email,
         role: UserRole.MENTOR,
         invitedBy: userProfile.id,
         managerId: userProfile.id,
@@ -398,7 +407,7 @@ const ManagerMentorsPage: React.FC = () => {
         open: true,
         message: inviteCohortIds.length > 0
           ? `Invitation created! Link copied. Mentor will be able to invite PECCs to ${inviteCohortIds.length} cohort(s).`
-          : `Invitation link copied! Send to ${formData.email}`,
+          : `Invitation link copied! Send to ${email}`,
         severity: 'success'
       });
     } catch (err: any) {
@@ -538,6 +547,14 @@ const ManagerMentorsPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+          {loadError}
+          <Button size="small" sx={{ ml: 1 }} onClick={() => { setLoadError(null); loadMentors(); }}>
+            Retry
+          </Button>
+        </Alert>
+      )}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h4" color="primary" fontWeight={600}>

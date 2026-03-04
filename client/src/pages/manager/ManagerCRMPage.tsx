@@ -51,7 +51,8 @@ import {
   Edit as EditIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -122,6 +123,7 @@ const ManagerCRMPage: React.FC = () => {
   const [hospitals, setHospitals] = useState<HospitalData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [, setSelectedHospital] = useState<HospitalData | null>(null);
   
   // Add Hospital Dialog: default = select from existing CRM list; option = add unlisted site
@@ -208,6 +210,7 @@ const ManagerCRMPage: React.FC = () => {
     
     try {
       setLoading(true);
+      setLoadError(null);
 
       // Get all hospitals from mentor assignments
       const { data: assignments, error: assignmentError } = await supabase
@@ -255,6 +258,7 @@ const ManagerCRMPage: React.FC = () => {
       setHospitals(hospitalList.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       console.error('Error loading hospitals:', err);
+      setLoadError('Failed to load hospitals. Please try again.');
       setSnackbar({ open: true, message: 'Error loading hospitals', severity: 'error' });
     } finally {
       setLoading(false);
@@ -617,6 +621,14 @@ const ManagerCRMPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+          {loadError}
+          <Button size="small" sx={{ ml: 1 }} onClick={() => { setLoadError(null); loadHospitals(); }}>
+            Retry
+          </Button>
+        </Alert>
+      )}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h4" color="primary" fontWeight={600}>
@@ -1208,8 +1220,8 @@ const ManagerCRMPage: React.FC = () => {
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6">User Tab Visibility Settings</Typography>
-            <IconButton onClick={() => setVisibilityDialog(false)}>
-              <SettingsIcon />
+            <IconButton onClick={() => setVisibilityDialog(false)} aria-label="Close dialog">
+              <CloseIcon />
             </IconButton>
           </Box>
         </DialogTitle>

@@ -117,6 +117,8 @@ const ManagerWagesExpensesPage: React.FC = () => {
   const [tabValue, setTabValue] = useState(0); // 0 = list view, 1 = mentor detail
   const [selectedMentor, setSelectedMentor] = useState<Mentor | null>(null);
   const [mentors, setMentors] = useState<Mentor[]>([]);
+  const [mentorLoadError, setMentorLoadError] = useState<string | null>(null);
+  const [mentorRetryCount, setMentorRetryCount] = useState(0);
   const [mentorWagesData, setMentorWagesData] = useState<MentorWagesData | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
@@ -144,6 +146,7 @@ const ManagerWagesExpensesPage: React.FC = () => {
       if (!currentUser?.id) return;
       
       try {
+        setMentorLoadError(null);
         // Load mentors from Supabase where manager_id matches current user
         const { data, error } = await supabase
           .from('users')
@@ -163,13 +166,13 @@ const ManagerWagesExpensesPage: React.FC = () => {
         }
       } catch (err) {
         console.error('Error loading mentors:', err);
-        // Fallback to empty list
+        setMentorLoadError('Failed to load mentors. Please try again.');
         setMentors([]);
       }
     };
     
     loadMentors();
-  }, [currentUser]);
+  }, [currentUser?.id, mentorRetryCount]);
 
   // Load selected mentor's wages data from Supabase (user_data)
   useEffect(() => {
@@ -389,6 +392,14 @@ const ManagerWagesExpensesPage: React.FC = () => {
     // List View
     return (
       <Box sx={{ py: 3 }}>
+        {mentorLoadError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setMentorLoadError(null)}>
+            {mentorLoadError}
+            <Button size="small" sx={{ ml: 1 }} onClick={() => { setMentorLoadError(null); setMentorRetryCount(c => c + 1); }}>
+              Retry
+            </Button>
+          </Alert>
+        )}
         <Typography variant="h4" gutterBottom>Mentor Wages & Expenses</Typography>
         <Typography color="textSecondary" gutterBottom sx={{ mb: 3 }}>
           View and manage wages and expenses for your mentors
