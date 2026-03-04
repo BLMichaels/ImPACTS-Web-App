@@ -201,7 +201,7 @@ const MentorDashboardPage: React.FC = () => {
     setHospitalSummaries(summaries);
     } catch (err) {
       console.error('Mentor dashboard load error:', err);
-      setLoadError(err instanceof Error ? err.message : 'Failed to load dashboard. Try refreshing.');
+      setLoadError(err instanceof Error ? err.message : 'Failed to load Support Tool. Try refreshing.');
     } finally {
       setLoading(false);
     }

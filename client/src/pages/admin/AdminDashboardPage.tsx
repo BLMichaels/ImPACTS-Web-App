@@ -189,7 +189,7 @@ const AdminDashboardPage: React.FC = () => {
               <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
                 <Typography variant="subtitle1" fontWeight="bold" color="primary" gutterBottom>Admin</Typography>
                 <Typography variant="body2" color="text.secondary" component="span">Tabs: </Typography>
-                <Typography variant="body2" color="text.secondary" component="span">Dashboard, CRM, Cohorts, Project Pipeline, Snapshot, Settings.</Typography>
+                <Typography variant="body2" color="text.secondary" component="span">Support Tool (home), CRM, Cohorts, Project Pipeline, Snapshot, Settings.</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                   Full access: manage users, contacts, hospitals, invitations, roles (including Hospital System and Hiring Group), permissions, settings, and resources. Assign Hospital System / Hiring Group users and their assigned systems in <strong>CRM → Team</strong>.
                 </Typography>
@@ -229,7 +229,7 @@ const AdminDashboardPage: React.FC = () => {
               <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
                 <Typography variant="subtitle1" fontWeight="bold" color="primary" gutterBottom>Hospital System</Typography>
                 <Typography variant="body2" color="text.secondary" component="span">Tabs: </Typography>
-                <Typography variant="body2" color="text.secondary" component="span">Dashboard.</Typography>
+                <Typography variant="body2" color="text.secondary" component="span">Support Tool (home).</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                   Sees PECC data and 7-step checklist for their <strong>assigned hospital systems</strong> only (aggregated view). Assign users and systems in <strong>CRM → Team</strong>: set role to Hospital System and choose Assigned hospital systems.
                 </Typography>

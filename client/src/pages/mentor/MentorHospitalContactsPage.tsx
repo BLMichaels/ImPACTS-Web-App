@@ -661,13 +661,13 @@ const MentorHospitalContactsPage: React.FC = () => {
   };
 
   const handleRemoveHospital = (hospitalId: string) => {
-    if (window.confirm('Remove this hospital from your dashboard? This will not delete it from the CRM, but you will no longer see it in your list.')) {
+    if (window.confirm('Remove this hospital from your Support Tool? This will not delete it from the CRM, but you will no longer see it in your list.')) {
       const newHospitals = hospitals.filter(h => h.id !== hospitalId);
       saveHospitals(newHospitals);
       if (selectedHospital?.id === hospitalId) {
         setSelectedHospital(null);
       }
-      setSnackbar({ open: true, message: 'Hospital removed from dashboard', severity: 'success' });
+      setSnackbar({ open: true, message: 'Hospital removed from Support Tool', severity: 'success' });
     }
   };
 
@@ -984,7 +984,7 @@ const MentorHospitalContactsPage: React.FC = () => {
         </Button>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Manage your hospital list and PECC contacts. Add hospitals from the CRM list below; they will appear in Activities, Site Milestones, and your Dashboard.
+        Manage your hospital list and PECC contacts. Add hospitals from the CRM list below; they will appear in Activities, Site Milestones, and the Support Tool.
       </Typography>
 
       {/* List View - Table */}
@@ -1455,7 +1455,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                     fullWidth 
                     onClick={() => handleRemoveHospital(selectedHospital.id)}
                   >
-                    Remove from Dashboard
+                    Remove from Support Tool
                   </Button>
                 </Paper>
               </Box>

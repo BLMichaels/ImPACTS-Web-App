@@ -33,7 +33,7 @@ const PRISMDashboardPage: React.FC = () => {
     return (
       <Box sx={{ mt: 4, p: 3, textAlign: 'center' }}>
         <Typography variant="h6" gutterBottom>
-          Loading PRISM Dashboard...
+          Loading PRISM Support Tool...
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Please wait while we load your profile and data.
@@ -62,7 +62,7 @@ const PRISMDashboardPage: React.FC = () => {
           Welcome, {(userProfile as any)?.firstName || (userProfile as any)?.first_name || 'PRISM'} {(userProfile as any)?.lastName || (userProfile as any)?.last_name || ''}
         </Typography>
         <Typography variant="h6" color="text.secondary" gutterBottom>
-          PRISM Dashboard
+          PRISM Support Tool
         </Typography>
         <Typography variant="body1" color="text.secondary">
           Manage and support your assigned hospitals in their pediatric readiness journey.

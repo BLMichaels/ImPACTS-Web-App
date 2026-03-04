@@ -43,7 +43,7 @@ const NotFoundPage = () => {
           The page you are looking for does not exist.
         </Typography>
         <Button variant="contained" onClick={handleGoHome}>
-          {currentUser ? 'Go to Dashboard' : 'Go to Login'}
+          {currentUser ? 'Go to Support Tool' : 'Go to Login'}
         </Button>
       </Box>
     </Container>

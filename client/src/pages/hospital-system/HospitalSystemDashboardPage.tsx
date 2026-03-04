@@ -155,7 +155,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: 200, gap: 2 }}>
         <CircularProgress />
-        <Typography variant="body2" color="text.secondary">Loading dashboard...</Typography>
+        <Typography variant="body2" color="text.secondary">Loading Support Tool...</Typography>
       </Box>
     );
   }
@@ -163,7 +163,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
   if (error) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="h5" gutterBottom color="error">Error Loading Dashboard</Typography>
+        <Typography variant="h5" gutterBottom color="error">Error Loading Support Tool</Typography>
         <Alert severity="error" sx={{ mb: 2, textAlign: 'left' }} action={
           <Button color="inherit" size="small" onClick={() => { setError(null); setRetryCount(c => c + 1); }}>
             Retry
@@ -188,7 +188,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
   return (
     <Box sx={{ p: 2 }}>
       <Typography variant="h5" gutterBottom>
-        Hospital System Dashboard
+        Hospital System Support Tool
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         View PECC data and track pediatric readiness progress for your assigned system(s).

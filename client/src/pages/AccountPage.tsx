@@ -831,12 +831,12 @@ const AccountPage = () => {
                     )}
                     {getTier() === 'mentor' && (
                       <Typography variant="body2" sx={{ mt: 1 }}>
-                        Access to Mentor Dashboard, Activities, Hospital Contacts, Site Milestones, and Wages/Expenses.
+                        Access to Mentor Support Tool (PST), Activities, Hospital Contacts, Site Milestones, and Wages/Expenses.
                       </Typography>
                     )}
                     {getTier() === 'manager' && (
                       <Typography variant="body2" sx={{ mt: 1 }}>
-                        Access to Manager Dashboard, Mentors management, and CRM.
+                        Access to Manager Support Tool (PST), Mentors management, and CRM.
                       </Typography>
                     )}
                   </Alert>

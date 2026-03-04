@@ -225,8 +225,8 @@ const DEFAULT_STAGES: MilestoneStage[] = [
         ]
       },
       { id: '3.4', text: 'Continue addressing prioritized gaps from Stage 2 with virtual support and consultation from your PRISM', completed: false },
-      { id: '3.5', text: 'Review the "Gap Analysis" tab on your ImPACTS dashboard with your PRISM', completed: false },
-      { id: '3.6', text: 'Begin logging activities in your ImPACTS dashboard', completed: false },
+      { id: '3.5', text: 'Review the "Gap Analysis" tab on your PECC Support Tool with your PRISM', completed: false },
+      { id: '3.6', text: 'Begin logging activities in your PECC Support Tool', completed: false },
       { id: '3.7', text: 'Independently create a SMART aim goal to address ongoing gaps, with consultation and feedback from your PRISM', completed: false },
       { 
         id: '3.8', 
@@ -256,9 +256,9 @@ const DEFAULT_STAGES: MilestoneStage[] = [
           { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
         ]
       },
-      { id: '4.4', text: 'Review and update the status of the current "Gap Analysis" on your ImPACTS dashboard', completed: false },
-      { id: '4.5', text: 'Log monthly activities on your ImPACTS dashboard', completed: false },
-      { id: '4.6', text: 'Present your ImPACTS dashboard snapshots to ED and hospital leadership', completed: false },
+      { id: '4.4', text: 'Review and update the status of the current "Gap Analysis" on your PECC Support Tool', completed: false },
+      { id: '4.5', text: 'Log monthly activities on your PECC Support Tool', completed: false },
+      { id: '4.6', text: 'Present your PECC Support Tool snapshots to ED and hospital leadership', completed: false },
       { 
         id: '4.7', 
         text: 'Each year, complete the National Pediatric Readiness Project assessment, address new or ongoing gaps utilizing resources from ImPACTS, and create a SMART aim goal to tackle the next identified gap', 

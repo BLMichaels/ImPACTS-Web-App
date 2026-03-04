@@ -283,12 +283,12 @@ const MilestonesPage = () => {
         },
         { 
           id: '3.5', 
-          text: 'Review the "Gap Analysis" tab on your ImPACTS dashboard with your PRISM', 
+          text: 'Review the "Gap Analysis" tab on your PECC Support Tool with your PRISM', 
           completed: false
         },
         { 
           id: '3.6', 
-          text: 'Begin logging activities in your ImPACTS dashboard', 
+          text: 'Begin logging activities in your PECC Support Tool', 
           completed: false
         },
         { 
@@ -342,17 +342,17 @@ const MilestonesPage = () => {
         },
         { 
           id: '4.4', 
-          text: 'Review and update the status of the current "Gap Analysis" on your ImPACTS dashboard', 
+          text: 'Review and update the status of the current "Gap Analysis" on your PECC Support Tool', 
           completed: false
         },
         { 
           id: '4.5', 
-          text: 'Log monthly activities on your ImPACTS dashboard', 
+          text: 'Log monthly activities on your PECC Support Tool', 
           completed: false
         },
         { 
           id: '4.6', 
-          text: 'Present your ImPACTS dashboard snapshots to ED and hospital leadership', 
+          text: 'Present your PECC Support Tool snapshots to ED and hospital leadership', 
           completed: false
         },
         { 

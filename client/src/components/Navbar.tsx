@@ -174,7 +174,7 @@ const Navbar: React.FC = () => {
 
       case UserRole.HOSPITAL_SYSTEM:
         return [
-          { path: '/hospital-system/dashboard', label: 'Dashboard', icon: <DashboardIcon /> }
+          { path: '/hospital-system/dashboard', label: 'Support Tool', icon: <DashboardIcon /> }
         ];
 
       case UserRole.HIRING_GROUP:
@@ -357,7 +357,7 @@ label={getRoleLabel(userRole)}
           }}
           onClick={() => {
             const dashboardPath = getDashboardPath();
-            trackLinkClick(dashboardPath, 'Dashboard', 'navbar');
+            trackLinkClick(dashboardPath, 'Support Tool', 'navbar');
             navigate(dashboardPath);
           }}
         >
