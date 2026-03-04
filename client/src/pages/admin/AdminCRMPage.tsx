@@ -516,6 +516,7 @@ const AdminCRMPage: React.FC = () => {
   const [mergeSource, setMergeSource] = useState<Contact | null>(null);
   const [mergeTarget, setMergeTarget] = useState<Contact | null>(null);
   const [detectedDuplicates, setDetectedDuplicates] = useState<Array<{ contact: Contact; duplicates: Contact[] }>>([]);
+  const [duplicatesScanning, setDuplicatesScanning] = useState(false);
 
   const loadAllContactsFromSupabase = useCallback(async (background = false) => {
     if (!background) setLoading(true);
@@ -2743,25 +2744,50 @@ const AdminCRMPage: React.FC = () => {
     return duplicates;
   };
 
-  // Scan all contacts for duplicates
+  // Scan all contacts for duplicates (chunked to avoid freezing the UI)
   const scanForDuplicates = () => {
+    if (duplicatesScanning) return;
+    setDuplicatesScanning(true);
+    setDetectedDuplicates([]);
+
+    const BATCH_SIZE = 15;
+    const YIELD_MS = 0;
     const duplicates: Array<{ contact: Contact; duplicates: Contact[] }> = [];
     const processed = new Set<string>();
-    
-    for (const contact of contacts) {
-      if (processed.has(contact.id)) continue;
-      
-      const contactDuplicates = detectDuplicates(contact);
-      if (contactDuplicates.length > 0) {
-        duplicates.push({ contact, duplicates: contactDuplicates });
-        // Mark this contact and its duplicates as processed
-        processed.add(contact.id);
-        contactDuplicates.forEach(d => processed.add(d.id));
+    const contactList = [...contacts];
+    let index = 0;
+
+    const processBatch = () => {
+      const end = Math.min(index + BATCH_SIZE, contactList.length);
+      for (let i = index; i < end; i++) {
+        const contact = contactList[i];
+        if (processed.has(contact.id)) continue;
+
+        const contactDuplicates = detectDuplicates(contact);
+        if (contactDuplicates.length > 0) {
+          duplicates.push({ contact, duplicates: contactDuplicates });
+          processed.add(contact.id);
+          contactDuplicates.forEach(d => processed.add(d.id));
+        }
       }
+      index = end;
+
+      if (index < contactList.length) {
+        setTimeout(processBatch, YIELD_MS);
+      } else {
+        setDetectedDuplicates(duplicates);
+        setDuplicatesDialogOpen(true);
+        setDuplicatesScanning(false);
+      }
+    };
+
+    if (contactList.length === 0) {
+      setDetectedDuplicates([]);
+      setDuplicatesDialogOpen(true);
+      setDuplicatesScanning(false);
+    } else {
+      setTimeout(processBatch, 0);
     }
-    
-    setDetectedDuplicates(duplicates);
-    setDuplicatesDialogOpen(true);
   };
 
   // Merge two contacts
@@ -2968,9 +2994,9 @@ const AdminCRMPage: React.FC = () => {
               </Button>
             </Tooltip>
           )}
-          <Tooltip title="Scan for duplicate contacts">
-            <Button startIcon={<SearchIcon />} onClick={scanForDuplicates} size="medium" color={detectedDuplicates.length > 0 ? 'warning' : 'inherit'}>
-              Find Duplicates {detectedDuplicates.length > 0 ? `(${detectedDuplicates.length})` : ''}
+          <Tooltip title={duplicatesScanning ? 'Scanning…' : 'Scan for duplicate contacts'}>
+            <Button startIcon={duplicatesScanning ? <CircularProgress size={18} color="inherit" /> : <SearchIcon />} onClick={scanForDuplicates} size="medium" color={detectedDuplicates.length > 0 ? 'warning' : 'inherit'} disabled={duplicatesScanning}>
+              Find Duplicates {duplicatesScanning ? '…' : detectedDuplicates.length > 0 ? `(${detectedDuplicates.length})` : ''}
             </Button>
           </Tooltip>
           <Tooltip title="Import contacts from a CSV file">
