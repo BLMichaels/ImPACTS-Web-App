@@ -395,7 +395,6 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
               fullWidth
               size="small"
               value={typeof window !== 'undefined' ? `${window.location.origin}/invite/${invitationCode}` : `/invite/${invitationCode}`}
-              readOnly
               InputProps={{
                 readOnly: true,
                 endAdornment: (
