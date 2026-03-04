@@ -36,6 +36,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SaveIcon from '@mui/icons-material/Save';
 import { supabase } from '../../supabase';
 import type { ProgramChecklist, ProgramChecklistStage, ProgramChecklistTask, ProgramChecklistTaskLink } from '../../types/database';
+import RichTextEditor, { sanitizeHtml, stripHtmlToText } from '../../components/cohorts/RichTextEditor';
 
 export default function AdminProgramChecklistsTab() {
   const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
@@ -279,7 +280,8 @@ export default function AdminProgramChecklistsTab() {
   };
 
   const handleSaveTask = async () => {
-    if (!taskForm.text_content.trim() || !taskStageId) return;
+    const textTrim = sanitizeHtml(taskForm.text_content).trim();
+    if (!stripHtmlToText(textTrim).trim() || !taskStageId) return;
     setSaving(true);
     setError(null);
     try {
@@ -287,9 +289,9 @@ export default function AdminProgramChecklistsTab() {
         const { error: e } = await supabase
           .from('program_checklist_tasks')
           .update({
-            text_content: taskForm.text_content.trim(),
+            text_content: textTrim,
             task_id_suffix: taskForm.task_id_suffix.trim() || '1',
-            links: taskForm.links,
+            links: [],
             updated_at: new Date().toISOString()
           })
           .eq('id', editingTask.id);
@@ -300,8 +302,8 @@ export default function AdminProgramChecklistsTab() {
           stage_id: taskStageId,
           sort_order: (tasks?.length ?? 0),
           task_id_suffix: taskForm.task_id_suffix.trim() || '1',
-          text_content: taskForm.text_content.trim(),
-          links: taskForm.links
+          text_content: textTrim,
+          links: []
         });
         if (e) throw e;
       }
@@ -407,7 +409,7 @@ export default function AdminProgramChecklistsTab() {
                     if (!tasks?.length) return <Typography variant="body2" color="text.secondary">No steps yet</Typography>;
                     return tasks.map((t) => (
                       <li key={t.id}>
-                        <Typography variant="body2">{t.text_content.slice(0, 80)}{t.text_content.length > 80 ? '…' : ''}</Typography>
+                        <Typography variant="body2">{stripHtmlToText(t.text_content).trim().slice(0, 80)}{stripHtmlToText(t.text_content).trim().length > 80 ? '…' : ''}</Typography>
                         <IconButton size="small" onClick={() => openEditTask(t, c.id)}><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => handleDeleteTask(t.id)}><DeleteIcon fontSize="small" /></IconButton>
                       </li>
@@ -467,23 +469,18 @@ export default function AdminProgramChecklistsTab() {
       <Dialog open={taskDialogOpen} onClose={() => setTaskDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingTask ? 'Edit step' : 'New step'}</DialogTitle>
         <DialogContent>
-          <TextField fullWidth label="Step ID (e.g. 1)" value={taskForm.task_id_suffix} onChange={(e) => setTaskForm((f) => ({ ...f, task_id_suffix: e.target.value }))} margin="dense" />
-          <TextField fullWidth label="Step text" value={taskForm.text_content} onChange={(e) => setTaskForm((f) => ({ ...f, text_content: e.target.value }))} margin="dense" multiline rows={3} required />
-          <Typography variant="caption" color="text.secondary">Use **bold** and *italic* in text if needed. Links below.</Typography>
-          <Box sx={{ mt: 1 }}>
-            {taskForm.links.map((link, i) => (
-              <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
-                <TextField size="small" label="Link text" value={link.text} onChange={(e) => updateTaskLink(i, 'text', e.target.value)} />
-                <TextField size="small" label="URL" value={link.url} onChange={(e) => updateTaskLink(i, 'url', e.target.value)} fullWidth />
-                <IconButton size="small" onClick={() => removeTaskLink(i)}><DeleteIcon /></IconButton>
-              </Box>
-            ))}
-            <Button size="small" startIcon={<AddIcon />} onClick={addTaskLink}>Add link</Button>
-          </Box>
+          <TextField fullWidth label="Step ID (e.g. 1)" value={taskForm.task_id_suffix} onChange={(e) => setTaskForm((f) => ({ ...f, task_id_suffix: e.target.value }))} margin="dense" sx={{ mb: 1 }} />
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Step text *</Typography>
+          <RichTextEditor
+            value={taskForm.text_content}
+            onChange={(html) => setTaskForm((f) => ({ ...f, text_content: html }))}
+            placeholder="Enter step content…"
+            minRows={3}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setTaskDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveTask} disabled={saving || !taskForm.text_content.trim()}>Save</Button>
+          <Button variant="contained" onClick={handleSaveTask} disabled={saving || !stripHtmlToText(taskForm.text_content).trim()}>Save</Button>
         </DialogActions>
       </Dialog>
     </Box>

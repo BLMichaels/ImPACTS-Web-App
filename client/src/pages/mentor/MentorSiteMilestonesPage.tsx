@@ -42,6 +42,7 @@ import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
+import { sanitizeHtml } from '../../components/cohorts/RichTextEditor';
 
 // Interfaces matching MilestonesPage
 interface MilestoneTask {
@@ -280,8 +281,15 @@ const DEFAULT_STAGES: MilestoneStage[] = [
   }
 ];
 
-// Helper to render task text with links
+// Helper to render task text with links or HTML
 const renderTaskText = (task: MilestoneTask) => {
+  if (task.text && task.text.includes('<')) {
+    return (
+      <Typography variant="body2" sx={{ fontSize: '0.75rem', lineHeight: 1.3 }} component="span">
+        <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }} />
+      </Typography>
+    );
+  }
   if (!task.links || task.links.length === 0) {
     return <Typography variant="body2" sx={{ fontSize: '0.75rem', lineHeight: 1.3 }}>{task.text}</Typography>;
   }

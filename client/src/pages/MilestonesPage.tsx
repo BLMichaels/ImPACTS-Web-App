@@ -22,6 +22,7 @@ import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
+import { sanitizeHtml, stripHtmlToText } from '../components/cohorts/RichTextEditor';
 
 interface MilestoneTask {
   id: string;
@@ -81,7 +82,7 @@ const MilestonesPage = () => {
     
     stages.forEach(stage => {
       stage.tasks.forEach(task => {
-        const taskText = (task.text || '').replace(/\n/g, ' ').replace(/"/g, '""');
+        const taskText = stripHtmlToText(task.text || '').replace(/\n/g, ' ').replace(/"/g, '""');
         csvContent += `"${stage.title}","${taskText}","${task.completed ? 'Yes' : 'No'}","${stage.subtitle}"\n`;
       });
     });
@@ -737,16 +738,19 @@ const MilestonesPage = () => {
                       />
                     }
                     label={
-                      <Typography 
-                        variant="body1" 
-                        sx={{ 
+                      <Typography
+                        variant="body1"
+                        component="span"
+                        sx={{
                           textDecoration: task.completed ? 'line-through' : 'none',
                           color: task.completed ? 'text.secondary' : 'text.primary',
                           fontWeight: 500,
                           whiteSpace: 'pre-line'
                         }}
                       >
-                        {task.links && task.links.length > 0 ? (
+                        {task.text && task.text.includes('<') ? (
+                          <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }} />
+                        ) : task.links && task.links.length > 0 ? (
                           (() => {
                             let result = task.text;
                             const elements: React.ReactNode[] = [];
