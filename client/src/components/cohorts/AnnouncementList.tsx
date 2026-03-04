@@ -126,7 +126,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
             title: title.trim(),
             content: content.trim(),
             is_pinned: isPinned,
-            visible_until: visibleUntil.trim() || null,
+            visible_until: visibleUntil.trim() ? visibleUntil.trim().slice(0, 10) : null,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingAnnouncement.id)
@@ -149,7 +149,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
             title: title.trim(),
             content: content.trim(),
             is_pinned: isPinned,
-            visible_until: visibleUntil.trim() || null,
+            visible_until: visibleUntil.trim() ? visibleUntil.trim().slice(0, 10) : null,
             created_by: userProfile?.id
           })
           .select(`

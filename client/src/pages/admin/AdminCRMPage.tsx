@@ -2067,6 +2067,22 @@ const AdminCRMPage: React.FC = () => {
         }
       }
     }
+    // When a person contact has cohort(s) assigned, sync cohort_members so they are actual members
+    if (isPersonType(formData.type) && availableCohorts.length > 0) {
+      const contactUserId = editingContact?.user_id ?? (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim().toLowerCase()).maybeSingle()).data?.id : null);
+      if (contactUserId) {
+        const cohortNames = formData.cohorts ?? [];
+        const cohortIds = cohortNames.map((name: string) => availableCohorts.find(c => c.name === name)?.id).filter(Boolean) as string[];
+        const { data: existing } = await supabase.from('cohort_members').select('cohort_id').eq('user_id', contactUserId);
+        const existingIds = (existing ?? []).map((r: { cohort_id: string }) => r.cohort_id);
+        for (const cid of existingIds) {
+          if (!cohortIds.includes(cid)) await supabase.from('cohort_members').delete().eq('user_id', contactUserId).eq('cohort_id', cid);
+        }
+        for (const cid of cohortIds) {
+          await supabase.from('cohort_members').upsert({ cohort_id: cid, user_id: contactUserId, added_by: currentUser?.id ?? contactUserId, status: 'active' }, { onConflict: 'cohort_id,user_id' });
+        }
+      }
+    }
     if (fromFullScreen) {
       setFullScreenEditMode(false);
       setDetailContact(prev => (prev && prev.id === payload.id ? { ...prev, ...payload } : prev));

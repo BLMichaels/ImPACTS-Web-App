@@ -46,6 +46,7 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
 
 interface Activity {
   id: string;
@@ -199,6 +200,33 @@ const ActivitiesPage = () => {
     return () => { mounted = false; };
   }, [userId]);
 
+  // Refetch gap plans when they're updated elsewhere (e.g. Gap Plan or Assessment page)
+  useEffect(() => {
+    if (!userId) return;
+    const onGapPlansUpdated = () => {
+      getUserData<GapPlan[]>(userId, 'gapPlans').then((v) => {
+        if (v != null && Array.isArray(v)) setGapPlans(v);
+      });
+    };
+    window.addEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
+    return () => window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
+  }, [userId]);
+
+  // When add/edit activity dialog opens, refetch gap plans and simulation gaps so dropdowns are current
+  useEffect(() => {
+    if (!open || !userId) return;
+    let mounted = true;
+    (async () => {
+      const [gapPlansVal, simGapsVal] = await Promise.all([
+        getUserData<GapPlan[]>(userId, 'gapPlans'),
+        getUserData<unknown[]>(userId, 'simulation_gaps')
+      ]);
+      if (!mounted) return;
+      if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
+      if (simGapsVal != null && Array.isArray(simGapsVal)) setSimulationGaps(simGapsVal);
+    })();
+    return () => { mounted = false; };
+  }, [open, userId]);
 
   const saveActivities = async (newActivities: Activity[]) => {
     try {
