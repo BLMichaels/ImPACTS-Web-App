@@ -402,6 +402,7 @@ const AdminCRMPage: React.FC = () => {
   const [panelOpen, setPanelOpen] = useState(false);
   const [fullScreenOpen, setFullScreenOpen] = useState(false);
   const [fullScreenEditMode, setFullScreenEditMode] = useState(false);
+  const [fullScreenDetailTab, setFullScreenDetailTab] = useState(0); // 0=Profile, 1=Permissions, 2=Notes, 3=Activity
   const [invitationDialogOpen, setInvitationDialogOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -3537,17 +3538,19 @@ const AdminCRMPage: React.FC = () => {
       >
         {detailContact && (
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight={600}>Quick view</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="subtitle2" color="text.secondary">Quick view</Typography>
               <IconButton size="small" onClick={() => setPanelOpen(false)}><CloseIcon /></IconButton>
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-              <Avatar sx={{ width: 48, height: 48, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.125rem' }}>
-                {(contactDisplayName(detailContact) || '?')[0].toUpperCase()}
-              </Avatar>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle1" fontWeight={600} noWrap>{contactDisplayName(detailContact)}</Typography>
-                <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', mt: 0.5 }} />
+            <Box sx={{ p: 1.5, mb: 2, borderRadius: 1, bgcolor: 'grey.50', border: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Avatar sx={{ width: 48, height: 48, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.125rem' }}>
+                  {(contactDisplayName(detailContact) || '?')[0].toUpperCase()}
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="subtitle1" fontWeight={600} noWrap>{contactDisplayName(detailContact)}</Typography>
+                  <Chip label={TYPE_LABELS[detailContact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[detailContact.type], color: 'white', mt: 0.5 }} />
+                </Box>
               </Box>
             </Box>
             {/* Linked organizations & hospitals - shown prominently below name for person types */}
@@ -3582,6 +3585,7 @@ const AdminCRMPage: React.FC = () => {
                 </Box>
               ) : null;
             })()}
+            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Contact details</Typography>
             <List dense disablePadding sx={{ flex: 1, minHeight: 0 }}>
               {detailContact.type === 'hospital' && detailContact.facilityId != null && (
                 <ListItem disablePadding><ListItemText primary="Facility ID" secondary={detailContact.facilityId} /></ListItem>
@@ -3921,12 +3925,19 @@ const AdminCRMPage: React.FC = () => {
       )}
 
       {/* Contact detail – full-screen popup (opened via Expand); can switch to edit mode in same view */}
-      <Dialog fullScreen open={fullScreenOpen} onClose={() => { setFullScreenOpen(false); setFullScreenEditMode(false); setEditingContact(null); }}>
+      <Dialog fullScreen open={fullScreenOpen} onClose={() => { setFullScreenOpen(false); setFullScreenEditMode(false); setFullScreenDetailTab(0); setEditingContact(null); }}>
         {detailContact && (
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Box sx={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-              <Typography variant="h6">{fullScreenEditMode ? 'Edit contact' : 'Contact'}</Typography>
-              <IconButton onClick={() => { setFullScreenOpen(false); setFullScreenEditMode(false); setEditingContact(null); }}><CloseIcon /></IconButton>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                <Typography variant="h6">{fullScreenEditMode ? 'Edit contact' : 'Contact'}</Typography>
+                {!fullScreenEditMode && detailContact && (
+                  <Typography variant="body2" color="text.secondary" component="nav" aria-label="Breadcrumb">
+                    CRM · {TYPE_LABELS[detailContact.type]} · {contactDisplayName(detailContact)}
+                  </Typography>
+                )}
+              </Box>
+              <IconButton onClick={() => { setFullScreenOpen(false); setFullScreenEditMode(false); setFullScreenDetailTab(0); setEditingContact(null); }}><CloseIcon /></IconButton>
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
             <Alert severity="info" sx={{ mb: 2 }} icon={false}>
@@ -4114,6 +4125,14 @@ const AdminCRMPage: React.FC = () => {
                 </Grid>
               </Grid>
             ) : (
+              <>
+            <Tabs value={fullScreenDetailTab} onChange={(_, v) => setFullScreenDetailTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+              <Tab label="Profile" />
+              <Tab label="Permissions" />
+              <Tab label="Notes" />
+              <Tab label="Activity" />
+            </Tabs>
+            {fullScreenDetailTab === 0 && (
               <>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Avatar sx={{ width: 64, height: 64, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.5rem' }}>
@@ -4523,6 +4542,57 @@ const AdminCRMPage: React.FC = () => {
                   </Grid>
                 )}
               </Grid>
+              {fullScreenDetailTab === 0 && (
+                <Box sx={{ mt: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
+                    const c = detailContact;
+                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
+                    setEditingContact(c);
+                    setFullScreenEditMode(true);
+                  }}>
+                    Edit
+                  </Button>
+                  <Button variant="contained" startIcon={<EmailIcon />} onClick={() => detailContact?.email?.trim() && window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`)} disabled={!detailContact?.email?.trim()}>Email</Button>
+                  {detailContact && isPersonType(detailContact.type) && detailContactUserId && (
+                    <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}>
+                      Manage permissions
+                    </Button>
+                  )}
+                  {detailContact && canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
+                    <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
+                      const result = await enterViewAsUser(detailContactUserId);
+                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
+                    }}>
+                      View as this user
+                    </Button>
+                  )}
+                  {detailContact && canViewAsUser && detailViewAsUserOptions.length === 1 && (
+                    <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
+                      const result = await enterViewAsUser(detailViewAsUserOptions[0].id);
+                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
+                    }}>
+                      View as {detailViewAsUserOptions[0].label}
+                    </Button>
+                  )}
+                  {detailContact && canViewAsUser && detailViewAsUserOptions.length > 1 && (
+                    <>
+                      <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={(e) => setViewAsMenuAnchor(e.currentTarget)}>
+                        View as user…
+                      </Button>
+                      <Menu anchorEl={viewAsMenuAnchor} open={Boolean(viewAsMenuAnchor)} onClose={() => setViewAsMenuAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+                        {detailViewAsUserOptions.map((opt) => (
+                          <MenuItem key={opt.id} onClick={async () => { setViewAsMenuAnchor(null); const result = await enterViewAsUser(opt.id); if (result.ok && result.dashboardPath) navigate(result.dashboardPath); }}>
+                            View as {opt.label}
+                          </MenuItem>
+                        ))}
+                      </Menu>
+                    </>
+                  )}
+                </Box>
+              )}
+              </> )}
+              {fullScreenDetailTab === 1 && (
+              <>
               {isPersonType(detailContact.type) && detailContactUserId && (
                 <Accordion defaultExpanded={false} sx={{ mt: 2 }}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -4589,52 +4659,88 @@ const AdminCRMPage: React.FC = () => {
                   </Grid>
                 </Grid>
               )}
-              {!fullScreenEditMode && (
-                <Box sx={{ mt: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
-                    const c = detailContact;
-                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
-                    setEditingContact(c);
-                    setFullScreenEditMode(true);
-                  }}>
-                    Edit
-                  </Button>
-                  <Button variant="contained" startIcon={<EmailIcon />} onClick={() => detailContact?.email?.trim() && window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`)} disabled={!detailContact?.email?.trim()}>Email</Button>
-                  {detailContact && isPersonType(detailContact.type) && detailContactUserId && (
-                    <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}>
-                      Manage permissions
-                    </Button>
-                  )}
-                  {detailContact && canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
-                    <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
-                      const result = await enterViewAsUser(detailContactUserId);
-                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
-                    }}>
-                      View as this user
-                    </Button>
-                  )}
-                  {detailContact && canViewAsUser && detailViewAsUserOptions.length === 1 && (
-                    <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
-                      const result = await enterViewAsUser(detailViewAsUserOptions[0].id);
-                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
-                    }}>
-                      View as {detailViewAsUserOptions[0].label}
-                    </Button>
-                  )}
-                  {detailContact && canViewAsUser && detailViewAsUserOptions.length > 1 && (
-                    <>
-                      <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={(e) => setViewAsMenuAnchor(e.currentTarget)}>
-                        View as user…
-                      </Button>
-                      <Menu anchorEl={viewAsMenuAnchor} open={Boolean(viewAsMenuAnchor)} onClose={() => setViewAsMenuAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
-                        {detailViewAsUserOptions.map((opt) => (
-                          <MenuItem key={opt.id} onClick={async () => { setViewAsMenuAnchor(null); const result = await enterViewAsUser(opt.id); if (result.ok && result.dashboardPath) navigate(result.dashboardPath); }}>
-                            View as {opt.label}
-                          </MenuItem>
+              </> )}
+              {fullScreenDetailTab === 2 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Internal notes</Typography>
+                  <Paper variant="outlined" sx={{ p: 2, minHeight: 200, maxHeight: 400, overflow: 'auto' }}>
+                    {(detailContact.notesLog?.length ?? 0) === 0 ? (
+                      <Typography variant="body2" color="text.secondary">No dated notes yet.</Typography>
+                    ) : (
+                      <List dense disablePadding>
+                        {(detailContact.notesLog ?? []).map((e, i) => (
+                          <ListItem key={i} disablePadding sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 0.5, position: 'relative', pr: 6 }}>
+                            {editingNoteIndex === i ? (
+                              <Box sx={{ width: '100%' }}>
+                                <TextField size="small" type="date" value={editingNoteDate} onChange={(e) => setEditingNoteDate(e.target.value)} sx={{ mb: 1, width: '100%' }} InputLabelProps={{ shrink: true }} label="Date" />
+                                <TextField size="small" multiline minRows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} sx={{ mb: 1, width: '100%' }} placeholder="Note text..." />
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                  <Button size="small" variant="contained" onClick={() => { if (editingNoteText.trim() && editingNoteDate) { updateNote(detailContact, i, { date: editingNoteDate, text: editingNoteText.trim() }); setEditingNoteIndex(null); setEditingNoteText(''); setEditingNoteDate(''); } }}>Save</Button>
+                                  <Button size="small" variant="outlined" onClick={() => { setEditingNoteIndex(null); setEditingNoteText(''); setEditingNoteDate(''); }}>Cancel</Button>
+                                </Box>
+                              </Box>
+                            ) : (
+                              <>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start' }}>
+                                  <Box sx={{ flex: 1 }}>
+                                    <Typography variant="caption" color="text.secondary">{e.date}</Typography>
+                                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{e.text}</Typography>
+                                  </Box>
+                                  <Box sx={{ display: 'flex', gap: 0.5, position: 'absolute', right: 0, top: 0 }}>
+                                    <IconButton size="small" onClick={() => { setEditingNoteIndex(i); setEditingNoteText(e.text); setEditingNoteDate(e.date); }} sx={{ p: 0.5 }}><EditIcon fontSize="small" /></IconButton>
+                                    <IconButton size="small" color="error" onClick={() => setNoteDeleteConfirmIndex(i)} sx={{ p: 0.5 }} aria-label="Delete this note"><DeleteIcon fontSize="small" /></IconButton>
+                                  </Box>
+                                </Box>
+                              </>
+                            )}
+                          </ListItem>
                         ))}
-                      </Menu>
-                    </>
-                  )}
+                      </List>
+                    )}
+                    <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <TextField size="small" placeholder="Add note…" value={addNoteText} onChange={(e) => setAddNoteText(e.target.value)} multiline minRows={1} maxRows={3} sx={{ flex: 1 }} />
+                      <Button size="small" variant="contained" onClick={() => { if (addNoteText.trim()) { addNote(detailContact, { date: new Date().toISOString().slice(0, 10), text: addNoteText.trim() }); setAddNoteText(''); } }}>Add</Button>
+                    </Box>
+                  </Paper>
+                </Box>
+              )}
+              {fullScreenDetailTab === 3 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Activity log</Typography>
+                  <Paper variant="outlined" sx={{ p: 2, minHeight: 200, maxHeight: 400, overflow: 'auto' }}>
+                    {(detailContact.activityLog?.length ?? 0) === 0 ? (
+                      <Typography variant="body2" color="text.secondary">No activity entries yet.</Typography>
+                    ) : (
+                      <List dense disablePadding>
+                        {(detailContact.activityLog ?? []).map((e, i) => (
+                          <ListItem key={i} disablePadding sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 0.5 }}>
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                              <Chip size="small" label={ACTIVITY_TYPE_LABELS[e.type]} sx={{ fontSize: '0.7rem' }} />
+                              <Typography variant="caption" color="text.secondary">{e.date}</Typography>
+                            </Box>
+                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{e.text}</Typography>
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                    <Box sx={{ mt: 1 }}>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                        <FormControl size="small" sx={{ minWidth: 140 }}>
+                          <InputLabel>Type</InputLabel>
+                          <Select value={addActivityType} onChange={(e) => setAddActivityType(e.target.value as ActivityLogType)} label="Type">
+                            {(Object.keys(ACTIVITY_TYPE_LABELS) as ActivityLogType[]).map(t => (
+                              <MenuItem key={t} value={t}>{ACTIVITY_TYPE_LABELS[t]}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <TextField size="small" type="date" value={addActivityDate || new Date().toISOString().slice(0, 10)} onChange={(e) => setAddActivityDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 140 }} />
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                        <TextField size="small" placeholder="Details…" value={addActivityText} onChange={(e) => setAddActivityText(e.target.value)} multiline minRows={1} maxRows={2} sx={{ flex: 1 }} />
+                        <Button size="small" variant="contained" onClick={() => { if (addActivityText.trim()) { addActivityEntry(detailContact, { type: addActivityType, date: (addActivityDate || new Date().toISOString().slice(0, 10)), text: addActivityText.trim() }); setAddActivityText(''); } }}>Add</Button>
+                      </Box>
+                    </Box>
+                  </Paper>
                 </Box>
               )}
             </>
