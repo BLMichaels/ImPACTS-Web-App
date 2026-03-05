@@ -77,6 +77,13 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadDiscussions, setUnreadDiscussions] = useState(0);
 
+  const visibleTabs = useMemo(() => [
+    showAnnouncementsTab ? 'announcements' : null,
+    showDiscussionsTab ? 'discussions' : null,
+    showMembersTab ? 'members' : null,
+    showSnapshotTab ? 'snapshot' : null
+  ].filter(Boolean) as string[], [showAnnouncementsTab, showDiscussionsTab, showMembersTab, showSnapshotTab]);
+
   // Only show announcements that are still visible (no visible_until or visible_until >= today)
   const visibleAnnouncements = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -201,10 +208,11 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
     loadData();
   }, [loadData]);
 
-  // Mark announcements as read when viewing that tab
+  // Mark announcements as read when viewing that tab; refetch members when switching to Members tab for live list
   const handleTabChange = async (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
-    
+    if (visibleTabs[newValue] === 'members') loadData();
+
     if (!userProfile?.id) return;
 
     try {
@@ -512,12 +520,6 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
 
           {/* Tab Content */}
           {(() => {
-            const visibleTabs = [
-              showAnnouncementsTab ? 'announcements' : null,
-              showDiscussionsTab ? 'discussions' : null,
-              showMembersTab ? 'members' : null,
-              showSnapshotTab ? 'snapshot' : null
-            ].filter(Boolean);
             const activeTab = visibleTabs[tabValue];
             if (activeTab === 'announcements') {
               return (

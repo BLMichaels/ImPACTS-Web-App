@@ -66,19 +66,26 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
       try {
         let data: UserOption[] = [];
 
-        // Admins: load everyone via RPC so we see all users (avoids users table RLS limiting the list)
-        if (userRole === UserRole.ADMIN) {
+        // When adding directly (admin or manager): load everyone via RPC so we see all users (avoids users table RLS limiting the list)
+        if (canAddDirectly) {
           const { data: rpcData, error: rpcError } = await supabase.rpc('get_users_for_granular_permissions');
           if (rpcError) {
             console.warn('InviteMemberDialog: get_users_for_granular_permissions failed, falling back to users table', rpcError);
-            const { data: fallback } = await supabase
+            const { data: fallback, error: fallbackError } = await supabase
               .from('users')
               .select('id, first_name, last_name, email, role')
               .eq('is_active', true)
               .order('first_name');
+            if (fallbackError) {
+              setError('Could not load user list. If you are an admin, run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase SQL Editor.');
+              setUsers([]);
+              return;
+            }
             data = (fallback || []) as UserOption[];
-          } else if (Array.isArray(rpcData) && rpcData.length > 0) {
-            data = rpcData
+          } else {
+            // RPC returns all users (admin/manager); normalize and filter to active
+            const rows = Array.isArray(rpcData) ? rpcData : [];
+            data = rows
               .filter((row: { is_active?: boolean }) => row.is_active !== false)
               .map((row: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role?: string | null }) => ({
                 id: row.id,
@@ -297,7 +304,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
         {users.length === 0 && !loading && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
             {canAddDirectly 
-              ? 'All available users are already members of this cohort'
+              ? 'All available users are already in this cohort, or the user list could not be loaded. If you are an admin, run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase SQL Editor to enable the full list.'
               : 'No PECCs available to invite. They may already be members of this cohort.'
             }
           </Typography>
