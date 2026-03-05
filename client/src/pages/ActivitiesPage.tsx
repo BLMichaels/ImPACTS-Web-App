@@ -1209,6 +1209,7 @@ const ActivitiesPage = () => {
                     </Box>
                   )}
                   MenuProps={{
+                    dense: true,
                     PaperProps: {
                       style: {
                         maxHeight: 400,
@@ -1221,7 +1222,7 @@ const ActivitiesPage = () => {
                   {gapPlans.map((gapPlan) => {
                     const category = educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`;
                     return (
-                      <MenuItem key={gapPlan.id} value={gapPlan.id} sx={{ py: 1, minHeight: 'auto' }}>
+                      <MenuItem key={gapPlan.id} value={gapPlan.id} sx={{ py: 0.5, minHeight: 36 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
                           <Typography variant="body2" sx={{ fontWeight: 500, flex: 1, minWidth: 0 }}>
                             {category}
