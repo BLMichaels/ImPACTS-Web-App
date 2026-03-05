@@ -1271,21 +1271,22 @@ const ActivitiesPage = () => {
                   )}
                   MenuProps={{
                     PaperProps: {
-                      style: {
+                      sx: {
                         maxHeight: 400,
                         width: 'auto',
-                        minWidth: '100%'
+                        minWidth: 220,
+                        maxWidth: 'min(380px, 90vw)'
                       }
                     }
                   }}
                 >
                   {simulationGaps.map((simulationGap) => (
-                    <MenuItem key={simulationGap.id} value={simulationGap.id} sx={{ whiteSpace: 'normal', py: 1.5 }}>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                    <MenuItem key={simulationGap.id} value={simulationGap.id} sx={{ py: 0.5, minHeight: 36 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'nowrap' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
                           {simulationGap.description}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem', lineHeight: 1.4 }}>
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
                           {simulationGap.category} • {simulationGap.severity}
                         </Typography>
                       </Box>
