@@ -473,11 +473,11 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
                   <Typography variant="body1" sx={{ mb: 2 }}>
                     {selectedEducationContent.question}
                   </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 3 }}>
                     <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
                       Pediatric Readiness Assessment Question #:
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                    <Typography variant="h6" sx={{ fontWeight: 400 }}>
                       {selectedQuestion}
                     </Typography>
                   </Box>
