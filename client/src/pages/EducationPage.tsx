@@ -460,9 +460,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
         fullWidth
       >
         <DialogTitle sx={{ color: '#1976d2', fontWeight: 'bold' }}>
-          {selectedEducationContent?.category?.trim()
-            ? `Question ${selectedQuestion}: ${selectedEducationContent.category}`
-            : `Question ${selectedQuestion}`}
+          {selectedEducationContent?.category?.trim() || `Question ${selectedQuestion}`}
         </DialogTitle>
         <DialogContent>
           {selectedEducationContent ? (
@@ -472,9 +470,17 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
                   <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
                     Assessment Question:
                   </Typography>
-                  <Typography variant="body1" sx={{ mb: 3 }}>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
                     {selectedEducationContent.question}
                   </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                      Pediatric Readiness Assessment Question #:
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                      {selectedQuestion}
+                    </Typography>
+                  </Box>
                 </>
               ) : null}
 

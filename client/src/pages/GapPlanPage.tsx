@@ -871,7 +871,7 @@ const GapPlanPage: React.FC = () => {
       {/* Edit Dialog */}
       <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          Edit Gap Plan for Question {editingPlan?.questionId}: {editingPlan?.questionText}
+          Edit Gap Plan: {editingPlan ? (educationCategories[editingPlan.questionId]?.trim() || `Question ${editingPlan.questionId}`) : ''}
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>

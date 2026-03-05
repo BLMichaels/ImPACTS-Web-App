@@ -147,6 +147,7 @@ const ActivitiesPage = () => {
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [simulationGaps, setSimulationGaps] = useState<any[]>([]);
   const [activityCategories, setActivityCategories] = useState<string[]>(DEFAULT_ACTIVITY_CATEGORIES);
+  const [educationCategories, setEducationCategories] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -199,6 +200,23 @@ const ActivitiesPage = () => {
     })();
     return () => { mounted = false; };
   }, [userId]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'education_questions').maybeSingle();
+      if (!mounted) return;
+      const parsed = (data as { value?: unknown } | null)?.value;
+      if (parsed != null && Array.isArray(parsed)) {
+        const map: Record<string, string> = {};
+        (parsed as { questionId?: string; category?: string }[]).forEach((q) => {
+          if (q.questionId != null) map[String(q.questionId)] = q.category || '';
+        });
+        setEducationCategories(map);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   // Refetch gap plans when they're updated elsewhere (e.g. Gap Plan or Assessment page)
   useEffect(() => {
@@ -992,11 +1010,11 @@ const ActivitiesPage = () => {
                                 borderColor: 'primary.200'
                               }}>
                                 <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
-                                  Q{gapPlan ? gapPlan.questionId : gapId}
+                                  {gapPlan ? (educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`) : gapId}
                                 </Typography>
                                 {gapPlan && (
                                   <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.3 }}>
-                                    {gapPlan.questionText}
+                                    Question #{gapPlan.questionId}
                                   </Typography>
                                 )}
                               </Box>
@@ -1182,9 +1200,9 @@ const ActivitiesPage = () => {
                         return (
                           <Chip
                             key={value}
-                            label={gapPlan ? `Q${gapPlan.questionId}` : value}
+                            label={gapPlan ? (educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`) : value}
                             size="small"
-                            title={gapPlan ? gapPlan.questionText : value}
+                            title={gapPlan ? `Question #${gapPlan.questionId}` : value}
                           />
                         );
                       })}
@@ -1204,10 +1222,10 @@ const ActivitiesPage = () => {
                     <MenuItem key={gapPlan.id} value={gapPlan.id} sx={{ whiteSpace: 'normal', py: 1.5 }}>
                       <Box>
                         <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
-                          Q{gapPlan.questionId}
+                          {educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem', lineHeight: 1.4 }}>
-                          {gapPlan.questionText}
+                          Question #{gapPlan.questionId}
                         </Typography>
                       </Box>
                     </MenuItem>
