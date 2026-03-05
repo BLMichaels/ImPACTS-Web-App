@@ -2071,20 +2071,42 @@ const AdminCRMPage: React.FC = () => {
         }
       }
     }
-    // When a person contact has cohort(s) assigned, sync cohort_members so they are actual members
+    // When a person contact has cohort(s) assigned, sync cohort_members so they show in the cohort's Members list
     if (isPersonType(formData.type) && availableCohorts.length > 0) {
-      const contactUserId = editingContact?.user_id ?? (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim().toLowerCase()).maybeSingle()).data?.id : null);
+      const cohortNames = (formData.cohorts ?? []).map((n: string) => (n || '').trim()).filter(Boolean);
+      const emailNorm = formData.email?.trim().toLowerCase() || '';
+      const contactUserId = editingContact?.user_id ?? (emailNorm ? (await supabase.from('users').select('id').eq('email', emailNorm).maybeSingle()).data?.id : null);
       if (contactUserId) {
-        const cohortNames = formData.cohorts ?? [];
-        const cohortIds = cohortNames.map((name: string) => availableCohorts.find(c => c.name === name)?.id).filter(Boolean) as string[];
-        const { data: existing } = await supabase.from('cohort_members').select('cohort_id').eq('user_id', contactUserId);
+        const cohortIds = cohortNames
+          .map((name: string) => availableCohorts.find(c => (c.name || '').trim().toLowerCase() === name.toLowerCase())?.id)
+          .filter(Boolean) as string[];
+        const { data: existing, error: existingErr } = await supabase.from('cohort_members').select('cohort_id').eq('user_id', contactUserId);
+        if (existingErr) {
+          setSaveError(`Cohort sync failed: ${existingErr.message}. Contact saved; fix and re-save to update cohort membership.`);
+          return;
+        }
         const existingIds = (existing ?? []).map((r: { cohort_id: string }) => r.cohort_id);
         for (const cid of existingIds) {
-          if (!cohortIds.includes(cid)) await supabase.from('cohort_members').delete().eq('user_id', contactUserId).eq('cohort_id', cid);
+          if (!cohortIds.includes(cid)) {
+            const { error: delErr } = await supabase.from('cohort_members').delete().eq('user_id', contactUserId).eq('cohort_id', cid);
+            if (delErr) {
+              setSaveError(`Could not remove from cohort: ${delErr.message}. Contact saved.`);
+              return;
+            }
+          }
         }
         for (const cid of cohortIds) {
-          await supabase.from('cohort_members').upsert({ cohort_id: cid, user_id: contactUserId, added_by: currentUser?.id ?? contactUserId, status: 'active' }, { onConflict: 'cohort_id,user_id' });
+          const { error: upsertErr } = await supabase
+            .from('cohort_members')
+            .upsert({ cohort_id: cid, user_id: contactUserId, added_by: currentUser?.id ?? contactUserId, status: 'active' }, { onConflict: 'cohort_id,user_id' });
+          if (upsertErr) {
+            setSaveError(`Could not add to cohort: ${upsertErr.message}. Contact saved; fix and re-save to add to cohort.`);
+            return;
+          }
         }
+      } else if (cohortNames.length > 0 && !contactUserId) {
+        setSaveError('Contact saved. To add them to cohorts, they need a platform account — send an invitation from Invitations or Add Member in the cohort.');
+        return;
       }
     }
     if (fromFullScreen) {
