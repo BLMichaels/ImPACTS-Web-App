@@ -1209,7 +1209,6 @@ const ActivitiesPage = () => {
                     </Box>
                   )}
                   MenuProps={{
-                    dense: true,
                     PaperProps: {
                       style: {
                         maxHeight: 400,
