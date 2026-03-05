@@ -1210,10 +1210,11 @@ const ActivitiesPage = () => {
                   )}
                   MenuProps={{
                     PaperProps: {
-                      style: {
+                      sx: {
                         maxHeight: 400,
                         width: 'auto',
-                        minWidth: '100%'
+                        minWidth: 220,
+                        maxWidth: 'min(380px, 90vw)'
                       }
                     }
                   }}
@@ -1222,8 +1223,8 @@ const ActivitiesPage = () => {
                     const category = educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`;
                     return (
                       <MenuItem key={gapPlan.id} value={gapPlan.id} sx={{ py: 0.5, minHeight: 36 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 500, flex: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'nowrap' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
                             {category}
                           </Typography>
                           <Typography component="span" variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
