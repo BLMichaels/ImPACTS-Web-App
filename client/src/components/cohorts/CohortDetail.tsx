@@ -286,8 +286,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
 
   const handleMemberAdded = (member: CohortMember) => {
     setMembers(prev => [member, ...prev]);
-    // Refetch so list matches server (handles insert response shape and RLS)
-    loadData();
+    // Rely on optimistic update so new member stays visible (refetch can overwrite before insert is visible)
   };
 
   const handleMemberRemoved = (memberId: string) => {

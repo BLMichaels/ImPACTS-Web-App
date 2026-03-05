@@ -155,7 +155,13 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           `)
           .single();
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          if (insertError.code === '23505') {
+            setError('This user is already a member of this cohort.');
+            return;
+          }
+          throw insertError;
+        }
         // Normalize: Supabase sometimes returns user as array from join
         const rawUser = (data as any).user;
         const userObj = Array.isArray(rawUser) ? rawUser[0] : rawUser;
@@ -165,7 +171,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           user_id: data.user_id,
           added_by: data.added_by,
           status: data.status,
-          added_at: data.added_at,
+          added_at: data.added_at || new Date().toISOString(),
           user: userObj ? {
             id: userObj.id,
             first_name: userObj.first_name,
