@@ -16,7 +16,6 @@ import {
 } from '@mui/material';
 import { CohortMember, UserRole } from '../../types/database';
 import { getRoleMuiColor, getRoleLabel } from '../../utils/roleUtils';
-import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { createAndSendInvitation } from '../../utils/invitations';
@@ -50,12 +49,25 @@ export interface CrmOnlyOption {
   last_name: string;
   email: string;
   contact_type: string;
+  /** Fallback when first/last are empty (e.g. organization-style name in CRM) */
+  name?: string;
 }
 
 export type AddMemberOption = UserOption | CrmOnlyOption;
 
 function isUserOption(o: AddMemberOption): o is UserOption {
   return o.type === 'user' || ('role' in o && o.role != null);
+}
+
+/** Single display name for Add Member list: "First Last" for everyone, same across all cohorts. */
+function getFullDisplayName(o: AddMemberOption, nameFallback?: string): string {
+  const first = (o.first_name ?? '').trim();
+  const last = (o.last_name ?? '').trim();
+  const full = [first, last].filter(Boolean).join(' ').trim();
+  if (full) return full;
+  if (nameFallback?.trim()) return nameFallback.trim();
+  if (o.email?.trim()) return o.email.trim();
+  return 'Unknown';
 }
 
 const CRM_PERSON_TYPES = ['staff', 'manager', 'mentor', 'pecc', 'other'];
@@ -128,22 +140,23 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
               }));
           }
 
-          // Load CRM contacts (everyone in CRM - with or without accounts)
+          // Load CRM contacts (everyone in CRM - with or without accounts); same list for every cohort
           const { data: crmRows } = await supabase
             .from('crm_organizations')
-            .select('id, first_name, last_name, email, contact_type')
+            .select('id, name, first_name, last_name, email, contact_type')
             .in('contact_type', CRM_PERSON_TYPES)
             .not('email', 'is', null);
 
           const userEmailsLower = new Set(userList.map(u => (u.email || '').toLowerCase()));
           const crmOnly: CrmOnlyOption[] = (crmRows || [])
-            .map((row: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; contact_type?: string | null }) => ({
+            .map((row: { id: string; name?: string | null; first_name?: string | null; last_name?: string | null; email?: string | null; contact_type?: string | null }) => ({
               type: 'crm' as const,
               id: 'crm:' + row.id,
               first_name: row.first_name ?? '',
               last_name: row.last_name ?? '',
               email: (row.email ?? '').trim().toLowerCase(),
-              contact_type: row.contact_type ?? 'other'
+              contact_type: row.contact_type ?? 'other',
+              name: row.name ?? undefined
             }))
             .filter((c: CrmOnlyOption) => c.email && !userEmailsLower.has(c.email));
 
@@ -155,10 +168,15 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
             if (existingEmailsLower.has((o.email || '').toLowerCase())) return false;
             return true;
           });
+          // Deterministic sort: last name, first name, email so the same order in every cohort
           filtered.sort((a, b) => {
-            const na = (a.first_name + ' ' + a.last_name + ' ' + a.email).toLowerCase();
-            const nb = (b.first_name + ' ' + b.last_name + ' ' + b.email).toLowerCase();
-            return na.localeCompare(nb);
+            const lastA = (a.last_name ?? '').toLowerCase();
+            const lastB = (b.last_name ?? '').toLowerCase();
+            if (lastA !== lastB) return lastA.localeCompare(lastB);
+            const firstA = (a.first_name ?? '').toLowerCase();
+            const firstB = (b.first_name ?? '').toLowerCase();
+            if (firstA !== firstB) return firstA.localeCompare(firstB);
+            return (a.email ?? '').toLowerCase().localeCompare((b.email ?? '').toLowerCase());
           });
           setOptions(filtered);
         } else {
@@ -188,7 +206,17 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
             email: (row.email ?? '').trim(),
             role: (row.role as UserRole) || UserRole.PECC
           }));
-          setOptions(list.filter(u => !existingMemberIds.includes(u.id) && !existingEmailsLower.has((u.email || '').toLowerCase())));
+          const filteredList = list.filter(u => !existingMemberIds.includes(u.id) && !existingEmailsLower.has((u.email || '').toLowerCase()));
+          filteredList.sort((a, b) => {
+            const lastA = (a.last_name ?? '').toLowerCase();
+            const lastB = (b.last_name ?? '').toLowerCase();
+            if (lastA !== lastB) return lastA.localeCompare(lastB);
+            const firstA = (a.first_name ?? '').toLowerCase();
+            const firstB = (b.first_name ?? '').toLowerCase();
+            if (firstA !== firstB) return firstA.localeCompare(firstB);
+            return (a.email ?? '').toLowerCase().localeCompare((b.email ?? '').toLowerCase());
+          });
+          setOptions(filteredList);
         }
       } catch (err: any) {
         console.error('Error loading options:', err);
@@ -322,9 +350,9 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           value={selected}
           onChange={(_, value) => setSelected(value)}
           getOptionLabel={(option) => {
-            const name = [option.first_name, option.last_name].filter(Boolean).join(' ') || option.email || 'Unknown';
+            const name = option.type === 'crm' ? getFullDisplayName(option, option.name) : getFullDisplayName(option);
             if (option.type === 'crm') return `${name} (${option.email}) — No account yet`;
-            return getUserDisplayName(option);
+            return name;
           }}
           isOptionEqualToValue={(a, b) => a.id === b.id}
           renderInput={(params) => (
@@ -354,11 +382,11 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                     fontSize: '0.875rem'
                   }}
                 >
-                  {(option.first_name || option.last_name || option.email || '?').toString().charAt(0)}
+                  {(option.type === 'crm' ? getFullDisplayName(option, option.name) : getFullDisplayName(option)).charAt(0) || '?'}
                 </Avatar>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body1">
-                    {[option.first_name, option.last_name].filter(Boolean).join(' ') || option.email || 'Unknown'}
+                    {option.type === 'crm' ? getFullDisplayName(option, option.name) : getFullDisplayName(option)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {option.email}
