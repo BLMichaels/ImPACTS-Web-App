@@ -1218,18 +1218,21 @@ const ActivitiesPage = () => {
                     }
                   }}
                 >
-                  {gapPlans.map((gapPlan) => (
-                    <MenuItem key={gapPlan.id} value={gapPlan.id} sx={{ whiteSpace: 'normal', py: 1.5 }}>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
-                          {educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem', lineHeight: 1.4 }}>
-                          Question #{gapPlan.questionId}
-                        </Typography>
-                      </Box>
-                    </MenuItem>
-                  ))}
+                  {gapPlans.map((gapPlan) => {
+                    const category = educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`;
+                    return (
+                      <MenuItem key={gapPlan.id} value={gapPlan.id} sx={{ py: 1, minHeight: 'auto' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500, flex: 1, minWidth: 0 }}>
+                            {category}
+                          </Typography>
+                          <Typography component="span" variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                            Question #{gapPlan.questionId}
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                    );
+                  })}
                 </Select>
               </FormControl>
             </Grid>
