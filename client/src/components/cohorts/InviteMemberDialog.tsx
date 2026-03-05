@@ -19,17 +19,22 @@ import { getRoleMuiColor, getRoleLabel } from '../../utils/roleUtils';
 import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
+import { createAndSendInvitation } from '../../utils/invitations';
 
 interface InviteMemberDialogProps {
   open: boolean;
   onClose: () => void;
   cohortId: string;
   existingMemberIds: string[];
+  /** Emails already in this cohort (so we don't show duplicate or invite again) */
+  existingMemberEmails?: string[];
   canAddDirectly: boolean;  // True for admins/managers, false for mentors
   onMemberAdded: (member: CohortMember) => void;
 }
 
-interface UserOption {
+/** User with an account - can be added to cohort_members directly */
+export interface UserOption {
+  type: 'user';
   id: string;
   first_name: string;
   last_name: string;
@@ -37,57 +42,84 @@ interface UserOption {
   role: UserRole;
 }
 
+/** CRM contact without an account - we send app invitation; they join cohort when they accept */
+export interface CrmOnlyOption {
+  type: 'crm';
+  id: string;  // 'crm:' + crm_organizations.id
+  first_name: string;
+  last_name: string;
+  email: string;
+  contact_type: string;
+}
+
+export type AddMemberOption = UserOption | CrmOnlyOption;
+
+function isUserOption(o: AddMemberOption): o is UserOption {
+  return o.type === 'user' || ('role' in o && o.role != null);
+}
+
+const CRM_PERSON_TYPES = ['staff', 'manager', 'mentor', 'pecc', 'other'];
+
 const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
   open,
   onClose,
   cohortId,
   existingMemberIds,
+  existingMemberEmails = [],
   canAddDirectly,
   onMemberAdded
 }) => {
   const { userProfile, userRole } = useUserProfile();
-  const [users, setUsers] = useState<UserOption[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserOption | null>(null);
+  const [options, setOptions] = useState<AddMemberOption[]>([]);
+  const [selected, setSelected] = useState<AddMemberOption | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
-  // Load available users
+  const existingEmailsLower = new Set(existingMemberEmails.map(e => (e || '').trim().toLowerCase()));
+
+  // Load EVERYONE: users (with accounts) + CRM contacts (with or without accounts)
   useEffect(() => {
-    const loadUsers = async () => {
+    const loadEveryone = async () => {
       if (!open) return;
       
       setLoading(true);
       setError(null);
       setSuccess(false);
-      setSelectedUser(null);
+      setSelected(null);
 
       try {
-        let data: UserOption[] = [];
+        let userList: UserOption[] = [];
 
-        // When adding directly (admin or manager): load everyone via RPC so we see all users (avoids users table RLS limiting the list)
         if (canAddDirectly) {
           const { data: rpcData, error: rpcError } = await supabase.rpc('get_users_for_granular_permissions');
           if (rpcError) {
-            console.warn('InviteMemberDialog: get_users_for_granular_permissions failed, falling back to users table', rpcError);
             const { data: fallback, error: fallbackError } = await supabase
               .from('users')
               .select('id, first_name, last_name, email, role')
               .eq('is_active', true)
               .order('first_name');
             if (fallbackError) {
-              setError('Could not load user list. If you are an admin, run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase SQL Editor.');
-              setUsers([]);
+              setError('Could not load user list. Run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase SQL Editor.');
+              setOptions([]);
               return;
             }
-            data = (fallback || []) as UserOption[];
+            userList = (fallback || []).map((row: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role?: string | null }) => ({
+              type: 'user' as const,
+              id: row.id,
+              first_name: row.first_name ?? '',
+              last_name: row.last_name ?? '',
+              email: (row.email ?? '').trim(),
+              role: (row.role as UserRole) || UserRole.PECC
+            }));
           } else {
-            // RPC returns all users (admin/manager); normalize and filter to active
             const rows = Array.isArray(rpcData) ? rpcData : [];
-            data = rows
+            userList = rows
               .filter((row: { is_active?: boolean }) => row.is_active !== false)
               .map((row: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role?: string | null }) => ({
+                type: 'user' as const,
                 id: row.id,
                 first_name: row.first_name ?? '',
                 last_name: row.last_name ?? '',
@@ -95,23 +127,50 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                 role: (row.role as UserRole) || UserRole.PECC
               }));
           }
+
+          // Load CRM contacts (everyone in CRM - with or without accounts)
+          const { data: crmRows } = await supabase
+            .from('crm_organizations')
+            .select('id, first_name, last_name, email, contact_type')
+            .in('contact_type', CRM_PERSON_TYPES)
+            .not('email', 'is', null);
+
+          const userEmailsLower = new Set(userList.map(u => (u.email || '').toLowerCase()));
+          const crmOnly: CrmOnlyOption[] = (crmRows || [])
+            .map((row: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; contact_type?: string | null }) => ({
+              type: 'crm' as const,
+              id: 'crm:' + row.id,
+              first_name: row.first_name ?? '',
+              last_name: row.last_name ?? '',
+              email: (row.email ?? '').trim().toLowerCase(),
+              contact_type: row.contact_type ?? 'other'
+            }))
+            .filter((c: CrmOnlyOption) => c.email && !userEmailsLower.has(c.email));
+
+          const combined: AddMemberOption[] = [...userList, ...crmOnly];
+          const filtered = combined.filter(o => {
+            if (o.type === 'user') {
+              if (existingMemberIds.includes(o.id)) return false;
+            }
+            if (existingEmailsLower.has((o.email || '').toLowerCase())) return false;
+            return true;
+          });
+          filtered.sort((a, b) => {
+            const na = (a.first_name + ' ' + a.last_name + ' ' + a.email).toLowerCase();
+            const nb = (b.first_name + ' ' + b.last_name + ' ' + b.email).toLowerCase();
+            return na.localeCompare(nb);
+          });
+          setOptions(filtered);
         } else {
           let query = supabase
             .from('users')
             .select('id, first_name, last_name, email, role')
             .eq('is_active', true)
             .order('first_name');
-
-          // If user is a mentor, they can only invite PECCs they mentor
           if (userRole === UserRole.MENTOR && !canAddDirectly) {
             query = query.eq('mentor_id', userProfile?.id);
-          }
-          // If user is a manager, they can add mentors under them and PECCs
-          else if (userRole === UserRole.MANAGER) {
-            const { data: mentors } = await supabase
-              .from('users')
-              .select('id')
-              .eq('manager_id', userProfile?.id);
+          } else if (userRole === UserRole.MANAGER) {
+            const { data: mentors } = await supabase.from('users').select('id').eq('manager_id', userProfile?.id);
             const mentorIds = mentors?.map(m => m.id) || [];
             if (mentorIds.length > 0) {
               query = query.or(`manager_id.eq.${userProfile?.id},mentor_id.in.(${mentorIds.join(',')})`);
@@ -119,35 +178,53 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
               query = query.eq('manager_id', userProfile?.id);
             }
           }
-
           const { data: queryData, error: fetchError } = await query;
           if (fetchError) throw fetchError;
-          data = (queryData || []) as UserOption[];
+          const list = (queryData || []).map((row: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role?: string | null }) => ({
+            type: 'user' as const,
+            id: row.id,
+            first_name: row.first_name ?? '',
+            last_name: row.last_name ?? '',
+            email: (row.email ?? '').trim(),
+            role: (row.role as UserRole) || UserRole.PECC
+          }));
+          setOptions(list.filter(u => !existingMemberIds.includes(u.id) && !existingEmailsLower.has((u.email || '').toLowerCase())));
         }
-
-        // Filter out existing members
-        const availableUsers = data.filter(u => !existingMemberIds.includes(u.id));
-        setUsers(availableUsers);
       } catch (err: any) {
-        console.error('Error loading users:', err);
-        setError('Failed to load users');
+        console.error('Error loading options:', err);
+        setError('Failed to load list');
+        setOptions([]);
       } finally {
         setLoading(false);
       }
     };
 
-    loadUsers();
-  }, [open, cohortId, existingMemberIds, userProfile?.id, userRole, canAddDirectly]);
+    loadEveryone();
+  }, [open, cohortId, existingMemberIds, existingMemberEmails, userProfile?.id, userRole, canAddDirectly]);
 
   const handleSave = async () => {
-    if (!selectedUser) return;
+    if (!selected || !userProfile?.id) return;
 
     setSaving(true);
     setError(null);
 
     try {
-      if (canAddDirectly) {
-        // Directly add the member
+      if (canAddDirectly && selected.type === 'crm') {
+        // No account yet: send app invitation; they join cohort when they accept
+        await createAndSendInvitation({
+          email: selected.email,
+          role: UserRole.PECC,
+          invitedBy: userProfile.id,
+          cohortIds: [cohortId]
+        });
+        setSuccessMessage("Invitation sent. They'll be added to the cohort when they create their account.");
+        setSuccess(true);
+        setTimeout(() => onClose(), 2500);
+        return;
+      }
+
+      if (canAddDirectly && isUserOption(selected)) {
+        const selectedUser = selected;
         const { data, error: insertError } = await supabase
           .from('cohort_members')
           .insert({
@@ -169,7 +246,6 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           }
           throw insertError;
         }
-        // Normalize: Supabase sometimes returns user as array from join
         const rawUser = (data as any).user;
         const userObj = Array.isArray(rawUser) ? rawUser[0] : rawUser;
         const normalized: CohortMember = {
@@ -189,28 +265,24 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
         };
         onMemberAdded(normalized);
         onClose();
-      } else {
-        // Create an invitation that needs approval
+        return;
+      }
+
+      if (!canAddDirectly && isUserOption(selected)) {
         const { error: insertError } = await supabase
           .from('cohort_invitations')
           .insert({
             cohort_id: cohortId,
-            user_id: selectedUser.id,
+            user_id: selected.id,
             invited_by: userProfile?.id,
             status: 'pending'
           });
-
         if (insertError) {
-          if (insertError.code === '23505') {
-            throw new Error('This user already has a pending invitation to this cohort');
-          }
+          if (insertError.code === '23505') throw new Error('This user already has a pending invitation to this cohort');
           throw insertError;
         }
-
         setSuccess(true);
-        setTimeout(() => {
-          onClose();
-        }, 2000);
+        setTimeout(() => onClose(), 2000);
       }
     } catch (err: any) {
       console.error('Error adding/inviting member:', err);
@@ -234,7 +306,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
 
         {success && (
           <Alert severity="success" sx={{ mb: 2 }}>
-            Invitation sent! A manager will review and approve the invitation.
+            {successMessage || 'Invitation sent! A manager will review and approve the invitation.'}
           </Alert>
         )}
 
@@ -244,18 +316,22 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           </Alert>
         )}
 
-        <Autocomplete
-          options={users}
+        <Autocomplete<AddMemberOption>
+          options={options}
           loading={loading}
-          value={selectedUser}
-          onChange={(_, value) => setSelectedUser(value)}
-          getOptionLabel={(option) => getUserDisplayName(option)}
-          isOptionEqualToValue={(option, value) => option.id === value.id}
+          value={selected}
+          onChange={(_, value) => setSelected(value)}
+          getOptionLabel={(option) => {
+            const name = [option.first_name, option.last_name].filter(Boolean).join(' ') || option.email || 'Unknown';
+            if (option.type === 'crm') return `${name} (${option.email}) — No account yet`;
+            return getUserDisplayName(option);
+          }}
+          isOptionEqualToValue={(a, b) => a.id === b.id}
           renderInput={(params) => (
             <TextField
               {...params}
-              label="Select User"
-              placeholder="Search by name..."
+              label="Select person"
+              placeholder="Search by name or email..."
               InputProps={{
                 ...params.InputProps,
                 endAdornment: (
@@ -270,11 +346,11 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           renderOption={(props, option) => (
             <li {...props} key={option.id}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
-                <Avatar 
-                  sx={{ 
-                    width: 32, 
+                <Avatar
+                  sx={{
+                    width: 32,
                     height: 32,
-                    bgcolor: getRoleMuiColor(option.role) + '.main',
+                    bgcolor: option.type === 'crm' ? 'grey.500' : getRoleMuiColor((option as UserOption).role) + '.main',
                     fontSize: '0.875rem'
                   }}
                 >
@@ -282,18 +358,23 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                 </Avatar>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body1">
-                    {getUserDisplayName(option)}
+                    {[option.first_name, option.last_name].filter(Boolean).join(' ') || option.email || 'Unknown'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {option.email}
+                    {option.type === 'crm' && ' — No account yet'}
                   </Typography>
                 </Box>
-                <Chip
-                  label={getRoleLabel(option.role)}
-                  size="small"
-                  color={getRoleMuiColor(option.role)}
-                  variant="outlined"
-                />
+                {option.type === 'crm' ? (
+                  <Chip label="Invite to join" size="small" color="default" variant="outlined" />
+                ) : (
+                  <Chip
+                    label={getRoleLabel((option as UserOption).role)}
+                    size="small"
+                    color={getRoleMuiColor((option as UserOption).role)}
+                    variant="outlined"
+                  />
+                )}
               </Box>
             </li>
           )}
@@ -301,10 +382,10 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           disabled={success}
         />
 
-        {users.length === 0 && !loading && (
+        {options.length === 0 && !loading && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
-            {canAddDirectly 
-              ? 'All available users are already in this cohort, or the user list could not be loaded. If you are an admin, run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase SQL Editor to enable the full list.'
+            {canAddDirectly
+              ? 'Everyone in the list is already in this cohort, or the list could not be loaded. Run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase and ensure CRM has contacts with emails.'
               : 'No PECCs available to invite. They may already be members of this cohort.'
             }
           </Typography>
@@ -318,9 +399,9 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
           <Button
             onClick={handleSave}
             variant="contained"
-            disabled={saving || !selectedUser}
+            disabled={saving || !selected}
           >
-            {saving ? <CircularProgress size={24} /> : canAddDirectly ? 'Add' : 'Send Invitation'}
+            {saving ? <CircularProgress size={24} /> : selected?.type === 'crm' ? 'Send invitation' : canAddDirectly ? 'Add' : 'Send Invitation'}
           </Button>
         )}
       </DialogActions>

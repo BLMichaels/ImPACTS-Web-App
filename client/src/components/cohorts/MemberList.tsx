@@ -218,6 +218,7 @@ const MemberList: React.FC<MemberListProps> = ({
         onClose={() => setInviteDialogOpen(false)}
         cohortId={cohortId}
         existingMemberIds={members.map(m => m.user_id)}
+        existingMemberEmails={members.map(m => m.user?.email).filter((e): e is string => Boolean(e))}
         canAddDirectly={canManage}
         onMemberAdded={onMemberAdded}
       />
