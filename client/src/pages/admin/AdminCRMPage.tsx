@@ -8,6 +8,7 @@ import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database';
 import AdminTeamTab from './AdminTeamTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
+import { createAndSendInvitation } from '../../utils/invitations';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
 import {
   Alert,
@@ -2104,9 +2105,39 @@ const AdminCRMPage: React.FC = () => {
             return;
           }
         }
-      } else if (cohortNames.length > 0 && !contactUserId) {
-        setSaveError('Contact saved. To add them to cohorts, they need a platform account — send an invitation from Invitations or Add Member in the cohort.');
-        return;
+      } else if (cohortNames.length > 0 && !contactUserId && emailNorm) {
+        const cohortIds = cohortNames
+          .map((name: string) => availableCohorts.find(c => (c.name || '').trim().toLowerCase() === name.toLowerCase())?.id)
+          .filter(Boolean) as string[];
+        if (cohortIds.length > 0 && currentUser?.id) {
+          const { data: existingInv } = await supabase
+            .from('invitations')
+            .select('id, cohort_ids')
+            .eq('email', emailNorm)
+            .eq('status', 'pending')
+            .maybeSingle();
+          if (existingInv?.id) {
+            const existingIds = (existingInv.cohort_ids as string[] | null) || [];
+            const merged = [...new Set([...existingIds, ...cohortIds])];
+            const { error: updErr } = await supabase.from('invitations').update({ cohort_ids: merged }).eq('id', existingInv.id);
+            if (updErr) {
+              setSaveError(`Could not update invitation: ${updErr.message}. Contact saved; they will appear in cohorts once they have an account.`);
+              return;
+            }
+          } else {
+            try {
+              await createAndSendInvitation({
+                email: formData.email!.trim(),
+                role: UserRole.PECC,
+                invitedBy: currentUser.id,
+                cohortIds
+              });
+            } catch (invErr: unknown) {
+              setSaveError(`Contact saved but invitation failed: ${invErr instanceof Error ? invErr.message : 'Unknown error'}. They will appear in the cohort as Pending when an invitation is sent.`);
+              return;
+            }
+          }
+        }
       }
     }
     if (fromFullScreen) {

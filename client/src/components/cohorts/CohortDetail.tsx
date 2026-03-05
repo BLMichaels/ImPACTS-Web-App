@@ -121,10 +121,10 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
         .order('created_at', { ascending: false });
 
       // Load members with user info (skip for PECC & Mentor - they don't see the Members list)
-      // Include both cohort_members (active) and cohort_managers so Managers, Mentors, PECCs, and Admins all show
+      // Include cohort_members (active), cohort_managers, AND pending invitations (no account yet) so CRM-assigned people all show
       let membersData: CohortMember[] | null = null;
       if (userProfile?.role !== UserRole.PECC && userProfile?.role !== UserRole.MENTOR) {
-        const [membersRes, managersRes] = await Promise.all([
+        const [membersRes, managersRes, pendingInvRes] = await Promise.all([
           supabase
             .from('cohort_members')
             .select(`
@@ -141,14 +141,21 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
               assigned_at,
               manager:manager_id(id, first_name, last_name, email, role)
             `)
-            .eq('cohort_id', cohort.id)
+            .eq('cohort_id', cohort.id),
+          supabase
+            .from('invitations')
+            .select('id, email')
+            .eq('status', 'pending')
+            .filter('cohort_ids', 'cs', `{${cohort.id}}`)
         ]);
         const fromMembers = (membersRes.data || []) as CohortMember[];
         const memberUserIds = new Set(fromMembers.map(m => m.user_id));
+        const memberEmails = new Set(fromMembers.map(m => (m.user?.email || '').toLowerCase()).filter(Boolean));
         const fromManagers = (managersRes.data || []).map((cm: any) => {
           const manager = Array.isArray(cm.manager) ? cm.manager[0] : cm.manager;
           if (!manager || memberUserIds.has(manager.id)) return null;
           memberUserIds.add(manager.id);
+          if (manager.email) memberEmails.add((manager.email as string).toLowerCase());
           return {
             id: `manager-${cm.manager_id}`,
             cohort_id: cohort.id,
@@ -159,7 +166,24 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             user: { id: manager.id, first_name: manager.first_name, last_name: manager.last_name, email: manager.email, role: manager.role }
           } as CohortMember;
         }).filter(Boolean) as CohortMember[];
-        membersData = [...fromMembers, ...fromManagers];
+        const fromPending = (pendingInvRes.data || [])
+          .filter((inv: { email?: string | null }) => inv.email && !memberEmails.has((inv.email as string).toLowerCase()))
+          .map((inv: { id: string; email?: string | null }) => ({
+            id: `pending-${inv.id}`,
+            cohort_id: cohort.id,
+            user_id: '',
+            added_by: null,
+            status: 'active' as const,
+            added_at: new Date().toISOString(),
+            user: {
+              id: '',
+              first_name: 'Pending',
+              last_name: '',
+              email: (inv.email || '').trim(),
+              role: UserRole.PECC
+            }
+          })) as CohortMember[];
+        membersData = [...fromMembers, ...fromManagers, ...fromPending];
       }
 
       // Load read status

@@ -172,24 +172,25 @@ const MemberList: React.FC<MemberListProps> = ({
                             <Typography variant="subtitle2">
                               {getUserDisplayName(member.user)}
                               {member.user_id === userProfile?.id && (
-                                <Chip 
-                                  label="You" 
-                                  size="small" 
-                                  sx={{ ml: 1, height: 18, fontSize: '0.7rem' }}
-                                />
+                                <Chip label="You" size="small" sx={{ ml: 1, height: 18, fontSize: '0.7rem' }} />
+                              )}
+                              {String(member.id).startsWith('pending-') && (
+                                <Chip label="Pending" size="small" color="default" sx={{ ml: 1, height: 18, fontSize: '0.7rem' }} />
                               )}
                             </Typography>
                           }
                           secondary={
                             <Typography variant="body2" color="text.secondary">
                               {member.user?.email}
-                              {member.added_at && (
+                              {String(member.id).startsWith('pending-') ? (
+                                <> • Pending — will join when they accept invitation</>
+                              ) : member.added_at ? (
                                 <> • Joined {format(new Date(member.added_at), 'MMM d, yyyy')}</>
-                              )}
+                              ) : null}
                             </Typography>
                           }
                         />
-                        {canManage && member.user_id !== userProfile?.id && !String(member.id).startsWith('manager-') && (
+                        {canManage && member.user_id !== userProfile?.id && !String(member.id).startsWith('manager-') && !String(member.id).startsWith('pending-') && (
                           <ListItemSecondaryAction>
                             <Tooltip title="Remove from cohort">
                               <IconButton 
