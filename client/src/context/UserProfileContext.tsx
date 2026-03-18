@@ -94,6 +94,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [primaryProgramLogoUrl, setPrimaryProgramLogoUrl] = useState<string | null>(null);
   // Guard against out-of-order async updates when rapidly switching "view as" users.
   const latestViewAsUserIdRef = useRef<string | null>(null);
+  const logoFetchSeqRef = useRef(0);
 
   // Fetch user profile from Supabase
   const fetchUserProfile = useCallback(async () => {
@@ -485,28 +486,67 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const effectivePrimaryProgramId = (viewAsUserId && viewAsUserProfile)
     ? (viewAsUserProfile.primary_program_id ?? null)
     : (userProfile?.primary_program_id ?? null);
+  const effectiveLogoUserId = viewAsUserId ?? currentUser?.id;
 
   useEffect(() => {
     let cancelled = false;
+    const fetchSeq = ++logoFetchSeqRef.current;
     (async () => {
-      if (!effectivePrimaryProgramId) {
+      if (!effectiveLogoUserId) {
         if (!cancelled) setPrimaryProgramLogoUrl(null);
+        return;
+      }
+
+      const pidRaw = effectivePrimaryProgramId;
+      const pid = (typeof pidRaw === 'string' && pidRaw.trim()) ? pidRaw.trim() : null;
+
+      // 1) Prefer users.primary_program_id
+      if (pid) {
+        const { data: prog } = await supabase
+          .from('programs')
+          .select('logo_url')
+          .eq('id', pid)
+          .maybeSingle();
+
+        if (cancelled || fetchSeq !== logoFetchSeqRef.current) return;
+        const logoUrl = (prog as { logo_url?: string | null } | null)?.logo_url ?? null;
+        setPrimaryProgramLogoUrl(typeof logoUrl === 'string' && logoUrl.trim() ? logoUrl.trim() : null);
+        return;
+      }
+
+      // 2) Fallback: use first active program membership (common for PECCs)
+      const { data: members } = await supabase
+        .from('program_members')
+        .select('program_id')
+        .eq('user_id', effectiveLogoUserId)
+        .eq('status', 'active')
+        .order('program_id')
+        .limit(1);
+
+      const firstProgramId = (members && members[0] && (members[0] as { program_id?: string | null }).program_id)
+        ? String((members[0] as { program_id?: string | null }).program_id)
+        : null;
+
+      if (cancelled || fetchSeq !== logoFetchSeqRef.current) return;
+
+      if (!firstProgramId) {
+        setPrimaryProgramLogoUrl(null);
         return;
       }
 
       const { data: prog } = await supabase
         .from('programs')
         .select('logo_url')
-        .eq('id', effectivePrimaryProgramId)
+        .eq('id', firstProgramId)
         .maybeSingle();
 
-      if (cancelled) return;
+      if (cancelled || fetchSeq !== logoFetchSeqRef.current) return;
       const logoUrl = (prog as { logo_url?: string | null } | null)?.logo_url ?? null;
       setPrimaryProgramLogoUrl(typeof logoUrl === 'string' && logoUrl.trim() ? logoUrl.trim() : null);
     })();
 
     return () => { cancelled = true; };
-  }, [effectivePrimaryProgramId, viewAsUserId, viewAsUserProfile, userProfile?.primary_program_id]);
+  }, [effectiveLogoUserId, effectivePrimaryProgramId, viewAsUserId, viewAsUserProfile, userProfile?.primary_program_id]);
 
   const hasAdminAccess = userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true;
   const canViewAsUser = hasAdminAccess || userProfile?.role === UserRole.MANAGER || userProfile?.role === UserRole.MENTOR;
