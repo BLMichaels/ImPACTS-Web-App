@@ -371,7 +371,7 @@ const AdminCRMPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actualRole, enterViewAsUser } = useUserProfile();
+  const { actualRole, enterViewAsUser, viewAsUserId, refreshProfile } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
   const canViewAsUser = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
@@ -1201,6 +1201,14 @@ const AdminCRMPage: React.FC = () => {
       setDetailUserPrimaryProgramId(programId);
       const prog = crmProgramsForPrimary.find(p => p.id === programId);
       setDetailUserPrimaryProgramLogoUrl(prog?.logo_url ?? null);
+
+      // If the admin is currently viewing-as this user, reload the view-as profile so the navbar logo updates.
+      if (viewAsUserId && viewAsUserId === detailContactUserId) {
+        await enterViewAsUser(detailContactUserId);
+      } else if (refreshProfile && currentUser?.id && detailContactUserId === currentUser.id) {
+        // If updating the currently logged-in admin's own profile, refresh as well.
+        await refreshProfile();
+      }
     }
   };
 

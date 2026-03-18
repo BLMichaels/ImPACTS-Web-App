@@ -54,7 +54,7 @@ interface GranularPermissionsManagerProps {
 }
 
 const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({ mode, initialSelectedUserId }) => {
-  const { userProfile, refreshProfile } = useUserProfile();
+  const { userProfile, refreshProfile, enterViewAsUser, viewAsUserId } = useUserProfile();
   const [activeTab, setActiveTab] = useState(0);  // 0: Users, 1: Cohorts, 2: Programs, 3: Tabs
   
   // Data
@@ -594,7 +594,10 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     if (!error) {
       setSnack({ message: 'Primary program saved.', severity: 'success' });
       setUsers(prev => prev.map(u => u.id === selectedUserId ? { ...u, primary_program_id: programId || null } : u));
-      if (selectedUserId === userProfile?.id && refreshProfile) {
+      // If this user is currently the one we're viewing as, reload so navbar logo updates.
+      if (viewAsUserId && viewAsUserId === selectedUserId) {
+        await enterViewAsUser(selectedUserId);
+      } else if (selectedUserId === userProfile?.id && refreshProfile) {
         await refreshProfile();
       }
     } else {
