@@ -674,7 +674,8 @@ const AccountPage = () => {
                 <Button
                   variant="contained"
                   startIcon={<EmailIcon />}
-                  href={(() => {
+                  type="button"
+                  onClick={() => {
                     const to = 'BenjaminLMichaels@gmail.com';
                     const subject = encodeURIComponent('ImPACTS – Feedback / Technical issue');
                     const role = actualRole || getTier() || 'User';
@@ -682,8 +683,10 @@ const AccountPage = () => {
                     const body = encodeURIComponent(
                       `Role: ${role}\nEmail: ${email}\n\nMessage:\n${feedbackMessage.trim() || '(No additional message)'}`
                     );
-                    return `mailto:${to}?subject=${subject}&body=${body}`;
-                  })()}
+                    const mailtoUrl = `mailto:${to}?subject=${subject}&body=${body}`;
+                    // Use the OS-registered mailto handler so the user’s default email client opens.
+                    window.location.href = mailtoUrl;
+                  }}
                   sx={{ py: 1 }}
                 >
                   Email feedback to support
