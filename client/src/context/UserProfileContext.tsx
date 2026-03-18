@@ -169,14 +169,6 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         const normalizedRole = normalizeUserRole(prof.role);
         setUserProfile({ ...prof, role: normalizedRole });
 
-        // Primary program logo for navbar
-        if (prof.primary_program_id) {
-          const { data: prog } = await supabase.from('programs').select('logo_url').eq('id', prof.primary_program_id).maybeSingle();
-          setPrimaryProgramLogoUrl((prog as { logo_url?: string | null } | null)?.logo_url ?? null);
-        } else {
-          setPrimaryProgramLogoUrl(null);
-        }
-
         // Fetch permissions from database
         const { data: perms } = await supabase
           .from('role_permissions')
@@ -464,6 +456,34 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     setIsLoading(true);
     await fetchUserProfile();
   };
+
+  // Keep navbar logo in sync with whichever profile is currently effective:
+  // - normal logged-in user
+  // - or "view as" user (when enabled)
+  const effectivePrimaryProgramId = (viewAsUserId && viewAsUserProfile)
+    ? (viewAsUserProfile.primary_program_id ?? null)
+    : (userProfile?.primary_program_id ?? null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!effectivePrimaryProgramId) {
+        if (!cancelled) setPrimaryProgramLogoUrl(null);
+        return;
+      }
+
+      const { data: prog } = await supabase
+        .from('programs')
+        .select('logo_url')
+        .eq('id', effectivePrimaryProgramId)
+        .maybeSingle();
+
+      if (cancelled) return;
+      setPrimaryProgramLogoUrl(((prog as { logo_url?: string | null } | null)?.logo_url ?? null));
+    })();
+
+    return () => { cancelled = true; };
+  }, [effectivePrimaryProgramId, viewAsUserId, viewAsUserProfile, userProfile?.primary_program_id]);
 
   const hasAdminAccess = userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true;
   const canViewAsUser = hasAdminAccess || userProfile?.role === UserRole.MANAGER || userProfile?.role === UserRole.MENTOR;
