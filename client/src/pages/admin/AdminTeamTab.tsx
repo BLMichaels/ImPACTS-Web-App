@@ -82,7 +82,9 @@ const AdminTeamTab: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' }>({ open: false, message: '' });
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>('all');
+  // Default to showing only users who have admin access.
+  // Note: users can have multiple roles; the "Admin" label should correspond to is_admin (not role === 'admin').
+  const [roleFilter, setRoleFilter] = useState<string>('admin');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -201,7 +203,9 @@ const AdminTeamTab: React.FC = () => {
     const searchTokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const searchable = `${user.firstName} ${user.lastName} ${user.email}`.toLowerCase();
     const matchesSearch = searchTokens.length === 0 || searchTokens.every(token => searchable.includes(token));
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    const matchesRole =
+      roleFilter === 'all' ||
+      (roleFilter === 'admin' ? user.is_admin === true : user.role === roleFilter);
     return matchesSearch && matchesRole;
   });
 
