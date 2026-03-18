@@ -561,7 +561,7 @@ const AccountPage = () => {
                 <Typography variant="body1" paragraph>
                   You have agreed to our Terms of Service and User Agreement. This agreement covers 
                   important information about data usage, privacy, and your responsibilities when 
-                  using the ImPACTS Pediatric Readiness Assessment Tool.
+                  using the ImPACTS PECC Support Tool.
                 </Typography>
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>

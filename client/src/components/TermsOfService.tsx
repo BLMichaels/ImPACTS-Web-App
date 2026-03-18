@@ -70,7 +70,7 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
       <DialogContent dividers>
         <Paper elevation={1} sx={{ p: 3, mb: 2 }}>
           <Typography variant="h6" gutterBottom color="primary">
-            ImPACTS Pediatric Readiness Assessment Tool
+            ImPACTS PECC Support Tool
           </Typography>
           <Typography variant="body2" color="text.secondary" paragraph>
             <strong>Last Updated:</strong> {TERMS_LAST_UPDATED}
@@ -84,7 +84,7 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
           This Terms of Service and User Agreement ("Agreement") is a legally binding contract 
           between you ("User," "you," or "your") and the ImPACTS Collaborative ("ImPACTS," "we," 
           "us," or "our") governing your use of the ImPACTS (Improving Pediatric Acute Care Through 
-          Simulation) Pediatric Readiness Assessment Tool ("Tool" or "Service"). This Tool is 
+          Simulation) ImPACTS PECC Support Tool ("Tool" or "Service"). This Tool is 
           designed to assist healthcare facilities in assessing and improving their pediatric 
           readiness capabilities through simulation-based evaluation and gap analysis. By accessing, 
           using, or registering for this Tool, you acknowledge that you have read, understood, and 
