@@ -217,7 +217,7 @@ function getLinkedSystemIdForHospital(hospitalContact: Contact, allContacts: Con
 }
 
 /** Tab index for Team (user management) - when selected, show AdminTeamTab instead of contacts. */
-const TEAM_TAB_INDEX = 9;
+const TEAM_TAB_INDEX = 8;
 
 const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs' | 'linkedTo'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
@@ -1538,14 +1538,16 @@ const AdminCRMPage: React.FC = () => {
       if (!matchesSearch) return false;
 
       if (tabValue === 0) {}
-      else if (tabValue === 1 && contact.type !== 'hospital') return false;
-      else if (tabValue === 2 && contact.type !== 'system') return false;
-      else if (tabValue === 3 && contact.type !== 'hiring_group') return false;
-      else if (tabValue === 4 && contact.type !== 'manager') return false;
-      else if (tabValue === 5 && contact.type !== 'mentor') return false;
-      else if (tabValue === 6 && contact.type !== 'pecc') return false;
-      else if (tabValue === 7 && contact.type !== 'staff') return false;
-      else if (tabValue === 8 && contact.type !== 'other') return false;
+      else if (tabValue === TEAM_TAB_INDEX) {
+        // Team tab renders a different panel (AdminTeamTab), so we don't want contact-type filtering
+        // to interfere with that view.
+      } else if (tabValue === 1 && !['organization', 'system', 'hiring_group'].includes(contact.type)) return false;
+      else if (tabValue === 2 && contact.type !== 'hospital') return false;
+      else if (tabValue === 3 && contact.type !== 'manager') return false;
+      else if (tabValue === 4 && contact.type !== 'mentor') return false;
+      else if (tabValue === 5 && contact.type !== 'pecc') return false;
+      else if (tabValue === 6 && contact.type !== 'staff') return false;
+      else if (tabValue === 7 && contact.type !== 'other') return false;
 
       if (statusFilter.length && !statusFilter.includes(contact.status)) return false;
       if (regionFilter.length && !regionFilter.includes(contact.region)) return false;
@@ -3142,8 +3144,23 @@ const AdminCRMPage: React.FC = () => {
         ].map(({ key, label, count }) => {
           const isPending = key === 'pending';
           const isAll = key === 'all';
-          const typeKeys = ['hospital', 'system', 'hiring_group', 'manager', 'mentor', 'pecc', 'staff', 'other'];
-          const isActive = isPending ? activePendingFilter : isAll ? tabValue === 0 && !activePendingFilter : tabValue > 0 && typeKeys[tabValue - 1] === key;
+          const tabValueByContactType: Partial<Record<ContactType, number>> = {
+            organization: 1,
+            hospital: 2,
+            system: 1,
+            hiring_group: 1,
+            manager: 3,
+            mentor: 4,
+            pecc: 5,
+            staff: 6,
+            other: 7
+          };
+          const typeTabValue = !isPending && !isAll ? tabValueByContactType[key as ContactType] : undefined;
+          const isActive = isPending
+            ? activePendingFilter
+            : isAll
+              ? tabValue === 0 && !activePendingFilter
+              : tabValue === typeTabValue && !activePendingFilter;
           const borderColor = isPending ? theme.palette.warning.main : isAll ? theme.palette.primary.main : TYPE_COLORS[key as ContactType] || theme.palette.grey[400];
           return (
             <Paper
@@ -3151,7 +3168,7 @@ const AdminCRMPage: React.FC = () => {
               onClick={() => {
                 if (isPending) { setTabValue(0); setStatusFilter(['Pending']); }
                 else if (isAll) { setTabValue(0); setStatusFilter([]); }
-                else { setTabValue(typeKeys.indexOf(key) + 1); setStatusFilter([]); }
+                else { setTabValue(typeTabValue ?? 0); setStatusFilter([]); }
               }}
               sx={{
                 flex: '1 1 0',
