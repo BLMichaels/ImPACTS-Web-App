@@ -375,6 +375,23 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       setViewAsUserProfile(profWithRole);
       setViewAsSiteId(sid);
       setViewAsVisibleTabs(tabs);
+      // Ensure navbar logo is updated immediately for the view-as user.
+      // (Navbar falls back to default when `primaryProgramLogoUrl` is null.)
+      const pid = (prof.primary_program_id ?? null) as string | null;
+      if (pid) {
+        const { data: progLogo } = await supabase
+          .from('programs')
+          .select('logo_url')
+          .eq('id', pid)
+          .maybeSingle();
+        setPrimaryProgramLogoUrl(
+          typeof progLogo?.logo_url === 'string' && progLogo.logo_url.trim()
+            ? progLogo.logo_url.trim()
+            : null
+        );
+      } else {
+        setPrimaryProgramLogoUrl(null);
+      }
       const dashboardPath = getDefaultDashboardForRole(normalizedRole);
       return { ok: true, dashboardPath };
     } catch {
@@ -479,7 +496,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         .maybeSingle();
 
       if (cancelled) return;
-      setPrimaryProgramLogoUrl(((prog as { logo_url?: string | null } | null)?.logo_url ?? null));
+      const logoUrl = (prog as { logo_url?: string | null } | null)?.logo_url ?? null;
+      setPrimaryProgramLogoUrl(typeof logoUrl === 'string' && logoUrl.trim() ? logoUrl.trim() : null);
     })();
 
     return () => { cancelled = true; };
