@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../supabase';
 import { UserRole, normalizeUserRole, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } from '../types/database';
@@ -92,6 +92,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [siteId, setSiteId] = useState<string | null>(null);
   const [visibleTabs, setVisibleTabs] = useState<string[]>([]);
   const [primaryProgramLogoUrl, setPrimaryProgramLogoUrl] = useState<string | null>(null);
+  // Guard against out-of-order async updates when rapidly switching "view as" users.
+  const latestViewAsUserIdRef = useRef<string | null>(null);
 
   // Fetch user profile from Supabase
   const fetchUserProfile = useCallback(async () => {
@@ -310,6 +312,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   }, []);
 
   const enterViewAsUser = useCallback(async (userId: string): Promise<{ ok: boolean; dashboardPath?: string }> => {
+    latestViewAsUserIdRef.current = userId;
     const me = userProfile;
     const isAdmin = me?.role === UserRole.ADMIN || me?.is_admin === true;
     const isManager = me?.role === UserRole.MANAGER;
@@ -384,12 +387,14 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           .select('logo_url')
           .eq('id', pid)
           .maybeSingle();
+        if (latestViewAsUserIdRef.current !== userId) return { ok: true, dashboardPath: getDefaultDashboardForRole(normalizedRole) };
         setPrimaryProgramLogoUrl(
           typeof progLogo?.logo_url === 'string' && progLogo.logo_url.trim()
             ? progLogo.logo_url.trim()
             : null
         );
       } else {
+        if (latestViewAsUserIdRef.current !== userId) return { ok: true, dashboardPath: getDefaultDashboardForRole(normalizedRole) };
         setPrimaryProgramLogoUrl(null);
       }
       const dashboardPath = getDefaultDashboardForRole(normalizedRole);
