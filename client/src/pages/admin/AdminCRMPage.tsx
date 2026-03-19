@@ -382,10 +382,18 @@ const AdminCRMPage: React.FC = () => {
   }, [searchParams]);
   // Quick filter for the summary cards at the top of the CRM page.
   // Keeps card filtering aligned with exact `contact.type` even when the Tabs group multiple types (e.g. Organizations includes org/system/hiring_group).
-  const [crmQuickTypeFilter, setCrmQuickTypeFilter] = useState<ContactType | 'all'>('all');
+  const [crmQuickTypeFilter, setCrmQuickTypeFilter] = useState<ContactType | 'organizationGroup' | 'all'>('all');
   const handleTabChange = (_: React.SyntheticEvent, v: number) => {
     setTabValue(v);
-    setCrmQuickTypeFilter('all');
+    // Keep the summary cards aligned with the tab labels.
+    if (v === 1) setCrmQuickTypeFilter('organizationGroup');
+    else if (v === 2) setCrmQuickTypeFilter('hospital');
+    else if (v === 3) setCrmQuickTypeFilter('manager');
+    else if (v === 4) setCrmQuickTypeFilter('mentor');
+    else if (v === 5) setCrmQuickTypeFilter('pecc');
+    else if (v === 6) setCrmQuickTypeFilter('staff');
+    else if (v === 7) setCrmQuickTypeFilter('other');
+    else setCrmQuickTypeFilter('all');
     if (v === TEAM_TAB_INDEX) setSearchParams({ tab: 'team' });
     else setSearchParams({});
   };
@@ -1554,7 +1562,11 @@ const AdminCRMPage: React.FC = () => {
         // to interfere with that view.
       } else if (crmQuickTypeFilter !== 'all') {
         // Summary cards filter by exact contact.type.
-        if (contact.type !== crmQuickTypeFilter) return false;
+        if (crmQuickTypeFilter === 'organizationGroup') {
+          if (!['organization', 'system', 'hiring_group'].includes(contact.type)) return false;
+        } else {
+          if (contact.type !== crmQuickTypeFilter) return false;
+        }
       } else if (tabValue === 0) {
         // All (no extra type filter)
       } else if (tabValue === 1 && !['organization', 'system', 'hiring_group'].includes(contact.type)) return false;
@@ -3149,10 +3161,12 @@ const AdminCRMPage: React.FC = () => {
       <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1.5, mb: 3, overflowX: 'auto', pb: 0.5 }}>
         {[
           { key: 'all', label: 'All', count: summaryCounts.all },
-          { key: 'organization', label: 'Organizations', count: summaryCounts.organization },
+          {
+            key: 'organizationGroup',
+            label: 'Organizations',
+            count: summaryCounts.organization + summaryCounts.system + summaryCounts.hiring_group
+          },
           { key: 'hospital', label: 'Hospitals', count: summaryCounts.hospital },
-          { key: 'system', label: 'Systems', count: summaryCounts.system },
-          { key: 'hiring_group', label: 'Hiring Groups', count: summaryCounts.hiring_group },
           { key: 'manager', label: 'Managers', count: summaryCounts.manager },
           { key: 'mentor', label: 'Mentors', count: summaryCounts.mentor },
           { key: 'pecc', label: 'PECCs', count: summaryCounts.pecc },
@@ -3160,8 +3174,10 @@ const AdminCRMPage: React.FC = () => {
           { key: 'other', label: 'Other', count: summaryCounts.other }
         ].map(({ key, label, count }) => {
           const isAll = key === 'all';
-          const isActive = isAll ? crmQuickTypeFilter === 'all' : crmQuickTypeFilter === (key as ContactType);
-          const borderColor = isAll ? theme.palette.primary.main : TYPE_COLORS[key as ContactType] || theme.palette.grey[400];
+          const isActive = isAll ? crmQuickTypeFilter === 'all' : crmQuickTypeFilter === key;
+          const borderColor = isAll
+            ? theme.palette.primary.main
+            : TYPE_COLORS[(key === 'organizationGroup' ? 'organization' : key) as ContactType] || theme.palette.grey[400];
           return (
             <Paper
               key={key}
@@ -3171,20 +3187,19 @@ const AdminCRMPage: React.FC = () => {
                   setCrmQuickTypeFilter('all');
                   setStatusFilter([]);
                 } else {
-                  setCrmQuickTypeFilter(key as ContactType);
-                  // Keep the Tabs highlight reasonable (Organizations groups org/system/hiring_group).
-                  const tabValueByContactType: Partial<Record<ContactType, number>> = {
-                    organization: 1,
-                    system: 1,
-                    hiring_group: 1,
-                    hospital: 2,
-                    manager: 3,
-                    mentor: 4,
-                    pecc: 5,
-                    staff: 6,
-                    other: 7
-                  };
-                  setTabValue(tabValueByContactType[key as ContactType] ?? 0);
+                  setCrmQuickTypeFilter(key as ContactType | 'organizationGroup');
+                  let nextTab = 0;
+                  switch (key) {
+                    case 'organizationGroup': nextTab = 1; break;
+                    case 'hospital': nextTab = 2; break;
+                    case 'manager': nextTab = 3; break;
+                    case 'mentor': nextTab = 4; break;
+                    case 'pecc': nextTab = 5; break;
+                    case 'staff': nextTab = 6; break;
+                    case 'other': nextTab = 7; break;
+                    default: nextTab = 0;
+                  }
+                  setTabValue(nextTab);
                   setStatusFilter([]);
                 }
               }}
@@ -3206,7 +3221,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography
                   variant="h6"
                   fontWeight={700}
-                  sx={{ color: isAll ? 'primary.main' : TYPE_COLORS[key as ContactType] || 'text.primary' }}
+                  sx={{ color: isAll ? 'primary.main' : TYPE_COLORS[(key === 'organizationGroup' ? 'organization' : key) as ContactType] || 'text.primary' }}
                 >
                   {count}
                 </Typography>
