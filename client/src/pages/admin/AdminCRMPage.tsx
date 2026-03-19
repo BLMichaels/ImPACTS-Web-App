@@ -380,8 +380,12 @@ const AdminCRMPage: React.FC = () => {
   useEffect(() => {
     if (searchParams.get('tab') === 'team') setTabValue(TEAM_TAB_INDEX);
   }, [searchParams]);
+  // Quick filter for the summary cards at the top of the CRM page.
+  // Keeps card filtering aligned with exact `contact.type` even when the Tabs group multiple types (e.g. Organizations includes org/system/hiring_group).
+  const [crmQuickTypeFilter, setCrmQuickTypeFilter] = useState<ContactType | 'all'>('all');
   const handleTabChange = (_: React.SyntheticEvent, v: number) => {
     setTabValue(v);
+    setCrmQuickTypeFilter('all');
     if (v === TEAM_TAB_INDEX) setSearchParams({ tab: 'team' });
     else setSearchParams({});
   };
@@ -1545,10 +1549,14 @@ const AdminCRMPage: React.FC = () => {
       })();
       if (!matchesSearch) return false;
 
-      if (tabValue === 0) {}
-      else if (tabValue === TEAM_TAB_INDEX) {
+      if (tabValue === TEAM_TAB_INDEX) {
         // Team tab renders a different panel (AdminTeamTab), so we don't want contact-type filtering
         // to interfere with that view.
+      } else if (crmQuickTypeFilter !== 'all') {
+        // Summary cards filter by exact contact.type.
+        if (contact.type !== crmQuickTypeFilter) return false;
+      } else if (tabValue === 0) {
+        // All (no extra type filter)
       } else if (tabValue === 1 && !['organization', 'system', 'hiring_group'].includes(contact.type)) return false;
       else if (tabValue === 2 && contact.type !== 'hospital') return false;
       else if (tabValue === 3 && contact.type !== 'manager') return false;
@@ -1595,7 +1603,7 @@ const AdminCRMPage: React.FC = () => {
       return 0;
     });
     return list;
-  }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter, regionFilter, stateFilter, hospitalTypeFilter, programFilter, cohortFilter]);
+  }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter, regionFilter, stateFilter, hospitalTypeFilter, programFilter, cohortFilter, crmQuickTypeFilter]);
 
   const displayedContacts = useMemo(() => {
     if (pageSize === 'all') return filteredAndSortedContacts;
@@ -2651,6 +2659,7 @@ const AdminCRMPage: React.FC = () => {
     setHospitalTypeFilter([]);
     setProgramFilter([]);
     setCohortFilter([]);
+    setCrmQuickTypeFilter('all');
     setFilterMenuAnchor(null);
   };
 
@@ -3140,6 +3149,7 @@ const AdminCRMPage: React.FC = () => {
       <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1.5, mb: 3, overflowX: 'auto', pb: 0.5 }}>
         {[
           { key: 'all', label: 'All', count: summaryCounts.all },
+          { key: 'organization', label: 'Organizations', count: summaryCounts.organization },
           { key: 'hospital', label: 'Hospitals', count: summaryCounts.hospital },
           { key: 'system', label: 'Systems', count: summaryCounts.system },
           { key: 'hiring_group', label: 'Hiring Groups', count: summaryCounts.hiring_group },
@@ -3147,36 +3157,36 @@ const AdminCRMPage: React.FC = () => {
           { key: 'mentor', label: 'Mentors', count: summaryCounts.mentor },
           { key: 'pecc', label: 'PECCs', count: summaryCounts.pecc },
           { key: 'staff', label: 'Staff', count: summaryCounts.staff },
-          { key: 'other', label: 'Other', count: summaryCounts.other },
-          { key: 'pending', label: 'Pending', count: summaryCounts.pending }
+          { key: 'other', label: 'Other', count: summaryCounts.other }
         ].map(({ key, label, count }) => {
-          const isPending = key === 'pending';
           const isAll = key === 'all';
-          const tabValueByContactType: Partial<Record<ContactType, number>> = {
-            organization: 1,
-            hospital: 2,
-            system: 1,
-            hiring_group: 1,
-            manager: 3,
-            mentor: 4,
-            pecc: 5,
-            staff: 6,
-            other: 7
-          };
-          const typeTabValue = !isPending && !isAll ? tabValueByContactType[key as ContactType] : undefined;
-          const isActive = isPending
-            ? activePendingFilter
-            : isAll
-              ? tabValue === 0 && !activePendingFilter
-              : tabValue === typeTabValue && !activePendingFilter;
-          const borderColor = isPending ? theme.palette.warning.main : isAll ? theme.palette.primary.main : TYPE_COLORS[key as ContactType] || theme.palette.grey[400];
+          const isActive = isAll ? crmQuickTypeFilter === 'all' : crmQuickTypeFilter === (key as ContactType);
+          const borderColor = isAll ? theme.palette.primary.main : TYPE_COLORS[key as ContactType] || theme.palette.grey[400];
           return (
             <Paper
               key={key}
               onClick={() => {
-                if (isPending) { setTabValue(0); setStatusFilter(['Pending']); }
-                else if (isAll) { setTabValue(0); setStatusFilter([]); }
-                else { setTabValue(typeTabValue ?? 0); setStatusFilter([]); }
+                if (isAll) {
+                  setTabValue(0);
+                  setCrmQuickTypeFilter('all');
+                  setStatusFilter([]);
+                } else {
+                  setCrmQuickTypeFilter(key as ContactType);
+                  // Keep the Tabs highlight reasonable (Organizations groups org/system/hiring_group).
+                  const tabValueByContactType: Partial<Record<ContactType, number>> = {
+                    organization: 1,
+                    system: 1,
+                    hiring_group: 1,
+                    hospital: 2,
+                    manager: 3,
+                    mentor: 4,
+                    pecc: 5,
+                    staff: 6,
+                    other: 7
+                  };
+                  setTabValue(tabValueByContactType[key as ContactType] ?? 0);
+                  setStatusFilter([]);
+                }
               }}
               sx={{
                 flex: '1 1 0',
@@ -3193,7 +3203,11 @@ const AdminCRMPage: React.FC = () => {
               {loading ? (
                 <Skeleton variant="text" width={32} height={28} sx={{ mx: 'auto' }} />
               ) : (
-                <Typography variant="h6" fontWeight={700} sx={{ color: isPending ? 'warning.main' : isAll ? 'primary.main' : TYPE_COLORS[key as ContactType] || 'text.primary' }}>
+                <Typography
+                  variant="h6"
+                  fontWeight={700}
+                  sx={{ color: isAll ? 'primary.main' : TYPE_COLORS[key as ContactType] || 'text.primary' }}
+                >
                   {count}
                 </Typography>
               )}
