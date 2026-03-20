@@ -9,9 +9,8 @@ This repo includes **`supabase/config.toml`** with `verify_jwt = false` for thes
 Deploy from the repo root (so `config.toml` is picked up):
 
 ```bash
-supabase functions deploy send-invitation-email
-supabase functions deploy provision-crm-portal-user
-supabase functions deploy complete-invitation-registration
+cd "/path/to/ImPACTS-Web-App"   # use your real clone path (must contain supabase/functions/)
+supabase functions deploy
 ```
 
 Or pass the flag explicitly (same effect):
@@ -31,7 +30,10 @@ After changing JWT settings, redeploy the function and retest **View as user** f
 
 ## Redeploy from your machine (one command)
 
+**You must `cd` into the ImPACTS-Web-App repo root first** (where `supabase/functions` exists). If you run deploy from `~`, you’ll get “No Functions found”.
+
 ```bash
+cd "/Volumes/4TB Ext HD/BenjaminMichaels-EXT/Documents/GitHub/ImPACTS-Web-App"
 ./scripts/deploy-supabase-functions.sh
 ```
 
