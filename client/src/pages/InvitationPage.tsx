@@ -272,7 +272,74 @@ const InvitationPage: React.FC = () => {
       if (!invitation || !code) {
         throw new Error('Invalid invitation');
       }
-      
+
+      const finishRegistration = async (userId: string) => {
+        const dynamicAnswers: Record<string, string | boolean | string[]> = {};
+        Object.entries(registrationAnswers).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && (typeof v !== 'string' || v.trim() !== '')) {
+            dynamicAnswers[k] = v;
+          }
+        });
+        const updatePayload: Record<string, unknown> = {
+          first_name: formData.firstName.trim(),
+          last_name: formData.lastName.trim(),
+          phone: formData.phone.trim() || null,
+          role: invitation.role,
+          registration_answers: Object.keys(dynamicAnswers).length ? dynamicAnswers : {},
+          updated_at: new Date().toISOString()
+        };
+
+        const { data: invData } = await supabase
+          .from('invitations')
+          .select('mentor_id, manager_id, hospital_id, cohort_ids, invited_by')
+          .eq('code', code)
+          .single();
+
+        if (invitation.role === 'pecc') {
+          if (invData?.hospital_id) {
+            updatePayload.hospital_facility_id = String(invData.hospital_id);
+          }
+          if (invData?.mentor_id) {
+            updatePayload.mentor_id = invData.mentor_id;
+          } else if (invData?.manager_id) {
+            updatePayload.manager_id_for_pecc = invData.manager_id;
+          }
+        } else if (invitation.role === 'mentor' && invData?.manager_id) {
+          updatePayload.manager_id = invData.manager_id;
+        }
+
+        const { error: updateError } = await supabase.from('users').update(updatePayload).eq('id', userId);
+
+        if (updateError) {
+          console.error('Failed to update user profile:', updateError);
+        }
+
+        const cohortIds = (invData as { cohort_ids?: string[] } | null)?.cohort_ids;
+        const invitedBy = (invData as { invited_by?: string } | null)?.invited_by;
+        if (invitation.role === 'pecc' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
+          for (const cohortId of cohortIds) {
+            await supabase.from('cohort_members').upsert(
+              { cohort_id: cohortId, user_id: userId, added_by: invitedBy, status: 'active' },
+              { onConflict: 'cohort_id,user_id' }
+            );
+          }
+        }
+        if (invitation.role === 'mentor' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
+          for (const cohortId of cohortIds) {
+            await supabase.from('cohort_invite_mentors').upsert(
+              { cohort_id: cohortId, mentor_id: userId, assigned_by: invitedBy },
+              { onConflict: 'cohort_id,mentor_id' }
+            );
+          }
+        }
+
+        try {
+          await acceptInvitation(code, userId);
+        } catch (acceptError) {
+          console.error('Failed to mark invitation as accepted:', acceptError);
+        }
+      };
+
       // Create account with Supabase
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: formData.email.trim().toLowerCase(),
@@ -290,89 +357,43 @@ const InvitationPage: React.FC = () => {
       });
 
       if (signUpError) {
+        const msg = signUpError.message?.toLowerCase() ?? '';
+        const looksLikeExisting =
+          msg.includes('already') ||
+          msg.includes('registered') ||
+          msg.includes('exists') ||
+          msg.includes('user already');
+
+        if (looksLikeExisting) {
+          const { data: fnData, error: fnErr } = await supabase.functions.invoke('complete-invitation-registration', {
+            body: {
+              invitation_code: code,
+              email: formData.email.trim().toLowerCase(),
+              password: formData.password
+            }
+          });
+          const fnPayload = fnData as { ok?: boolean; error?: string } | null;
+          if (fnErr || !fnPayload?.ok) {
+            throw new Error(fnPayload?.error || fnErr?.message || 'Could not complete registration for this invitation.');
+          }
+          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+            email: formData.email.trim().toLowerCase(),
+            password: formData.password
+          });
+          if (signInErr || !signInData.user) {
+            throw signInErr ?? new Error('Sign-in failed after setting password.');
+          }
+          await finishRegistration(signInData.user.id);
+          await supabase.auth.signOut();
+          setError(null);
+          navigate('/login?registered=success&message=Account ready. Sign in with your email and password.');
+          return;
+        }
         throw signUpError;
       }
 
       if (data.user) {
-        // Update user record with role and assignments
-        const dynamicAnswers: Record<string, string | boolean | string[]> = {};
-        Object.entries(registrationAnswers).forEach(([k, v]) => {
-          if (v !== undefined && v !== null && (typeof v !== 'string' || v.trim() !== '')) {
-            dynamicAnswers[k] = v;
-          }
-        });
-        const updatePayload: any = {
-          first_name: formData.firstName.trim(),
-          last_name: formData.lastName.trim(),
-          phone: formData.phone.trim() || null,
-          role: invitation.role,
-          registration_answers: Object.keys(dynamicAnswers).length ? dynamicAnswers : {},
-          updated_at: new Date().toISOString()
-        };
-        
-        // Add assignments based on invitation
-        const { data: invData } = await supabase
-          .from('invitations')
-          .select('mentor_id, manager_id, hospital_id, cohort_ids, invited_by')
-          .eq('code', code)
-          .single();
-        
-        if (invitation.role === 'pecc') {
-          // Pre-assign PECC to hospital when invitation has hospital_id
-          if (invData?.hospital_id) {
-            updatePayload.hospital_facility_id = String(invData.hospital_id);
-          }
-          // For PECC: if mentor_id exists, use it; if manager_id exists but no mentor_id, it's a direct manager assignment
-          if (invData?.mentor_id) {
-            updatePayload.mentor_id = invData.mentor_id;
-          } else if (invData?.manager_id) {
-            // Direct manager assignment (bypassing mentor)
-            updatePayload.manager_id_for_pecc = invData.manager_id;
-          }
-        } else if (invitation.role === 'mentor' && invData?.manager_id) {
-          updatePayload.manager_id = invData.manager_id;
-        }
-        
-        const { error: updateError } = await supabase
-          .from('users')
-          .update(updatePayload)
-          .eq('id', data.user.id);
-        
-        if (updateError) {
-          console.error('Failed to update user profile:', updateError);
-          // Continue anyway - profile can be updated later
-        }
-        
-        // Add PECC to pre-designated cohorts
-        const cohortIds = (invData as { cohort_ids?: string[] } | null)?.cohort_ids;
-        const invitedBy = (invData as { invited_by?: string } | null)?.invited_by;
-        if (invitation.role === 'pecc' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
-          for (const cohortId of cohortIds) {
-            await supabase.from('cohort_members').upsert(
-              { cohort_id: cohortId, user_id: data.user.id, added_by: invitedBy, status: 'active' },
-              { onConflict: 'cohort_id,user_id' }
-            );
-          }
-        }
-        // For mentor: add to cohort_invite_mentors so they can invite PECCs to these cohorts
-        if (invitation.role === 'mentor' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
-          for (const cohortId of cohortIds) {
-            await supabase.from('cohort_invite_mentors').upsert(
-              { cohort_id: cohortId, mentor_id: data.user.id, assigned_by: invitedBy },
-              { onConflict: 'cohort_id,mentor_id' }
-            );
-          }
-        }
-        
-        // Mark invitation as accepted
-        try {
-          await acceptInvitation(code, data.user.id);
-        } catch (acceptError) {
-          console.error('Failed to mark invitation as accepted:', acceptError);
-          // Continue anyway
-        }
-        
-        // Show success message and navigate (no alert - use URL param for login page to show message)
+        await finishRegistration(data.user.id);
         setError(null);
         navigate('/login?registered=success&message=Please check your email to confirm your account');
       }

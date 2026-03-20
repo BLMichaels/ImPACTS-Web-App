@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
+import { provisionCrmPortalUser } from '../../utils/provisionCrmPortalUser';
 import { useAuth } from '../../context/AuthContext';
 import { getUserData, setUserData } from '../../utils/userData';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -2102,6 +2103,49 @@ const AdminCRMPage: React.FC = () => {
         }
       }
     }
+
+    // Pre-provision auth + public.users for PECC / Manager / Mentor CRM contacts so admins can "View as user"
+    // and pre-load activities, gap plans, checklists, etc. before sending an invitation.
+    const portalContactTypes: ContactType[] = ['pecc', 'manager', 'mentor'];
+    if (
+      formData.type !== 'hospital' &&
+      isPersonType(formData.type) &&
+      portalContactTypes.includes(formData.type as ContactType) &&
+      formData.email?.trim()
+    ) {
+      const r = CONTACT_TYPE_TO_USER_ROLE[formData.type];
+      if (r === 'pecc' || r === 'manager' || r === 'mentor') {
+        const emailTrim = formData.email.trim();
+        const { data: existingRow } = await supabase.from('users').select('id').eq('email', emailTrim).maybeSingle();
+        if (!existingRow?.id) {
+          const pr = await provisionCrmPortalUser({
+            email: emailTrim,
+            role: r,
+            first_name: formData.firstName,
+            last_name: formData.lastName
+          });
+          if ('error' in pr) {
+            console.warn('CRM portal provision:', pr.error);
+          } else {
+            const uid = pr.user_id;
+            const emailKey = emailTrim.toLowerCase();
+            setContacts((prev) =>
+              prev.map((c) =>
+                c.email?.trim().toLowerCase() === emailKey && c.type === formData.type
+                  ? { ...c, user_id: uid }
+                  : c
+              )
+            );
+            setDetailContact((prev) =>
+              prev && prev.email?.trim().toLowerCase() === emailKey && prev.type === formData.type
+                ? { ...prev, user_id: uid }
+                : prev
+            );
+          }
+        }
+      }
+    }
+
     // When a person contact has cohort(s) assigned, sync cohort_members so they show in the cohort's Members list
     if (isPersonType(formData.type) && availableCohorts.length > 0) {
       const cohortNames = (formData.cohorts ?? []).map((n: string) => (n || '').trim()).filter(Boolean);
