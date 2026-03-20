@@ -412,6 +412,7 @@ const AdminCRMPage: React.FC = () => {
   const [detailContactUserId, setDetailContactUserId] = useState<string | null>(null); // Resolved user id for "Manage permissions"
   const [detailViewAsUserOptions, setDetailViewAsUserOptions] = useState<{ id: string; label: string }[]>([]); // For hospital/system/hiring_group: users who can be "viewed as"
   const [viewAsMenuAnchor, setViewAsMenuAnchor] = useState<null | HTMLElement>(null);
+  const [viewAsPortalBusy, setViewAsPortalBusy] = useState(false);
   const [detailUserPrimaryProgramId, setDetailUserPrimaryProgramId] = useState<string | null>(null);
   const [detailUserPrimaryProgramLogoUrl, setDetailUserPrimaryProgramLogoUrl] = useState<string | null>(null);
   const [crmProgramsForPrimary, setCrmProgramsForPrimary] = useState<Array<{ id: string; name: string; logo_url?: string | null }>>([]);
@@ -1206,6 +1207,81 @@ const AdminCRMPage: React.FC = () => {
     })();
     return () => { cancelled = true; };
   }, [detailContactUserId]);
+
+  const personViewAsDisabled = useMemo(() => {
+    const c = detailContact;
+    if (!c || !isPersonType(c.type)) return true;
+    const resolvedId =
+      detailContactUserId && !detailContactUserId.startsWith('pending:')
+        ? detailContactUserId
+        : (c.user_id ?? null);
+    if (resolvedId) return false;
+    if (['pecc', 'manager', 'mentor'].includes(c.type) && c.email?.trim()) return false;
+    return true;
+  }, [detailContact, detailContactUserId]);
+
+  const personViewAsDisabledReason = useMemo(() => {
+    if (!detailContact || !isPersonType(detailContact.type)) return '';
+    if (!personViewAsDisabled) return '';
+    const c = detailContact;
+    if (['pecc', 'manager', 'mentor'].includes(c.type) && !c.email?.trim()) {
+      return 'Add an email to this contact to create a portal you can view as.';
+    }
+    return 'No platform account linked yet. For PECC, Manager, or Mentor, add an email—then click to create the portal and open it.';
+  }, [detailContact, personViewAsDisabled]);
+
+  const handlePersonViewAsUser = useCallback(async () => {
+    const c = detailContact;
+    if (!c || !canViewAsUser || !isPersonType(c.type) || personViewAsDisabled) return;
+
+    const resolvedId =
+      detailContactUserId && !detailContactUserId.startsWith('pending:')
+        ? detailContactUserId
+        : (c.user_id ?? null);
+
+    if (resolvedId) {
+      const result = await enterViewAsUser(resolvedId);
+      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
+      return;
+    }
+
+    const role = CONTACT_TYPE_TO_USER_ROLE[c.type];
+    if (!c.email?.trim() || (role !== 'pecc' && role !== 'manager' && role !== 'mentor')) return;
+
+    setViewAsPortalBusy(true);
+    try {
+      const pr = await provisionCrmPortalUser({
+        email: c.email.trim(),
+        role: role as 'pecc' | 'manager' | 'mentor',
+        first_name: c.firstName,
+        last_name: c.lastName
+      });
+      if ('error' in pr) {
+        console.warn('View as user: provision failed', pr.error);
+        return;
+      }
+      const newId = pr.user_id;
+      setDetailContactUserId(newId);
+      setDetailContact((prev) => (prev ? { ...prev, user_id: newId } : prev));
+      const emailKey = c.email.trim().toLowerCase();
+      setContacts((prev) =>
+        prev.map((row) =>
+          row.email?.trim().toLowerCase() === emailKey && row.type === c.type ? { ...row, user_id: newId } : row
+        )
+      );
+      const result = await enterViewAsUser(newId);
+      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
+    } finally {
+      setViewAsPortalBusy(false);
+    }
+  }, [
+    detailContact,
+    detailContactUserId,
+    canViewAsUser,
+    personViewAsDisabled,
+    enterViewAsUser,
+    navigate
+  ]);
 
   const handleCrmSavePrimaryProgram = async (programId: string | null) => {
     if (!detailContactUserId || detailContactUserId.startsWith('pending:')) return;
@@ -3997,20 +4073,22 @@ const AdminCRMPage: React.FC = () => {
                 }}>
                   Edit
                 </Button>
-                {canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="primary"
-                    startIcon={<VisibilityIcon />}
-                    fullWidth
-                    onClick={async () => {
-                      const result = await enterViewAsUser(detailContactUserId!);
-                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
-                    }}
-                  >
-                    View as this user
-                  </Button>
+                {canViewAsUser && isPersonType(detailContact.type) && (
+                  <Tooltip title={personViewAsDisabled ? personViewAsDisabledReason : 'Open the app as this contact'}>
+                    <span style={{ width: '100%' }}>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        startIcon={viewAsPortalBusy ? <CircularProgress size={16} color="inherit" /> : <VisibilityIcon />}
+                        fullWidth
+                        disabled={personViewAsDisabled || viewAsPortalBusy}
+                        onClick={() => { void handlePersonViewAsUser(); }}
+                      >
+                        View as user
+                      </Button>
+                    </span>
+                  </Tooltip>
                 )}
                 {canViewAsUser && detailViewAsUserOptions.length === 1 && (
                   <Button
@@ -4631,17 +4709,24 @@ const AdminCRMPage: React.FC = () => {
                       Manage permissions
                     </Button>
                   )}
+                  {detailContact && canViewAsUser && isPersonType(detailContact.type) && (
+                    <Tooltip title={personViewAsDisabled ? personViewAsDisabledReason : 'Open the app as this contact'}>
+                      <span>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={viewAsPortalBusy ? <CircularProgress size={18} color="inherit" /> : <VisibilityIcon />}
+                          disabled={personViewAsDisabled || viewAsPortalBusy}
+                          onClick={() => { void handlePersonViewAsUser(); }}
+                        >
+                          View as user
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  )}
                   {detailContact && isPersonType(detailContact.type) && detailContact.email?.trim() && (
                     <Button variant="contained" startIcon={<SendIcon />} onClick={() => setInvitationDialogOpen(true)}>
                       Send Invitation
-                    </Button>
-                  )}
-                  {detailContact && canViewAsUser && isPersonType(detailContact.type) && detailContactUserId && !detailContactUserId.startsWith('pending:') && (
-                    <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
-                      const result = await enterViewAsUser(detailContactUserId);
-                      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
-                    }}>
-                      View as this user
                     </Button>
                   )}
                   {detailContact && canViewAsUser && detailViewAsUserOptions.length === 1 && (
