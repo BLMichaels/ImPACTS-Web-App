@@ -28,3 +28,24 @@ supabase functions deploy send-invitation-email --no-verify-jwt
 - **`complete-invitation-registration`** — Invoked by the invitee (no session); validates invitation in code.
 
 After changing JWT settings, redeploy the function and retest **View as user** from production.
+
+## Redeploy from your machine (one command)
+
+```bash
+./scripts/deploy-supabase-functions.sh
+```
+
+Requires either `npx supabase@latest login` once, or:
+
+```bash
+export SUPABASE_ACCESS_TOKEN="sbp_..."   # Dashboard → Account → Access Tokens
+./scripts/deploy-supabase-functions.sh
+```
+
+## Redeploy from GitHub
+
+1. Repo → **Settings → Secrets and variables → Actions**
+2. Add **`SUPABASE_ACCESS_TOKEN`** (access token) and **`SUPABASE_PROJECT_REF`** (e.g. `ftpifgzzfwpujlvbqqhu`)
+3. **Actions → Deploy Supabase Edge Functions → Run workflow**
+
+That deploys all functions in `supabase/functions/` using `supabase/config.toml`.
