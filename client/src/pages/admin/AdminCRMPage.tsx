@@ -372,7 +372,7 @@ const AdminCRMPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actualRole, enterViewAsUser, viewAsUserId, refreshProfile } = useUserProfile();
+  const { actualRole, enterViewAsUser, viewAsUserId, refreshProfile, hasAdminAccess } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
   const canViewAsUser = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
@@ -1756,6 +1756,13 @@ const AdminCRMPage: React.FC = () => {
       return;
     }
     const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
+    // Only platform admins may set is_admin on Staff CRM contacts; others cannot promote/demote via CRM.
+    const effectiveStaffIsAdmin =
+      formData.type !== 'staff'
+        ? false
+        : hasAdminAccess
+          ? (formData.is_admin ?? false)
+          : (editingContact?.is_admin ?? false);
     const payload: Contact = {
       id: editingContact?.id ?? `contact_${Date.now()}`,
       type: formData.type,
@@ -1775,7 +1782,7 @@ const AdminCRMPage: React.FC = () => {
       linkedOrganizationIds: isPersonType(formData.type) ? formData.linkedOrganizationIds : undefined,
       linkedHospitalIds: isPersonType(formData.type) || formData.type === 'system' || formData.type === 'hiring_group' ? formData.linkedHospitalIds : undefined,
       linkedSystemIds: formData.type === 'hiring_group' ? formData.linkedSystemIds : undefined,
-      is_admin: isPersonType(formData.type) ? (formData.is_admin || false) : undefined,
+      is_admin: formData.type === 'staff' ? effectiveStaffIsAdmin : (isPersonType(formData.type) ? false : undefined),
       createdAt: editingContact?.createdAt ?? new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
       address: formData.address || undefined,
@@ -1996,7 +2003,7 @@ const AdminCRMPage: React.FC = () => {
         city: formData.city?.trim() || null,
         county: formData.county?.trim() || null,
         zip: formData.zip?.trim() || null,
-        is_admin: isPersonType(formData.type) ? (formData.is_admin || false) : false
+        is_admin: formData.type === 'staff' ? effectiveStaffIsAdmin : false
       };
       
       // Check if this is a user-sourced contact (from users table) vs CRM-created
@@ -2021,7 +2028,7 @@ const AdminCRMPage: React.FC = () => {
           const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
           if (userRole != null) {
             userUpdates.role = userRole;
-            userUpdates.is_admin = formData.type === 'staff' ? (formData.is_admin ?? false) : false;
+            userUpdates.is_admin = formData.type === 'staff' ? effectiveStaffIsAdmin : false;
           }
           if (isPersonType(formData.type)) {
             userUpdates.first_name = formData.firstName?.trim() || null;
@@ -2050,7 +2057,7 @@ const AdminCRMPage: React.FC = () => {
           const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
           if (userRole != null) {
             userUpdates.role = userRole;
-            userUpdates.is_admin = formData.type === 'staff' ? (formData.is_admin ?? false) : false;
+            userUpdates.is_admin = formData.type === 'staff' ? effectiveStaffIsAdmin : false;
           }
           await supabase.from('users').update(userUpdates).eq('id', editingContact.user_id);
         }
@@ -2162,7 +2169,7 @@ const AdminCRMPage: React.FC = () => {
           if (userRow?.id) {
             await supabase.from('users').update({
               role: userRole,
-              is_admin: formData.type === 'staff' ? (formData.is_admin ?? false) : false,
+              is_admin: formData.type === 'staff' ? effectiveStaffIsAdmin : false,
               updated_at: new Date().toISOString()
             }).eq('id', userRow.id);
           }
@@ -4213,6 +4220,7 @@ const AdminCRMPage: React.FC = () => {
                     <Grid item xs={12}>
                       <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({ id: c.hospitalId!, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({ id: c!.hospitalId || c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
+                    {formData.type === 'staff' && hasAdminAccess && (
                     <Grid item xs={12}>
                       <FormControlLabel
                         control={
@@ -4224,6 +4232,7 @@ const AdminCRMPage: React.FC = () => {
                         label="Admin"
                       />
                     </Grid>
+                    )}
                   </>
                 ) : formData.type === 'hospital' ? (
                   <>

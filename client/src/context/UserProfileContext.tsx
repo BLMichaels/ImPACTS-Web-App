@@ -43,6 +43,8 @@ interface UserProfileContextType {
   isLoading: boolean;
   userRole: UserRole;
   actualRole: UserRole; // The user's real role (for admins using "View As")
+  /** True when the signed-in user has platform admin privileges (role admin or is_admin). Not affected by "view as" profile swap. */
+  hasAdminAccess: boolean;
   hasPermission: (permission: string) => boolean;
   permissions: string[];
   refreshProfile: () => Promise<void>;
@@ -569,6 +571,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     isLoading,
     userRole: effectiveRole,
     actualRole: userProfile?.role || UserRole.PECC,
+    hasAdminAccess,
     hasPermission,
     permissions,
     refreshProfile,
