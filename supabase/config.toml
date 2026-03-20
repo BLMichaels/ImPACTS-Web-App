@@ -1,0 +1,12 @@
+# Supabase project config (CLI / deploy).
+# JWT verification at the gateway breaks browser CORS preflight (OPTIONS has no Authorization).
+# These functions validate auth inside Deno instead.
+
+[functions.provision-crm-portal-user]
+verify_jwt = false
+
+[functions.complete-invitation-registration]
+verify_jwt = false
+
+[functions.send-invitation-email]
+verify_jwt = false

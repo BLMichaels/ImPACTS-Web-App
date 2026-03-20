@@ -3,14 +3,17 @@
  * so admins can "View as user" and pre-load data before the invite is sent.
  *
  * Deploy: supabase functions deploy provision-crm-portal-user
+ *   (use verify_jwt = false in supabase/config.toml — gateway JWT verify breaks CORS preflight.)
  * Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto in Supabase)
+ * Auth: POST body is only processed after Bearer JWT is validated (admin only).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-supabase-api-version, prefer',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Max-Age': '86400',
 };

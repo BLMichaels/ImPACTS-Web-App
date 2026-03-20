@@ -1,20 +1,30 @@
 # Supabase Edge Functions
 
-Deploy from the repo root (with Supabase CLI linked to the project):
+## CORS / JWT (important)
+
+If **JWT verification is enabled at the gateway** (Supabase default), **browser CORS preflight fails**: `OPTIONS` requests have **no** `Authorization` header, so the gateway returns 4xx before your function runs.
+
+This repo includes **`supabase/config.toml`** with `verify_jwt = false` for these functions. Auth is still enforced **inside** the function code where needed.
+
+Deploy from the repo root (so `config.toml` is picked up):
 
 ```bash
-# Email invitations (existing)
-supabase functions deploy send-invitation-email --no-verify-jwt
-
-# CRM: create auth + users row for PECC / Manager / Mentor before invite (admin JWT required)
+supabase functions deploy send-invitation-email
 supabase functions deploy provision-crm-portal-user
-
-# Invitation page: set password when account was pre-provisioned (signUp says "already registered")
-supabase functions deploy complete-invitation-registration --no-verify-jwt
+supabase functions deploy complete-invitation-registration
 ```
 
-`provision-crm-portal-user` verifies the caller is an **admin** via the user JWT.
+Or pass the flag explicitly (same effect):
 
-`complete-invitation-registration` is invoked **without** a logged-in user (invitee only has the invitation link), so deploy it with `--no-verify-jwt`.
+```bash
+supabase functions deploy provision-crm-portal-user --no-verify-jwt
+supabase functions deploy complete-invitation-registration --no-verify-jwt
+supabase functions deploy send-invitation-email --no-verify-jwt
+```
 
-After deploying new functions, test: save a PECC/Manager/Mentor contact in Admin CRM with an email → **View as this user** should appear; invitation link should still complete registration if an invite is sent later.
+**Dashboard:** Edge Functions → select function → Details → disable “Enforce JWT verification” if you deploy without the CLI.
+
+- **`provision-crm-portal-user`** — Verifies the caller is an **admin** via the `Authorization: Bearer` JWT on POST.
+- **`complete-invitation-registration`** — Invoked by the invitee (no session); validates invitation in code.
+
+After changing JWT settings, redeploy the function and retest **View as user** from production.
