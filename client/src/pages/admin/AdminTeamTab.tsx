@@ -251,7 +251,7 @@ const AdminTeamTab: React.FC = () => {
         };
         const userRole = roleMap[formData.role] || UserRole.PECC;
         
-        const { code, emailSent } = await createAndSendInvitation({
+        const { code, emailSent, emailError } = await createAndSendInvitation({
           email: formData.email,
           role: userRole,
           invitedBy: userProfile.id,
@@ -265,7 +265,7 @@ const AdminTeamTab: React.FC = () => {
           open: true,
           message: emailSent
             ? `Invitation sent to ${formData.email}. Code: ${code}`
-            : `Invitation created. Email was not sent — copy and send this link to ${formData.email}: ${inviteUrl}`,
+            : `Invitation created. Email was not sent${emailError ? `: ${emailError}` : ''} — copy and send this link to ${formData.email}: ${inviteUrl}`,
           severity: 'success'
         });
       } else {

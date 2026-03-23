@@ -821,7 +821,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     if (!inviteEmail.trim() || !currentUser?.id || !selectedHospital) return;
     setInviteSending(true);
     try {
-      const { code, emailSent } = await createAndSendInvitation({
+      const { code, emailSent, emailError } = await createAndSendInvitation({
         email: inviteEmail.trim(),
         role: UserRole.PECC,
         invitedBy: currentUser.id,
@@ -837,7 +837,7 @@ const MentorHospitalContactsPage: React.FC = () => {
         open: true,
         message: emailSent
           ? 'Invitation created! Link copied to clipboard.'
-          : 'Invitation created! Link copied. Email was not sent — please send the link to the invitee.',
+          : `Invitation created! Link copied. Email was not sent${emailError ? `: ${emailError}` : ''} — please send the link to the invitee.`,
         severity: 'success'
       });
     } catch (err: unknown) {

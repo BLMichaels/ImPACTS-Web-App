@@ -296,6 +296,8 @@ export default function RegisterPage() {
       const { error: updateError } = await supabase.from('users').update({
         first_name: effectiveFirstName,
         last_name: effectiveLastName,
+        role: 'pecc',
+        is_active: true,
         phone: effectivePhone || null,
         hospital_facility_id: hospitalFacilityId,
         hospital_other: hospitalOther,

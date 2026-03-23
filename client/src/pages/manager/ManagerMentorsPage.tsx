@@ -445,7 +445,7 @@ const ManagerMentorsPage: React.FC = () => {
     }
     setInviteSending(true);
     try {
-      const { code, emailSent } = await createAndSendInvitation({
+      const { code, emailSent, emailError } = await createAndSendInvitation({
         email,
         role: UserRole.MENTOR,
         invitedBy: userProfile.id,
@@ -462,7 +462,9 @@ const ManagerMentorsPage: React.FC = () => {
         : `Invitation link copied! Send to ${email}`;
       setSnackbar({
         open: true,
-        message: emailSent ? baseMsg : `${baseMsg} (Email was not sent — please send the copied link to the invitee.)`,
+        message: emailSent
+          ? baseMsg
+          : `${baseMsg} (Email was not sent${emailError ? `: ${emailError}` : ''} — please send the copied link to the invitee.)`,
         severity: 'success'
       });
     } catch (err: any) {

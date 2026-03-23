@@ -31,6 +31,8 @@ export interface CreateInvitationResult {
   invitationId: string;
   /** True if the invitation email was sent successfully; false if not (link must be shared manually). */
   emailSent: boolean;
+  /** Optional error detail when email delivery fails. */
+  emailError?: string;
 }
 
 /**
@@ -95,6 +97,7 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
   
   const invitationUrl = `${window.location.origin}/invite/${code}`;
   let emailSent = false;
+  let emailErrorMessage: string | undefined;
 
   try {
     const { data: emailData, error: emailError } = await supabase.functions.invoke('send-invitation-email', {
@@ -107,16 +110,18 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
         customMessage: customMessage != null && customMessage.trim() !== '' ? customMessage.trim() : null
       }
     });
-    if (!emailError && emailData?.ok !== false) {
+    if (!emailError && emailData?.ok === true) {
       emailSent = true;
     } else {
-      console.warn('Invitation email not sent:', emailError?.message ?? emailData?.error ?? 'unknown');
+      emailErrorMessage = emailError?.message ?? emailData?.error ?? 'Invitation email function returned an error';
+      console.warn('Invitation email not sent:', emailErrorMessage);
     }
   } catch (err) {
+    emailErrorMessage = err instanceof Error ? err.message : 'Unknown invitation email error';
     console.warn('Invitation email error:', err);
   }
 
-  return { code, invitationId: invitation.id, emailSent };
+  return { code, invitationId: invitation.id, emailSent, emailError: emailErrorMessage };
 }
 
 /**

@@ -311,7 +311,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       const managerForPeccUserId =
         selectedManagerForPecc && !selectedManagerForPecc.id.startsWith('crm:') ? selectedManagerForPecc.id : null;
 
-      const { code, emailSent } = await createAndSendInvitation({
+      const { code, emailSent, emailError } = await createAndSendInvitation({
         email: email.trim(),
         role,
         invitedBy: userProfile.id,
@@ -326,6 +326,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       
       setInvitationCode(code);
       setInvitationEmailSent(emailSent);
+      if (!emailSent && emailError) {
+        setError(`Invitation created, but email was not sent: ${emailError}`);
+      }
       setSuccess(true);
       if (onSuccess) onSuccess(code);
       
