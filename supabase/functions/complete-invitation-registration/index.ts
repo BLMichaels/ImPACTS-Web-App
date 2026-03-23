@@ -102,5 +102,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: pwdErr.message ?? 'Could not set password' }, 400);
   }
 
+  const { data: accepted, error: acceptErr } = await admin
+    .from('invitations')
+    .update({
+      status: 'accepted',
+      accepted_at: new Date().toISOString(),
+      accepted_by: userId,
+    })
+    .eq('id', (inv as { id: string }).id)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle();
+  if (acceptErr || !accepted?.id) {
+    return json({ error: 'Invitation could not be finalized. Please retry.' }, 409);
+  }
+
   return json({ ok: true, user_id: userId });
 });

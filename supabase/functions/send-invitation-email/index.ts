@@ -3,8 +3,12 @@
 // Deploy: supabase functions deploy send-invitation-email --no-verify-jwt
 // Set secret: Supabase Dashboard → Edge Functions → send-invitation-email → Secrets → RESEND_API_KEY
 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const FROM_EMAIL = Deno.env.get('INVITATION_FROM_EMAIL') || 'ImPACTS <onboarding@resend.dev>';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -70,6 +74,48 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
     }
 
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Missing authorization' }), {
+        status: 401,
+        headers: jsonHeaders,
+      });
+    }
+
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(JSON.stringify({ error: 'Server misconfiguration' }), {
+        status: 500,
+        headers: jsonHeaders,
+      });
+    }
+
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    const {
+      data: { user: actorAuth },
+      error: actorErr,
+    } = await admin.auth.getUser(jwt);
+    if (actorErr || !actorAuth) {
+      return new Response(JSON.stringify({ error: 'Invalid session' }), {
+        status: 401,
+        headers: jsonHeaders,
+      });
+    }
+
+    const { data: actor } = await admin
+      .from('users')
+      .select('role, is_admin')
+      .eq('id', actorAuth.id)
+      .maybeSingle();
+    const actorRole = String(actor?.role ?? '').toLowerCase();
+    const hasInviteAccess = actor?.is_admin === true || actorRole === 'admin' || actorRole === 'manager' || actorRole === 'mentor';
+    if (!hasInviteAccess) {
+      return new Response(JSON.stringify({ error: 'Not authorized to send invitations' }), {
+        status: 403,
+        headers: jsonHeaders,
+      });
+    }
+
     if (!RESEND_API_KEY) {
       console.error('RESEND_API_KEY is not set');
       return new Response(
@@ -97,11 +143,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const role = typeof body.role === 'string' ? body.role : 'user';
+    const invitationRole = typeof body.role === 'string' ? body.role : 'user';
     const expiresAt = typeof body.expiresAt === 'string' ? body.expiresAt : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const customMessage = body.customMessage != null ? body.customMessage : null;
 
-    const html = htmlEmail({ invitationUrl, role, expiresAt, customMessage });
+    const html = htmlEmail({ invitationUrl, role: invitationRole, expiresAt, customMessage });
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',

@@ -41,6 +41,7 @@ Requires either `npx supabase@latest login` once, or:
 
 ```bash
 export SUPABASE_ACCESS_TOKEN="sbp_..."   # Dashboard → Account → Access Tokens
+export SUPABASE_PROJECT_REF="ftpifgzzfwpujlvbqqhu"
 ./scripts/deploy-supabase-functions.sh
 ```
 

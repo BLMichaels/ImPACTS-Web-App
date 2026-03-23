@@ -126,7 +126,7 @@ const ProtectedRoute = ({
   allowedRoles?: UserRole[];
 }) => {
   const { currentUser, loading } = useAuth();
-  const { userProfile, isLoading: profileLoading, userRole } = useUserProfile();
+  const { userProfile, isLoading: profileLoading, userRole, actualRole, hasAdminAccess } = useUserProfile();
   
   // Show loading while contexts are initializing
   if (loading || profileLoading) {
@@ -153,13 +153,19 @@ const ProtectedRoute = ({
   // If no specific roles required, allow access
   if (!allowedRoles || allowedRoles.length === 0) return <>{children}</>;
   
-  // Admin always has access
-  if (userRole === UserRole.ADMIN) return <>{children}</>;
-  
-  // Check if user has one of the allowed roles
-  if (!allowedRoles.includes(userRole)) {
-    // Redirect to appropriate dashboard based on user's role
-    return <Navigate to={getDefaultDashboard(userRole)} />;
+  // True platform admins always have access
+  if (hasAdminAccess) return <>{children}</>;
+
+  // Never allow "view as" to escalate a non-admin actor into admin-only routes.
+  if (allowedRoles.includes(UserRole.ADMIN)) {
+    return <Navigate to={getDefaultDashboard(actualRole)} />;
+  }
+
+  const effectiveNonAdminRole = userRole === UserRole.ADMIN ? actualRole : userRole;
+  const isAllowed = allowedRoles.includes(effectiveNonAdminRole) || allowedRoles.includes(actualRole);
+  if (!isAllowed) {
+    // Redirect to appropriate dashboard based on actor's real role
+    return <Navigate to={getDefaultDashboard(actualRole)} />;
   }
   
   return <>{children}</>;

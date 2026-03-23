@@ -7,7 +7,7 @@
 #
 # Option B — CI token (no interactive login):
 #   export SUPABASE_ACCESS_TOKEN="sbp_..."   # Dashboard → Account → Access Tokens
-#   export SUPABASE_PROJECT_REF="ftpifgzzfwpujlvbqqhu"   # optional; default below
+#   export SUPABASE_PROJECT_REF="ftpifgzzfwpujlvbqqhu"
 #   ./scripts/deploy-supabase-functions.sh
 
 set -euo pipefail
@@ -20,7 +20,11 @@ if [[ ! -f supabase/config.toml ]]; then
 fi
 
 SUPABASE_CLI=(npx --yes supabase@latest)
-PROJECT_REF="${SUPABASE_PROJECT_REF:-ftpifgzzfwpujlvbqqhu}"
+PROJECT_REF="${SUPABASE_PROJECT_REF:-}"
+if [[ -z "$PROJECT_REF" ]]; then
+  echo "SUPABASE_PROJECT_REF is required (example: export SUPABASE_PROJECT_REF=\"ftpifgzzfwpujlvbqqhu\")." >&2
+  exit 1
+fi
 
 echo "Deploying Edge Functions to project: $PROJECT_REF"
 "${SUPABASE_CLI[@]}" functions deploy --project-ref "$PROJECT_REF"

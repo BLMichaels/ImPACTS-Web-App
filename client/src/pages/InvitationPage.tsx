@@ -23,7 +23,7 @@ import {
 } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
-import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
+import { getInvitationByCode } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
@@ -333,11 +333,6 @@ const InvitationPage: React.FC = () => {
           }
         }
 
-        try {
-          await acceptInvitation(code, userId);
-        } catch (acceptError) {
-          console.error('Failed to mark invitation as accepted:', acceptError);
-        }
       };
 
       // Create account with Supabase
