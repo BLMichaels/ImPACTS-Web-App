@@ -17,7 +17,7 @@ Supabase Edge Function that sends invitation emails via [Resend](https://resend.
    - Add `INVITATION_FROM_EMAIL` = e.g. `ImPACTS <noreply@yourdomain.com>`
    - Add `APP_BASE_URL` = your production app origin, e.g. `https://impacts.example.org`
 
-`INVITATION_FROM_EMAIL` and `APP_BASE_URL` are required in production. The function now returns a configuration error if either is missing/invalid.
+`INVITATION_FROM_EMAIL` is required. `APP_BASE_URL` is strongly recommended; if missing, the function will attempt to derive origin from the incoming `invitationUrl` payload.
 
 Without this deployment and `RESEND_API_KEY`, invitations are still created and the app shows the registration link so you can copy and share it manually; the invitee will not receive an email automatically.
 

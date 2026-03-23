@@ -41,7 +41,7 @@ export interface CreateInvitationResult {
  */
 export async function createAndSendInvitation(params: CreateInvitationParams): Promise<CreateInvitationResult> {
   const { email, role, invitedBy, hospitalId, mentorId, managerId, managerIdForPECC, cohortIds, programIds, customMessage } = params;
-  // Create invitation record with collision retries on `code`.
+  // Reuse existing pending invitation when possible to avoid duplicates.
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
   
@@ -51,44 +51,79 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
   const finalManagerId = role === 'pecc' && managerIdForPECC ? managerIdForPECC : (role === 'mentor' ? managerId : null);
   const finalMentorId = role === 'pecc' && mentorId ? mentorId : null;
   
+  const emailNorm = email.trim().toLowerCase();
   let invitationId = '';
   let code = '';
-  let insertAttempts = 0;
-  while (!invitationId) {
-    code = generateInvitationCode();
-    insertAttempts++;
-    if (insertAttempts > 10) {
-      throw new Error('Failed to create invitation after multiple retries');
-    }
-    const insertPayload: Record<string, unknown> = {
-      code,
-      email: email.trim().toLowerCase(),
-      role,
-      status: 'pending' as InvitationStatus,
+  const { data: existingPending } = await supabase
+    .from('invitations')
+    .select('id, code, cohort_ids, program_ids')
+    .eq('email', emailNorm)
+    .eq('role', role)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPending?.id && existingPending.code) {
+    invitationId = existingPending.id;
+    code = existingPending.code;
+    const mergedCohorts = [...new Set([...(existingPending.cohort_ids || []), ...(cohortIds || [])])];
+    const mergedPrograms = [...new Set([...(existingPending.program_ids || []), ...(programIds || [])])];
+    const updatePayload: Record<string, unknown> = {
       hospital_id: hospitalId || null,
       mentor_id: finalMentorId,
       manager_id: finalManagerId,
       invited_by: invitedBy,
-      expires_at: expiresAt.toISOString()
+      expires_at: expiresAt.toISOString(),
     };
-    if (cohortIds?.length) insertPayload.cohort_ids = cohortIds;
-    if (programIds?.length) insertPayload.program_ids = programIds;
-    if (customMessage != null && customMessage.trim() !== '') insertPayload.custom_message = customMessage.trim();
-
-    const { data: invitation, error: insertError } = await supabase
+    if (mergedCohorts.length > 0) updatePayload.cohort_ids = mergedCohorts;
+    if (mergedPrograms.length > 0) updatePayload.program_ids = mergedPrograms;
+    if (customMessage != null && customMessage.trim() !== '') updatePayload.custom_message = customMessage.trim();
+    const { error: updateErr } = await supabase
       .from('invitations')
-      .insert(insertPayload)
-      .select('id')
-      .single();
-    if (!insertError && invitation?.id) {
-      invitationId = invitation.id;
-      break;
+      .update(updatePayload)
+      .eq('id', invitationId);
+    if (updateErr) {
+      throw new Error(`Failed to update existing invitation: ${updateErr.message}`);
     }
-    const msg = `${insertError?.message ?? ''}`.toLowerCase();
-    const maybeDuplicateCode =
-      msg.includes('duplicate') || msg.includes('unique') || msg.includes('code');
-    if (!maybeDuplicateCode) {
-      throw new Error(`Failed to create invitation: ${insertError?.message ?? 'Unknown error'}`);
+  } else {
+    let insertAttempts = 0;
+    while (!invitationId) {
+      code = generateInvitationCode();
+      insertAttempts++;
+      if (insertAttempts > 10) {
+        throw new Error('Failed to create invitation after multiple retries');
+      }
+      const insertPayload: Record<string, unknown> = {
+        code,
+        email: emailNorm,
+        role,
+        status: 'pending' as InvitationStatus,
+        hospital_id: hospitalId || null,
+        mentor_id: finalMentorId,
+        manager_id: finalManagerId,
+        invited_by: invitedBy,
+        expires_at: expiresAt.toISOString()
+      };
+      if (cohortIds?.length) insertPayload.cohort_ids = cohortIds;
+      if (programIds?.length) insertPayload.program_ids = programIds;
+      if (customMessage != null && customMessage.trim() !== '') insertPayload.custom_message = customMessage.trim();
+
+      const { data: invitation, error: insertError } = await supabase
+        .from('invitations')
+        .insert(insertPayload)
+        .select('id')
+        .single();
+      if (!insertError && invitation?.id) {
+        invitationId = invitation.id;
+        break;
+      }
+      const msg = `${insertError?.message ?? ''}`.toLowerCase();
+      const maybeDuplicateCode =
+        msg.includes('duplicate') || msg.includes('unique') || msg.includes('code');
+      if (!maybeDuplicateCode) {
+        throw new Error(`Failed to create invitation: ${insertError?.message ?? 'Unknown error'}`);
+      }
     }
   }
   
@@ -96,28 +131,26 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
   let emailSent = false;
   let emailErrorMessage: string | undefined;
 
-  for (let emailAttempt = 1; emailAttempt <= 2 && !emailSent; emailAttempt += 1) {
-    try {
-      const { data: emailData, error: emailError } = await supabase.functions.invoke('send-invitation-email', {
-        body: {
-          email: email.trim(),
-          code,
-          role,
-          invitationUrl,
-          expiresAt: expiresAt.toISOString(),
-          customMessage: customMessage != null && customMessage.trim() !== '' ? customMessage.trim() : null
-        }
-      });
-      if (!emailError && emailData?.ok === true) {
-        emailSent = true;
-      } else {
-        emailErrorMessage = emailError?.message ?? emailData?.error ?? 'Invitation email function returned an error';
-        console.warn(`Invitation email not sent (attempt ${emailAttempt}):`, emailErrorMessage);
+  try {
+    const { data: emailData, error: emailError } = await supabase.functions.invoke('send-invitation-email', {
+      body: {
+        email: email.trim(),
+        code,
+        role,
+        invitationUrl,
+        expiresAt: expiresAt.toISOString(),
+        customMessage: customMessage != null && customMessage.trim() !== '' ? customMessage.trim() : null
       }
-    } catch (err) {
-      emailErrorMessage = err instanceof Error ? err.message : 'Unknown invitation email error';
-      console.warn(`Invitation email error (attempt ${emailAttempt}):`, err);
+    });
+    if (!emailError && emailData?.ok === true) {
+      emailSent = true;
+    } else {
+      emailErrorMessage = emailError?.message ?? emailData?.error ?? 'Invitation email function returned an error';
+      console.warn('Invitation email not sent:', emailErrorMessage);
     }
+  } catch (err) {
+    emailErrorMessage = err instanceof Error ? err.message : 'Unknown invitation email error';
+    console.warn('Invitation email error:', err);
   }
 
   return { code, invitationId, emailSent, emailError: emailErrorMessage };

@@ -77,6 +77,10 @@ function enforceRateLimit(key: string): boolean {
   return true;
 }
 
+function isLikelyEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // CORS preflight: must return 2xx with CORS headers so the browser allows the actual request
   if (req.method === 'OPTIONS') {
@@ -146,13 +150,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
         { status: 500, headers: jsonHeaders }
       );
     }
-    if (!APP_BASE_URL || !/^https:\/\//i.test(APP_BASE_URL)) {
-      return new Response(
-        JSON.stringify({ error: 'Email service not configured (APP_BASE_URL must be an https URL)' }),
-        { status: 500, headers: jsonHeaders }
-      );
-    }
-
     let body: { email?: string; code?: string; role?: string; invitationUrl?: string; expiresAt?: string; customMessage?: string | null };
     try {
       body = await req.json();
@@ -171,6 +168,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
         { status: 400, headers: jsonHeaders }
       );
     }
+    if (!isLikelyEmail(email)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid email format' }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
     const ipKey = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
     const rlKey = `${actorAuth.id}:${ipKey}`;
     if (!enforceRateLimit(rlKey)) {
@@ -179,7 +182,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
         headers: jsonHeaders,
       });
     }
-    const invitationUrl = `${APP_BASE_URL}/invite/${encodeURIComponent(code)}`;
+    const bodyInviteUrl = typeof body.invitationUrl === 'string' ? body.invitationUrl.trim() : '';
+    const derivedBase = APP_BASE_URL && /^https:\/\//i.test(APP_BASE_URL)
+      ? APP_BASE_URL
+      : (bodyInviteUrl.startsWith('https://') ? bodyInviteUrl.replace(/\/invite\/.*$/, '').replace(/\/+$/, '') : '');
+    if (!derivedBase || !/^https:\/\//i.test(derivedBase)) {
+      return new Response(
+        JSON.stringify({ error: 'Email service not configured (APP_BASE_URL missing/invalid and no valid invitationUrl fallback)' }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
+    const invitationUrl = `${derivedBase}/invite/${encodeURIComponent(code)}`;
 
     const invitationRole = typeof body.role === 'string' ? body.role : 'user';
     const expiresAt = typeof body.expiresAt === 'string' ? body.expiresAt : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();

@@ -65,8 +65,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   const codeLooksValid = /^[A-Z2-9]{8}$/i.test(code);
+  const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm);
 
-  if (!code || !emailNorm || password.length < 8 || !codeLooksValid) {
+  if (!code || !emailNorm || password.length < 8 || !codeLooksValid || !emailLooksValid) {
     return json({ error: 'invitation_code, email, and password (min 8 chars) are required' }, 400);
   }
   const sourceIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
