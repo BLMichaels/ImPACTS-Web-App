@@ -10,7 +10,7 @@
     "@mui/material": "^5.15.10",
     "@mui/x-date-pickers": "^6.19.6",
     "@supabase/supabase-js": "^2.39.0",
-    "date-fns": "^2.30.0",
+    "date-fns": "^4.1.0",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
     "jszip": "^3.10.1",
