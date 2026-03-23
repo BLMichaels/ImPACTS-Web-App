@@ -139,6 +139,7 @@ const ManagerWagesExpensesPage: React.FC = () => {
   });
 
   const [receiptsLink, setReceiptsLink] = useState('');
+  const managedMentorIds = useMemo(() => new Set(mentors.map((m) => m.id)), [mentors]);
 
   // Load mentors (those managed by this manager)
   useEffect(() => {
@@ -173,6 +174,14 @@ const ManagerWagesExpensesPage: React.FC = () => {
     
     loadMentors();
   }, [currentUser?.id, mentorRetryCount]);
+
+  useEffect(() => {
+    if (selectedMentor && !managedMentorIds.has(selectedMentor.id)) {
+      setSelectedMentor(null);
+      setMentorWagesData(null);
+      setTabValue(0);
+    }
+  }, [selectedMentor, managedMentorIds]);
 
   // Load selected mentor's wages data from Supabase (user_data)
   useEffect(() => {
@@ -295,6 +304,10 @@ const ManagerWagesExpensesPage: React.FC = () => {
   // Save mentor wages data to Supabase (user_data)
   const saveMentorWagesData = async (data: MentorWagesData) => {
     if (selectedMentor?.id) {
+      if (!managedMentorIds.has(selectedMentor.id)) {
+        setMentorLoadError('You can only update wages data for mentors in your team.');
+        return;
+      }
       const { setUserData } = await import('../../utils/userData');
       await setUserData(selectedMentor.id, 'mentorWages', data);
       setMentorWagesData(data);
@@ -578,7 +591,11 @@ const ManagerWagesExpensesPage: React.FC = () => {
                       {month.stipendsOnPaymentDate !== undefined ? `$${month.stipendsOnPaymentDate.toFixed(2)}` : '—'}
                     </TableCell>
                     <TableCell align="center">
-                      <IconButton size="small" onClick={() => handleOpenPaymentDialog(month.month)}>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleOpenPaymentDialog(month.month)}
+                        aria-label={`Edit payment for ${month.monthName}`}
+                      >
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
@@ -646,7 +663,7 @@ const ManagerWagesExpensesPage: React.FC = () => {
                         {expense.managerNotes || '—'}
                       </TableCell>
                       <TableCell align="center">
-                        <IconButton size="small" onClick={() => handleOpenExpenseDialog(expense)}>
+                        <IconButton size="small" onClick={() => handleOpenExpenseDialog(expense)} aria-label="Review expense">
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </TableCell>

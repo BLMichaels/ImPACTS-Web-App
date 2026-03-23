@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -121,6 +121,7 @@ const ManagerMentorsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const isMountedRef = useRef(true);
   
   // Wages feature toggle - stored in user_data for current manager
   const [wagesEnabled, setWagesEnabled] = useState(true);
@@ -158,7 +159,9 @@ const ManagerMentorsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadMentors();
+    isMountedRef.current = true;
+    void loadMentors();
+    return () => { isMountedRef.current = false; };
   }, [userProfile?.id]);
 
   // Load cohorts the manager manages when opening Invite Mentor dialog
@@ -197,7 +200,11 @@ const ManagerMentorsPage: React.FC = () => {
       }
       const { data: cohorts } = await supabase.from('cohorts').select('id, name').in('id', cohortIds).eq('is_active', true).order('name');
       setCohortAssignOptions((cohorts || []).map(c => ({ id: c.id, name: c.name })));
-      const { data: existing } = await supabase.from('cohort_invite_mentors').select('cohort_id').eq('mentor_id', cohortAssignMentor.id);
+      const { data: existing } = await supabase
+        .from('cohort_invite_mentors')
+        .select('cohort_id')
+        .eq('mentor_id', cohortAssignMentor.id)
+        .in('cohort_id', cohortIds);
       setCohortAssignSelectedIds((existing || []).map((r: any) => r.cohort_id));
     })();
   }, [cohortAssignMentor, userProfile?.id]);
@@ -206,12 +213,34 @@ const ManagerMentorsPage: React.FC = () => {
     if (!cohortAssignMentor || !userProfile?.id) return;
     setCohortAssignSaving(true);
     try {
-      await supabase.from('cohort_invite_mentors').delete().eq('mentor_id', cohortAssignMentor.id);
-      for (const cohortId of cohortAssignSelectedIds) {
-        await supabase.from('cohort_invite_mentors').upsert(
-          { cohort_id: cohortId, mentor_id: cohortAssignMentor.id, assigned_by: userProfile.id },
+      const managerScopedCohortIds = cohortAssignOptions.map((c) => c.id);
+      const { data: existing, error: existingError } = await supabase
+        .from('cohort_invite_mentors')
+        .select('cohort_id')
+        .eq('mentor_id', cohortAssignMentor.id)
+        .in('cohort_id', managerScopedCohortIds);
+      if (existingError) throw existingError;
+
+      const existingIds = new Set((existing || []).map((r: any) => r.cohort_id as string));
+      const selectedIds = new Set(cohortAssignSelectedIds);
+      const toAdd = cohortAssignSelectedIds.filter((id) => !existingIds.has(id));
+      const toRemove = Array.from(existingIds).filter((id) => !selectedIds.has(id));
+
+      if (toAdd.length > 0) {
+        const { error: upsertError } = await supabase.from('cohort_invite_mentors').upsert(
+          toAdd.map((cohortId) => ({ cohort_id: cohortId, mentor_id: cohortAssignMentor.id, assigned_by: userProfile.id })),
           { onConflict: 'cohort_id,mentor_id' }
         );
+        if (upsertError) throw upsertError;
+      }
+
+      if (toRemove.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('cohort_invite_mentors')
+          .delete()
+          .eq('mentor_id', cohortAssignMentor.id)
+          .in('cohort_id', toRemove);
+        if (deleteError) throw deleteError;
       }
       setSnackbar({ open: true, message: 'Cohort assignments updated', severity: 'success' });
       setCohortAssignMentor(null);
@@ -226,16 +255,23 @@ const ManagerMentorsPage: React.FC = () => {
     if (!userProfile?.id) return;
     
     try {
-      setLoading(true);
-      setLoadError(null);
+      if (isMountedRef.current) {
+        setLoading(true);
+        setLoadError(null);
+      }
 
       // Load all mentors (users table has phone and is_active, not phone_number/status)
       const { data: mentorUsers, error: mentorError } = await supabase
         .from('users')
         .select('id, first_name, last_name, email, phone, is_active')
-        .eq('role', 'mentor');
+        .eq('role', 'mentor')
+        .eq('manager_id', userProfile.id);
 
       if (mentorError) throw mentorError;
+      if (!mentorUsers || mentorUsers.length === 0) {
+        if (isMountedRef.current) setMentors([]);
+        return;
+      }
 
       // Load mentor hospital assignments
       const mentorIds = (mentorUsers || []).map(m => m.id);
@@ -254,23 +290,44 @@ const ManagerMentorsPage: React.FC = () => {
       const hospitalIds = (assignments || [])
         .map((a: any) => Array.isArray(a.hospital) ? a.hospital[0]?.id : a.hospital?.id)
         .filter(Boolean);
+      const uniqueHospitalIds = Array.from(new Set(hospitalIds));
 
       // Load PECCs for these hospitals
-      const { data: peccs, error: peccsError } = await supabase
-        .from('users')
-        .select('id, first_name, last_name, email, hospital_facility_id')
-        .eq('role', 'pecc')
-        .in('hospital_facility_id', hospitalIds);
+      const { data: peccs, error: peccsError } = uniqueHospitalIds.length > 0
+        ? await supabase
+          .from('users')
+          .select('id, first_name, last_name, email, hospital_facility_id')
+          .eq('role', 'pecc')
+          .in('hospital_facility_id', uniqueHospitalIds)
+        : { data: [], error: null };
 
       if (peccsError) throw peccsError;
 
       // Load hospitals to get names
-      const { data: hospitals, error: hospitalsError } = await supabase
-        .from('hospitals')
-        .select('id, name')
-        .in('id', hospitalIds);
+      const { data: hospitals, error: hospitalsError } = uniqueHospitalIds.length > 0
+        ? await supabase
+          .from('hospitals')
+          .select('id, name')
+          .in('id', uniqueHospitalIds)
+        : { data: [], error: null };
 
       if (hospitalsError) throw hospitalsError;
+
+      // Batch checklist progress by hospital to avoid per-PECC N+1 queries.
+      const { data: checklistRows, error: checklistError } = uniqueHospitalIds.length > 0
+        ? await supabase
+          .from('site_checklist_progress')
+          .select('hospital_id, completed')
+          .in('hospital_id', uniqueHospitalIds)
+        : { data: [], error: null };
+      if (checklistError) throw checklistError;
+      const checklistStatsByHospital = new Map<string, { total: number; completed: number }>();
+      (checklistRows || []).forEach((row: { hospital_id: string; completed: boolean }) => {
+        const prev = checklistStatsByHospital.get(row.hospital_id) || { total: 0, completed: 0 };
+        prev.total += 1;
+        if (row.completed) prev.completed += 1;
+        checklistStatsByHospital.set(row.hospital_id, prev);
+      });
 
       // Build mentor data with PECCs
       const mentorData: MentorData[] = await Promise.all(
@@ -300,14 +357,9 @@ const ManagerMentorsPage: React.FC = () => {
               // Load PECC data from localStorage
               const peccData: PECCData[] = await Promise.all(
                 hospitalPeccs.map(async (pecc) => {
-                  // Get checklist progress
-                  const { data: checklistData } = await supabase
-                    .from('site_checklist_progress')
-                    .select('completed')
-                    .eq('hospital_id', pecc.hospital_facility_id);
-
-                  const totalTasks = 100;
-                  const completedTasks = (checklistData || []).filter(t => t.completed).length;
+                  const stats = checklistStatsByHospital.get(pecc.hospital_facility_id || '');
+                  const totalTasks = stats?.total || 0;
+                  const completedTasks = stats?.completed || 0;
                   const checklistProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
                   // Get activities and gap plans from Supabase (user_data)
@@ -364,13 +416,15 @@ const ManagerMentorsPage: React.FC = () => {
         })
       );
 
-      setMentors(mentorData);
+      if (isMountedRef.current) setMentors(mentorData);
     } catch (err) {
       console.error('Error loading mentors:', err);
-      setLoadError('Failed to load mentor data. Please try again.');
-      setSnackbar({ open: true, message: 'Error loading mentor data', severity: 'error' });
+      if (isMountedRef.current) {
+        setLoadError('Failed to load mentor data. Please try again.');
+        setSnackbar({ open: true, message: 'Error loading mentor data', severity: 'error' });
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
@@ -689,7 +743,15 @@ const ManagerMentorsPage: React.FC = () => {
                       color="success"
                       variant="outlined"
                     />
-                    <IconButton size="small">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleExpandMentor(mentor.id);
+                      }}
+                      aria-label={expandedMentor === mentor.id ? 'Collapse mentor details' : 'Expand mentor details'}
+                      aria-expanded={expandedMentor === mentor.id}
+                    >
                       {expandedMentor === mentor.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                     </IconButton>
                   </Box>
@@ -797,7 +859,15 @@ const ManagerMentorsPage: React.FC = () => {
                                         >
                                           View Details
                                         </Button>
-                                        <IconButton size="small">
+                                        <IconButton
+                                          size="small"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleExpandPECC(pecc.id);
+                                          }}
+                                          aria-label={expandedPECC === pecc.id ? 'Collapse PECC details' : 'Expand PECC details'}
+                                          aria-expanded={expandedPECC === pecc.id}
+                                        >
                                           {expandedPECC === pecc.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                                         </IconButton>
                                       </Box>

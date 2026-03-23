@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -68,9 +68,12 @@ const ManagerOverviewPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hospitalNotes, setHospitalNotes] = useState<Array<{ date: string; text: string }>>([]);
   const [hospitalNotesName, setHospitalNotesName] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    loadData();
+    isMountedRef.current = true;
+    void loadData();
+    return () => { isMountedRef.current = false; };
   }, [userProfile?.id]);
 
   const selectedHospitalId = searchParams.get('hospital');
@@ -102,16 +105,23 @@ const ManagerOverviewPage: React.FC = () => {
     if (!userProfile?.id) return;
     
     try {
-      setLoading(true);
-      setLoadError(null);
+      if (isMountedRef.current) {
+        setLoading(true);
+        setLoadError(null);
+      }
 
       // Load all mentors managed by this manager
       const { data: mentorUsers, error: mentorError } = await supabase
         .from('users')
         .select('id, first_name, last_name, email')
-        .eq('role', 'mentor');
+        .eq('role', 'mentor')
+        .eq('manager_id', userProfile.id);
 
       if (mentorError) throw mentorError;
+      if (!mentorUsers || mentorUsers.length === 0) {
+        if (isMountedRef.current) setMentors([]);
+        return;
+      }
 
       // Load mentor hospital assignments
       const mentorIds = (mentorUsers || []).map(m => m.id);
@@ -130,15 +140,23 @@ const ManagerOverviewPage: React.FC = () => {
       const hospitalIds = (assignments || [])
         .map((a: any) => Array.isArray(a.hospital) ? a.hospital[0]?.id : a.hospital?.id)
         .filter(Boolean);
+      const uniqueHospitalIds = Array.from(new Set(hospitalIds));
 
       // Load PECCs for these hospitals
-      const { data: peccs, error: peccsError } = await supabase
-        .from('users')
-        .select('id, hospital_facility_id')
-        .eq('role', 'pecc')
-        .in('hospital_facility_id', hospitalIds);
+      const { data: peccs, error: peccsError } = uniqueHospitalIds.length > 0
+        ? await supabase
+          .from('users')
+          .select('id, hospital_facility_id')
+          .eq('role', 'pecc')
+          .in('hospital_facility_id', uniqueHospitalIds)
+        : { data: [], error: null };
 
       if (peccsError) throw peccsError;
+      const peccCountByHospital = new Map<string, number>();
+      (peccs || []).forEach((p: { hospital_facility_id: string }) => {
+        const hid = p.hospital_facility_id;
+        peccCountByHospital.set(hid, (peccCountByHospital.get(hid) || 0) + 1);
+      });
 
       // Build mentor data (load activities from Supabase per mentor)
       const mentorData: MentorData[] = await Promise.all(
@@ -146,7 +164,7 @@ const ManagerOverviewPage: React.FC = () => {
           const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
           const hospitals = mentorAssignments.map((a: any) => {
             const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-            const peccCount = (peccs || []).filter(p => p.hospital_facility_id === hospital?.id).length;
+            const peccCount = hospital?.id ? (peccCountByHospital.get(hospital.id) || 0) : 0;
             return {
               id: hospital?.id || '',
               name: hospital?.name || 'Unknown',
@@ -182,12 +200,12 @@ const ManagerOverviewPage: React.FC = () => {
         })
       );
 
-      setMentors(mentorData);
+      if (isMountedRef.current) setMentors(mentorData);
     } catch (err) {
       console.error('Error loading manager overview data:', err);
-      setLoadError('Failed to load overview data. Please try again.');
+      if (isMountedRef.current) setLoadError('Failed to load overview data. Please try again.');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 

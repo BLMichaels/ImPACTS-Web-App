@@ -201,9 +201,12 @@ const ManagerCRMPage: React.FC = () => {
   useEffect(() => {
     if (!addHospitalDialog) return;
     (async () => {
+      const mentorIds = await getManagedMentorIds();
       const [hRes, mRes] = await Promise.all([
         supabase.from('hospitals').select('id, name, city, state').eq('is_active', true).order('name').range(0, 99999),
-        supabase.from('users').select('id, first_name, last_name, email').eq('role', 'mentor').eq('is_active', true).order('first_name').range(0, 99999)
+        mentorIds.length > 0
+          ? supabase.from('users').select('id, first_name, last_name, email').in('id', mentorIds).eq('is_active', true).order('first_name')
+          : Promise.resolve({ data: [], error: null })
       ]);
       if (hRes.data) setAllHospitalsFromDb(hRes.data as any);
       if (mRes.data) setMentorsList(mRes.data as MentorOption[]);
@@ -212,8 +215,22 @@ const ManagerCRMPage: React.FC = () => {
 
   // Load contacts when on Contacts tab or when hospitals change
   useEffect(() => {
-    if (activeTab === 1 && hospitals.length > 0) loadContacts();
+    if (activeTab === 1) void loadContacts();
   }, [activeTab, hospitals]);
+
+  const getManagedMentorIds = async (): Promise<string[]> => {
+    if (!userProfile?.id) return [];
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('role', 'mentor')
+      .eq('manager_id', userProfile.id);
+    if (error) throw error;
+    const ids = (data || []).map((r: { id: string }) => r.id);
+    // If the manager also mentors directly, include self.
+    if (!ids.includes(userProfile.id)) ids.push(userProfile.id);
+    return ids;
+  };
 
   const loadHospitals = async () => {
     if (!userProfile?.id) return;
@@ -222,12 +239,19 @@ const ManagerCRMPage: React.FC = () => {
       setLoading(true);
       setLoadError(null);
 
-      // Get all hospitals from mentor assignments
+      const mentorIds = await getManagedMentorIds();
+      if (mentorIds.length === 0) {
+        setHospitals([]);
+        return;
+      }
+
+      // Get all hospitals from the manager's mentor assignments
       const { data: assignments, error: assignmentError } = await supabase
         .from('mentor_hospital_assignments')
         .select(`
           hospital:hospital_id(id, name, city, state, trauma_level)
         `)
+        .in('mentor_id', mentorIds)
         .eq('is_active', true);
 
       if (assignmentError) throw assignmentError;
@@ -253,17 +277,49 @@ const ManagerCRMPage: React.FC = () => {
         }
       });
 
-      // Count mentors, PECCs, and contacts for each hospital
-      for (const hospital of hospitalList) {
-        const [mentorRes, peccRes, contactRes] = await Promise.all([
-          supabase.from('mentor_hospital_assignments').select('*', { count: 'exact', head: true }).eq('hospital_id', hospital.id).eq('is_active', true),
-          supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'pecc').eq('hospital_facility_id', hospital.id),
-          supabase.from('hospital_contacts').select('*', { count: 'exact', head: true }).eq('hospital_id', hospital.id)
-        ]);
-        hospital.mentorCount = mentorRes.count || 0;
-        hospital.peccCount = peccRes.count || 0;
-        hospital.contactCount = contactRes.count || 0;
-      }
+      // Count mentors, PECCs, and contacts in batch (avoid N+1 query fanout).
+      const hospitalIds = hospitalList.map((h) => h.id);
+      const [mentorRowsRes, peccRowsRes, contactRowsRes] = await Promise.all([
+        supabase
+          .from('mentor_hospital_assignments')
+          .select('mentor_id, hospital_id')
+          .eq('is_active', true)
+          .in('mentor_id', mentorIds)
+          .in('hospital_id', hospitalIds),
+        supabase
+          .from('users')
+          .select('id, hospital_facility_id')
+          .eq('role', 'pecc')
+          .in('hospital_facility_id', hospitalIds),
+        supabase
+          .from('hospital_contacts')
+          .select('id, hospital_id')
+          .in('hospital_id', hospitalIds),
+      ]);
+
+      const mentorCountByHospital = new Map<string, number>();
+      const mentorPairs = new Set<string>();
+      (mentorRowsRes.data || []).forEach((r: { mentor_id: string; hospital_id: string }) => {
+        const key = `${r.hospital_id}:${r.mentor_id}`;
+        if (mentorPairs.has(key)) return;
+        mentorPairs.add(key);
+        mentorCountByHospital.set(r.hospital_id, (mentorCountByHospital.get(r.hospital_id) || 0) + 1);
+      });
+      const peccCountByHospital = new Map<string, number>();
+      (peccRowsRes.data || []).forEach((r: { hospital_facility_id: string }) => {
+        const hid = r.hospital_facility_id;
+        peccCountByHospital.set(hid, (peccCountByHospital.get(hid) || 0) + 1);
+      });
+      const contactCountByHospital = new Map<string, number>();
+      (contactRowsRes.data || []).forEach((r: { hospital_id: string }) => {
+        contactCountByHospital.set(r.hospital_id, (contactCountByHospital.get(r.hospital_id) || 0) + 1);
+      });
+
+      hospitalList.forEach((h) => {
+        h.mentorCount = mentorCountByHospital.get(h.id) || 0;
+        h.peccCount = peccCountByHospital.get(h.id) || 0;
+        h.contactCount = contactCountByHospital.get(h.id) || 0;
+      });
 
       setHospitals(hospitalList.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
@@ -345,25 +401,49 @@ const ManagerCRMPage: React.FC = () => {
 
   const loadTabVisibilitySettings = async () => {
     try {
+      const managedMentorIds = await getManagedMentorIds();
+      const managedHospitalIds = hospitals.map((h) => h.id);
+      let managedPeccIds: string[] = [];
+      if (managedHospitalIds.length > 0) {
+        const { data: managedPeccs, error: managedPeccErr } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'pecc')
+          .in('hospital_facility_id', managedHospitalIds);
+        if (managedPeccErr) throw managedPeccErr;
+        managedPeccIds = (managedPeccs || []).map((p: { id: string }) => p.id);
+      }
+      const targetUserIds = [...new Set([...managedMentorIds, ...managedPeccIds])];
+      if (targetUserIds.length === 0) {
+        setVisibilitySettings([]);
+        return;
+      }
+
       const { data: users, error } = await supabase
         .from('users')
         .select('id, first_name, last_name, role')
         .eq('is_active', true)
-        .in('role', ['pecc', 'mentor'])
-        .range(0, 99999);
+        .in('id', targetUserIds);
 
       if (error) throw error;
 
       const defaults: Record<string, boolean> = Object.fromEntries(PECC_TAB_KEYS.map(k => [k, true]));
+      const { data: allTabRows, error: allTabRowsError } = await supabase
+        .from('view_tabs')
+        .select('user_id, tab_key, is_visible')
+        .in('user_id', targetUserIds)
+        .is('cohort_id', null)
+        .is('program_id', null);
+      if (allTabRowsError) throw allTabRowsError;
+      const tabRowsByUser = new Map<string, Array<{ tab_key: string; is_visible: boolean }>>();
+      (allTabRows || []).forEach((row: { user_id: string; tab_key: string; is_visible: boolean }) => {
+        if (!tabRowsByUser.has(row.user_id)) tabRowsByUser.set(row.user_id, []);
+        tabRowsByUser.get(row.user_id)!.push({ tab_key: row.tab_key, is_visible: row.is_visible });
+      });
 
       const visibilityList = await Promise.all(
         (users || []).map(async (user) => {
-          const { data: tabRows } = await supabase
-            .from('view_tabs')
-            .select('tab_key, is_visible')
-            .eq('user_id', user.id)
-            .is('cohort_id', null)
-            .is('program_id', null);
+          const tabRows = tabRowsByUser.get(user.id) || [];
 
           let visibleTabs = { ...defaults };
           if (tabRows && tabRows.length > 0) {
@@ -429,6 +509,25 @@ const ManagerCRMPage: React.FC = () => {
           .single();
         if (insertError) throw insertError;
         hospitalId = (newHospital as any).id;
+      }
+
+      const managedMentorIds = await getManagedMentorIds();
+      if (!managedMentorIds.includes(assignToMentorId)) {
+        setSnackbar({ open: true, message: 'You can only assign sites to mentors on your team', severity: 'error' });
+        return;
+      }
+
+      const { data: existingAssignment, error: existingAssignmentError } = await supabase
+        .from('mentor_hospital_assignments')
+        .select('id')
+        .eq('mentor_id', assignToMentorId)
+        .eq('hospital_id', hospitalId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (existingAssignmentError) throw existingAssignmentError;
+      if (existingAssignment?.id) {
+        setSnackbar({ open: true, message: 'This mentor is already assigned to that site', severity: 'error' });
+        return;
       }
 
       const { error: assignError } = await supabase
@@ -504,6 +603,11 @@ const ManagerCRMPage: React.FC = () => {
       setSnackbar({ open: true, message: 'Please select a hospital', severity: 'error' });
       return;
     }
+    const allowedHospitalIds = new Set(hospitals.map((h) => h.id));
+    if (!allowedHospitalIds.has(contactForm.hospitalId)) {
+      setSnackbar({ open: true, message: 'Invalid site selection for your manager scope', severity: 'error' });
+      return;
+    }
     try {
       const email = contactForm.email.trim();
       if (!email) {
@@ -546,6 +650,11 @@ const ManagerCRMPage: React.FC = () => {
 
   const handleDeleteContact = async (contact: ContactData) => {
     if (!window.confirm(`Remove ${contact.first_name} ${contact.last_name} from contacts?`)) return;
+    const allowedHospitalIds = new Set(hospitals.map((h) => h.id));
+    if (!allowedHospitalIds.has(contact.hospital_id)) {
+      setSnackbar({ open: true, message: 'You can only remove contacts from your managed sites', severity: 'error' });
+      return;
+    }
     try {
       const { error } = await supabase.from('hospital_contacts').delete().eq('id', contact.id);
       if (error) throw error;

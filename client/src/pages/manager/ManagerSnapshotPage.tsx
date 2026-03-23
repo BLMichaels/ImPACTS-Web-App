@@ -91,20 +91,34 @@ const ManagerSnapshotPage: React.FC = () => {
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     const loadData = async () => {
       if (!userProfile?.id) return;
 
       try {
-        setIsLoading(true);
-        setHasError(false);
+        if (!cancelled) {
+          setIsLoading(true);
+          setHasError(false);
+        }
 
         // Load all mentors
         const { data: mentorUsers, error: mentorError } = await supabase
           .from('users')
           .select('id, first_name, last_name, email')
-          .eq('role', 'mentor');
+          .eq('role', 'mentor')
+          .eq('manager_id', userProfile.id);
 
         if (mentorError) throw mentorError;
+        if (!mentorUsers || mentorUsers.length === 0) {
+          if (!cancelled) {
+            setMentors([]);
+            setTotalPeccs(0);
+            setTotalSites(0);
+            setPeccProgressSum(0);
+            setPeccProgressCount(0);
+          }
+          return;
+        }
 
         const mentorIds = (mentorUsers || []).map(m => m.id);
 
@@ -120,42 +134,69 @@ const ManagerSnapshotPage: React.FC = () => {
         const hospitalIds = (assignments || [])
           .map((a: any) => (Array.isArray(a.hospital) ? a.hospital[0]?.id : a.hospital?.id))
           .filter(Boolean);
+        const uniqueHospitalIds = Array.from(new Set(hospitalIds));
 
         // Load PECCs for these hospitals
-        const { data: peccs, error: peccsError } = await supabase
-          .from('users')
-          .select('id, hospital_facility_id')
-          .eq('role', 'pecc')
-          .in('hospital_facility_id', hospitalIds);
+        const { data: peccs, error: peccsError } = uniqueHospitalIds.length > 0
+          ? await supabase
+            .from('users')
+            .select('id, hospital_facility_id')
+            .eq('role', 'pecc')
+            .in('hospital_facility_id', uniqueHospitalIds)
+          : { data: [], error: null };
 
         if (peccsError) throw peccsError;
+        const peccCountByHospital = new Map<string, number>();
+        (peccs || []).forEach((p: { hospital_facility_id: string }) => {
+          const hid = p.hospital_facility_id;
+          peccCountByHospital.set(hid, (peccCountByHospital.get(hid) || 0) + 1);
+        });
 
+        if (cancelled) return;
         setTotalPeccs((peccs || []).length);
         setTotalSites(new Set(hospitalIds).size);
 
         // Load hospitals for names
-        const { data: hospitals } = await supabase
-          .from('hospitals')
-          .select('id, name')
-          .in('id', hospitalIds);
+        const { data: hospitals } = uniqueHospitalIds.length > 0
+          ? await supabase
+            .from('hospitals')
+            .select('id, name')
+            .in('id', uniqueHospitalIds)
+          : { data: [] };
 
         const hospitalMap = new Map<string, string>();
         (hospitals || []).forEach((h: any) => hospitalMap.set(h.id, h.name || 'Unknown'));
+
+        // Checklist progress by hospital (avoid per-PECC N+1).
+        const { data: checklistRows, error: checklistError } = uniqueHospitalIds.length > 0
+          ? await supabase
+            .from('site_checklist_progress')
+            .select('hospital_id, completed')
+            .in('hospital_id', uniqueHospitalIds)
+          : { data: [], error: null };
+        if (checklistError) throw checklistError;
+        const checklistStatsByHospital = new Map<string, { total: number; completed: number }>();
+        (checklistRows || []).forEach((row: { hospital_id: string; completed: boolean }) => {
+          const prev = checklistStatsByHospital.get(row.hospital_id) || { total: 0, completed: 0 };
+          prev.total += 1;
+          if (row.completed) prev.completed += 1;
+          checklistStatsByHospital.set(row.hospital_id, prev);
+        });
+
+        const checklistPctByHospital = new Map<string, number>();
+        checklistStatsByHospital.forEach((stats, hid) => {
+          checklistPctByHospital.set(hid, stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0);
+        });
 
         // Checklist progress for PECCs (for average)
         let progressSum = 0;
         let progressCount = 0;
         for (const pecc of peccs || []) {
-          const { data: checklistData } = await supabase
-            .from('site_checklist_progress')
-            .select('completed')
-            .eq('hospital_id', pecc.hospital_facility_id);
-          const totalTasks = 100;
-          const completed = (checklistData || []).filter((t: any) => t.completed).length;
-          const pct = totalTasks > 0 ? Math.round((completed / totalTasks) * 100) : 0;
+          const pct = checklistPctByHospital.get(pecc.hospital_facility_id) || 0;
           progressSum += pct;
           progressCount += 1;
         }
+        if (cancelled) return;
         setPeccProgressSum(progressSum);
         setPeccProgressCount(progressCount);
 
@@ -169,7 +210,7 @@ const ManagerSnapshotPage: React.FC = () => {
             const assignedHospitals: AssignedHospital[] = mentorAssignments.map((a: any) => {
               const h = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
               const hid = h?.id;
-              const peccCount = (peccs || []).filter((p: any) => p.hospital_facility_id === hid).length;
+              const peccCount = hid ? (peccCountByHospital.get(hid) || 0) : 0;
               return {
                 id: hid || '',
                 name: hospitalMap.get(hid) || h?.name || 'Unknown',
@@ -204,6 +245,7 @@ const ManagerSnapshotPage: React.FC = () => {
           })
         );
 
+        if (cancelled) return;
         setMentors(mentorRows);
 
         // Check if manager also has hospital assignments (acting as mentor)
@@ -236,6 +278,7 @@ const ManagerSnapshotPage: React.FC = () => {
           })
           .reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
 
+        if (cancelled) return;
         setManagerOwn({
           hasAssignments: managerHasAssignments,
           hospitalNames: managerHospitalNames,
@@ -247,13 +290,16 @@ const ManagerSnapshotPage: React.FC = () => {
         });
       } catch (err) {
         console.error('Error loading manager snapshot:', err);
-        setHasError(true);
+        if (!cancelled) setHasError(true);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     loadData();
+    return () => {
+      cancelled = true;
+    };
   }, [userProfile?.id, retryCount]);
 
   const teamHoursThisMonth = useMemo(
@@ -472,7 +518,15 @@ const ManagerSnapshotPage: React.FC = () => {
                             <Chip size="small" label={`${mentor.assignedHospitals.length} sites`} color="primary" variant="outlined" />
                             <Chip size="small" label={`${mentor.assignedHospitals.reduce((s, h) => s + h.peccCount, 0)} PECCs`} color="secondary" variant="outlined" />
                             <Chip size="small" label={`${mentor.hoursThisMonth.toFixed(1)}h this month`} color="success" variant="outlined" />
-                            <IconButton size="small">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExpandMentor(mentor.id);
+                              }}
+                              aria-label={expandedMentor === mentor.id ? 'Collapse mentor details' : 'Expand mentor details'}
+                              aria-expanded={expandedMentor === mentor.id}
+                            >
                               {expandedMentor === mentor.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                             </IconButton>
                           </Box>
