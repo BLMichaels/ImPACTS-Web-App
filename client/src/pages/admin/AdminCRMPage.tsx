@@ -5772,30 +5772,6 @@ const AdminCRMPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-      
-      {/* Send Invitation Dialog */}
-      {detailContact && (
-        <SendInvitationDialog
-          open={invitationDialogOpen}
-          onClose={() => setInvitationDialogOpen(false)}
-          contactEmail={detailContact.email}
-          contactName={contactDisplayName(detailContact)}
-          contactId={detailContact.id}
-          initialHospitalId={detailContact.linkedHospitalIds?.[0] ?? null}
-          initialProgramIds={detailContact.programs ?? []}
-          initialCohortIds={detailContact.cohorts ?? []}
-          initialRole={CONTACT_TYPE_TO_USER_ROLE[detailContact.type] ? (normalizeUserRole(CONTACT_TYPE_TO_USER_ROLE[detailContact.type]!) as UserRole) : undefined}
-          onSuccess={(code) => {
-            if (detailContact) {
-              addActivityEntry(detailContact, {
-                type: 'communication',
-                date: new Date().toISOString().slice(0, 10),
-                text: `Account invitation sent (code: ${code})`
-              });
-            }
-          }}
-        />
-      )}
     </Box>
   );
 };

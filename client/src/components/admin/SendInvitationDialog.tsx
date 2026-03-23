@@ -413,7 +413,10 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                     <Tooltip title="Copy link">
                       <IconButton
                         onClick={() => {
-                          const url = typeof window !== 'undefined' ? `${window.location.origin}/invite/${invitationCode}` : `${invitationCode}`;
+                          const url =
+                            typeof window !== 'undefined'
+                              ? `${window.location.origin}/invite/${invitationCode}`
+                              : `/invite/${invitationCode}`;
                           navigator.clipboard.writeText(url).then(() => {}, () => {});
                         }}
                         size="small"
