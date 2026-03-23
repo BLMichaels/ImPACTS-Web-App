@@ -522,7 +522,7 @@ const ManagerSnapshotPage: React.FC = () => {
                               size="small"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleExpandMentor(mentor.id);
+                                setExpandedMentor(expandedMentor === mentor.id ? null : mentor.id);
                               }}
                               aria-label={expandedMentor === mentor.id ? 'Collapse mentor details' : 'Expand mentor details'}
                               aria-expanded={expandedMentor === mentor.id}
