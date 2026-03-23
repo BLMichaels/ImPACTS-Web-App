@@ -9,6 +9,7 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const FROM_EMAIL = Deno.env.get('INVITATION_FROM_EMAIL') || 'ImPACTS <onboarding@resend.dev>';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const APP_BASE_URL = (Deno.env.get('APP_BASE_URL') ?? 'https://impacts-tau.vercel.app').replace(/\/+$/, '');
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -135,13 +136,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const email = typeof body.email === 'string' ? body.email.trim() : '';
-    const invitationUrl = typeof body.invitationUrl === 'string' ? body.invitationUrl : '';
-    if (!email || !invitationUrl) {
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+    if (!email || !code) {
       return new Response(
-        JSON.stringify({ error: 'email and invitationUrl are required' }),
+        JSON.stringify({ error: 'email and code are required' }),
         { status: 400, headers: jsonHeaders }
       );
     }
+    const invitationUrl = `${APP_BASE_URL}/invite/${encodeURIComponent(code)}`;
 
     const invitationRole = typeof body.role === 'string' ? body.role : 'user';
     const expiresAt = typeof body.expiresAt === 'string' ? body.expiresAt : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();

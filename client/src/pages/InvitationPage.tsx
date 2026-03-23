@@ -23,7 +23,7 @@ import {
 } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
-import { getInvitationByCode } from '../utils/invitations';
+import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
@@ -331,6 +331,12 @@ const InvitationPage: React.FC = () => {
               { onConflict: 'cohort_id,mentor_id' }
             );
           }
+        }
+
+        try {
+          await acceptInvitation(code, userId);
+        } catch (acceptErr) {
+          console.warn('Invitation accept from client failed (may already be accepted):', acceptErr);
         }
 
       };
