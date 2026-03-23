@@ -4,7 +4,33 @@ updates:
     directory: "/client"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+    groups:
+      react-stack:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      mui-stack:
+        patterns:
+          - "@mui/*"
+          - "@emotion/*"
+      export-stack:
+        patterns:
+          - "jspdf"
+          - "jspdf-autotable"
+      misc-runtime:
+        patterns:
+          - "@supabase/supabase-js"
+          - "date-fns"
+          - "xlsx"
+          - "typescript"
+          - "react-router-dom"
 
   - package-ecosystem: "npm"
     directory: "/"
