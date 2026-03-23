@@ -685,7 +685,7 @@ const AdminProjectPipelinePage: React.FC = () => {
   };
 
   // Filtering helper
-  const filterItems = <T extends { status?: string; projectLead?: string; leadSenior?: string; categoryTopic?: string; topic?: string; projectDevelopmentStatus?: string }>(
+  const filterItems = useCallback(<T extends { status?: string; projectLead?: string; leadSenior?: string; categoryTopic?: string; topic?: string; projectDevelopmentStatus?: string }>(
     items: T[]
   ): T[] => {
     return items.filter(item => {
@@ -699,13 +699,13 @@ const AdminProjectPipelinePage: React.FC = () => {
       }
       return true;
     });
-  };
+  }, [statusFilter, leadFilter, devStatusFilter, searchQuery]);
 
   // Filtered and sorted data
-  const sortedSimbox = useMemo(() => sortItems(filterItems(simboxCases), sortField, sortDir), [simboxCases, sortField, sortDir, searchQuery, statusFilter, leadFilter, devStatusFilter]);
-  const sortedScholarship = useMemo(() => sortItems(filterItems(scholarshipItems), sortField, sortDir), [scholarshipItems, sortField, sortDir, searchQuery, statusFilter, leadFilter, devStatusFilter]);
-  const sortedAbstracts = useMemo(() => sortItems(filterItems(abstractsItems), sortField, sortDir), [abstractsItems, sortField, sortDir, searchQuery, statusFilter, leadFilter, devStatusFilter]);
-  const sortedResearch = useMemo(() => sortItems(filterItems(researchDisseminationItems), 'topic', sortDir), [researchDisseminationItems, sortDir, searchQuery, statusFilter, leadFilter, devStatusFilter]);
+  const sortedSimbox = useMemo(() => sortItems(filterItems(simboxCases), sortField, sortDir), [simboxCases, sortField, sortDir, filterItems]);
+  const sortedScholarship = useMemo(() => sortItems(filterItems(scholarshipItems), sortField, sortDir), [scholarshipItems, sortField, sortDir, filterItems]);
+  const sortedAbstracts = useMemo(() => sortItems(filterItems(abstractsItems), sortField, sortDir), [abstractsItems, sortField, sortDir, filterItems]);
+  const sortedResearch = useMemo(() => sortItems(filterItems(researchDisseminationItems), 'topic', sortDir), [researchDisseminationItems, sortDir, filterItems]);
 
   // Archive: completed items from all tabs
   const archivedItems = useMemo(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -9,7 +9,6 @@ import {
   Alert,
   List,
   ListItem,
-  ListItemText,
   Avatar,
   Chip,
   LinearProgress,
@@ -209,6 +208,7 @@ const MentorDashboardPage: React.FC = () => {
 
   useEffect(() => {
     if (currentUser) loadDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadDashboardData defined below
   }, [currentUser]);
 
   const handleHospitalClick = (hospital: HospitalSummary) => {

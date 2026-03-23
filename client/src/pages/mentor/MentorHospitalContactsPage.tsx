@@ -269,6 +269,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     if (currentUser) {
       loadData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadData defined below
   }, [currentUser]);
 
   const loadData = async () => {
@@ -453,17 +454,6 @@ const MentorHospitalContactsPage: React.FC = () => {
         .select('id, first_name, last_name, email')
         .eq('role', 'pecc')
         .or(`hospital_facility_id.eq.${hospitalId},hospital_facility_id.eq.${hospital.id}`);
-
-      // Also check site_members
-      const { data: siteMembers } = await supabase
-        .from('site_members')
-        .select('user_id')
-        .eq('site_id', hospitalId);
-
-      const peccUserIds = [
-        ...(peccUsers?.map(u => u.id) || []),
-        ...(siteMembers?.map(sm => sm.user_id) || [])
-      ];
 
       // Update CRM hospital record with PECC and Mentor info
       // This would ideally update a notes_log or activity_log field
@@ -859,16 +849,17 @@ const MentorHospitalContactsPage: React.FC = () => {
     setInviteSuccessCode(null);
   };
 
-  const hospitalContacts = selectedHospital 
-    ? contacts.filter(c => c.hospitalId === selectedHospital.id)
-    : [];
+  const hospitalContacts = useMemo(
+    () => (selectedHospital ? contacts.filter(c => c.hospitalId === selectedHospital.id) : []),
+    [selectedHospital, contacts]
+  );
 
   // Reset contact filter/sort when opening a different hospital
   useEffect(() => {
     if (!selectedHospital) {
       setContactSearch('');
     }
-  }, [selectedHospital?.id]);
+  }, [selectedHospital]);
 
   // Filter hospitals based on showAllHospitals toggle
   const displayedHospitals = showAllHospitals 

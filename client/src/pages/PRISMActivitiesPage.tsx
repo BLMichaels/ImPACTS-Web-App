@@ -87,7 +87,7 @@ const PRISMActivitiesPage: React.FC = () => {
       }
     })();
     return () => { mounted = false; };
-  }, [prismUserId, (userProfile as any)?.email]);
+  }, [prismUserId, userProfile]);
 
   useEffect(() => {
     // Filter activities based on search and filter criteria

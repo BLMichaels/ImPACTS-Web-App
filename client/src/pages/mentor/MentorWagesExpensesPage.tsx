@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -31,8 +31,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   CheckCircle as ApprovedIcon,
-  Cancel as RejectedIcon,
-  HelpOutline as HelpIcon
+  Cancel as RejectedIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -153,7 +152,7 @@ const MentorWagesExpensesPage: React.FC = () => {
   }, [currentUser?.id]);
 
   // Calculate monthly hours from activities
-  const calculateMonthlyHours = (month: number, year: number): number => {
+  const calculateMonthlyHours = useCallback((month: number, year: number): number => {
     const monthStart = startOfMonth(new Date(year, month, 1));
     const monthEnd = endOfMonth(new Date(year, month, 1));
     
@@ -163,17 +162,17 @@ const MentorWagesExpensesPage: React.FC = () => {
         return isWithinInterval(activityDate, { start: monthStart, end: monthEnd });
       })
       .reduce((sum, activity) => sum + (activity.hours || 0), 0);
-  };
+  }, [activities]);
 
   // Calculate monthly expenses
-  const calculateMonthlyExpenses = (month: number, year: number): number => {
+  const calculateMonthlyExpenses = useCallback((month: number, year: number): number => {
     return wagesData.expenses
       .filter(expense => {
         const expenseDate = parseISO(expense.date);
         return getYear(expenseDate) === year && getMonth(expenseDate) === month;
       })
       .reduce((sum, expense) => sum + expense.total, 0);
-  };
+  }, [wagesData]);
 
   // Generate monthly data for current year
   const monthlyData: MonthlyWageData[] = useMemo(() => {
@@ -210,7 +209,7 @@ const MentorWagesExpensesPage: React.FC = () => {
     }
     
     return months;
-  }, [activities, wagesData, currentYear]);
+  }, [wagesData, currentYear, calculateMonthlyHours, calculateMonthlyExpenses]);
 
   const saveWagesData = async (data: MentorWagesData) => {
     setWagesData(data);

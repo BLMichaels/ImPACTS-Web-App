@@ -490,22 +490,6 @@ const SimulationPage: React.FC = () => {
     load();
   }, []);
 
-  const _handleStartSimulation = (caseId: string) => {
-    trackClick?.('Simulation - Start');
-    const selectedCase = SIMULATION_CASES.find(c => c.id === caseId);
-    setSelectedCase(selectedCase || null);
-    setSessionForm({
-      caseId: caseId,
-      date: new Date().toISOString().split('T')[0],
-      participants: '',
-      duration: selectedCase?.estimatedDuration.toString() || '',
-      debriefNotes: '',
-      overallRating: 3
-    });
-    setActiveStep(0);
-    setOpen(true);
-  };
-
   const handleCloseDialog = () => {
     setOpen(false);
     setSelectedCase(null);
@@ -1005,10 +989,6 @@ const SimulationPage: React.FC = () => {
       const filename = `simulation-gaps-${currentDate}.pdf`;
       doc.save(filename);
     });
-  };
-
-  const _getSteps = () => {
-    return ['Simulation Setup', 'Debriefing', 'Gap Identification', 'Action Planning'];
   };
 
   if (loading) {

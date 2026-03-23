@@ -120,6 +120,7 @@ const GapPlanPage: React.FC = () => {
     if (effectiveUserId) {
       loadGapPlans();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadGapPlans defined below; tied to effectiveUserId
   }, [effectiveUserId]);
 
   useEffect(() => {
@@ -151,10 +152,12 @@ const GapPlanPage: React.FC = () => {
       window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadGapPlans defined below
   }, [effectiveUserId]);
 
   useEffect(() => {
     applyFiltersAndSort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyFiltersAndSort defined below
   }, [gapPlans, filterStatus, filterPriority, filterOwner, sortBy, sortOrder]);
 
   const userId = effectiveUserId;

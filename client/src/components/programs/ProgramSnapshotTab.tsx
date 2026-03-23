@@ -9,7 +9,6 @@ import {
   Button,
   Chip,
   Alert,
-  Paper,
   Avatar,
   List,
   ListItem,
@@ -187,7 +186,6 @@ export const ProgramSnapshotTab: React.FC<ProgramSnapshotTabProps> = ({ programI
 
   const teamHoursThisMonth = useMemo(() => mentors.reduce((s, m) => s + m.hoursThisMonth, 0), [mentors]);
   const teamActivitiesThisMonth = useMemo(() => mentors.reduce((s, m) => s + m.activitiesThisMonthCount, 0), [mentors]);
-  const teamTotalHours = useMemo(() => mentors.reduce((s, m) => s + m.hoursTotal, 0), [mentors]);
   const avgPeccProgress = useMemo(
     () => (peccProgressCount > 0 ? Math.round(peccProgressSum / peccProgressCount) : 0),
     [peccProgressSum, peccProgressCount]

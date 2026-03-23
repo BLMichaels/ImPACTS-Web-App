@@ -218,12 +218,6 @@ const SnapshotPage = () => {
     }
   }, [prsQuestions]);
 
-  const _exportToPDF = () => {
-    // Create a simple PDF export using window.print() for now
-    // In a production app, you'd use a library like jsPDF or html2pdf
-    window.print();
-  };
-
   // Load all data for snapshot. When PRS section is hidden, do not load readiness scores or PRS questions.
   useEffect(() => {
     const loadData = async () => {
@@ -1802,9 +1796,6 @@ const SnapshotPage = () => {
                           const availableWidth = chartWidth - (padding * 2);
                           const availableHeight = chartHeight - (padding * 2);
                           
-                          // Calculate scales (min/max available for future use)
-                          const _minScore = Math.min(...sortedData.map(d => d.score));
-                          const _maxScore = Math.max(...sortedData.map(d => d.score));
                           // Use a fixed range from 0 to 100 for consistent Y-axis scaling
                           const scoreRange = 100;
                           

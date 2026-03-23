@@ -519,6 +519,7 @@ const MilestonesPage = () => {
         })));
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- merges program checklists with default stages; adding stages would loop
   }, [programChecklists, resolvedProgramId, hospitalId]);
 
   // Load checklist from Supabase (shared with Mentor Site Milestones) when hospitalId is set (default stages only when no program checklists)

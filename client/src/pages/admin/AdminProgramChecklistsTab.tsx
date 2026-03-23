@@ -33,7 +33,6 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import SaveIcon from '@mui/icons-material/Save';
 import { supabase } from '../../supabase';
 import type { ProgramChecklist, ProgramChecklistStage, ProgramChecklistTask, ProgramChecklistTaskLink } from '../../types/database';
 import RichTextEditor, { sanitizeHtml, stripHtmlToText } from '../../components/cohorts/RichTextEditor';
@@ -314,21 +313,6 @@ export default function AdminProgramChecklistsTab() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const addTaskLink = () => {
-    setTaskForm((prev) => ({ ...prev, links: [...prev.links, { text: '', url: '' }] }));
-  };
-
-  const updateTaskLink = (index: number, field: 'text' | 'url', value: string) => {
-    setTaskForm((prev) => ({
-      ...prev,
-      links: prev.links.map((l, i) => (i === index ? { ...l, [field]: value } : l))
-    }));
-  };
-
-  const removeTaskLink = (index: number) => {
-    setTaskForm((prev) => ({ ...prev, links: prev.links.filter((_, i) => i !== index) }));
   };
 
   if (loading) {

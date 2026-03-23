@@ -13,20 +13,14 @@ import {
   Paper,
   Avatar,
   FormControlLabel,
-  Checkbox,
-  Divider
+  Checkbox
 } from '@mui/material';
 import {
-  TrendingUp as TrendingUpIcon,
-  Assessment as AssessmentIcon,
   CheckCircle as CheckCircleIcon,
   Work as WorkIcon,
   PictureAsPdf as PictureAsPdfIcon,
   Group as GroupIcon,
-  Timeline as TimelineIcon,
-  School as SchoolIcon,
-  LocalHospital as HospitalIcon,
-  Slideshow as SimulationIcon
+  LocalHospital as HospitalIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';

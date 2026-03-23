@@ -44,7 +44,6 @@ import {
   ContentCopy as CopyIcon,
   Assignment as ActivityIcon,
   CheckCircle as ChecklistIcon,
-  TrendingUp as ProgressIcon,
   Description as GapPlanIcon,
   AttachMoney as MoneyIcon,
   People as PeopleIcon
@@ -162,6 +161,7 @@ const ManagerMentorsPage: React.FC = () => {
     isMountedRef.current = true;
     void loadMentors();
     return () => { isMountedRef.current = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadMentors defined below
   }, [userProfile?.id]);
 
   // Load cohorts the manager manages when opening Invite Mentor dialog

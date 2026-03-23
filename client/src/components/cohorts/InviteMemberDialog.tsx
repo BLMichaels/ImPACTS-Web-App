@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -90,7 +90,10 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  const existingEmailsLower = new Set(existingMemberEmails.map(e => (e || '').trim().toLowerCase()));
+  const existingEmailsLower = useMemo(
+    () => new Set(existingMemberEmails.map(e => (e || '').trim().toLowerCase())),
+    [existingMemberEmails]
+  );
 
   // Load EVERYONE: users (with accounts) + CRM contacts (with or without accounts)
   useEffect(() => {
@@ -228,7 +231,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
     };
 
     loadEveryone();
-  }, [open, cohortId, existingMemberIds, existingMemberEmails, userProfile?.id, userRole, canAddDirectly]);
+  }, [open, cohortId, existingMemberIds, existingMemberEmails, existingEmailsLower, userProfile?.id, userRole, canAddDirectly]);
 
   const handleSave = async () => {
     if (!selected || !userProfile?.id) return;

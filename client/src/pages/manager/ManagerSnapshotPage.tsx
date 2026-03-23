@@ -31,7 +31,6 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -67,7 +66,6 @@ interface ManagerOwnMentoring {
 }
 
 const ManagerSnapshotPage: React.FC = () => {
-  const { currentUser } = useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
 

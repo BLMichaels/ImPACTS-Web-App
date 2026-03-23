@@ -38,8 +38,6 @@ import {
   Link
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, Upload as UploadIcon, Image as ImageIcon, Visibility as VisibilityIcon, Warning as WarningIcon, CloudUpload as CloudUploadIcon, Send as SendIcon } from '@mui/icons-material';
-import { jsPDF } from 'jspdf';
-import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
@@ -1378,29 +1376,12 @@ const PRSPage: React.FC = () => {
   const [editingScoreValue, setEditingScoreValue] = useState('');
   const [editingScorePdf, setEditingScorePdf] = useState<File | null>(null);
   const [editScoreDialogOpen, setEditScoreDialogOpen] = useState(false);
-  const [officialSubmissionFile, setOfficialSubmissionFile] = useState<File | null>(null);
+  const [, setOfficialSubmissionFile] = useState<File | null>(null);
   const [isSubmittingToAPI, setIsSubmittingToAPI] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [unansweredQuestions, setUnansweredQuestions] = useState<string[]>([]);
   const [legalWarningDialogOpen, setLegalWarningDialogOpen] = useState(false);
-
-  // Clear PRS-related localStorage only (not entire localStorage) and reload
-  const clearLocalStorageAndReload = () => {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k) continue;
-      if (k === 'prsQuestions' || k === 'prsReadinessScores' || k === 'prsGapPlans') keysToRemove.push(k);
-      else if (k.startsWith('gapPlans_')) keysToRemove.push(k);
-      else if (k.startsWith('ud_') && (k.endsWith('_prsQuestions') || k.endsWith('_prsReadinessScores') || k.endsWith('_gapPlans'))) keysToRemove.push(k);
-    }
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
-    setQuestions(ASSESSMENT_QUESTIONS);
-    setReadinessScores([]);
-    setGapPlans([]);
-    setShowSkipMessage(null);
-  };
 
   const prsUserId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
   // Load data from user_data on mount
@@ -1680,30 +1661,6 @@ const PRSPage: React.FC = () => {
     return maxRank + 1;
   };
 
-  // Function to reassign all ranks sequentially (1, 2, 3, 4...)
-  const reassignRanksSequentially = () => {
-    const rankedPlans = gapPlans.filter(plan => typeof plan.rank === 'number');
-    const unrankedPlans = gapPlans.filter(plan => plan.rank === '');
-    
-    // Sort ranked plans by current rank
-    rankedPlans.sort((a, b) => (a.rank as number) - (b.rank as number));
-    
-    // Reassign ranks sequentially starting from 0 (displays as 1)
-    const updatedPlans = gapPlans.map(plan => {
-      if (plan.rank === '') {
-        return plan; // Keep unranked plans as is
-      }
-      
-      // Find the position of this plan in the sorted ranked list
-      const rankIndex = rankedPlans.findIndex(p => p.id === plan.id);
-      if (rankIndex === -1) return plan; // Shouldn't happen
-      
-      return { ...plan, rank: rankIndex };
-    });
-    
-    setGapPlans(updatedPlans);
-  };
-
   const handleGapPlanSubmit = () => {
     if (!selectedQuestion || !gapFormData.action || !gapFormData.owner) return;
 
@@ -1776,40 +1733,6 @@ const PRSPage: React.FC = () => {
       ...prev,
       attachments: prev.attachments?.filter(att => att.id !== attachmentId) || []
     }));
-  };
-
-  // Save readiness score
-  const saveReadinessScore = () => {
-    const { score } = calculateReadinessScore();
-    const newScore: ReadinessScore = {
-      id: Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
-      score
-    };
-    setReadinessScores(prev => [...prev, newScore]);
-  };
-
-  // Export functions
-  const exportToPDF = () => {
-    const { score, totalPoints, earnedPoints } = calculateReadinessScore();
-    const doc = new jsPDF();
-    
-    doc.setFontSize(20);
-    doc.text('Pediatric Readiness Assessment Report', 20, 20);
-    
-    doc.setFontSize(12);
-    doc.text(`Score: ${score}/${totalPoints}`, 20, 40);
-    doc.text(`Points Earned: ${earnedPoints}/${totalPoints}`, 20, 50);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 60);
-    
-    doc.save('pediatric-readiness-assessment.pdf');
-  };
-
-  const exportToExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet(questions);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Assessment');
-    XLSX.writeFile(workbook, 'pediatric-readiness-assessment.xlsx');
   };
 
   // Handle official submission document upload
@@ -2187,7 +2110,7 @@ const PRSPage: React.FC = () => {
     return dependentQuestion.answer === showIf;
   };
 
-  const { score, totalPoints, earnedPoints } = calculateReadinessScore();
+  const { score, totalPoints } = calculateReadinessScore();
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>

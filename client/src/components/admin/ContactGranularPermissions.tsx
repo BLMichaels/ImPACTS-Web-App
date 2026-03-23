@@ -2,7 +2,7 @@
  * Compact Granular Permissions for a single user - shown in CRM contact detail.
  * Allows managing permissions and tab visibility without leaving the CRM.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -70,7 +70,7 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
   const isPending = userId.startsWith(PENDING_USER_PREFIX);
   const email = isPending ? userId.slice(PENDING_USER_PREFIX.length) : '';
 
-  const loadPermissions = async () => {
+  const loadPermissions = useCallback(async () => {
     try {
       if (!userId?.trim()) {
         setLoading(false);
@@ -115,11 +115,11 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId, isPending, email]);
 
   useEffect(() => {
-    if (userId) loadPermissions();
-  }, [userId]);
+    if (userId) void loadPermissions();
+  }, [userId, loadPermissions]);
 
   const handleSavePermission = async (permissionKey: string, enabled: boolean) => {
     if (isPending && email) {

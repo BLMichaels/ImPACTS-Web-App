@@ -74,6 +74,7 @@ const ManagerOverviewPage: React.FC = () => {
     isMountedRef.current = true;
     void loadData();
     return () => { isMountedRef.current = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadData defined below
   }, [userProfile?.id]);
 
   const selectedHospitalId = searchParams.get('hospital');

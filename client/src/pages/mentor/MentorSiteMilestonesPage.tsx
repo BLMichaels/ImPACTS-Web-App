@@ -19,7 +19,6 @@ import {
   IconButton,
   Menu,
   MenuItem,
-  Divider,
   Chip,
   LinearProgress
 } from '@mui/material';
@@ -27,7 +26,6 @@ import {
   MoreVert as MoreIcon,
   Visibility as ViewIcon,
   Business as BusinessIcon,
-  DragIndicator as DragIcon,
   VisibilityOff as HideIcon,
   Visibility as ShowIcon
 } from '@mui/icons-material';
@@ -343,7 +341,6 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const [editingStage, setEditingStage] = useState<{ hospitalId: string; stageId: string } | null>(null);
   const [completionDate, setCompletionDate] = useState<Date | null>(null);
   const [hiddenHospitals, setHiddenHospitals] = useState<Set<string>>(new Set());
-  const [draggedHospitalId, setDraggedHospitalId] = useState<string | null>(null);
 
   const uid = currentUser?.id;
   // Load hospitals, hidden, order from Supabase (user_data)
@@ -389,43 +386,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
     return () => { mounted = false; };
   }, [uid]);
 
-  const saveHospitalOrder = async (newOrder: Hospital[]) => {
-    setHospitals(newOrder);
-    if (uid) await setUserData(uid, 'mentorHospitalOrder', newOrder.map(h => h.id));
-  };
-
   const toggleHospitalVisibility = async (hospitalId: string) => {
     const newHidden = new Set(hiddenHospitals);
     if (newHidden.has(hospitalId)) newHidden.delete(hospitalId);
     else newHidden.add(hospitalId);
     setHiddenHospitals(newHidden);
     if (uid) await setUserData(uid, 'mentorHiddenHospitals', Array.from(newHidden));
-  };
-
-  // Handle drag and drop
-  const handleDragStart = (hospitalId: string) => {
-    setDraggedHospitalId(hospitalId);
-  };
-
-  const handleDragOver = (e: React.DragEvent, hospitalId: string) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e: React.DragEvent, targetHospitalId: string) => {
-    e.preventDefault();
-    if (!draggedHospitalId || draggedHospitalId === targetHospitalId) return;
-
-    const draggedIndex = hospitals.findIndex(h => h.id === draggedHospitalId);
-    const targetIndex = hospitals.findIndex(h => h.id === targetHospitalId);
-    
-    if (draggedIndex === -1 || targetIndex === -1) return;
-
-    const newHospitals = [...hospitals];
-    const [dragged] = newHospitals.splice(draggedIndex, 1);
-    newHospitals.splice(targetIndex, 0, dragged);
-    
-    saveHospitalOrder(newHospitals);
-    setDraggedHospitalId(null);
   };
 
   // Load milestones for each hospital's PECC(s)

@@ -98,6 +98,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setPrograms([]);
       loadOptions();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dialog reset + loadOptions when opened; loadOptions defined below
   }, [open, contactEmail, initialHospitalId, initialProgramIds, initialCohortIds, initialRole]);
   
   const loadOptions = async () => {

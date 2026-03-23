@@ -117,10 +117,6 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     if (email && staffEmails.has(email)) return 'Staff';
     return u.role || '—';
   };
-  
-  useEffect(() => {
-    loadData();
-  }, [mode, userProfile?.id]);
 
   useEffect(() => {
     if (initialSelectedUserId && users.some(u => u.id === initialSelectedUserId)) {
@@ -399,7 +395,12 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       setLoading(false);
     }
   };
-  
+
+  useEffect(() => {
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when mode or actor changes; loadData is stable for this screen
+  }, [mode, userProfile?.id]);
+
   const isTableMissingError = (err: { code?: string; message?: string; status?: number } | null) =>
     err && (err.code === 'PGRST301' || err.status === 404 || /not found|relation|404/i.test(String(err.message ?? '')));
 
@@ -536,8 +537,9 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   
   useEffect(() => {
     if (selectedUserId || selectedCohortId || selectedProgramId) {
-      loadPermissions();
+      void loadPermissions();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when selection changes; loadPermissions reads current selection
   }, [selectedUserId, selectedCohortId, selectedProgramId]);
   
   const handleSaveUserPermission = async (permissionKey: string, enabled: boolean) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -74,13 +74,7 @@ const GapPlanReminderBanner: React.FC = () => {
     return () => { mounted = false; };
   }, [userId, userProfile?.role]);
 
-  useEffect(() => {
-    if (gapPlans.length > 0) {
-      generateReminders();
-    }
-  }, [gapPlans]);
-
-  const generateReminders = () => {
+  const generateReminders = useCallback(() => {
     if (!userProfile || userProfile.role !== 'pecc') return;
 
     const reminderSettings = (userProfile as any).gapPlanReminders;
@@ -121,7 +115,13 @@ const GapPlanReminderBanner: React.FC = () => {
       .sort((a, b) => a.daysUntilDue - b.daysUntilDue); // Sort by urgency (overdue first, then by days until due)
 
     setReminders(newReminders);
-  };
+  }, [gapPlans, userProfile]);
+
+  useEffect(() => {
+    if (gapPlans.length > 0) {
+      generateReminders();
+    }
+  }, [gapPlans, generateReminders]);
 
   const formatDate = (dateString: string) => {
     try {

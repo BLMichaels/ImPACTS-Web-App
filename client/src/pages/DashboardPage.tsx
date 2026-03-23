@@ -54,9 +54,10 @@ interface ReadinessScore {
     const { userProfile } = useUserProfile();
     const { currentUser } = useAuth();
     const [primaryProgramName, setPrimaryProgramName] = useState<string>('ImPACTS');
+    const primaryProgramId = (userProfile as { primary_program_id?: string | null })?.primary_program_id;
 
     useEffect(() => {
-      const pid = (userProfile as { primary_program_id?: string | null })?.primary_program_id;
+      const pid = primaryProgramId;
       if (!pid) {
         setPrimaryProgramName('ImPACTS');
         return;
@@ -70,7 +71,7 @@ interface ReadinessScore {
         }
       });
       return () => { mounted = false; };
-    }, [userProfile?.id, (userProfile as { primary_program_id?: string | null })?.primary_program_id]);
+    }, [userProfile?.id, primaryProgramId]);
 
     // Mobile responsiveness
     const theme = useTheme();

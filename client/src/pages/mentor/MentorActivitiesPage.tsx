@@ -24,10 +24,8 @@ import {
   FormControlLabel,
   FormGroup,
   Chip,
-  IconButton,
   Alert,
   Grid,
-  Collapse,
   FormLabel,
   OutlinedInput,
   ListItemText,
@@ -37,9 +35,6 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  FilterList as FilterIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
   Download as DownloadIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -284,14 +279,6 @@ const MentorActivitiesPage: React.FC = () => {
     });
     setError(null);
     setDialogOpen(true);
-  };
-
-  // Delete activity
-  const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this activity?')) {
-      const newActivities = activities.filter(a => a.id !== id);
-      saveActivities(newActivities);
-    }
   };
 
   // Save activity

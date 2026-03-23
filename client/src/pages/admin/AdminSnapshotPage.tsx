@@ -34,7 +34,6 @@ import {
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import PageviewIcon from '@mui/icons-material/Pageview';
-import ScheduleIcon from '@mui/icons-material/Schedule';
 import TouchAppIcon from '@mui/icons-material/TouchApp';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';

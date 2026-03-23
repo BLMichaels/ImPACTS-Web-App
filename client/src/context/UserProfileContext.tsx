@@ -98,6 +98,30 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const latestViewAsUserIdRef = useRef<string | null>(null);
   const logoFetchSeqRef = useRef(0);
 
+  const createDefaultProfile = useCallback(() => {
+    if (!currentUser) return;
+
+    const defaultProfile: UserProfile = {
+      id: currentUser.id,
+      email: currentUser.email || '',
+      first_name: 'User',
+      last_name: '',
+      phone: null,
+      role: UserRole.PECC,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_login: new Date().toISOString(),
+      manager_id: null,
+      mentor_id: null
+    };
+
+    setUserProfile(defaultProfile);
+    setPermissions(DEFAULT_ROLE_PERMISSIONS[UserRole.PECC]);
+    setSiteId(null);
+    setVisibleTabs([...PECC_TAB_KEYS]);
+  }, [currentUser]);
+
   // Fetch user profile from Supabase
   const fetchUserProfile = useCallback(async () => {
     if (!currentUser) {
@@ -272,31 +296,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     } finally {
       setIsLoading(false);
     }
-  }, [currentUser]);
-
-  const createDefaultProfile = () => {
-    if (!currentUser) return;
-
-    const defaultProfile: UserProfile = {
-      id: currentUser.id,
-      email: currentUser.email || '',
-      first_name: 'User',
-      last_name: '',
-      phone: null,
-      role: UserRole.PECC,
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      last_login: new Date().toISOString(),
-      manager_id: null,
-      mentor_id: null
-    };
-
-    setUserProfile(defaultProfile);
-    setPermissions(DEFAULT_ROLE_PERMISSIONS[UserRole.PECC]);
-    setSiteId(null);
-    setVisibleTabs([...PECC_TAB_KEYS]);
-  };
+  }, [currentUser, createDefaultProfile]);
 
   useEffect(() => {
     fetchUserProfile();
@@ -314,6 +314,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     }
   }, []);
 
+  const currentUserUid = (currentUser as { uid?: string })?.uid;
+
   const enterViewAsUser = useCallback(async (userId: string): Promise<{ ok: boolean; dashboardPath?: string }> => {
     latestViewAsUserIdRef.current = userId;
     const me = userProfile;
@@ -321,7 +323,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     const isManager = me?.role === UserRole.MANAGER;
     const isMentor = me?.role === UserRole.MENTOR;
     if (!isAdmin && !isManager && !isMentor) return { ok: false };
-    if (userId === currentUser?.id || userId === (currentUser as { uid?: string })?.uid) return { ok: false };
+    if (userId === currentUser?.id || userId === currentUserUid) return { ok: false };
     try {
       // Always fetch fresh from DB so recategorized role (e.g. PECC → staff) is correct; select role and is_admin explicitly
       const { data: profile, error } = await supabase
@@ -405,7 +407,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     } catch {
       return { ok: false };
     }
-  }, [userProfile, currentUser?.id, (currentUser as { uid?: string })?.uid, getDefaultDashboardForRole]);
+  }, [userProfile, currentUser?.id, currentUserUid, getDefaultDashboardForRole]);
 
   const clearViewAsUser = useCallback(() => {
     setViewAsUserId(null);

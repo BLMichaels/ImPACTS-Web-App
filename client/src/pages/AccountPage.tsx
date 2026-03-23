@@ -122,7 +122,7 @@ const AccountPage = () => {
     pediatricVolume: ''
   });
   const [hospitalLoadId, setHospitalLoadId] = useState<string | null>(null); // primary hospital id from CRM for save
-  const [primaryHospitalContactId, setPrimaryHospitalContactId] = useState<string | null>(null);
+  const [, setPrimaryHospitalContactId] = useState<string | null>(null);
 
   const [editingUser, setEditingUser] = useState(false);
   const [editingHospital, setEditingHospital] = useState(false);

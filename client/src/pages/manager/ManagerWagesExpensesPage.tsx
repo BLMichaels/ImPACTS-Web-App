@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -24,8 +24,6 @@ import {
   Alert,
   Grid,
   Link,
-  Tabs,
-  Tab,
   Checkbox,
   FormControlLabel,
   Tooltip
@@ -33,37 +31,19 @@ import {
 import {
   CheckCircle as ApprovedIcon,
   Cancel as RejectedIcon,
-  Edit as EditIcon,
-  Save as SaveIcon,
-  Person as PersonIcon
+  Edit as EditIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO, getYear, getMonth } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
-import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { getUserData } from '../../utils/userData';
 
 // Constants (same as mentor page)
 const HOURLY_RATE = 30;
-const FEDERAL_MILEAGE_RATE = 0.725;
-const EXPENSE_CATEGORIES = [
-  'Travel Expense',
-  'Program Supplies & Expenses',
-  'Marketing - General',
-  'Marketing - Print Media',
-  'Marketing - Swag & Promotional',
-  'Office Supplies & Expenses',
-  'Membership Fees & dues',
-  'Postage & Shipping',
-  'Printing',
-  'Publications & Subscriptions',
-  'Meetings & Entertainment',
-  'Staff Professional Development'
-];
 
 // Interfaces (same as mentor page)
 interface Expense {
@@ -111,7 +91,6 @@ interface Mentor {
 
 const ManagerWagesExpensesPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
   const currentYear = new Date().getFullYear();
   
   const [tabValue, setTabValue] = useState(0); // 0 = list view, 1 = mentor detail
@@ -243,17 +222,17 @@ const ManagerWagesExpensesPage: React.FC = () => {
   }, [mentors]);
 
   // Calculate monthly hours
-  const calculateMonthlyHours = (month: number, year: number): number => {
+  const calculateMonthlyHours = useCallback((month: number, year: number): number => {
     return activities
       .filter(activity => {
         const activityDate = parseISO(activity.date);
         return getYear(activityDate) === year && getMonth(activityDate) === month;
       })
       .reduce((sum, activity) => sum + (activity.hours || 0), 0);
-  };
+  }, [activities]);
 
   // Calculate monthly expenses
-  const calculateMonthlyExpenses = (month: number, year: number): number => {
+  const calculateMonthlyExpenses = useCallback((month: number, year: number): number => {
     if (!mentorWagesData) return 0;
     return mentorWagesData.expenses
       .filter(expense => {
@@ -261,7 +240,7 @@ const ManagerWagesExpensesPage: React.FC = () => {
         return getYear(expenseDate) === year && getMonth(expenseDate) === month;
       })
       .reduce((sum, expense) => sum + expense.total, 0);
-  };
+  }, [mentorWagesData]);
 
   // Generate monthly data
   const monthlyData: MonthlyWageData[] = useMemo(() => {
@@ -299,7 +278,7 @@ const ManagerWagesExpensesPage: React.FC = () => {
     }
     
     return months;
-  }, [activities, mentorWagesData, currentYear]);
+  }, [mentorWagesData, currentYear, calculateMonthlyHours, calculateMonthlyExpenses]);
 
   // Save mentor wages data to Supabase (user_data)
   const saveMentorWagesData = async (data: MentorWagesData) => {

@@ -372,7 +372,7 @@ const AdminCRMPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actualRole, enterViewAsUser, viewAsUserId, refreshProfile, hasAdminAccess } = useUserProfile();
+  const { actualRole, enterViewAsUser, hasAdminAccess } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
   const canViewAsUser = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
@@ -414,7 +414,7 @@ const AdminCRMPage: React.FC = () => {
   const [viewAsMenuAnchor, setViewAsMenuAnchor] = useState<null | HTMLElement>(null);
   const [viewAsPortalBusy, setViewAsPortalBusy] = useState(false);
   const [detailUserPrimaryProgramId, setDetailUserPrimaryProgramId] = useState<string | null>(null);
-  const [detailUserPrimaryProgramLogoUrl, setDetailUserPrimaryProgramLogoUrl] = useState<string | null>(null);
+  const [, setDetailUserPrimaryProgramLogoUrl] = useState<string | null>(null);
   const [crmProgramsForPrimary, setCrmProgramsForPrimary] = useState<Array<{ id: string; name: string; logo_url?: string | null }>>([]);
   const [panelOpen, setPanelOpen] = useState(false);
   const [fullScreenOpen, setFullScreenOpen] = useState(false);
@@ -1059,6 +1059,7 @@ const AdminCRMPage: React.FC = () => {
       });
     });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detailContact fields listed to avoid object identity churn
   }, [detailContact?.id, detailContact?.type, detailContact?.hospitalId, detailContact?.user_id, detailContactUserId, contactUsagePeriod]);
 
   // Resolve platform user id for person-type contact (for "Manage permissions" link)
@@ -1096,6 +1097,7 @@ const AdminCRMPage: React.FC = () => {
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detailContact fields listed to avoid object identity churn
   }, [detailContact?.id, detailContact?.type, detailContact?.email, detailContact?.user_id, detailContact?.crmCreated]);
 
   // Load "View as" user options for hospital/system/hiring_group contacts (so Admin can view as any linked user)
@@ -1179,6 +1181,7 @@ const AdminCRMPage: React.FC = () => {
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detailContact fields listed to avoid object identity churn
   }, [detailContact?.id, detailContact?.type, detailContact?.name, detailContact?.hospitalId, detailContact?.facilityId]);
 
   // Load primary program and programs list when viewing a person with user id (for CRM primary program selector)
@@ -1282,24 +1285,6 @@ const AdminCRMPage: React.FC = () => {
     enterViewAsUser,
     navigate
   ]);
-
-  const handleCrmSavePrimaryProgram = async (programId: string | null) => {
-    if (!detailContactUserId || detailContactUserId.startsWith('pending:')) return;
-    const { error } = await supabase.from('users').update({ primary_program_id: programId, updated_at: new Date().toISOString() }).eq('id', detailContactUserId);
-    if (!error) {
-      setDetailUserPrimaryProgramId(programId);
-      const prog = crmProgramsForPrimary.find(p => p.id === programId);
-      setDetailUserPrimaryProgramLogoUrl(prog?.logo_url ?? null);
-
-      // If the admin is currently viewing-as this user, reload the view-as profile so the navbar logo updates.
-      if (viewAsUserId && viewAsUserId === detailContactUserId) {
-        await enterViewAsUser(detailContactUserId);
-      } else if (refreshProfile && currentUser?.id && detailContactUserId === currentUser.id) {
-        // If updating the currently logged-in admin's own profile, refresh as well.
-        await refreshProfile();
-      }
-    }
-  };
 
   const persistNotesAndActivity = useCallback(async (c: Contact) => {
     const notesLog = c.notesLog ?? [];
@@ -2342,6 +2327,7 @@ const AdminCRMPage: React.FC = () => {
       setDetailContact(prev => prev && prev.id === c.id ? { ...prev, notesLog, activityLog } : prev);
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detailContact fields listed to avoid object identity churn
   }, [detailContact?.id, detailContact?.type, detailContact?.hospitalId, detailContact?.facilityId]);
 
   const openFullScreen = () => {
@@ -2818,8 +2804,6 @@ const AdminCRMPage: React.FC = () => {
     other: contacts.filter(c => c.type === 'other').length,
     pending: contacts.filter(c => c.status === 'Pending').length
   }), [contacts]);
-
-  const activePendingFilter = statusFilter.includes('Pending') && statusFilter.length === 1 && !searchQuery && regionFilter.length === 0 && stateFilter.length === 0 && hospitalTypeFilter.length === 0 && programFilter.length === 0 && cohortFilter.length === 0;
 
   const handleDeleteContact = async (id: string) => {
     const contact = contacts.find(c => c.id === id);

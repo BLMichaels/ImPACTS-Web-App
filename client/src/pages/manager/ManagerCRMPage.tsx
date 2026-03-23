@@ -184,6 +184,7 @@ const ManagerCRMPage: React.FC = () => {
 
   useEffect(() => {
     loadHospitals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadHospitals defined below
   }, [userProfile?.id]);
 
   useEffect(() => {
@@ -211,11 +212,13 @@ const ManagerCRMPage: React.FC = () => {
       if (hRes.data) setAllHospitalsFromDb(hRes.data as any);
       if (mRes.data) setMentorsList(mRes.data as MentorOption[]);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getManagedMentorIds defined below
   }, [addHospitalDialog]);
 
   // Load contacts when on Contacts tab or when hospitals change
   useEffect(() => {
     if (activeTab === 1) void loadContacts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadContacts defined below
   }, [activeTab, hospitals]);
 
   const getManagedMentorIds = async (): Promise<string[]> => {
