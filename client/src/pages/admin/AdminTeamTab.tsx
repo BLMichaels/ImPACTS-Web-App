@@ -471,14 +471,28 @@ const AdminTeamTab: React.FC = () => {
     setProfileEditMode(false);
   };
 
-  const handleToggleStatus = () => {
-    if (selectedUser) {
-      setUsers(users.map(u =>
-        u.id === selectedUser.id
-          ? { ...u, status: u.status === 'active' ? 'inactive' : 'active' }
-          : u
-      ));
+  const handleToggleStatus = async () => {
+    if (!selectedUser) {
+      setAnchorEl(null);
+      return;
     }
+    const nextStatus = selectedUser.status === 'active' ? 'inactive' : 'active';
+    const { error } = await supabase
+      .from('users')
+      .update({ is_active: nextStatus === 'active' })
+      .eq('id', selectedUser.id);
+    if (error) {
+      setSnackbar({ open: true, message: `Failed to update user status: ${error.message}`, severity: 'error' });
+      setAnchorEl(null);
+      return;
+    }
+    setUsers(users.map(u =>
+      u.id === selectedUser.id
+        ? { ...u, status: nextStatus }
+        : u
+    ));
+    setSelectedUser((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+    setSnackbar({ open: true, message: `User ${nextStatus === 'active' ? 'activated' : 'deactivated'}`, severity: 'success' });
     setAnchorEl(null);
   };
 

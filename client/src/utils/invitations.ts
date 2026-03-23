@@ -56,7 +56,7 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
   let code = '';
   const { data: existingPending } = await supabase
     .from('invitations')
-    .select('id, code, cohort_ids, program_ids')
+    .select('id, code, cohort_ids, program_ids, invited_by, hospital_id, mentor_id, manager_id')
     .eq('email', emailNorm)
     .eq('role', role)
     .eq('status', 'pending')
@@ -64,7 +64,15 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
     .limit(1)
     .maybeSingle();
 
-  if (existingPending?.id && existingPending.code) {
+  const canReuseExisting =
+    !!existingPending?.id &&
+    !!existingPending.code &&
+    existingPending.invited_by === invitedBy &&
+    (existingPending.hospital_id ?? null) === (hospitalId ?? null) &&
+    (existingPending.mentor_id ?? null) === (finalMentorId ?? null) &&
+    (existingPending.manager_id ?? null) === (finalManagerId ?? null);
+
+  if (canReuseExisting && existingPending?.id && existingPending.code) {
     invitationId = existingPending.id;
     code = existingPending.code;
     const mergedCohorts = [...new Set([...(existingPending.cohort_ids || []), ...(cohortIds || [])])];

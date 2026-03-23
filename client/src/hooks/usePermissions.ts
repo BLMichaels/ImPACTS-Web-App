@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { useUserProfile } from '../context/UserProfileContext';
-import { DEFAULT_ROLE_PERMISSIONS, normalizeUserRole, UserRole } from '../types/database';
 
 /**
  * Hook to check if a tab is visible for the current user in a cohort or program
@@ -62,7 +61,8 @@ export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: 
         setIsVisible(true);
       } catch (error) {
         console.error('Error checking tab visibility:', error);
-        setIsVisible(true);  // Default to visible on error
+        // Fail closed on lookup errors to avoid accidental overexposure.
+        setIsVisible(false);
       }
     };
     
@@ -74,13 +74,12 @@ export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: 
 
 /**
  * Hook to check if user has a specific permission.
- * Uses user_has_permission RPC (role + user/cohort/program overrides); falls back to DEFAULT_ROLE_PERMISSIONS when RPC is unavailable.
+ * Uses user_has_permission RPC (role + user/cohort/program overrides) and fails closed on errors.
  */
 export const usePermission = (permissionKey: string, cohortId?: string, programId?: string) => {
   const { userProfile } = useUserProfile();
   const [hasPermission, setHasPermission] = useState(false);
   const userId = userProfile?.id;
-  const role = userProfile?.role != null ? normalizeUserRole(userProfile.role) as UserRole : undefined;
 
   useEffect(() => {
     if (!userId) return;
@@ -97,23 +96,15 @@ export const usePermission = (permissionKey: string, cohortId?: string, programI
           setHasPermission(data);
           return;
         }
-        if (role && DEFAULT_ROLE_PERMISSIONS[role]?.includes(permissionKey)) {
-          setHasPermission(true);
-          return;
-        }
         setHasPermission(false);
       } catch (err) {
         console.error('Error checking permission:', err);
-        if (role && DEFAULT_ROLE_PERMISSIONS[role]?.includes(permissionKey)) {
-          setHasPermission(true);
-        } else {
-          setHasPermission(false);
-        }
+        setHasPermission(false);
       }
     };
 
     checkPermission();
-  }, [userId, role, permissionKey, cohortId, programId]);
+  }, [userId, permissionKey, cohortId, programId]);
 
   return hasPermission;
 };
@@ -216,7 +207,7 @@ export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<
       } catch (err) {
         if (!cancelled) {
           console.error('Error resolving PRS section visibility:', err);
-          setIsVisible(true);
+          setIsVisible(false);
         }
       }
     };

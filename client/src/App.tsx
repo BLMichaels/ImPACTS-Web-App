@@ -230,15 +230,15 @@ function App() {
                   
                   {/* PECC Routes */}
                   <Route path="/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><DashboardPage /></ProtectedRoute>} />
-                  <Route path="/snapshot" element={<ProtectedRoute><SnapshotPage /></ProtectedRoute>} />
-                  <Route path="/simulation" element={<ProtectedRoute><SimulationPage /></ProtectedRoute>} />
-                  <Route path="/milestones" element={<ProtectedRoute><MilestonesPage /></ProtectedRoute>} />
-                  <Route path="/activities" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
+                  <Route path="/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><SnapshotPage /></ProtectedRoute>} />
+                  <Route path="/simulation" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><SimulationPage /></ProtectedRoute>} />
+                  <Route path="/milestones" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><MilestonesPage /></ProtectedRoute>} />
+                  <Route path="/activities" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><ActivitiesPage /></ProtectedRoute>} />
                   <Route path="/prs" element={<Navigate to="/snapshot" replace />} />
-                  <Route path="/gap-plan" element={<ProtectedRoute><GapPlanPage /></ProtectedRoute>} />
+                  <Route path="/gap-plan" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><GapPlanPage /></ProtectedRoute>} />
                   <Route path="/education" element={<Navigate to="/gap-plan" replace />} />
-                  <Route path="/cohorts" element={<ProtectedRoute><CohortsPage /></ProtectedRoute>} />
-                  <Route path="/programs" element={<ProtectedRoute><ProgramsPage /></ProtectedRoute>} />
+                  <Route path="/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><CohortsPage /></ProtectedRoute>} />
+                  <Route path="/programs" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><ProgramsPage /></ProtectedRoute>} />
                   
                   {/* Mentor Routes */}
                   <Route path="/mentor/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorDashboardPage /></ProtectedRoute>} />

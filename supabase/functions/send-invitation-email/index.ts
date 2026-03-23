@@ -14,8 +14,12 @@ const INVITE_RATE_WINDOW_MS = 60_000;
 const INVITE_RATE_LIMIT = 10;
 const inviteRateMap = new Map<string, { count: number; windowStart: number }>();
 
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
+const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const baseCorsHeaders: Record<string, string> = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Max-Age': '86400',
@@ -62,7 +66,12 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#039;');
 }
 
-const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+const corsHeadersFor = (req: Request): Record<string, string> => {
+  const origin = req.headers.get('origin') ?? '';
+  if (allowedOrigins.length === 0) return { ...baseCorsHeaders, 'Access-Control-Allow-Origin': '*' };
+  const allowed = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  return { ...baseCorsHeaders, 'Access-Control-Allow-Origin': allowed, Vary: 'Origin' };
+};
 
 function enforceRateLimit(key: string): boolean {
   const now = Date.now();
@@ -82,6 +91,8 @@ function isLikelyEmail(value: string): boolean {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  const corsHeaders = corsHeadersFor(req);
+  const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
   // CORS preflight: must return 2xx with CORS headers so the browser allows the actual request
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200, headers: corsHeaders });
@@ -194,7 +205,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     const invitationUrl = `${derivedBase}/invite/${encodeURIComponent(code)}`;
 
-    const invitationRole = typeof body.role === 'string' ? body.role : 'user';
+    const invitationRole = typeof body.role === 'string' ? body.role.toLowerCase().trim() : 'user';
+    const canInviteRole =
+      actor?.is_admin === true ||
+      actorRole === 'admin' ||
+      (actorRole === 'manager' && (invitationRole === 'mentor' || invitationRole === 'pecc')) ||
+      (actorRole === 'mentor' && invitationRole === 'pecc');
+    if (!canInviteRole) {
+      return new Response(JSON.stringify({ error: 'You are not allowed to invite this role' }), {
+        status: 403,
+        headers: jsonHeaders,
+      });
+    }
     const expiresAt = typeof body.expiresAt === 'string' ? body.expiresAt : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const customMessage = body.customMessage != null ? body.customMessage : null;
 
