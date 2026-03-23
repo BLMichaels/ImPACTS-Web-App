@@ -6,10 +6,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-const FROM_EMAIL = Deno.env.get('INVITATION_FROM_EMAIL') || 'ImPACTS <onboarding@resend.dev>';
+const FROM_EMAIL = Deno.env.get('INVITATION_FROM_EMAIL') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const APP_BASE_URL = (Deno.env.get('APP_BASE_URL') ?? 'https://impacts-tau.vercel.app').replace(/\/+$/, '');
+const APP_BASE_URL = (Deno.env.get('APP_BASE_URL') ?? '').replace(/\/+$/, '');
+const INVITE_RATE_WINDOW_MS = 60_000;
+const INVITE_RATE_LIMIT = 10;
+const inviteRateMap = new Map<string, { count: number; windowStart: number }>();
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -60,6 +63,19 @@ function escapeHtml(s: string): string {
 }
 
 const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+
+function enforceRateLimit(key: string): boolean {
+  const now = Date.now();
+  const existing = inviteRateMap.get(key);
+  if (!existing || now - existing.windowStart > INVITE_RATE_WINDOW_MS) {
+    inviteRateMap.set(key, { count: 1, windowStart: now });
+    return true;
+  }
+  if (existing.count >= INVITE_RATE_LIMIT) return false;
+  existing.count += 1;
+  inviteRateMap.set(key, existing);
+  return true;
+}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // CORS preflight: must return 2xx with CORS headers so the browser allows the actual request
@@ -124,6 +140,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
         { status: 500, headers: jsonHeaders }
       );
     }
+    if (!FROM_EMAIL || !FROM_EMAIL.includes('@')) {
+      return new Response(
+        JSON.stringify({ error: 'Email service not configured (INVITATION_FROM_EMAIL missing/invalid)' }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
+    if (!APP_BASE_URL || !/^https:\/\//i.test(APP_BASE_URL)) {
+      return new Response(
+        JSON.stringify({ error: 'Email service not configured (APP_BASE_URL must be an https URL)' }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
 
     let body: { email?: string; code?: string; role?: string; invitationUrl?: string; expiresAt?: string; customMessage?: string | null };
     try {
@@ -142,6 +170,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
         JSON.stringify({ error: 'email and code are required' }),
         { status: 400, headers: jsonHeaders }
       );
+    }
+    const ipKey = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
+    const rlKey = `${actorAuth.id}:${ipKey}`;
+    if (!enforceRateLimit(rlKey)) {
+      return new Response(JSON.stringify({ error: 'Too many invitation emails. Please wait and retry.' }), {
+        status: 429,
+        headers: jsonHeaders,
+      });
     }
     const invitationUrl = `${APP_BASE_URL}/invite/${encodeURIComponent(code)}`;
 

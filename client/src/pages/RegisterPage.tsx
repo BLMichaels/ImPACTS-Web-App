@@ -237,13 +237,16 @@ export default function RegisterPage() {
     const effectiveLastName = (hasLinkedField('last_name') ? String(getLinkedAnswer('last_name') ?? '').trim() : lastName.trim()) || '';
     const effectiveEmail = (hasLinkedField('email') ? String(getLinkedAnswer('email') ?? '').trim() : email.trim()) || '';
     const effectiveNprqi = hasLinkedField('nprqi_participant') ? getLinkedAnswer('nprqi_participant') : nprqiParticipant;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (password !== confirmPassword) return setError('Passwords do not match');
+    if (password.length < 8) return setError('Password must be at least 8 characters.');
     if (!termsAccepted) return setError('You must accept the Terms of Service to register.');
 
     if (!effectiveFirstName) return setError('First name is required.');
     if (!effectiveLastName) return setError('Last name is required.');
     if (!effectiveEmail) return setError('Email is required.');
+    if (!emailRegex.test(effectiveEmail)) return setError('Please enter a valid email address.');
     if (effectiveNprqi === '' || effectiveNprqi === undefined) return setError('Please indicate if you are participating in NPRQI.');
 
     let hospitalFacilityId: string | null;
@@ -313,8 +316,7 @@ export default function RegisterPage() {
       }).eq('id', userId);
 
       if (updateError) {
-        console.error('Profile update failed:', updateError);
-        // Still allow login; profile can be updated later
+        throw new Error(`Profile setup failed: ${updateError.message}`);
       }
 
       // Add this person to the CRM as a contact associated with their hospital
@@ -327,7 +329,7 @@ export default function RegisterPage() {
           .maybeSingle();
         const hospitalId = hosp && typeof (hosp as { id?: string }).id === 'string' ? (hosp as { id: string }).id : null;
         if (hospitalId) {
-          await supabase.from('hospital_contacts').upsert(
+          const { error: upsertContactError } = await supabase.from('hospital_contacts').upsert(
             {
               hospital_id: hospitalId,
               user_id: userId,
@@ -343,6 +345,9 @@ export default function RegisterPage() {
             },
             { onConflict: 'hospital_id,user_id' }
           );
+          if (upsertContactError) {
+            throw new Error(`Could not link your account to CRM contacts: ${upsertContactError.message}`);
+          }
         }
       }
 

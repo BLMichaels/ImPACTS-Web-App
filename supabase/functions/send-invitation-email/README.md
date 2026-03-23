@@ -14,7 +14,10 @@ Supabase Edge Function that sends invitation emails via [Resend](https://resend.
 3. **Set secrets** in Supabase Dashboard:
    - Project → Edge Functions → send-invitation-email → Secrets
    - Add `RESEND_API_KEY` = your Resend API key
-   - Optional: `INVITATION_FROM_EMAIL` = e.g. `ImPACTS <noreply@yourdomain.com>` (defaults to `ImPACTS <onboarding@resend.dev>` which is for testing only)
+   - Add `INVITATION_FROM_EMAIL` = e.g. `ImPACTS <noreply@yourdomain.com>`
+   - Add `APP_BASE_URL` = your production app origin, e.g. `https://impacts.example.org`
+
+`INVITATION_FROM_EMAIL` and `APP_BASE_URL` are required in production. The function now returns a configuration error if either is missing/invalid.
 
 Without this deployment and `RESEND_API_KEY`, invitations are still created and the app shows the registration link so you can copy and share it manually; the invitee will not receive an email automatically.
 

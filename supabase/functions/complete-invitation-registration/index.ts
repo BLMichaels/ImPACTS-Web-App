@@ -20,6 +20,23 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
+const ATTEMPT_LIMIT = 15;
+const attemptMap = new Map<string, { count: number; windowStart: number }>();
+
+function registerAttempt(key: string): boolean {
+  const now = Date.now();
+  const row = attemptMap.get(key);
+  if (!row || now - row.windowStart > ATTEMPT_WINDOW_MS) {
+    attemptMap.set(key, { count: 1, windowStart: now });
+    return true;
+  }
+  if (row.count >= ATTEMPT_LIMIT) return false;
+  row.count += 1;
+  attemptMap.set(key, row);
+  return true;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200, headers: corsHeaders });
@@ -47,9 +64,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const emailNorm =
     typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
+  const codeLooksValid = /^[A-Z2-9]{8}$/i.test(code);
 
-  if (!code || !emailNorm || password.length < 8) {
+  if (!code || !emailNorm || password.length < 8 || !codeLooksValid) {
     return json({ error: 'invitation_code, email, and password (min 8 chars) are required' }, 400);
+  }
+  const sourceIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
+  if (!registerAttempt(`${emailNorm}:${sourceIp}`)) {
+    return json({ error: 'Too many attempts. Please wait and try again.' }, 429);
   }
 
   const { data: inv, error: invErr } = await admin

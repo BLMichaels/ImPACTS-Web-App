@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -64,10 +64,6 @@ const InvitationPage: React.FC = () => {
   const [emailConfirmationMessage, setEmailConfirmationMessage] = useState<string>('');
 
   useEffect(() => {
-    validateInvitation();
-  }, [code]);
-
-  useEffect(() => {
     (async () => {
       const { data } = await supabase.from('app_settings').select('value').eq('key', 'email_confirmation_message').maybeSingle();
       const v = (data as { value?: string } | null)?.value;
@@ -75,15 +71,11 @@ const InvitationPage: React.FC = () => {
     })();
   }, []);
 
-  const validateInvitation = async () => {
-    if (!code) {
-      setError('Invalid invitation link');
-      setLoading(false);
-      return;
-    }
-
+  const validateInvitation = useCallback(async (cancelled = false) => {
+    if (!code) return;
     try {
       const invitationData = await getInvitationByCode(code);
+      if (cancelled) return;
       
       if (!invitationData) {
         setError('This invitation link is invalid or has expired.');
@@ -112,6 +104,7 @@ const InvitationPage: React.FC = () => {
           .select('name')
           .eq('id', invitationData.hospital_id)
           .single();
+        if (cancelled) return;
         if (hospital) hospitalName = normalizeHospitalOrOrgName(hospital.name);
       }
       
@@ -121,6 +114,7 @@ const InvitationPage: React.FC = () => {
           .select('first_name, last_name, email')
           .eq('id', invitationData.mentor_id)
           .single();
+        if (cancelled) return;
         if (mentor) {
           mentorName = getUserDisplayName(mentor);
         }
@@ -132,6 +126,7 @@ const InvitationPage: React.FC = () => {
           .select('first_name, last_name, email')
           .eq('id', invitationData.manager_id)
           .single();
+        if (cancelled) return;
         if (manager) {
           managerName = getUserDisplayName(manager);
         }
@@ -154,6 +149,7 @@ const InvitationPage: React.FC = () => {
       
       setInvitation(invitation);
       setFormData(prev => ({ ...prev, email: invitationData.email }));
+      if (cancelled) return;
 
       const cohortIds = Array.isArray((invitationData as { cohort_ids?: string[] }).cohort_ids)
         ? (invitationData as { cohort_ids: string[] }).cohort_ids
@@ -161,6 +157,7 @@ const InvitationPage: React.FC = () => {
       let programIds: string[] = [];
       if (cohortIds.length > 0) {
         const { data: cohorts } = await supabase.from('cohorts').select('program_id').in('id', cohortIds);
+        if (cancelled) return;
         programIds = [...new Set((cohorts || []).map((c: { program_id: string | null }) => c.program_id).filter(Boolean) as string[])];
       }
       setQuestionsLoading(true);
@@ -170,6 +167,7 @@ const InvitationPage: React.FC = () => {
           .select('*')
           .eq('is_active', true)
           .order('sort_order', { ascending: true });
+        if (cancelled) return;
         const role = invitationData.role as string;
         const rows = (qData || []).map((r: Record<string, unknown>) => {
           const dc = r.display_condition as RegistrationQuestionDisplayCondition | null | undefined;
@@ -198,15 +196,35 @@ const InvitationPage: React.FC = () => {
           });
         setRegistrationQuestions(filtered);
       } finally {
-        setQuestionsLoading(false);
+        if (!cancelled) setQuestionsLoading(false);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to validate invitation. Please try again.');
-      setInvitation(null);
+      if (!cancelled) {
+        setError(err.message || 'Failed to validate invitation. Please try again.');
+        setInvitation(null);
+      }
     } finally {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
-  };
+  }, [code]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!code) {
+        if (!cancelled) {
+          setError('Invalid invitation link');
+          setLoading(false);
+        }
+        return;
+      }
+      await validateInvitation(cancelled);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [code, validateInvitation]);
 
   const setRegistrationAnswer = (questionId: string, value: string | boolean | string[]) => {
     setRegistrationAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -273,7 +291,7 @@ const InvitationPage: React.FC = () => {
         throw new Error('Invalid invitation');
       }
 
-      const finishRegistration = async (userId: string) => {
+      const finishRegistration = async (userId: string, invitationAlreadyAccepted = false) => {
         const dynamicAnswers: Record<string, string | boolean | string[]> = {};
         Object.entries(registrationAnswers).forEach(([k, v]) => {
           if (v !== undefined && v !== null && (typeof v !== 'string' || v.trim() !== '')) {
@@ -311,32 +329,36 @@ const InvitationPage: React.FC = () => {
         const { error: updateError } = await supabase.from('users').update(updatePayload).eq('id', userId);
 
         if (updateError) {
-          console.error('Failed to update user profile:', updateError);
+          throw new Error(`Failed to finalize profile: ${updateError.message}`);
         }
 
         const cohortIds = (invData as { cohort_ids?: string[] } | null)?.cohort_ids;
         const invitedBy = (invData as { invited_by?: string } | null)?.invited_by;
         if (invitation.role === 'pecc' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
           for (const cohortId of cohortIds) {
-            await supabase.from('cohort_members').upsert(
+            const { error: cohortMemberError } = await supabase.from('cohort_members').upsert(
               { cohort_id: cohortId, user_id: userId, added_by: invitedBy, status: 'active' },
               { onConflict: 'cohort_id,user_id' }
             );
+            if (cohortMemberError) {
+              throw new Error(`Failed to assign cohort membership: ${cohortMemberError.message}`);
+            }
           }
         }
         if (invitation.role === 'mentor' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
           for (const cohortId of cohortIds) {
-            await supabase.from('cohort_invite_mentors').upsert(
+            const { error: cohortMentorError } = await supabase.from('cohort_invite_mentors').upsert(
               { cohort_id: cohortId, mentor_id: userId, assigned_by: invitedBy },
               { onConflict: 'cohort_id,mentor_id' }
             );
+            if (cohortMentorError) {
+              throw new Error(`Failed to assign mentor cohort access: ${cohortMentorError.message}`);
+            }
           }
         }
 
-        try {
+        if (!invitationAlreadyAccepted) {
           await acceptInvitation(code, userId);
-        } catch (acceptErr) {
-          console.warn('Invitation accept from client failed (may already be accepted):', acceptErr);
         }
 
       };
@@ -384,7 +406,7 @@ const InvitationPage: React.FC = () => {
           if (signInErr || !signInData.user) {
             throw signInErr ?? new Error('Sign-in failed after setting password.');
           }
-          await finishRegistration(signInData.user.id);
+          await finishRegistration(signInData.user.id, true);
           await supabase.auth.signOut();
           setError(null);
           navigate('/login?registered=success&message=Account ready. Sign in with your email and password.');
