@@ -411,7 +411,7 @@ const AdminCRMPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actualRole, enterViewAsUser, hasAdminAccess, refreshProfile, userProfile } = useUserProfile();
+  const { actualRole, enterViewAsUser, refreshProfile, userProfile } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
   const canViewAsUser = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
@@ -516,6 +516,14 @@ const AdminCRMPage: React.FC = () => {
     facilityId: '',
     is_admin: false
   });
+
+  const canGrantPlatformAdminAccess = userProfile?.role === UserRole.ADMIN;
+  const editingOwnStaffContact = Boolean(
+    formData.type === 'staff' &&
+    editingContact?.user_id &&
+    currentUser?.id &&
+    editingContact.user_id === currentUser.id
+  );
 
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldsDialogOpen, setCustomFieldsDialogOpen] = useState(false);
@@ -1785,11 +1793,10 @@ const AdminCRMPage: React.FC = () => {
       return;
     }
     const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
-    // Only platform admins may set is_admin on Staff CRM contacts; others cannot promote/demote via CRM.
     const effectiveStaffIsAdmin =
       formData.type !== 'staff'
         ? false
-        : hasAdminAccess
+        : canGrantPlatformAdminAccess && !editingOwnStaffContact
           ? (formData.is_admin ?? false)
           : (editingContact?.is_admin ?? false);
     const payload: Contact = {
@@ -4346,16 +4353,17 @@ const AdminCRMPage: React.FC = () => {
                     <Grid item xs={12}>
                       <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({ id: c.hospitalId!, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({ id: c!.hospitalId || c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
-                    {formData.type === 'staff' && hasAdminAccess && (
+                    {formData.type === 'staff' && canGrantPlatformAdminAccess && (
                     <Grid item xs={12}>
                       <FormControlLabel
                         control={
                           <Switch
                             checked={formData.is_admin || false}
+                            disabled={editingOwnStaffContact}
                             onChange={(e) => setFormData(prev => ({ ...prev, is_admin: e.target.checked }))}
                           />
                         }
-                        label="Admin"
+                        label={editingOwnStaffContact ? 'Platform admin access (cannot edit your own)' : 'Platform admin access (is_admin)'}
                       />
                     </Grid>
                     )}

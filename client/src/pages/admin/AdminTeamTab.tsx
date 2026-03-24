@@ -79,6 +79,8 @@ const AdminTeamTab: React.FC = () => {
   const navigate = useNavigate();
   const { resetPasswordForEmail } = useAuth();
   const { userProfile, enterViewAsUser } = useUserProfile();
+  /** Only primary-role platform admins may grant `is_admin`. Staff with only `is_admin` (e.g. manager + admin flag) cannot promote others. */
+  const canGrantPlatformAdminAccess = userProfile?.role === UserRole.ADMIN;
   const [users, setUsers] = useState<User[]>([]);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' }>({ open: false, message: '' });
   const [searchQuery, setSearchQuery] = useState('');
@@ -396,12 +398,18 @@ const AdminTeamTab: React.FC = () => {
     if (!selectedUser) return;
     setProfileSaving(true);
     setProfileError(null);
+    const editingSelf = selectedUser.id === userProfile?.id;
+    const effectiveIsAdmin =
+      editingSelf
+        ? (selectedUser.is_admin === true)
+        : (canGrantPlatformAdminAccess ? profileForm.is_admin === true : selectedUser.is_admin === true);
+
     const payload: Record<string, unknown> = {
       first_name: profileForm.firstName.trim(),
       last_name: profileForm.lastName.trim(),
       phone: profileForm.phone || null,
       role: profileForm.role,
-      is_admin: profileForm.is_admin === true,
+      is_admin: effectiveIsAdmin,
       is_active: profileForm.status === 'active',
       manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
       mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
@@ -437,7 +445,7 @@ const AdminTeamTab: React.FC = () => {
         lastName: profileForm.lastName.trim(),
         phone: profileForm.phone,
         role: profileForm.role,
-        is_admin: profileForm.is_admin,
+        is_admin: effectiveIsAdmin,
         status: profileForm.status,
         manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
         mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
@@ -459,7 +467,7 @@ const AdminTeamTab: React.FC = () => {
       lastName: profileForm.lastName.trim(),
       phone: profileForm.phone,
       role: profileForm.role,
-      is_admin: profileForm.is_admin,
+      is_admin: effectiveIsAdmin,
       status: profileForm.status,
       manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
       mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
@@ -647,7 +655,9 @@ const AdminTeamTab: React.FC = () => {
         container={typeof document !== 'undefined' ? document.body : undefined}
         ModalProps={{ disableEnforceFocus: true, disableAutoFocus: true }}
       >
-        {selectedUser && (
+        {selectedUser && (() => {
+          const editingSelf = selectedUser.id === userProfile?.id;
+          return (
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6">{profileEditMode ? 'Edit User' : 'User Profile'}</Typography>
@@ -685,12 +695,24 @@ const AdminTeamTab: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
+                {canGrantPlatformAdminAccess && (
                 <Grid item xs={12}>
                   <FormControlLabel
-                    control={<Switch checked={profileForm.is_admin} onChange={(e) => setProfileForm(p => ({ ...p, is_admin: e.target.checked }))} />}
-                    label="Grant admin access (user can have multiple roles; e.g. Manager + Admin)"
+                    control={
+                      <Switch
+                        checked={profileForm.is_admin}
+                        disabled={editingSelf}
+                        onChange={(e) => setProfileForm(p => ({ ...p, is_admin: e.target.checked }))}
+                      />
+                    }
+                    label={
+                      editingSelf
+                        ? 'Platform admin access (cannot change your own flag here)'
+                        : 'Grant platform admin access (is_admin — full admin UI; not the same as CRM “Staff” contact type)'
+                    }
                   />
                 </Grid>
+                )}
                 {profileForm.role === 'mentor' && (
                   <Grid item xs={12}>
                     <FormControl fullWidth size="small">
@@ -801,7 +823,8 @@ const AdminTeamTab: React.FC = () => {
               </>
             )}
           </Box>
-        )}
+          );
+        })()}
       </Drawer>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -837,12 +860,14 @@ const AdminTeamTab: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            {canGrantPlatformAdminAccess && (
             <Grid item xs={12}>
               <FormControlLabel
                 control={<Switch checked={formData.is_admin} onChange={(e) => setFormData((prev) => ({ ...prev, is_admin: e.target.checked }))} />}
-                label="Grant admin access (user can have multiple roles; e.g. Manager + Admin)"
+                label="Grant platform admin access (is_admin)"
               />
             </Grid>
+            )}
             {formData.role === 'mentor' && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
