@@ -25,6 +25,16 @@ export type ReportDatasetKey =
   | 'user_hiring_group'
   | 'platform_users';
 
+export type ColumnFilterOp = 'contains' | 'equals' | 'not_contains' | 'starts_with' | 'empty' | 'not_empty';
+
+/** Per-column rules (AND). Saved with layouts and session restore. */
+export interface ColumnFilterRule {
+  id: string;
+  columnId: string;
+  op: ColumnFilterOp;
+  value: string;
+}
+
 export interface ReportStateSnapshot {
   dataset: ReportDatasetKey;
   activityPreset: string;
@@ -39,6 +49,8 @@ export interface ReportStateSnapshot {
   columns: Record<string, boolean>;
   /** Column ids in left-to-right order. Omitted in older saved layouts; defaults to definition order. */
   columnOrder?: string[];
+  /** Optional; older snapshots omit this. */
+  columnFilters?: ColumnFilterRule[];
 }
 
 export interface SavedReportPreset {

@@ -37,8 +37,10 @@ import {
   Link,
   Menu,
   Tooltip,
+  Badge,
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import TuneIcon from '@mui/icons-material/Tune';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -70,6 +72,8 @@ import {
   type ReportStateSnapshot,
   type SavedReportPreset,
   type StaffReportScopeNav,
+  type ColumnFilterRule,
+  type ColumnFilterOp,
 } from '../../utils/reportPresets';
 
 export type StaffReportScope = 'admin' | 'manager' | 'mentor';
@@ -462,6 +466,45 @@ function isLinkedNameColumn(dataset: ReportDataset, columnId: string): boolean {
   return map[dataset]?.includes(columnId) ?? false;
 }
 
+const COLUMN_FILTER_OP_OPTIONS: { value: ColumnFilterOp; label: string }[] = [
+  { value: 'contains', label: 'Contains' },
+  { value: 'not_contains', label: 'Does not contain' },
+  { value: 'equals', label: 'Equals' },
+  { value: 'starts_with', label: 'Starts with' },
+  { value: 'empty', label: 'Is empty' },
+  { value: 'not_empty', label: 'Is not empty' },
+];
+
+function newColumnFilterRuleId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `cf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function rowMatchesColumnFilterRule(row: ReportDataRow, rule: ColumnFilterRule): boolean {
+  const raw = (row.cells[rule.columnId] ?? '').trim();
+  const v = (rule.value ?? '').trim();
+  switch (rule.op) {
+    case 'empty':
+      return !raw;
+    case 'not_empty':
+      return !!raw;
+    case 'contains':
+      if (!v) return true;
+      return raw.toLowerCase().includes(v.toLowerCase());
+    case 'not_contains':
+      if (!v) return true;
+      return !raw.toLowerCase().includes(v.toLowerCase());
+    case 'equals':
+      return raw.toLowerCase() === v.toLowerCase();
+    case 'starts_with':
+      if (!v) return true;
+      return raw.toLowerCase().startsWith(v.toLowerCase());
+    default:
+      return true;
+  }
+}
+
 interface Props {
   scope: StaffReportScope;
   actorUserId: string;
@@ -490,6 +533,8 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   /** Left-to-right order of all column ids for the current dataset (visibility is separate). */
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [columnDrawer, setColumnDrawer] = useState(false);
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [columnFilters, setColumnFilters] = useState<ColumnFilterRule[]>([]);
   const [sortBy, setSortBy] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [peccAudit, setPeccAudit] = useState<PeccAuditSnapshot | null>(null);
@@ -524,6 +569,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setSortDir(snap.sortDir);
     setColumns(snap.columns);
     setColumnOrder(snap.columnOrder?.length ? snap.columnOrder : []);
+    setColumnFilters(snap.columnFilters ?? []);
     skipColumnResetRef.current = true;
     skipSortResetRef.current = true;
   }, []);
@@ -551,6 +597,11 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       setColumnOrder((prev) => mergeColumnOrder(prev, columnMetas));
     }
   }, [dataset, columnMetas]);
+
+  useEffect(() => {
+    const allowed = new Set(columnMetas.map((c) => c.id));
+    setColumnFilters((prev) => prev.filter((r) => allowed.has(r.columnId)));
+  }, [columnMetas]);
 
   useEffect(() => {
     if (skipSortResetRef.current) {
@@ -775,8 +826,22 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         });
       }
     }
+    if (columnFilters.length) {
+      list = list.filter((r) => columnFilters.every((rule) => rowMatchesColumnFilterRule(r, rule)));
+    }
     return list;
-  }, [rows, search, stateFilter, dataset, programFilter, cohortFilter, activityPreset, programIdsByRow, cohortIdsByRow]);
+  }, [
+    rows,
+    search,
+    stateFilter,
+    dataset,
+    programFilter,
+    cohortFilter,
+    activityPreset,
+    programIdsByRow,
+    cohortIdsByRow,
+    columnFilters,
+  ]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -960,6 +1025,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       sortDir,
       columns,
       columnOrder,
+      columnFilters,
     });
   }, [
     actorUserId,
@@ -975,6 +1041,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     sortDir,
     columns,
     columnOrder,
+    columnFilters,
   ]);
 
   const savedReportPresets = useMemo(() => loadSavedReportPresets(actorUserId), [actorUserId, savedPresetsTick]);
@@ -993,6 +1060,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       sortDir,
       columns,
       columnOrder,
+      columnFilters,
     }),
     [
       dataset,
@@ -1007,6 +1075,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       sortDir,
       columns,
       columnOrder,
+      columnFilters,
     ]
   );
 
@@ -1073,78 +1142,117 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
 
   return (
     <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: (t) => t.shadows[1] }}>
-      <Box sx={{ px: 2.5, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.06), borderBottom: 1, borderColor: 'divider' }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+      <Box sx={{ px: 2.5, py: 2.5, bgcolor: (t) => alpha(t.palette.primary.main, 0.06), borderBottom: 1, borderColor: 'divider' }}>
+        <Stack spacing={2.5}>
           <Box>
             <Typography variant="h6" fontWeight={700}>
               Advanced reports
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 900 }}>
               PECCs (including CRM contacts without accounts), sites, organizations, hospital contacts, and staff — CRM fields, checklists, gap plans, activities, and custom columns. Exports respect your role scope.
             </Typography>
           </Box>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => load()}>
-              Refresh
-            </Button>
-            <Button size="small" variant="outlined" onClick={(e) => setSavedMenuAnchor(e.currentTarget)}>
-              Load saved layout
-            </Button>
-            <Menu anchorEl={savedMenuAnchor} open={Boolean(savedMenuAnchor)} onClose={() => setSavedMenuAnchor(null)}>
-              {savedReportPresets.length === 0 ? (
-                <MenuItem disabled>No saved layouts yet</MenuItem>
-              ) : (
-                savedReportPresets.map((p) => (
-                  <MenuItem
-                    key={p.id}
-                    onClick={() => {
-                      applySnapshot(p.snapshot);
-                      setSavedMenuAnchor(null);
-                    }}
-                    sx={{ pr: 6, position: 'relative' }}
-                  >
-                    {p.name}
-                    <IconButton
-                      size="small"
-                      sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
-                      aria-label={`Delete ${p.name}`}
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        deleteSavedReportPreset(actorUserId, p.id);
-                        setSavedPresetsTick((t) => t + 1);
-                      }}
-                    >
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </MenuItem>
-                ))
-              )}
-            </Menu>
-            <Button size="small" variant="outlined" startIcon={<BookmarkAddIcon />} onClick={() => setSaveDialogOpen(true)}>
-              Save layout
-            </Button>
-            <input
-              type="file"
-              hidden
-              accept="application/json,.json"
-              ref={presetFileInputRef}
-              onChange={handleImportPresetsFile}
-            />
-            <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportPresets}>
-              Export layouts
-            </Button>
-            <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => presetFileInputRef.current?.click()}>
-              Import layouts
-            </Button>
-            <Button size="small" variant="outlined" startIcon={<ViewColumnIcon />} onClick={() => setColumnDrawer(true)}>
-              Columns
-            </Button>
-            <Button size="small" variant="contained" color="secondary" startIcon={<PictureAsPdfIcon />} onClick={exportPdf}>
-              PDF
-            </Button>
-            <Button size="small" variant="contained" startIcon={<TableChartIcon />} onClick={exportExcel}>
-              Excel
-            </Button>
+          <Stack
+            direction={{ xs: 'column', lg: 'row' }}
+            spacing={2}
+            alignItems={{ xs: 'stretch', lg: 'flex-start' }}
+            justifyContent="space-between"
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ alignSelf: { lg: 'center' }, maxWidth: { lg: 380 } }}>
+              Use Search and State for quick narrowing; open Filters to target specific columns. Column rules combine with AND.
+            </Typography>
+            <Stack spacing={1.5} sx={{ flexShrink: 0, alignSelf: { xs: 'stretch', lg: 'flex-end' } }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                flexWrap="wrap"
+                useFlexGap
+                sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' }, rowGap: 1, columnGap: 1 }}
+              >
+                <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => load()}>
+                  Refresh
+                </Button>
+                <Button size="small" variant="outlined" onClick={(e) => setSavedMenuAnchor(e.currentTarget)}>
+                  Load saved layout
+                </Button>
+                <Menu anchorEl={savedMenuAnchor} open={Boolean(savedMenuAnchor)} onClose={() => setSavedMenuAnchor(null)}>
+                  {savedReportPresets.length === 0 ? (
+                    <MenuItem disabled>No saved layouts yet</MenuItem>
+                  ) : (
+                    savedReportPresets.map((p) => (
+                      <MenuItem
+                        key={p.id}
+                        onClick={() => {
+                          applySnapshot(p.snapshot);
+                          setSavedMenuAnchor(null);
+                        }}
+                        sx={{ pr: 6, position: 'relative' }}
+                      >
+                        {p.name}
+                        <IconButton
+                          size="small"
+                          sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                          aria-label={`Delete ${p.name}`}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            deleteSavedReportPreset(actorUserId, p.id);
+                            setSavedPresetsTick((t) => t + 1);
+                          }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </MenuItem>
+                    ))
+                  )}
+                </Menu>
+                <Button size="small" variant="outlined" startIcon={<BookmarkAddIcon />} onClick={() => setSaveDialogOpen(true)}>
+                  Save layout
+                </Button>
+              </Stack>
+              <Stack
+                direction="row"
+                spacing={1}
+                flexWrap="wrap"
+                useFlexGap
+                sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' }, rowGap: 1, columnGap: 1 }}
+              >
+                <input
+                  type="file"
+                  hidden
+                  accept="application/json,.json"
+                  ref={presetFileInputRef}
+                  onChange={handleImportPresetsFile}
+                />
+                <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportPresets}>
+                  Export layouts
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => presetFileInputRef.current?.click()}>
+                  Import layouts
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<ViewColumnIcon />} onClick={() => setColumnDrawer(true)}>
+                  Columns
+                </Button>
+                <Badge badgeContent={columnFilters.length} color="primary" invisible={columnFilters.length === 0} overlap="rectangular">
+                  <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => setFilterDrawerOpen(true)}>
+                    Filters
+                  </Button>
+                </Badge>
+              </Stack>
+              <Stack
+                direction="row"
+                spacing={1}
+                flexWrap="wrap"
+                useFlexGap
+                sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' }, rowGap: 1, columnGap: 1 }}
+              >
+                <Button size="small" variant="contained" color="secondary" startIcon={<PictureAsPdfIcon />} onClick={exportPdf}>
+                  PDF
+                </Button>
+                <Button size="small" variant="contained" startIcon={<TableChartIcon />} onClick={exportExcel}>
+                  Excel
+                </Button>
+              </Stack>
+            </Stack>
           </Stack>
         </Stack>
       </Box>
@@ -1520,6 +1628,106 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               </FormGroup>
             </Box>
           ))}
+        </Box>
+      </Drawer>
+
+      <Drawer anchor="right" open={filterDrawerOpen} onClose={() => setFilterDrawerOpen(false)}>
+        <Box sx={{ width: { xs: '100%', sm: 440 }, maxWidth: '100vw', p: 2 }}>
+          <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+            Column filters
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Each rule checks one column’s stored text (same values as PDF/Excel). All rules must pass (AND). Combine with Search, State, and dataset filters above.
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
+          <Stack spacing={2} sx={{ mb: 2 }}>
+            {columnFilters.map((rule) => (
+              <Stack
+                key={rule.id}
+                spacing={1}
+                sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper' }}
+              >
+                <Stack direction="row" spacing={1} alignItems="flex-start">
+                  <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+                    <InputLabel>Column</InputLabel>
+                    <Select
+                      label="Column"
+                      value={columnMetas.some((c) => c.id === rule.columnId) ? rule.columnId : columnMetas[0]?.id ?? ''}
+                      onChange={(e) =>
+                        setColumnFilters((prev) =>
+                          prev.map((r) => (r.id === rule.id ? { ...r, columnId: e.target.value } : r))
+                        )
+                      }
+                    >
+                      {columnMetas.map((c) => (
+                        <MenuItem key={c.id} value={c.id}>
+                          {c.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <IconButton
+                    size="small"
+                    aria-label="Remove rule"
+                    onClick={() => setColumnFilters((prev) => prev.filter((r) => r.id !== rule.id))}
+                    sx={{ mt: 0.5 }}
+                  >
+                    <DeleteOutlineIcon />
+                  </IconButton>
+                </Stack>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Match</InputLabel>
+                  <Select
+                    label="Match"
+                    value={rule.op}
+                    onChange={(e) =>
+                      setColumnFilters((prev) =>
+                        prev.map((r) => (r.id === rule.id ? { ...r, op: e.target.value as ColumnFilterOp } : r))
+                      )
+                    }
+                  >
+                    {COLUMN_FILTER_OP_OPTIONS.map((o) => (
+                      <MenuItem key={o.value} value={o.value}>
+                        {o.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Value"
+                  value={rule.value}
+                  disabled={rule.op === 'empty' || rule.op === 'not_empty'}
+                  placeholder="Text to match"
+                  onChange={(e) =>
+                    setColumnFilters((prev) =>
+                      prev.map((r) => (r.id === rule.id ? { ...r, value: e.target.value } : r))
+                    )
+                  }
+                />
+              </Stack>
+            ))}
+          </Stack>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                const firstId = columnMetas[0]?.id ?? '';
+                setColumnFilters((prev) => [
+                  ...prev,
+                  { id: newColumnFilterRuleId(), columnId: firstId, op: 'contains', value: '' },
+                ]);
+              }}
+              disabled={!columnMetas.length}
+            >
+              Add rule
+            </Button>
+            <Button size="small" onClick={() => setColumnFilters([])} disabled={!columnFilters.length}>
+              Clear all
+            </Button>
+          </Stack>
         </Box>
       </Drawer>
     </Paper>
