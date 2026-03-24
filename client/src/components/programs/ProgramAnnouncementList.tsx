@@ -31,6 +31,14 @@ import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { ProgramAnnouncement } from '../../types/database';
 import { formatDistanceToNow } from 'date-fns';
+import { AnnouncementRichTextEditor } from '../common/AnnouncementRichTextEditor';
+import { AnnouncementHtmlContent } from '../common/AnnouncementHtmlContent';
+import {
+  announcementHtmlIsEffectivelyEmpty,
+  isLikelyAnnouncementHtml,
+  plainTextToQuillHtml,
+  sanitizeAnnouncementHtml
+} from '../../utils/sanitizeAnnouncementHtml';
 
 interface ProgramAnnouncementListProps {
   programId: string;
@@ -106,9 +114,10 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
 
   const handleOpenEdit = (announcement: ProgramAnnouncement) => {
     setEditingAnnouncement(announcement);
+    const body = announcement.content;
     setAnnouncementForm({
       title: announcement.title,
-      content: announcement.content,
+      content: isLikelyAnnouncementHtml(body) ? body : plainTextToQuillHtml(body),
       is_pinned: announcement.is_pinned
     });
     setDialogOpen(true);
@@ -116,7 +125,8 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
   };
 
   const handleSaveAnnouncement = async () => {
-    if (!announcementForm.title.trim() || !announcementForm.content.trim()) return;
+    const safeContent = sanitizeAnnouncementHtml(announcementForm.content);
+    if (!announcementForm.title.trim() || announcementHtmlIsEffectivelyEmpty(safeContent)) return;
 
     try {
       setSaving(true);
@@ -127,7 +137,7 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
           .from('program_announcements')
           .update({
             title: announcementForm.title.trim(),
-            content: announcementForm.content.trim(),
+            content: safeContent,
             is_pinned: announcementForm.is_pinned,
             updated_at: new Date().toISOString()
           })
@@ -141,7 +151,7 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
           .insert({
             program_id: programId,
             title: announcementForm.title.trim(),
-            content: announcementForm.content.trim(),
+            content: safeContent,
             is_pinned: announcementForm.is_pinned,
             created_by: userProfile?.id
           });
@@ -242,13 +252,7 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
                         {announcement.title}
                       </Typography>
                     </Box>
-                    <Typography 
-                      variant="body1" 
-                      color="text.primary"
-                      sx={{ whiteSpace: 'pre-wrap', mb: 2 }}
-                    >
-                      {announcement.content}
-                    </Typography>
+                    <AnnouncementHtmlContent html={announcement.content} />
                     <Typography variant="caption" color="text.secondary">
                       Posted by {announcement.author?.first_name} {announcement.author?.last_name} •{' '}
                       {formatDistanceToNow(new Date(announcement.created_at), { addSuffix: true })}
@@ -257,7 +261,9 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
                   {canAnnounce && (
                     <IconButton 
                       size="small"
-                      onClick={(e) => setMenuAnchor({ el: e.currentTarget, announcement })}
+                      onClick={(e: React.MouseEvent<HTMLElement>) =>
+                        setMenuAnchor({ el: e.currentTarget, announcement })
+                      }
                     >
                       <MoreIcon />
                     </IconButton>
@@ -293,7 +299,7 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
       <Dialog 
         open={dialogOpen} 
         onClose={() => setDialogOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
       >
         <DialogTitle>
@@ -306,22 +312,25 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
             label="Title"
             fullWidth
             value={announcementForm.title}
-            onChange={(e) => setAnnouncementForm(prev => ({ ...prev, title: e.target.value }))}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setAnnouncementForm((prev) => ({ ...prev, title: e.target.value }))
+            }
           />
-          <TextField
-            margin="normal"
-            label="Content"
-            fullWidth
-            multiline
-            rows={4}
-            value={announcementForm.content}
-            onChange={(e) => setAnnouncementForm(prev => ({ ...prev, content: e.target.value }))}
-          />
+          {dialogOpen && (
+            <AnnouncementRichTextEditor
+              value={announcementForm.content}
+              onChange={(html) =>
+                setAnnouncementForm((prev) => ({ ...prev, content: html }))
+              }
+            />
+          )}
           <FormControlLabel
             control={
               <Switch
                 checked={announcementForm.is_pinned}
-                onChange={(e) => setAnnouncementForm(prev => ({ ...prev, is_pinned: e.target.checked }))}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setAnnouncementForm((prev) => ({ ...prev, is_pinned: e.target.checked }))
+                }
               />
             }
             label="Pin this announcement"
@@ -332,7 +341,13 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
           <Button 
             variant="contained" 
             onClick={handleSaveAnnouncement}
-            disabled={!announcementForm.title.trim() || !announcementForm.content.trim() || saving}
+            disabled={
+              !announcementForm.title.trim() ||
+              announcementHtmlIsEffectivelyEmpty(
+                sanitizeAnnouncementHtml(announcementForm.content)
+              ) ||
+              saving
+            }
           >
             {saving ? 'Saving...' : (editingAnnouncement ? 'Save Changes' : 'Post Announcement')}
           </Button>

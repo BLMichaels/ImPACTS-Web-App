@@ -33,6 +33,14 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { getUserDisplayName } from '../../utils/displayName';
+import { AnnouncementRichTextEditor } from '../common/AnnouncementRichTextEditor';
+import { AnnouncementHtmlContent } from '../common/AnnouncementHtmlContent';
+import {
+  announcementHtmlIsEffectivelyEmpty,
+  isLikelyAnnouncementHtml,
+  plainTextToQuillHtml,
+  sanitizeAnnouncementHtml
+} from '../../utils/sanitizeAnnouncementHtml';
 
 interface AnnouncementListProps {
   cohortId: string;
@@ -84,7 +92,8 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
     if (announcement) {
       setEditingAnnouncement(announcement);
       setTitle(announcement.title);
-      setContent(announcement.content);
+      const body = announcement.content;
+      setContent(isLikelyAnnouncementHtml(body) ? body : plainTextToQuillHtml(body));
       setIsPinned(announcement.is_pinned);
       setVisibleUntil(announcement.visible_until ? announcement.visible_until.slice(0, 10) : '');
     } else {
@@ -109,7 +118,8 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
   };
 
   const handleSave = async () => {
-    if (!title.trim() || !content.trim()) {
+    const safeContent = sanitizeAnnouncementHtml(content);
+    if (!title.trim() || announcementHtmlIsEffectivelyEmpty(safeContent)) {
       setError('Title and content are required');
       return;
     }
@@ -124,7 +134,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
           .from('cohort_announcements')
           .update({
             title: title.trim(),
-            content: content.trim(),
+            content: safeContent,
             is_pinned: isPinned,
             visible_until: visibleUntil.trim() ? visibleUntil.trim().slice(0, 10) : null,
             updated_at: new Date().toISOString()
@@ -147,7 +157,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
           .insert({
             cohort_id: cohortId,
             title: title.trim(),
-            content: content.trim(),
+            content: safeContent,
             is_pinned: isPinned,
             visible_until: visibleUntil.trim() ? visibleUntil.trim().slice(0, 10) : null,
             created_by: userProfile?.id
@@ -277,15 +287,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
                     </Typography>
                   </Box>
                   
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      whiteSpace: 'pre-wrap',
-                      mb: 2
-                    }}
-                  >
-                    {announcement.content}
-                  </Typography>
+                  <AnnouncementHtmlContent html={announcement.content} />
                   
                   <Typography variant="caption" color="text.secondary">
                     Posted by {getUserDisplayName(announcement.author)}
@@ -298,7 +300,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
                 {showMenuForAnnouncement(announcement) && (
                   <IconButton 
                     size="small"
-                    onClick={(e) => handleMenuOpen(e, announcement)}
+                    onClick={(e: React.MouseEvent<HTMLElement>) => handleMenuOpen(e, announcement)}
                   >
                     <MoreIcon />
                   </IconButton>
@@ -330,7 +332,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
       </Menu>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>
           {editingAnnouncement ? 'Edit Announcement' : 'Post Announcement'}
         </DialogTitle>
@@ -345,23 +347,17 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
             label="Title"
             fullWidth
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
             sx={{ mt: 1, mb: 2 }}
           />
-          <TextField
-            label="Content"
-            fullWidth
-            multiline
-            rows={6}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            sx={{ mb: 2 }}
-          />
+          {dialogOpen && (
+            <AnnouncementRichTextEditor value={content} onChange={setContent} />
+          )}
           <FormControlLabel
             control={
               <Switch
                 checked={isPinned}
-                onChange={(e) => setIsPinned(e.target.checked)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIsPinned(e.target.checked)}
               />
             }
             label="Pin this announcement"
@@ -371,7 +367,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
             type="date"
             fullWidth
             value={visibleUntil}
-            onChange={(e) => setVisibleUntil(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVisibleUntil(e.target.value)}
             helperText="Leave empty to show until you remove it. Set a date to hide automatically after that day."
             sx={{ mt: 2 }}
             InputLabelProps={{ shrink: true }}
@@ -384,7 +380,11 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
           <Button 
             onClick={handleSave} 
             variant="contained" 
-            disabled={saving || !title.trim() || !content.trim()}
+            disabled={
+              saving ||
+              !title.trim() ||
+              announcementHtmlIsEffectivelyEmpty(sanitizeAnnouncementHtml(content))
+            }
           >
             {saving ? <CircularProgress size={24} /> : editingAnnouncement ? 'Save' : 'Post'}
           </Button>
