@@ -296,8 +296,12 @@ const ManagerCohortsPage: React.FC = () => {
   const managedCohortIds = cohorts.filter(c => c.is_manager).map(c => c.id);
 
   if (selectedCohort) {
-    const isManager = cohorts.find(c => c.id === selectedCohort.id)?.is_manager ?? false;
-    
+    // Assigned in cohort_managers — edit cohort, invite, moderate, etc.
+    const isCohortManager = cohorts.find(c => c.id === selectedCohort.id)?.is_manager ?? false;
+    // This page is Manager-role only; list includes cohorts they manage or are a member of.
+    // Posting announcements should not require cohort_managers row (members-only managers still need to communicate).
+    const canPostAnnouncements = true;
+
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <CohortDetail
@@ -306,10 +310,10 @@ const ManagerCohortsPage: React.FC = () => {
             setSelectedCohort(null);
             loadCohorts();
           }}
-          onEdit={isManager ? handleOpenEditDialog : undefined}
-          canManage={isManager}
-          canAnnounce={isManager}
-          canInvite={isManager}
+          onEdit={isCohortManager ? handleOpenEditDialog : undefined}
+          canManage={isCohortManager}
+          canAnnounce={canPostAnnouncements}
+          canInvite={isCohortManager}
         />
 
         {/* Edit Dialog */}
