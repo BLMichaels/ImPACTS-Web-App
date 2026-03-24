@@ -13,7 +13,9 @@ import {
   Paper,
   Avatar,
   FormControlLabel,
-  Checkbox
+  Checkbox,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -29,6 +31,7 @@ import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { getUserData } from '../../utils/userData';
+import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
 
 interface MentorActivity {
   id: string;
@@ -75,6 +78,7 @@ const MentorSnapshotPage = () => {
   const [hasError, setHasError] = useState(false);
   const [selectedHospitals, setSelectedHospitals] = useState<string[]>([]);
   const [retryCount, setRetryCount] = useState(0);
+  const [reportTab, setReportTab] = useState(0);
 
   // Load all data for mentor snapshot
   useEffect(() => {
@@ -355,32 +359,52 @@ const MentorSnapshotPage = () => {
     );
   }
 
-  // Empty state: no assigned hospitals (Snapshot uses mentor_hospital_assignments; add hospitals there or in Hospitals page)
+  // No hospitals: still show Reports tab; Overview explains how to assign sites
   if (assignedHospitals.length === 0) {
     return (
-      <Container maxWidth="md" sx={{ py: 4, textAlign: 'center' }}>
-        <Typography variant="h5" gutterBottom>No assigned hospitals</Typography>
-        <Typography color="text.secondary" sx={{ mb: 2 }}>
-          Your snapshot shows data for hospitals assigned to you. Add or link hospitals from the <strong>Hospitals</strong> page, or ask your manager to assign you in the CRM.
-        </Typography>
-        <Button variant="contained" onClick={() => navigate('/mentor/hospitals')}>
-          Go to Hospitals
-        </Button>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
+            Reports
+          </Typography>
+          <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+            Custom PECC reports and mentoring overview
+          </Typography>
+        </Box>
+        <Tabs value={reportTab} onChange={(_, v) => setReportTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Tab label="Reports" />
+          <Tab label="Overview" />
+        </Tabs>
+        {reportTab === 0 && userProfile?.id && (
+          <Box sx={{ mb: 4 }}>
+            <StaffPeccReportBuilder scope="mentor" actorUserId={userProfile.id} />
+          </Box>
+        )}
+        {reportTab === 1 && (
+          <Box sx={{ py: 4, textAlign: 'center', maxWidth: 'md', mx: 'auto' }}>
+            <Typography variant="h5" gutterBottom>No assigned hospitals</Typography>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>
+              Your overview shows data for hospitals assigned to you. Add or link hospitals from the <strong>Hospitals</strong> page, or ask your manager to assign you in the CRM.
+            </Typography>
+            <Button variant="contained" onClick={() => navigate('/mentor/hospitals')}>
+              Go to Hospitals
+            </Button>
+          </Box>
+        )}
       </Container>
     );
   }
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      {/* Header Section */}
       <Box sx={{ mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box>
             <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-              Mentor Snapshot
+              Reports
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              Comprehensive overview of your mentoring impact and PECC development
+              Custom PECC reports and mentoring overview
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Track your activities, monitor PECC progress, and measure engagement across all assigned hospitals
@@ -395,33 +419,47 @@ const MentorSnapshotPage = () => {
             Export PDF
           </Button>
         </Box>
-
-        {/* Quick Stats Banner */}
-        <Alert 
-          severity="info" 
-          sx={{ 
-            mb: 3,
-            '& .MuiAlert-message': { width: '100%' }
-          }}
-        >
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                {peccData.length} PECCs • {assignedHospitals.length} Hospitals
-              </Typography>
-              <Typography variant="body2">
-                Average PECC progress: {avgPECCProgress}% • {activePECCs} active this month
-              </Typography>
-            </Box>
-            <Chip 
-              label={`${thisMonthHours.toFixed(1)} hours this month`} 
-              color="primary" 
-              variant="outlined"
-              sx={{ fontWeight: 'bold' }}
-            />
-          </Box>
-        </Alert>
       </Box>
+
+      <Tabs value={reportTab} onChange={(_, v) => setReportTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tab label="Reports" />
+        <Tab label="Overview" />
+      </Tabs>
+
+      {reportTab === 0 && userProfile?.id && (
+        <Box sx={{ mb: 4 }}>
+          <StaffPeccReportBuilder scope="mentor" actorUserId={userProfile.id} />
+        </Box>
+      )}
+
+      {reportTab === 1 && (
+        <>
+        <Box sx={{ mb: 4 }}>
+          <Alert
+            severity="info"
+            sx={{
+              mb: 3,
+              '& .MuiAlert-message': { width: '100%' }
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                  {peccData.length} PECCs • {assignedHospitals.length} Hospitals
+                </Typography>
+                <Typography variant="body2">
+                  Average PECC progress: {avgPECCProgress}% • {activePECCs} active this month
+                </Typography>
+              </Box>
+              <Chip
+                label={`${thisMonthHours.toFixed(1)} hours this month`}
+                color="primary"
+                variant="outlined"
+                sx={{ fontWeight: 'bold' }}
+              />
+            </Box>
+          </Alert>
+        </Box>
 
       {/* Key Performance Indicators */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -1199,6 +1237,8 @@ const MentorSnapshotPage = () => {
             </Card>
           </Grid>
         </Grid>
+      )}
+        </>
       )}
     </Container>
   );

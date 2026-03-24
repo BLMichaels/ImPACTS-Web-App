@@ -16,7 +16,9 @@ import {
   ListItem,
   Divider,
   IconButton,
-  Collapse
+  Collapse,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -35,6 +37,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
 
 interface AssignedHospital {
   id: string;
@@ -87,6 +90,7 @@ const ManagerSnapshotPage: React.FC = () => {
   const [hasError, setHasError] = useState(false);
   const [expandedMentor, setExpandedMentor] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [reportTab, setReportTab] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -354,10 +358,10 @@ const ManagerSnapshotPage: React.FC = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box>
             <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-              Manager Snapshot
+              Reports
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              Team-wide metrics and your mentoring at a glance
+              Custom PECC reports and team-wide metrics
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Track your team’s mentors, sites, PECCs, and hours. If you also mentor, your own activity is included below.
@@ -372,7 +376,21 @@ const ManagerSnapshotPage: React.FC = () => {
             Export PDF
           </Button>
         </Box>
+      </Box>
 
+      <Tabs value={reportTab} onChange={(_, v) => setReportTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tab label="Reports" />
+        <Tab label="Overview" />
+      </Tabs>
+
+      {reportTab === 0 && userProfile?.id && (
+        <Box sx={{ mb: 4 }}>
+          <StaffPeccReportBuilder scope="manager" actorUserId={userProfile.id} />
+        </Box>
+      )}
+
+      {reportTab === 1 && (
+        <>
         <Alert severity="info" sx={{ mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
             <Box>
@@ -391,7 +409,6 @@ const ManagerSnapshotPage: React.FC = () => {
             />
           </Box>
         </Alert>
-      </Box>
 
       {/* Team KPIs */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -620,6 +637,8 @@ const ManagerSnapshotPage: React.FC = () => {
           </Grid>
         </Grid>
       )}
+          </>
+        )}
     </Container>
   );
 };

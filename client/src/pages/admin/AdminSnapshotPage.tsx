@@ -52,7 +52,10 @@ import AnalyticsIcon from '@mui/icons-material/Analytics';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import TableChartIcon from '@mui/icons-material/TableChart';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
 import { supabase } from '../../supabase';
+import { useUserProfile } from '../../context/UserProfileContext';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 
 const PERIODS = [
@@ -142,7 +145,8 @@ interface AggregatedPlatformData {
 }
 
 export default function AdminSnapshotPage() {
-  const [activeTab, setActiveTab] = useState<0 | 1 | 2>(0);
+  const { userProfile } = useUserProfile();
+  const [activeTab, setActiveTab] = useState<0 | 1 | 2 | 3>(0);
   const [periodValue, setPeriodValue] = useState<string>('30');
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
@@ -579,25 +583,30 @@ export default function AdminSnapshotPage() {
         <Box>
           <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TimelineIcon fontSize="large" />
-            Snapshot
+            Reports
           </Typography>
           <Typography color="text.secondary">
-            Platform overview, usage analytics, and cross-tier metrics.
+            Custom PECC reports, platform overview, program &amp; cohort breakdowns, and usage analytics.
           </Typography>
         </Box>
       </Box>
 
       <Tabs
         value={activeTab}
-        onChange={(_, v: number) => setActiveTab(v as 0 | 1 | 2)}
+        onChange={(_, v: number) => setActiveTab(v as 0 | 1 | 2 | 3)}
         sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
       >
+        <Tab icon={<AssessmentIcon />} iconPosition="start" label="Reports" />
         <Tab icon={<DashboardIcon />} iconPosition="start" label="Platform overview" />
         <Tab icon={<TableChartIcon />} iconPosition="start" label="By program & cohort" />
         <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Usage analytics" />
       </Tabs>
 
-      {activeTab === 0 && (
+      {activeTab === 0 && userProfile?.id && (
+        <StaffPeccReportBuilder scope="admin" actorUserId={userProfile.id} />
+      )}
+
+      {activeTab === 1 && (
         <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
           <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
@@ -879,7 +888,7 @@ export default function AdminSnapshotPage() {
         </Paper>
       )}
 
-      {activeTab === 1 && (
+      {activeTab === 2 && (
         <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
           <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
@@ -1003,7 +1012,7 @@ export default function AdminSnapshotPage() {
         </Paper>
       )}
 
-      {activeTab === 2 && (
+      {activeTab === 3 && (
         <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
           <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>

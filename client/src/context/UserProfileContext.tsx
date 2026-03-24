@@ -329,7 +329,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const getDefaultDashboardForRole = useCallback((role: UserRole): string => {
     switch (role) {
       case UserRole.ADMIN: return '/admin/dashboard';
-      case UserRole.MANAGER: return '/manager/snapshot';
+      case UserRole.MANAGER: return '/manager/reports';
       case UserRole.MENTOR: return '/mentor/dashboard';
       case UserRole.PECC: return '/dashboard';
       case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';
@@ -489,7 +489,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     }
   };
 
-  const hasPermission = (permission: string): boolean => {
+  const hasPermission = useCallback((permission: string): boolean => {
     // If viewing as a specific user, use that user's role permissions
     if (viewAsUserId && viewAsUserProfile) {
       const base = DEFAULT_ROLE_PERMISSIONS[viewAsUserProfile.role]?.includes(permission) ?? false;
@@ -503,7 +503,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       return true;
     }
     return (permission in permissionOverrides) ? !!permissionOverrides[permission] : permissions.includes(permission);
-  };
+  }, [viewAsUserId, viewAsUserProfile, viewAsRole, userProfile, viewAsPermissionOverrides, permissionOverrides, permissions]);
 
   const hasPermissionInScope = useCallback(async (permission: string, cohortId?: string, programId?: string): Promise<boolean> => {
     const scopedUserId = viewAsUserId ?? currentUser?.id;

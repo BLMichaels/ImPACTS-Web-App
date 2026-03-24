@@ -8,7 +8,7 @@ import { UserRole } from '../types/database';
 const getDefaultDashboard = (role: UserRole): string => {
   switch (role) {
     case UserRole.ADMIN: return '/admin/dashboard';
-    case UserRole.MANAGER: return '/manager/snapshot';
+    case UserRole.MANAGER: return '/manager/reports';
     case UserRole.MENTOR: return '/mentor/dashboard';
     case UserRole.PECC: return '/dashboard';
     case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';

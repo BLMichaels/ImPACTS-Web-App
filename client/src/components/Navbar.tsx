@@ -113,13 +113,13 @@ const Navbar: React.FC = () => {
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/admin/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/admin/pipeline', label: 'Project Pipeline', icon: <PipelineIcon /> },
-          { path: '/admin/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
+          { path: '/admin/reports', label: 'Reports', icon: <TimelineIcon /> },
           { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon /> }
         ];
 
       case UserRole.MANAGER: {
         const managerItems: NavItem[] = [
-          { path: '/manager/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
+          { path: '/manager/reports', label: 'Reports', icon: <TimelineIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
@@ -140,7 +140,7 @@ const Navbar: React.FC = () => {
 
       case UserRole.MENTOR: {
         const mentorItems: NavItem[] = [
-          { path: '/mentor/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
+          { path: '/mentor/reports', label: 'Reports', icon: <TimelineIcon /> },
           { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
           { path: '/mentor/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> },
@@ -187,7 +187,7 @@ const Navbar: React.FC = () => {
   const getDashboardPath = (): string => {
     switch (userRole) {
       case UserRole.ADMIN: return '/admin/dashboard';
-      case UserRole.MANAGER: return '/manager/snapshot';
+      case UserRole.MANAGER: return '/manager/reports';
       case UserRole.MENTOR: return '/mentor/dashboard';
       case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';
       case UserRole.HIRING_GROUP: return '/hiring-group/snapshot';
