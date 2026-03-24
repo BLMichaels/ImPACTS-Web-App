@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -56,7 +56,7 @@ import {
   Close as CloseIcon,
   Notes as NotesIcon
 } from '@mui/icons-material';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
@@ -127,7 +127,29 @@ const ManagerCRMPage: React.FC = () => {
   useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingReturnToRef = useRef<string | undefined>((location.state as { returnTo?: string } | null)?.returnTo);
+  const deepLinkContactDone = useRef(false);
+
+  useEffect(() => {
+    const s = location.state as { returnTo?: string } | null;
+    if (s?.returnTo) pendingReturnToRef.current = s.returnTo;
+  }, [location.state]);
+
+  const navigateBackIfReport = useCallback(() => {
+    const rt = pendingReturnToRef.current;
+    if (rt) {
+      pendingReturnToRef.current = undefined;
+      navigate(rt, { replace: true });
+    }
+  }, [navigate]);
+
+  const closeContactDetailDrawer = useCallback(() => {
+    setContactDetailOpen(false);
+    setContactDetailContact(null);
+    navigateBackIfReport();
+  }, [navigateBackIfReport]);
   
   const [activeTab, setActiveTab] = useState(0);
   const [hospitals, setHospitals] = useState<HospitalData[]>([]);
@@ -448,6 +470,25 @@ const ManagerCRMPage: React.FC = () => {
     setContactDetailContact(c);
     setContactDetailOpen(true);
   };
+
+  useEffect(() => {
+    const contactId = searchParams.get('contact');
+    if (!contactId || !contacts.length) {
+      if (!contactId) deepLinkContactDone.current = false;
+      return;
+    }
+    if (deepLinkContactDone.current) return;
+    const c = contacts.find((x) => x.id === contactId);
+    if (c) {
+      openContactDetail(c);
+      deepLinkContactDone.current = true;
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('contact');
+        return next;
+      }, { replace: true });
+    }
+  }, [contacts, searchParams, setSearchParams]);
 
   const openHospitalNotesDrawer = async (hospital: HospitalData) => {
     setHospitalNotesDrawerHospital(hospital);
@@ -1171,7 +1212,7 @@ const ManagerCRMPage: React.FC = () => {
       <Drawer
         anchor="right"
         open={contactDetailOpen}
-        onClose={() => { setContactDetailOpen(false); setContactDetailContact(null); }}
+        onClose={closeContactDetailDrawer}
         PaperProps={{ sx: { width: { xs: '100%', sm: 420 }, maxWidth: '100%' } }}
       >
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50' }}>
@@ -1190,7 +1231,7 @@ const ManagerCRMPage: React.FC = () => {
                       <Typography variant="body2" color="text.secondary">{contactDetailContact.hospitalName}</Typography>
                     </Box>
                   </Box>
-                  <IconButton size="small" onClick={() => { setContactDetailOpen(false); setContactDetailContact(null); }} aria-label="Close">
+                  <IconButton size="small" onClick={closeContactDetailDrawer} aria-label="Close">
                     <CloseIcon />
                   </IconButton>
                 </Box>
@@ -1231,7 +1272,9 @@ const ManagerCRMPage: React.FC = () => {
                   <Button fullWidth variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { if (contactDetailContact) openContactDeleteConfirm(contactDetailContact); }}>
                     Remove contact
                   </Button>
-                  <Button fullWidth variant="outlined" onClick={() => { setContactDetailOpen(false); setContactDetailContact(null); }}>Close</Button>
+                  <Button fullWidth variant="outlined" onClick={closeContactDetailDrawer}>
+                    Close
+                  </Button>
                 </Box>
               </Box>
             </>

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -147,7 +148,22 @@ interface AggregatedPlatformData {
 
 export default function AdminSnapshotPage() {
   const { userProfile } = useUserProfile();
-  const [activeTab, setActiveTab] = useState<0 | 1 | 2 | 3>(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = Number(searchParams.get('tab') ?? '0');
+  const activeTab = (tabParam >= 0 && tabParam <= 3 ? tabParam : 0) as 0 | 1 | 2 | 3;
+  const setActiveTab = useCallback(
+    (v: 0 | 1 | 2 | 3) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('tab', String(v));
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
   const [periodValue, setPeriodValue] = useState<string>('30');
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');

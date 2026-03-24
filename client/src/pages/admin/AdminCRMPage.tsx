@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { provisionCrmPortalUser } from '../../utils/provisionCrmPortalUser';
 import { useAuth } from '../../context/AuthContext';
@@ -410,6 +410,22 @@ const AdminCRMPage: React.FC = () => {
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const pendingReturnToRef = useRef<string | undefined>((location.state as { returnTo?: string } | null)?.returnTo);
+  const deepLinkConsumed = useRef(false);
+
+  useEffect(() => {
+    const s = location.state as { returnTo?: string } | null;
+    if (s?.returnTo) pendingReturnToRef.current = s.returnTo;
+  }, [location.state]);
+
+  const navigateBackIfReport = useCallback(() => {
+    const rt = pendingReturnToRef.current;
+    if (rt) {
+      pendingReturnToRef.current = undefined;
+      navigate(rt, { replace: true });
+    }
+  }, [navigate]);
   const { currentUser } = useAuth();
   const { actualRole, enterViewAsUser, refreshProfile, userProfile } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
@@ -2440,6 +2456,33 @@ const AdminCRMPage: React.FC = () => {
     setPanelOpen(true);
   };
 
+  useEffect(() => {
+    const oc = searchParams.get('openContact');
+    const ou = searchParams.get('openUser');
+    const oh = searchParams.get('openHospital');
+    const ohc = searchParams.get('openHospitalContact');
+    if (!oc && !ou && !oh && !ohc) {
+      deepLinkConsumed.current = false;
+      return;
+    }
+    if (loading || !contacts.length) return;
+    if (deepLinkConsumed.current) return;
+    let c: Contact | undefined;
+    if (oc) c = contacts.find((x) => x.id === oc);
+    if (!c && ou) c = contacts.find((x) => x.user_id === ou || (isPersonType(x.type) && x.id === ou));
+    if (!c && oh) c = contacts.find((x) => x.type === 'hospital' && (x.hospitalId === oh || x.id === oh));
+    if (!c && ohc) c = contacts.find((x) => x.id === ohc);
+    if (c) {
+      openDetail(c);
+      deepLinkConsumed.current = true;
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        ['openContact', 'openUser', 'openHospital', 'openHospitalContact'].forEach((k) => next.delete(k));
+        return next;
+      }, { replace: true });
+    }
+  }, [loading, contacts, searchParams, setSearchParams]);
+
   // When viewing a hospital's detail, refetch notes_log and activity_log so mentor/manager notes appear
   useEffect(() => {
     const c = detailContact;
@@ -3934,7 +3977,10 @@ const AdminCRMPage: React.FC = () => {
       <Drawer 
         anchor="right" 
         open={panelOpen} 
-        onClose={() => setPanelOpen(false)} 
+        onClose={() => {
+          setPanelOpen(false);
+          navigateBackIfReport();
+        }} 
         PaperProps={{ sx: { width: { xs: '100%', sm: 380 } } }}
         ModalProps={{
           keepMounted: false,
@@ -3947,7 +3993,15 @@ const AdminCRMPage: React.FC = () => {
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Typography variant="subtitle2" color="text.secondary">Quick view</Typography>
-              <IconButton size="small" onClick={() => setPanelOpen(false)}><CloseIcon /></IconButton>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setPanelOpen(false);
+                  navigateBackIfReport();
+                }}
+              >
+                <CloseIcon />
+              </IconButton>
             </Box>
             <Box sx={{ p: 1.5, mb: 2, borderRadius: 1, bgcolor: 'grey.50', border: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -4291,7 +4345,17 @@ const AdminCRMPage: React.FC = () => {
       )}
 
       {/* Contact detail – full-screen popup (opened via Expand); can switch to edit mode in same view */}
-      <Dialog fullScreen open={fullScreenOpen} onClose={() => { setFullScreenOpen(false); setFullScreenEditMode(false); setFullScreenDetailTab(0); setEditingContact(null); }}>
+      <Dialog
+        fullScreen
+        open={fullScreenOpen}
+        onClose={() => {
+          setFullScreenOpen(false);
+          setFullScreenEditMode(false);
+          setFullScreenDetailTab(0);
+          setEditingContact(null);
+          navigateBackIfReport();
+        }}
+      >
         {detailContact && (
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Box sx={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
@@ -4303,7 +4367,17 @@ const AdminCRMPage: React.FC = () => {
                   </Typography>
                 )}
               </Box>
-              <IconButton onClick={() => { setFullScreenOpen(false); setFullScreenEditMode(false); setFullScreenDetailTab(0); setEditingContact(null); }}><CloseIcon /></IconButton>
+              <IconButton
+                onClick={() => {
+                  setFullScreenOpen(false);
+                  setFullScreenEditMode(false);
+                  setFullScreenDetailTab(0);
+                  setEditingContact(null);
+                  navigateBackIfReport();
+                }}
+              >
+                <CloseIcon />
+              </IconButton>
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
             <Alert severity="info" sx={{ mb: 2 }} icon={false}>

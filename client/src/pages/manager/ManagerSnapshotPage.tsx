@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -32,7 +32,7 @@ import {
   ExpandLess as ExpandLessIcon,
   Visibility as ViewIcon
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -71,6 +71,22 @@ interface ManagerOwnMentoring {
 const ManagerSnapshotPage: React.FC = () => {
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rtab = Number(searchParams.get('rtab') ?? '0');
+  const reportTab = rtab >= 0 && rtab <= 1 ? rtab : 0;
+  const setReportTab = useCallback(
+    (v: number) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('rtab', String(v));
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
 
   const [mentors, setMentors] = useState<MentorSnapshotRow[]>([]);
   const [totalPeccs, setTotalPeccs] = useState(0);
@@ -90,7 +106,6 @@ const ManagerSnapshotPage: React.FC = () => {
   const [hasError, setHasError] = useState(false);
   const [expandedMentor, setExpandedMentor] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [reportTab, setReportTab] = useState(0);
 
   useEffect(() => {
     let cancelled = false;

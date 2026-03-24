@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Box, 
   Typography, 
@@ -24,7 +24,7 @@ import {
   Group as GroupIcon,
   LocalHospital as HospitalIcon
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
@@ -67,6 +67,22 @@ interface HospitalMetrics {
 
 const MentorSnapshotPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rtab = Number(searchParams.get('rtab') ?? '0');
+  const reportTab = rtab >= 0 && rtab <= 1 ? rtab : 0;
+  const setReportTab = useCallback(
+    (v: number) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('rtab', String(v));
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
   const { currentUser } = useAuth();
   const { userProfile } = useUserProfile();
   
@@ -78,7 +94,6 @@ const MentorSnapshotPage = () => {
   const [hasError, setHasError] = useState(false);
   const [selectedHospitals, setSelectedHospitals] = useState<string[]>([]);
   const [retryCount, setRetryCount] = useState(0);
-  const [reportTab, setReportTab] = useState(0);
 
   // Load all data for mentor snapshot
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -61,6 +61,7 @@ import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
 // Types
 interface DatedNote {
@@ -133,7 +134,30 @@ const CONTACT_STATUSES = [
 const MentorHospitalContactsPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { userProfile } = useUserProfile();
-  
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pendingReturnToRef = useRef<string | undefined>((location.state as { returnTo?: string } | null)?.returnTo);
+  const deepLinkHospitalDone = useRef(false);
+
+  useEffect(() => {
+    const s = location.state as { returnTo?: string } | null;
+    if (s?.returnTo) pendingReturnToRef.current = s.returnTo;
+  }, [location.state]);
+
+  const navigateBackIfReport = useCallback(() => {
+    const rt = pendingReturnToRef.current;
+    if (rt) {
+      pendingReturnToRef.current = undefined;
+      navigate(rt, { replace: true });
+    }
+  }, [navigate]);
+
+  const closeHospitalDetailsDialog = useCallback(() => {
+    setHospitalDetailsDialogOpen(false);
+    navigateBackIfReport();
+  }, [navigateBackIfReport]);
+
   // State
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -529,6 +553,29 @@ const MentorHospitalContactsPage: React.FC = () => {
     setNewNoteDate(new Date().toISOString().slice(0, 10));
     setNewNoteText('');
   };
+
+  useEffect(() => {
+    const hid = searchParams.get('hospital');
+    if (!hid || !hospitals.length) {
+      if (!hid) deepLinkHospitalDone.current = false;
+      return;
+    }
+    if (deepLinkHospitalDone.current) return;
+    const h = hospitals.find((x) => x.id === hid);
+    if (h) {
+      setSelectedHospital(h);
+      linkHospitalToCRM(h);
+      setHospitalDetailsDialogOpen(true);
+      deepLinkHospitalDone.current = true;
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('hospital');
+        next.delete('contact');
+        next.delete('user');
+        return next;
+      }, { replace: true });
+    }
+  }, [hospitals, searchParams, setSearchParams]);
 
   // When hospital detail dialog opens, refetch notes_log from DB and load site activity stats
   useEffect(() => {
@@ -1176,18 +1223,13 @@ const MentorHospitalContactsPage: React.FC = () => {
       </Box>
 
       {/* Hospital Details Dialog */}
-      <Dialog 
-        open={hospitalDetailsDialogOpen} 
-        onClose={() => setHospitalDetailsDialogOpen(false)} 
-        maxWidth="md" 
-        fullWidth
-      >
+      <Dialog open={hospitalDetailsDialogOpen} onClose={closeHospitalDetailsDialog} maxWidth="md" fullWidth>
         {selectedHospital && (
           <>
             <DialogTitle>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="h6">{normalizeHospitalOrOrgName(selectedHospital.name)}</Typography>
-                <IconButton onClick={() => setHospitalDetailsDialogOpen(false)} size="small" aria-label="Close">
+                <IconButton onClick={closeHospitalDetailsDialog} size="small" aria-label="Close">
                   <CloseIcon />
                 </IconButton>
               </Box>
@@ -1454,7 +1496,7 @@ const MentorHospitalContactsPage: React.FC = () => {
               </Box>
             </DialogContent>
               <DialogActions>
-                <Button onClick={() => setHospitalDetailsDialogOpen(false)}>Close</Button>
+                <Button onClick={closeHospitalDetailsDialog}>Close</Button>
               </DialogActions>
             </>
           )}

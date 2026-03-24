@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useLayoutEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -29,6 +29,13 @@ import {
   Divider,
   alpha,
   ListSubheader,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Link,
+  Menu,
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -38,9 +45,25 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
+import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
+import {
+  buildReportDetailHref,
+  saveReportSnapshotForRestore,
+  readReportSnapshotRestore,
+  clearReportSnapshotRestore,
+  loadSavedReportPresets,
+  saveReportPreset,
+  deleteSavedReportPreset,
+  type ReportRowLinkHints,
+  type ReportStateSnapshot,
+  type SavedReportPreset,
+  type StaffReportScopeNav,
+} from '../../utils/reportPresets';
 
 export type StaffReportScope = 'admin' | 'manager' | 'mentor';
 
@@ -75,6 +98,8 @@ const STAFF_ROLE_OPTIONS = [
 export interface ReportDataRow {
   id: string;
   cells: Record<string, string>;
+  /** Targets for opening CRM / hospital views (not included in exports). */
+  linkHints?: ReportRowLinkHints;
 }
 
 /** Loaded-row breakdown for PECC dataset (helps reconcile CRM vs report). */
@@ -372,12 +397,24 @@ function defaultVisibility(cols: ColumnMeta[]): Record<string, boolean> {
   return o;
 }
 
+function isLinkedNameColumn(dataset: ReportDataset, columnId: string): boolean {
+  const map: Record<ReportDataset, string[]> = {
+    pecc: ['name'],
+    hospital: ['hospitalName'],
+    organization: ['orgName'],
+    contacts: ['contactName', 'hospitalName'],
+    staff: ['name', 'hospitalName'],
+  };
+  return map[dataset]?.includes(columnId) ?? false;
+}
+
 interface Props {
   scope: StaffReportScope;
   actorUserId: string;
 }
 
 const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
+  const location = useLocation();
   const [dataset, setDataset] = useState<ReportDataset>('pecc');
   const [rows, setRows] = useState<ReportDataRow[]>([]);
   const [programIdsByRow, setProgramIdsByRow] = useState<Record<string, string[]>>({});
@@ -400,19 +437,60 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [sortBy, setSortBy] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [peccAudit, setPeccAudit] = useState<PeccAuditSnapshot | null>(null);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [savePresetName, setSavePresetName] = useState('');
+  const [savedPresetsTick, setSavedPresetsTick] = useState(0);
+  const [savedMenuAnchor, setSavedMenuAnchor] = useState<null | HTMLElement>(null);
+  const skipColumnResetRef = useRef(false);
+  const skipSortResetRef = useRef(false);
 
   const columnMetas = useMemo(
     () => buildColumnList(dataset, hospitalCustomDefs, orgCustomDefs),
     [dataset, hospitalCustomDefs, orgCustomDefs]
   );
 
+  const applySnapshot = useCallback((snap: ReportStateSnapshot) => {
+    setDataset(snap.dataset as ReportDataset);
+    setActivityPreset(snap.activityPreset);
+    setProgramFilter(snap.programFilter);
+    setCohortFilter(snap.cohortFilter);
+    setStaffRoleFilter(snap.staffRoleFilter);
+    setIncludePlatformAdminAccounts(snap.includePlatformAdminAccounts);
+    setSearch(snap.search);
+    setStateFilter(snap.stateFilter);
+    setSortBy(snap.sortBy);
+    setSortDir(snap.sortDir);
+    setColumns(snap.columns);
+    skipColumnResetRef.current = true;
+    skipSortResetRef.current = true;
+  }, []);
+
+  useLayoutEffect(() => {
+    const snap = readReportSnapshotRestore(actorUserId);
+    if (snap) {
+      applySnapshot(snap);
+      clearReportSnapshotRestore(actorUserId);
+    }
+  }, [actorUserId, applySnapshot]);
+
   useEffect(() => {
+    if (skipColumnResetRef.current) {
+      skipColumnResetRef.current = false;
+      return;
+    }
     setColumns(defaultVisibility(columnMetas));
+  }, [dataset, columnMetas]);
+
+  useEffect(() => {
+    if (skipSortResetRef.current) {
+      skipSortResetRef.current = false;
+      return;
+    }
     if (dataset === 'organization') setSortBy('orgName');
     else if (dataset === 'contacts') setSortBy('contactName');
     else if (dataset === 'hospital') setSortBy('hospitalName');
     else setSortBy('name');
-  }, [dataset, columnMetas]);
+  }, [dataset]);
 
   useEffect(() => {
     let cancelled = false;
@@ -640,6 +718,117 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     return m;
   }, [columnMetas]);
 
+  const returnTo = `${location.pathname}${location.search}`;
+
+  const pushSnapshotForNavigate = useCallback(() => {
+    saveReportSnapshotForRestore(actorUserId, {
+      dataset: dataset as ReportStateSnapshot['dataset'],
+      activityPreset,
+      programFilter,
+      cohortFilter,
+      staffRoleFilter,
+      includePlatformAdminAccounts,
+      search,
+      stateFilter,
+      sortBy,
+      sortDir,
+      columns,
+    });
+  }, [
+    actorUserId,
+    dataset,
+    activityPreset,
+    programFilter,
+    cohortFilter,
+    staffRoleFilter,
+    includePlatformAdminAccounts,
+    search,
+    stateFilter,
+    sortBy,
+    sortDir,
+    columns,
+  ]);
+
+  const savedReportPresets = useMemo(() => loadSavedReportPresets(actorUserId), [actorUserId, savedPresetsTick]);
+
+  const buildSnapshot = useCallback(
+    (): ReportStateSnapshot => ({
+      dataset: dataset as ReportStateSnapshot['dataset'],
+      activityPreset,
+      programFilter,
+      cohortFilter,
+      staffRoleFilter,
+      includePlatformAdminAccounts,
+      search,
+      stateFilter,
+      sortBy,
+      sortDir,
+      columns,
+    }),
+    [
+      dataset,
+      activityPreset,
+      programFilter,
+      cohortFilter,
+      staffRoleFilter,
+      includePlatformAdminAccounts,
+      search,
+      stateFilter,
+      sortBy,
+      sortDir,
+      columns,
+    ]
+  );
+
+  const handleSavePresetConfirm = () => {
+    const name = savePresetName.trim() || 'Saved report';
+    const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `preset-${Date.now()}`;
+    saveReportPreset(actorUserId, {
+      id,
+      name,
+      createdAt: new Date().toISOString(),
+      snapshot: buildSnapshot(),
+    });
+    setSaveDialogOpen(false);
+    setSavePresetName('');
+    setSavedPresetsTick((t) => t + 1);
+  };
+
+  const renderCellContent = (r: ReportDataRow, cid: string) => {
+    const raw = r.cells[cid] || '';
+    if (cid === 'activeWindow') {
+      return (
+        <Chip
+          size="small"
+          label={raw || '—'}
+          color={raw === 'Yes' ? 'success' : raw === 'No' ? 'warning' : 'default'}
+          variant="outlined"
+        />
+      );
+    }
+    const hints = r.linkHints;
+    const href =
+      hints && isLinkedNameColumn(dataset, cid)
+        ? buildReportDetailHref(scope as StaffReportScopeNav, hints)
+        : null;
+    if (href) {
+      return (
+        <Link
+          component={RouterLink}
+          to={href}
+          state={{ returnTo }}
+          onClick={() => pushSnapshotForNavigate()}
+          underline="hover"
+          fontWeight={600}
+          color="primary"
+        >
+          {raw || '—'}
+        </Link>
+      );
+    }
+    return raw || '—';
+  };
+
   return (
     <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
       <Box sx={{ px: 2.5, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.06), borderBottom: 1, borderColor: 'divider' }}>
@@ -655,6 +844,42 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => load()}>
               Refresh
+            </Button>
+            <Button size="small" variant="outlined" onClick={(e) => setSavedMenuAnchor(e.currentTarget)}>
+              Load saved layout
+            </Button>
+            <Menu anchorEl={savedMenuAnchor} open={Boolean(savedMenuAnchor)} onClose={() => setSavedMenuAnchor(null)}>
+              {savedReportPresets.length === 0 ? (
+                <MenuItem disabled>No saved layouts yet</MenuItem>
+              ) : (
+                savedReportPresets.map((p) => (
+                  <MenuItem
+                    key={p.id}
+                    onClick={() => {
+                      applySnapshot(p.snapshot);
+                      setSavedMenuAnchor(null);
+                    }}
+                    sx={{ pr: 6, position: 'relative' }}
+                  >
+                    {p.name}
+                    <IconButton
+                      size="small"
+                      sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      aria-label={`Delete ${p.name}`}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        deleteSavedReportPreset(actorUserId, p.id);
+                        setSavedPresetsTick((t) => t + 1);
+                      }}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </MenuItem>
+                ))
+              )}
+            </Menu>
+            <Button size="small" variant="outlined" startIcon={<BookmarkAddIcon />} onClick={() => setSaveDialogOpen(true)}>
+              Save layout
             </Button>
             <Button size="small" variant="outlined" startIcon={<ViewColumnIcon />} onClick={() => setColumnDrawer(true)}>
               Columns
@@ -844,16 +1069,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   <TableRow key={r.id} hover>
                     {visibleColumnIds.map((cid) => (
                       <TableCell key={cid} sx={{ maxWidth: 280, whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                        {cid === 'activeWindow' ? (
-                          <Chip
-                            size="small"
-                            label={r.cells[cid] || '—'}
-                            color={r.cells[cid] === 'Yes' ? 'success' : r.cells[cid] === 'No' ? 'warning' : 'default'}
-                            variant="outlined"
-                          />
-                        ) : (
-                          r.cells[cid] || '—'
-                        )}
+                        {renderCellContent(r, cid)}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -863,6 +1079,27 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           </TableContainer>
         )}
       </Box>
+
+      <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Save report layout</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Name"
+            fullWidth
+            value={savePresetName}
+            onChange={(e) => setSavePresetName(e.target.value)}
+            placeholder="e.g. Inactive PECCs — last 30 days"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSavePresetConfirm}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Drawer anchor="right" open={columnDrawer} onClose={() => setColumnDrawer(false)}>
         <Box sx={{ width: 360, p: 2 }}>
@@ -1366,7 +1603,7 @@ async function loadPeccDataset(params: {
       cells[`hcf_${k}`] = cf[k] ?? '';
     });
 
-    return { id: p.id, cells };
+    return { id: p.id, cells, linkHints: { userId: p.id } };
   });
 
   const contactRows: ReportDataRow[] = peccHospitalContactRows.map((c) => {
@@ -1415,7 +1652,7 @@ async function loadPeccDataset(params: {
       cells[`hcf_${k}`] = cf[k] ?? '';
     });
 
-    return { id: `hc:${c.id}`, cells };
+    return { id: `hc:${c.id}`, cells, linkHints: { hospitalContactId: c.id, hospitalId: c.hospital_id } };
   });
 
   const crmRows: ReportDataRow[] = crmPeccRows.map((c) => {
@@ -1464,7 +1701,11 @@ async function loadPeccDataset(params: {
       cells[`hcf_${k}`] = cf[k] ?? '';
     });
 
-    return { id: crmPeccRowId(c.id, c.hospital_id), cells };
+    return {
+      id: crmPeccRowId(c.id, c.hospital_id),
+      cells,
+      linkHints: { crmContactId: c.id, hospitalId: c.hospital_id || undefined },
+    };
   });
 
   const merged = [...userRows, ...contactRows, ...crmRows];
@@ -1542,7 +1783,7 @@ async function loadHospitalDataset(params: {
     Object.keys(custom).forEach((k) => {
       cells[`hcf_${k}`] = custom[k] ?? '';
     });
-    return { id, cells };
+    return { id, cells, linkHints: { hospitalId: id } };
   });
 
   setRows(rows);
@@ -1615,7 +1856,7 @@ async function loadOrganizationDataset(params: {
     Object.keys(custom).forEach((k) => {
       cells[`ocf_${k}`] = custom[k] ?? '';
     });
-    return { id, cells };
+    return { id, cells, linkHints: { crmContactId: id } };
   });
 
   setRows(rows);
@@ -1709,6 +1950,7 @@ async function loadContactsDataset(params: {
         linkedUser: linked,
         notes: c.notes || '',
       },
+      linkHints: { hospitalContactId: c.id, hospitalId: c.hospital_id },
     };
   });
 
@@ -1852,6 +2094,7 @@ async function loadStaffDataset(params: {
         hospitalName: h ? String(h.name) : '',
         state: h && h.state ? String(h.state).toUpperCase() : '',
       },
+      linkHints: { userId: u.id, hospitalId: u.hospital_facility_id || undefined },
     };
   });
 
