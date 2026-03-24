@@ -57,7 +57,7 @@ const US_STATES = [
 ];
 
 const ACTIVITY_PRESETS = [
-  { value: 'any', label: 'Any activity' },
+  { value: 'any', label: 'Ignore platform activity (include all PECC rows)' },
   { value: '7', label: 'Used platform in last 7 days' },
   { value: '30', label: 'Used platform in last 30 days' },
   { value: '90', label: 'Used platform in last 90 days' },
@@ -353,7 +353,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState<string[]>([]);
-  const [activityPreset, setActivityPreset] = useState('30');
+  const [activityPreset, setActivityPreset] = useState('any');
   const [programFilter, setProgramFilter] = useState<string>('all');
   const [cohortFilter, setCohortFilter] = useState<string>('all');
   const [staffRoleFilter, setStaffRoleFilter] = useState<string[]>(['pecc', 'mentor', 'manager']);
