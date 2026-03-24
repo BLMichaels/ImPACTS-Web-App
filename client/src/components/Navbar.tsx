@@ -326,7 +326,14 @@ label={getRoleLabel(userRole)}
           </Button>
         </Box>
       )}
-      <AppBar position="static">
+      <AppBar
+        position="sticky"
+        elevation={1}
+        sx={{
+          top: 0,
+          zIndex: (theme) => theme.zIndex.appBar
+        }}
+      >
       <Toolbar sx={{ 
         minHeight: '64px',
         paddingX: { xs: 1, sm: 2 },

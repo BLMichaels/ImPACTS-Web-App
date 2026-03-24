@@ -30,6 +30,7 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import RemoveIcon from '@mui/icons-material/Remove';
 import { format } from 'date-fns';
+import { jsPDF } from 'jspdf';
 import {
   type PRSQuestion,
   calculateDomainScores,
@@ -170,20 +171,6 @@ const SnapshotPage = () => {
     try {
       // Create a comprehensive PDF that captures ALL visual elements from the Snapshot page
       const createComprehensiveReport = () => {
-        // Check if jsPDF is available
-        let jsPDF;
-        try {
-          jsPDF = require('jspdf');
-        } catch (e) {
-          console.error('jsPDF library not available:', e);
-          setPdfSnackbar({
-            open: true,
-            message: 'PDF export library not available. Please contact support.',
-            severity: 'error'
-          });
-          return null;
-        }
-        
         const doc = new jsPDF();
         
         // Set up styling
@@ -1335,6 +1322,579 @@ const SnapshotPage = () => {
         </Grid>
       </Grid>
 
+      <Divider sx={{ my: 3 }} />
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.12, color: 'text.secondary', display: 'block' }}>
+          Simulations
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Facilitation activity and participants from your Activities log.
+        </Typography>
+      </Box>
+
+      {/* Simulation Analytics */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Simulations by Type
+                  </Typography>
+                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
+                    {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
+                      <>
+                        {Array.from(new Set(activities
+                          .filter(a => a.category === 'Simulation Facilitation')
+                          .map(a => a.simulation || 'Other')))
+                          .map(simType => {
+                            const count = activities.filter(a => 
+                              a.category === 'Simulation Facilitation' && 
+                              (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
+                            ).length;
+                            const totalSims = activities.filter(a => a.category === 'Simulation Facilitation').length;
+                            const percentage = (count / totalSims) * 100;
+                            const maxHeight = 200; // Maximum height for the tallest bar
+                            const barHeight = (percentage / 100) * maxHeight;
+                            
+                            return (
+                              <Box key={simType} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                <Box
+                                  sx={{
+                                    width: '100%',
+                                    height: barHeight,
+                                    bgcolor: 'primary.main',
+                                    borderRadius: '4px 4px 0 0',
+                                    position: 'relative',
+                                    minHeight: '20px'
+                                  }}
+                                />
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    mt: 1, 
+                                    textAlign: 'center', 
+                                    fontSize: '0.7rem',
+                                    lineHeight: 1.2,
+                                    maxWidth: '100%',
+                                    wordBreak: 'break-word'
+                                  }}
+                                >
+                                  {simType === 'Other' ? 'Other' : simType}
+                                </Typography>
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    mt: 0.5, 
+                                    textAlign: 'center',
+                                    fontWeight: 'bold',
+                                    color: 'primary.main'
+                                  }}
+                                >
+                                  {count}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No simulation activities recorded
+                      </Typography>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Simulation Participants
+                  </Typography>
+                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
+                    {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
+                      <>
+                        {Array.from(new Set(activities
+                          .filter(a => a.category === 'Simulation Facilitation')
+                          .map(a => a.simulation || 'Other')))
+                          .map(simType => {
+                            const simActivities = activities.filter(a => 
+                              a.category === 'Simulation Facilitation' && 
+                              (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
+                            );
+                            const totalParticipants = simActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
+                            const avgParticipants = simActivities.length > 0 ? Math.round(totalParticipants / simActivities.length) : 0;
+                            
+                            // Find the maximum participants to scale the bars appropriately
+                            const allSimTypes = Array.from(new Set(activities
+                              .filter(a => a.category === 'Simulation Facilitation')
+                              .map(a => a.simulation || 'Other')));
+                            const maxParticipants = Math.max(...allSimTypes.map(type => {
+                              const typeActivities = activities.filter(a => 
+                                a.category === 'Simulation Facilitation' && 
+                                (a.simulation === type || (a.simulation === undefined && type === 'Other'))
+                              );
+                              return typeActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
+                            }));
+                            
+                            const maxHeight = 200;
+                            const barHeight = maxParticipants > 0 ? (totalParticipants / maxParticipants) * maxHeight : 0;
+                            
+                            return (
+                              <Box key={simType} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                <Box
+                                  sx={{
+                                    width: '100%',
+                                    height: barHeight,
+                                    bgcolor: 'secondary.main',
+                                    borderRadius: '4px 4px 0 0',
+                                    position: 'relative',
+                                    minHeight: '20px'
+                                  }}
+                                />
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    mt: 1, 
+                                    textAlign: 'center', 
+                                    fontSize: '0.7rem',
+                                    lineHeight: 1.2,
+                                    maxWidth: '100%',
+                                    wordBreak: 'break-word'
+                                  }}
+                                >
+                                  {simType === 'Other' ? 'Other' : simType}
+                                </Typography>
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    mt: 0.5, 
+                                    textAlign: 'center',
+                                    fontWeight: 'bold',
+                                    color: 'secondary.main'
+                                  }}
+                                >
+                                  {totalParticipants}
+                                </Typography>
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    textAlign: 'center',
+                                    fontSize: '0.65rem',
+                                    color: 'text.secondary'
+                                  }}
+                                >
+                                  avg: {avgParticipants}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No simulation activities recorded
+                      </Typography>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+
+
+
+
+
+      <Divider sx={{ my: 3 }} />
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.12, color: 'text.secondary', display: 'block' }}>
+          Gap plans — detail
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Status mix and priorities beyond the summary cards above.
+        </Typography>
+      </Box>
+
+      {/* Gap Plan Analytics - Action Planning Status */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Gap Plan Status Distribution
+                  </Typography>
+                  <Box sx={{ mt: 2 }}>
+                    {gapPlans.length > 0 ? (
+                      <>
+                        {(() => {
+                          const statusCounts = gapPlans.reduce((acc, plan) => {
+                            const status = plan.status || 'Not Set';
+                            acc[status] = (acc[status] || 0) + 1;
+                            return acc;
+                          }, {} as Record<string, number>);
+                          
+                          const totalPlans = gapPlans.length;
+                          const completedPlans = gapPlans.filter(isGapPlanCompleted).length;
+                          const completionRate = totalPlans > 0 ? Math.round((completedPlans / totalPlans) * 100) : 0;
+                          
+                          return (
+                            <>
+                              <Box sx={{ mb: 3, textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
+                                <Typography variant="h4" color="white">
+                                  {completionRate}%
+                                </Typography>
+                                <Typography variant="body2" color="white">
+                                  Completion Rate
+                                </Typography>
+                                <Typography variant="caption" color="white">
+                                  {completedPlans} of {totalPlans} plans completed
+                                </Typography>
+                              </Box>
+                              <Grid container spacing={1}>
+                                {Object.entries(statusCounts).map(([status, count]) => (
+                                  <Grid item xs={6} key={status}>
+                                    <Box sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
+                                      <Typography variant="h6" color="primary.main">
+                                        {count as number}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {status as string}
+                                      </Typography>
+                                    </Box>
+                                  </Grid>
+                                ))}
+                              </Grid>
+                            </>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No gap plans available
+                      </Typography>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Gap Plan Priority Breakdown
+                  </Typography>
+                  <Box sx={{ mt: 2 }}>
+                    {gapPlans.length > 0 ? (
+                      <>
+                        {(() => {
+                          const priorityCounts = gapPlans.reduce((acc, plan) => {
+                            const priority = plan.priority || 'Not Set';
+                            acc[priority] = (acc[priority] || 0) + 1;
+                            return acc;
+                          }, {} as Record<string, number>);
+                          
+                          const highPriority = (priorityCounts['High Importance & High Urgency (Do Now)'] || 0) + 
+                                             (priorityCounts['High Importance & Low Urgency (Do Next)'] || 0);
+                          
+                          return (
+                            <>
+                              <Box sx={{ mb: 3, textAlign: 'center', p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+                                <Typography variant="h4" color="white">
+                                  {highPriority}
+                                </Typography>
+                                <Typography variant="body2" color="white">
+                                  High Priority Plans
+                                </Typography>
+                              </Box>
+                              <Grid container spacing={1}>
+                                {Object.entries(priorityCounts).map(([priority, count]) => (
+                                  <Grid item xs={12} key={priority}>
+                                    <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <Typography variant="body2" sx={{ flex: 1 }}>
+                                        {(priority as string).replace(/\([^)]*\)/g, '').trim()}
+                                      </Typography>
+                                      <Typography variant="h6" color="primary.main">
+                                        {count as number}
+                                      </Typography>
+                                    </Box>
+                                  </Grid>
+                                ))}
+                              </Grid>
+                            </>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No gap plans available
+                      </Typography>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+      {/* Simulation Gaps Analytics - From Simulation tab */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Simulation Gaps by Status
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {simulationGaps.length > 0 ? (
+                  <Grid container spacing={2}>
+                    {(() => {
+                      const statusCounts = simulationGaps.reduce((acc, g) => {
+                        const s = (g.status || 'identified') as string;
+                        acc[s] = (acc[s] || 0) + 1;
+                        return acc;
+                      }, {} as Record<string, number>);
+                      const total = simulationGaps.length;
+                      return Object.entries(statusCounts).map(([status, count]) => {
+                        const n = count as number;
+                        return (
+                        <Grid item xs={12} key={status}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                              {status.replace(/_/g, ' ')}
+                            </Typography>
+                            <Typography variant="body2" color="primary.main">
+                              {`${n} (${Math.round((n / total) * 100)}%)`}
+                            </Typography>
+                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={(n / total) * 100}
+                            sx={{ height: 6, borderRadius: 3 }}
+                          />
+                        </Grid>
+                      ); });
+                    })()}
+                  </Grid>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No simulation gaps recorded. Add gaps from the Simulation tab.
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Simulation Gaps by Severity
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {simulationGaps.length > 0 ? (
+                  <Grid container spacing={2}>
+                    {(() => {
+                      const severityCounts = simulationGaps.reduce((acc, g) => {
+                        const s = (g.severity || 'other') as string;
+                        acc[s] = (acc[s] || 0) + 1;
+                        return acc;
+                      }, {} as Record<string, number>);
+                      const total = simulationGaps.length;
+                      return Object.entries(severityCounts).map(([severity, count]) => {
+                        const n = count as number;
+                        return (
+                        <Grid item xs={12} key={severity}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                              {severity}
+                            </Typography>
+                            <Typography variant="body2" color="primary.main">
+                              {`${n} (${Math.round((n / total) * 100)}%)`}
+                            </Typography>
+                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={(n / total) * 100}
+                            sx={{ height: 6, borderRadius: 3 }}
+                          />
+                        </Grid>
+                      ); });
+                    })()}
+                  </Grid>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No simulation gaps recorded
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Divider sx={{ my: 3 }} />
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.12, color: 'text.secondary', display: 'block' }}>
+          Activities &amp; hours
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Category mix and time logged—same data as the Activities tab.
+        </Typography>
+      </Box>
+
+      {/* Activity Analysis - Work Tracking and Insights */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Activity Categories
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {activities.length > 0 ? (
+                  <>
+                    {Array.from(new Set(activities.map(a => a.category))).map(category => {
+                      const count = activities.filter(a => a.category === category).length;
+                      const percentage = (count / activities.length) * 100;
+                      return (
+                        <Box key={category} sx={{ mb: 2 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography variant="body2">
+                              {category.length > 30 ? category.substring(0, 30) + '...' : category}
+                            </Typography>
+                            <Typography variant="body2">
+                              {`${count} (${Math.round(percentage)}%)`}
+                            </Typography>
+                          </Box>
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={percentage}
+                            sx={{ height: 6, borderRadius: 3 }}
+                          />
+                        </Box>
+                      );
+                    })}
+                  </>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No activities data available
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                PECC Work Hours Analysis
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {activities.length > 0 ? (
+                  <Grid container spacing={2}>
+                    {(() => {
+                      const now = new Date();
+                      const currentMonth = now.getMonth();
+                      const currentYear = now.getFullYear();
+                      
+                      // Calculate hours for different time periods
+                      const thisMonthHours = activities
+                        .filter(a => {
+                          const activityDate = new Date(a.date);
+                          return activityDate.getMonth() === currentMonth && 
+                                 activityDate.getFullYear() === currentYear;
+                        })
+                        .reduce((sum, a) => sum + (a.hours || 0), 0);
+                      
+                      const lastMonthHours = activities
+                        .filter(a => {
+                          const activityDate = new Date(a.date);
+                          const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+                          const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+                          return activityDate.getMonth() === lastMonth && 
+                                 activityDate.getFullYear() === lastMonthYear;
+                        })
+                        .reduce((sum, a) => sum + (a.hours || 0), 0);
+                      
+                      const thisYearHours = activities
+                        .filter(a => {
+                          const activityDate = new Date(a.date);
+                          return activityDate.getFullYear() === currentYear;
+                        })
+                        .reduce((sum, a) => sum + (a.hours || 0), 0);
+                      
+                      const totalHours = activities.reduce((sum, a) => sum + (a.hours || 0), 0);
+                      
+                      return (
+                        <>
+                          <Grid item xs={6} sm={3}>
+                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'primary.light', borderRadius: 1 }}>
+                              <Typography variant="h4" color="white">
+                                {thisMonthHours}
+                              </Typography>
+                              <Typography variant="body2" color="white">
+                                This Month
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'secondary.light', borderRadius: 1 }}>
+                              <Typography variant="h4" color="white">
+                                {lastMonthHours}
+                              </Typography>
+                              <Typography variant="body2" color="white">
+                                Last Month
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
+                              <Typography variant="h4" color="white">
+                                {thisYearHours}
+                              </Typography>
+                              <Typography variant="body2" color="white">
+                                This Year
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+                              <Typography variant="h4" color="white">
+                                {totalHours}
+                              </Typography>
+                              <Typography variant="body2" color="white">
+                                Total Hours
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        </>
+                      );
+                    })()}
+                  </Grid>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No activities recorded
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+      <Divider sx={{ my: 3 }} />
+      <Box sx={{ mb: 1 }}>
+        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.12, color: 'primary.main', display: 'block' }}>
+          Pediatric readiness
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 0 }}>
+          Score trends and charts align with your Dashboard readiness entries when this section is visible.
+        </Typography>
+      </Box>
+
       {/* Readiness Score Trend & Progress - hidden by default; user can show */}
       {prsSectionVisible && snapshotReadinessChartsVisible === false && (
         <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
@@ -1751,539 +2311,7 @@ const SnapshotPage = () => {
         </Grid>
       )}
 
-      {/* Simulation Analytics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Simulations by Type
-                  </Typography>
-                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
-                    {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
-                      <>
-                        {Array.from(new Set(activities
-                          .filter(a => a.category === 'Simulation Facilitation')
-                          .map(a => a.simulation || 'Other')))
-                          .map(simType => {
-                            const count = activities.filter(a => 
-                              a.category === 'Simulation Facilitation' && 
-                              (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
-                            ).length;
-                            const totalSims = activities.filter(a => a.category === 'Simulation Facilitation').length;
-                            const percentage = (count / totalSims) * 100;
-                            const maxHeight = 200; // Maximum height for the tallest bar
-                            const barHeight = (percentage / 100) * maxHeight;
-                            
-                            return (
-                              <Box key={simType} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                <Box
-                                  sx={{
-                                    width: '100%',
-                                    height: barHeight,
-                                    bgcolor: 'primary.main',
-                                    borderRadius: '4px 4px 0 0',
-                                    position: 'relative',
-                                    minHeight: '20px'
-                                  }}
-                                />
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    mt: 1, 
-                                    textAlign: 'center', 
-                                    fontSize: '0.7rem',
-                                    lineHeight: 1.2,
-                                    maxWidth: '100%',
-                                    wordBreak: 'break-word'
-                                  }}
-                                >
-                                  {simType === 'Other' ? 'Other' : simType}
-                                </Typography>
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    mt: 0.5, 
-                                    textAlign: 'center',
-                                    fontWeight: 'bold',
-                                    color: 'primary.main'
-                                  }}
-                                >
-                                  {count}
-                                </Typography>
-                              </Box>
-                            );
-                          })}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No simulation activities recorded
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Simulation Participants
-                  </Typography>
-                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
-                    {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
-                      <>
-                        {Array.from(new Set(activities
-                          .filter(a => a.category === 'Simulation Facilitation')
-                          .map(a => a.simulation || 'Other')))
-                          .map(simType => {
-                            const simActivities = activities.filter(a => 
-                              a.category === 'Simulation Facilitation' && 
-                              (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
-                            );
-                            const totalParticipants = simActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
-                            const avgParticipants = simActivities.length > 0 ? Math.round(totalParticipants / simActivities.length) : 0;
-                            
-                            // Find the maximum participants to scale the bars appropriately
-                            const allSimTypes = Array.from(new Set(activities
-                              .filter(a => a.category === 'Simulation Facilitation')
-                              .map(a => a.simulation || 'Other')));
-                            const maxParticipants = Math.max(...allSimTypes.map(type => {
-                              const typeActivities = activities.filter(a => 
-                                a.category === 'Simulation Facilitation' && 
-                                (a.simulation === type || (a.simulation === undefined && type === 'Other'))
-                              );
-                              return typeActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
-                            }));
-                            
-                            const maxHeight = 200;
-                            const barHeight = maxParticipants > 0 ? (totalParticipants / maxParticipants) * maxHeight : 0;
-                            
-                            return (
-                              <Box key={simType} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                <Box
-                                  sx={{
-                                    width: '100%',
-                                    height: barHeight,
-                                    bgcolor: 'secondary.main',
-                                    borderRadius: '4px 4px 0 0',
-                                    position: 'relative',
-                                    minHeight: '20px'
-                                  }}
-                                />
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    mt: 1, 
-                                    textAlign: 'center', 
-                                    fontSize: '0.7rem',
-                                    lineHeight: 1.2,
-                                    maxWidth: '100%',
-                                    wordBreak: 'break-word'
-                                  }}
-                                >
-                                  {simType === 'Other' ? 'Other' : simType}
-                                </Typography>
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    mt: 0.5, 
-                                    textAlign: 'center',
-                                    fontWeight: 'bold',
-                                    color: 'secondary.main'
-                                  }}
-                                >
-                                  {totalParticipants}
-                                </Typography>
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    textAlign: 'center',
-                                    fontSize: '0.65rem',
-                                    color: 'text.secondary'
-                                  }}
-                                >
-                                  avg: {avgParticipants}
-                                </Typography>
-                              </Box>
-                            );
-                          })}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No simulation activities recorded
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
 
-
-
-
-
-
-      {/* Gap Plan Analytics - Action Planning Status */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Gap Plan Status Distribution
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
-                    {gapPlans.length > 0 ? (
-                      <>
-                        {(() => {
-                          const statusCounts = gapPlans.reduce((acc, plan) => {
-                            const status = plan.status || 'Not Set';
-                            acc[status] = (acc[status] || 0) + 1;
-                            return acc;
-                          }, {} as Record<string, number>);
-                          
-                          const totalPlans = gapPlans.length;
-                          const completedPlans = gapPlans.filter(isGapPlanCompleted).length;
-                          const completionRate = totalPlans > 0 ? Math.round((completedPlans / totalPlans) * 100) : 0;
-                          
-                          return (
-                            <>
-                              <Box sx={{ mb: 3, textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
-                                <Typography variant="h4" color="white">
-                                  {completionRate}%
-                                </Typography>
-                                <Typography variant="body2" color="white">
-                                  Completion Rate
-                                </Typography>
-                                <Typography variant="caption" color="white">
-                                  {completedPlans} of {totalPlans} plans completed
-                                </Typography>
-                              </Box>
-                              <Grid container spacing={1}>
-                                {Object.entries(statusCounts).map(([status, count]) => (
-                                  <Grid item xs={6} key={status}>
-                                    <Box sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                                      <Typography variant="h6" color="primary.main">
-                                        {count as number}
-                                      </Typography>
-                                      <Typography variant="caption" color="text.secondary">
-                                        {status as string}
-                                      </Typography>
-                                    </Box>
-                                  </Grid>
-                                ))}
-                              </Grid>
-                            </>
-                          );
-                        })()}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No gap plans available
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Gap Plan Priority Breakdown
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
-                    {gapPlans.length > 0 ? (
-                      <>
-                        {(() => {
-                          const priorityCounts = gapPlans.reduce((acc, plan) => {
-                            const priority = plan.priority || 'Not Set';
-                            acc[priority] = (acc[priority] || 0) + 1;
-                            return acc;
-                          }, {} as Record<string, number>);
-                          
-                          const highPriority = (priorityCounts['High Importance & High Urgency (Do Now)'] || 0) + 
-                                             (priorityCounts['High Importance & Low Urgency (Do Next)'] || 0);
-                          
-                          return (
-                            <>
-                              <Box sx={{ mb: 3, textAlign: 'center', p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
-                                <Typography variant="h4" color="white">
-                                  {highPriority}
-                                </Typography>
-                                <Typography variant="body2" color="white">
-                                  High Priority Plans
-                                </Typography>
-                              </Box>
-                              <Grid container spacing={1}>
-                                {Object.entries(priorityCounts).map(([priority, count]) => (
-                                  <Grid item xs={12} key={priority}>
-                                    <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <Typography variant="body2" sx={{ flex: 1 }}>
-                                        {(priority as string).replace(/\([^)]*\)/g, '').trim()}
-                                      </Typography>
-                                      <Typography variant="h6" color="primary.main">
-                                        {count as number}
-                                      </Typography>
-                                    </Box>
-                                  </Grid>
-                                ))}
-                              </Grid>
-                            </>
-                          );
-                        })()}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No gap plans available
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-      {/* Simulation Gaps Analytics - From Simulation tab */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Simulation Gaps by Status
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {simulationGaps.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {(() => {
-                      const statusCounts = simulationGaps.reduce((acc, g) => {
-                        const s = (g.status || 'identified') as string;
-                        acc[s] = (acc[s] || 0) + 1;
-                        return acc;
-                      }, {} as Record<string, number>);
-                      const total = simulationGaps.length;
-                      return Object.entries(statusCounts).map(([status, count]) => {
-                        const n = count as number;
-                        return (
-                        <Grid item xs={12} key={status}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                              {status.replace(/_/g, ' ')}
-                            </Typography>
-                            <Typography variant="body2" color="primary.main">
-                              {`${n} (${Math.round((n / total) * 100)}%)`}
-                            </Typography>
-                          </Box>
-                          <LinearProgress
-                            variant="determinate"
-                            value={(n / total) * 100}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                        </Grid>
-                      ); });
-                    })()}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No simulation gaps recorded. Add gaps from the Simulation tab.
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Simulation Gaps by Severity
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {simulationGaps.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {(() => {
-                      const severityCounts = simulationGaps.reduce((acc, g) => {
-                        const s = (g.severity || 'other') as string;
-                        acc[s] = (acc[s] || 0) + 1;
-                        return acc;
-                      }, {} as Record<string, number>);
-                      const total = simulationGaps.length;
-                      return Object.entries(severityCounts).map(([severity, count]) => {
-                        const n = count as number;
-                        return (
-                        <Grid item xs={12} key={severity}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                              {severity}
-                            </Typography>
-                            <Typography variant="body2" color="primary.main">
-                              {`${n} (${Math.round((n / total) * 100)}%)`}
-                            </Typography>
-                          </Box>
-                          <LinearProgress
-                            variant="determinate"
-                            value={(n / total) * 100}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                        </Grid>
-                      ); });
-                    })()}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No simulation gaps recorded
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Activity Analysis - Work Tracking and Insights */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Activity Categories
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {activities.length > 0 ? (
-                  <>
-                    {Array.from(new Set(activities.map(a => a.category))).map(category => {
-                      const count = activities.filter(a => a.category === category).length;
-                      const percentage = (count / activities.length) * 100;
-                      return (
-                        <Box key={category} sx={{ mb: 2 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                            <Typography variant="body2">
-                              {category.length > 30 ? category.substring(0, 30) + '...' : category}
-                            </Typography>
-                            <Typography variant="body2">
-                              {`${count} (${Math.round(percentage)}%)`}
-                            </Typography>
-                          </Box>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={percentage}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                        </Box>
-                      );
-                    })}
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No activities data available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                PECC Work Hours Analysis
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {activities.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {(() => {
-                      const now = new Date();
-                      const currentMonth = now.getMonth();
-                      const currentYear = now.getFullYear();
-                      
-                      // Calculate hours for different time periods
-                      const thisMonthHours = activities
-                        .filter(a => {
-                          const activityDate = new Date(a.date);
-                          return activityDate.getMonth() === currentMonth && 
-                                 activityDate.getFullYear() === currentYear;
-                        })
-                        .reduce((sum, a) => sum + (a.hours || 0), 0);
-                      
-                      const lastMonthHours = activities
-                        .filter(a => {
-                          const activityDate = new Date(a.date);
-                          const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-                          const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-                          return activityDate.getMonth() === lastMonth && 
-                                 activityDate.getFullYear() === lastMonthYear;
-                        })
-                        .reduce((sum, a) => sum + (a.hours || 0), 0);
-                      
-                      const thisYearHours = activities
-                        .filter(a => {
-                          const activityDate = new Date(a.date);
-                          return activityDate.getFullYear() === currentYear;
-                        })
-                        .reduce((sum, a) => sum + (a.hours || 0), 0);
-                      
-                      const totalHours = activities.reduce((sum, a) => sum + (a.hours || 0), 0);
-                      
-                      return (
-                        <>
-                          <Grid item xs={6} sm={3}>
-                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'primary.light', borderRadius: 1 }}>
-                              <Typography variant="h4" color="white">
-                                {thisMonthHours}
-                              </Typography>
-                              <Typography variant="body2" color="white">
-                                This Month
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={6} sm={3}>
-                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'secondary.light', borderRadius: 1 }}>
-                              <Typography variant="h4" color="white">
-                                {lastMonthHours}
-                              </Typography>
-                              <Typography variant="body2" color="white">
-                                Last Month
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={6} sm={3}>
-                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
-                              <Typography variant="h4" color="white">
-                                {thisYearHours}
-                              </Typography>
-                              <Typography variant="body2" color="white">
-                                This Year
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={6} sm={3}>
-                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
-                              <Typography variant="h4" color="white">
-                                {totalHours}
-                              </Typography>
-                              <Typography variant="body2" color="white">
-                                Total Hours
-                              </Typography>
-                            </Box>
-                          </Grid>
-                        </>
-                      );
-                    })()}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No activities recorded
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
 
         {/* Domain Performance Analysis - Only show if PRS section is visible */}
         {prsSectionVisible && domainScores && (
