@@ -389,6 +389,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setColumns(defaultVisibility(columnMetas));
     if (dataset === 'organization') setSortBy('orgName');
     else if (dataset === 'contacts') setSortBy('contactName');
+    else if (dataset === 'hospital') setSortBy('hospitalName');
     else setSortBy('name');
   }, [dataset, columnMetas]);
 
@@ -866,7 +867,7 @@ async function loadChecklistForHospitals(hospitalIds: string[]): Promise<Map<str
   const map = new Map<string, { total: number; completed: number }>();
   if (!hospitalIds.length) return map;
   for (const part of chunk(hospitalIds, 80)) {
-    const rows = await fetchAllRows<{ hospital_id: string; completed: boolean }>((from, to) =>
+    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string; completed: boolean }>((from, to) =>
       supabase.from('site_checklist_progress').select('hospital_id, completed').in('hospital_id', part).range(from, to)
     );
     rows.forEach((row) => {
@@ -1119,16 +1120,37 @@ async function loadPeccDataset(params: {
     }
   >();
   if (hidSet.length) {
-    const { data: hospitals } = await supabase
-      .from('hospitals')
-      .select(
-        'id, name, facility_id, address, city, state, zip, county, phone, email, trauma_level, ed_size, region, hospital_system, crm_status, company_name, custom_fields, programs, cohorts'
-      )
-      .in('id', hidSet);
-    hospById = new Map(
-      (hospitals || []).map((h: Record<string, unknown>) => [
-        String(h.id),
-        {
+    type HospRow = {
+      id: string;
+      name: string;
+      city: string | null;
+      state: string | null;
+      facility_id: string | null;
+      address: string | null;
+      zip: string | null;
+      county: string | null;
+      phone: string | null;
+      email: string | null;
+      trauma_level: string | null;
+      ed_size: string | null;
+      region: string | null;
+      hospital_system: string | null;
+      crm_status: string | null;
+      company_name: string | null;
+      custom_fields: Record<string, string> | null;
+      programs: string[] | null;
+      cohorts: string[] | null;
+    };
+    for (const hidPart of chunk(hidSet, 80)) {
+      const { data: hospitals, error } = await supabase
+        .from('hospitals')
+        .select(
+          'id, name, facility_id, address, city, state, zip, county, phone, email, trauma_level, ed_size, region, hospital_system, crm_status, company_name, custom_fields, programs, cohorts'
+        )
+        .in('id', hidPart);
+      if (error) throw error;
+      (hospitals || []).forEach((h: Record<string, unknown>) => {
+        const row: HospRow = {
           id: String(h.id),
           name: String(h.name ?? ''),
           city: h.city != null ? String(h.city) : null,
@@ -1148,9 +1170,10 @@ async function loadPeccDataset(params: {
           custom_fields: h.custom_fields && typeof h.custom_fields === 'object' ? (h.custom_fields as Record<string, string>) : null,
           programs: Array.isArray(h.programs) ? (h.programs as string[]) : null,
           cohorts: Array.isArray(h.cohorts) ? (h.cohorts as string[]) : null,
-        },
-      ])
-    );
+        };
+        hospById.set(row.id, row);
+      });
+    }
   }
 
   const mentorIds = [...new Set(peccs.map((p) => p.mentor_id).filter(Boolean))] as string[];
