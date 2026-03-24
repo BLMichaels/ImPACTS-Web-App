@@ -138,6 +138,18 @@ async function fetchAllRowsOrEmpty<T extends Record<string, unknown>>(
   return out;
 }
 
+async function fetchActiveProgramsList(): Promise<{ id: string; name: string }[]> {
+  return fetchAllRowsOrEmpty<{ id: string; name: string }>((from, to) =>
+    supabase.from('programs').select('id, name').eq('is_active', true).order('name').range(from, to)
+  );
+}
+
+async function fetchActiveCohortsList(): Promise<{ id: string; name: string }[]> {
+  return fetchAllRowsOrEmpty<{ id: string; name: string }>((from, to) =>
+    supabase.from('cohorts').select('id, name').eq('is_active', true).order('name').range(from, to)
+  );
+}
+
 async function fetchUserDataBatch(
   userIds: string[],
   dataKeys: string[]
@@ -187,22 +199,30 @@ async function resolveHospitalIdsForScope(scope: StaffReportScope, userId: strin
   if (scope === 'admin') return null;
   const set = new Set<string>();
   if (scope === 'mentor') {
-    const { data } = await supabase
-      .from('mentor_hospital_assignments')
-      .select('hospital_id')
-      .eq('mentor_id', userId)
-      .eq('is_active', true);
-    (data || []).forEach((r: { hospital_id: string }) => r.hospital_id && set.add(r.hospital_id));
+    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string }>((from, to) =>
+      supabase
+        .from('mentor_hospital_assignments')
+        .select('hospital_id')
+        .eq('mentor_id', userId)
+        .eq('is_active', true)
+        .range(from, to)
+    );
+    rows.forEach((r) => r.hospital_id && set.add(r.hospital_id));
     return [...set];
   }
   const { data: mentors } = await supabase.from('users').select('id').eq('manager_id', userId).eq('role', 'mentor').eq('is_active', true);
   const mentorIds = [...(mentors || []).map((m: { id: string }) => m.id), userId];
-  const { data: assigns } = await supabase
-    .from('mentor_hospital_assignments')
-    .select('hospital_id')
-    .in('mentor_id', mentorIds)
-    .eq('is_active', true);
-  (assigns || []).forEach((r: { hospital_id: string }) => r.hospital_id && set.add(r.hospital_id));
+  for (const mentorPart of chunk(mentorIds, 80)) {
+    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string }>((from, to) =>
+      supabase
+        .from('mentor_hospital_assignments')
+        .select('hospital_id')
+        .in('mentor_id', mentorPart)
+        .eq('is_active', true)
+        .range(from, to)
+    );
+    rows.forEach((r) => r.hospital_id && set.add(r.hospital_id));
+  }
   return [...set];
 }
 
@@ -442,20 +462,13 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         return;
       }
 
-      const [progRes, coRes] = await Promise.all([
-        supabase.from('programs').select('id, name').eq('is_active', true).order('name'),
-        supabase.from('cohorts').select('id, name').eq('is_active', true).order('name'),
-      ]);
-      const progList: { id: string; name: string }[] = progRes.error
-        ? isSupabaseMissingRelationError(progRes.error)
-          ? []
-          : (console.warn('programs:', progRes.error.message), [])
-        : ((progRes.data || []) as { id: string; name: string }[]);
-      const coList: { id: string; name: string }[] = coRes.error
-        ? isSupabaseMissingRelationError(coRes.error)
-          ? []
-          : (console.warn('cohorts:', coRes.error.message), [])
-        : ((coRes.data || []) as { id: string; name: string }[]);
+      let progList: { id: string; name: string }[] = [];
+      let coList: { id: string; name: string }[] = [];
+      try {
+        [progList, coList] = await Promise.all([fetchActiveProgramsList(), fetchActiveCohortsList()]);
+      } catch (e) {
+        console.warn('programs/cohorts list:', e);
+      }
       setPrograms(progList);
       setCohorts(coList);
       const progMap = new Map(progList.map((p) => [p.id, p.name]));
@@ -596,13 +609,13 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     doc.text(`${datasetLabel(dataset)} — ImPACTS`, 14, 16);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Generated ${format(new Date(), 'PPpp')} · Scope: ${scope}`, 14, 22);
+    doc.text(`Generated ${format(new Date(), 'PPpp')} · Scope: ${scope} · Rows: ${sorted.length}`, 14, 22);
 
     const head = visibleColumnIds.map((id) => columnMetas.find((c) => c.id === id)?.label || id);
     const body = sorted.map((r) => visibleColumnIds.map((id) => r.cells[id] ?? ''));
 
     autoTable(doc, { head: [head], body, startY: 28, styles: { fontSize: 6 }, headStyles: { fillColor: [33, 150, 243] } });
-    doc.save(`impacts-${dataset}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    doc.save(`impacts-${dataset}-${scope}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   const exportExcel = () => {
@@ -614,7 +627,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, datasetLabel(dataset).slice(0, 28));
-    XLSX.writeFile(wb, `impacts-${dataset}-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    XLSX.writeFile(wb, `impacts-${dataset}-${scope}-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
   const columnsByGroup = useMemo(() => {
@@ -1728,7 +1741,7 @@ async function loadStaffDataset(params: {
     const peccIdSet = new Set<string>();
     if (hs.length > 0) {
       for (const hpart of chunk(hs, 80)) {
-        const rows = await fetchAllRows<{ id: string }>((from, to) =>
+        const rows = await fetchAllRowsOrEmpty<{ id: string }>((from, to) =>
           supabase.from('users').select('id').eq('role', 'pecc').eq('is_active', true).in('hospital_facility_id', hpart).range(from, to)
         );
         rows.forEach((r) => peccIdSet.add(r.id));
@@ -1741,7 +1754,7 @@ async function loadStaffDataset(params: {
     const peccIdSet = new Set<string>();
     if (hs.length > 0) {
       for (const hpart of chunk(hs, 80)) {
-        const rows = await fetchAllRows<{ id: string }>((from, to) =>
+        const rows = await fetchAllRowsOrEmpty<{ id: string }>((from, to) =>
           supabase.from('users').select('id').eq('role', 'pecc').eq('is_active', true).in('hospital_facility_id', hpart).range(from, to)
         );
         rows.forEach((r) => peccIdSet.add(r.id));
