@@ -40,6 +40,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
+import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 
 export type StaffReportScope = 'admin' | 'manager' | 'mentor';
 
@@ -97,6 +98,26 @@ async function fetchAllRows<T extends Record<string, unknown>>(
   while (true) {
     const { data, error } = await run(from, from + POSTGREST_PAGE - 1);
     if (error) throw error;
+    const part = data || [];
+    out.push(...part);
+    if (part.length < POSTGREST_PAGE) break;
+    from += POSTGREST_PAGE;
+  }
+  return out;
+}
+
+/** Same as fetchAllRows but returns [] if the table is missing from PostgREST (404 / PGRST205). */
+async function fetchAllRowsOrEmpty<T extends Record<string, unknown>>(
+  run: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string; code?: string } | null }>
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await run(from, from + POSTGREST_PAGE - 1);
+    if (error) {
+      if (isSupabaseMissingRelationError(error)) return [];
+      throw error;
+    }
     const part = data || [];
     out.push(...part);
     if (part.length < POSTGREST_PAGE) break;
@@ -879,7 +900,7 @@ async function loadPeccDataset(params: {
   }[] = [];
 
   if (hospitalScope && hospitalScope.length > 0) {
-    contactOnlyRows = await fetchAllRows((from, to) =>
+    contactOnlyRows = await fetchAllRowsOrEmpty((from, to) =>
       supabase
         .from('hospital_contacts')
         .select('id, hospital_id, user_id, first_name, last_name, email, phone, role_at_hospital')
@@ -888,7 +909,7 @@ async function loadPeccDataset(params: {
         .range(from, to)
     );
   } else if (!hospitalScope) {
-    contactOnlyRows = await fetchAllRows((from, to) =>
+    contactOnlyRows = await fetchAllRowsOrEmpty((from, to) =>
       supabase
         .from('hospital_contacts')
         .select('id, hospital_id, user_id, first_name, last_name, email, phone, role_at_hospital')
@@ -1350,13 +1371,13 @@ async function loadContactsDataset(params: {
   let contacts: HcRow[] = [];
   if (hospitalScope && hospitalScope.length > 0) {
     for (const hidPart of chunk(hospitalScope, 80)) {
-      const part = await fetchAllRows<HcRow>((from, to) =>
+      const part = await fetchAllRowsOrEmpty<HcRow>((from, to) =>
         supabase.from('hospital_contacts').select(hcSelect).in('hospital_id', hidPart).order('last_name').range(from, to)
       );
       contacts.push(...part);
     }
   } else if (!hospitalScope) {
-    contacts = await fetchAllRows<HcRow>((from, to) =>
+    contacts = await fetchAllRowsOrEmpty<HcRow>((from, to) =>
       supabase.from('hospital_contacts').select(hcSelect).order('last_name').range(from, to)
     );
   } else {

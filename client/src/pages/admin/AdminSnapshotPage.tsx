@@ -55,6 +55,7 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
 import { supabase } from '../../supabase';
+import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 
@@ -252,10 +253,21 @@ export default function AdminSnapshotPage() {
           supabase.from('cohort_members').select('cohort_id, user_id').eq('status', 'active')
         ]);
         if (!mounted) return;
+
+        if (contactsRes.error && !isSupabaseMissingRelationError(contactsRes.error)) {
+          console.warn('Admin snapshot: hospital_contacts', contactsRes.error);
+        }
+        if (milestonesRes.error && !isSupabaseMissingRelationError(milestonesRes.error)) {
+          console.warn('Admin snapshot: site_milestones', milestonesRes.error);
+        }
+        if (peccActivitiesRes.error && !isSupabaseMissingRelationError(peccActivitiesRes.error)) {
+          console.warn('Admin snapshot: pecc_activities', peccActivitiesRes.error);
+        }
+
         const managers = managersRes.count ?? 0;
         const mentors = (mentorsRes.data || []).length;
         const peccs = (peccsRes.data || []).length;
-        const contacts = contactsRes.count ?? 0;
+        const contacts = contactsRes.error ? 0 : (contactsRes.count ?? 0);
         const assignmentsData = (assignmentsRes.data || []) as { hospital_id: string; mentor_id: string }[];
         const hospitalIds = [...new Set(assignmentsData.map((a) => a.hospital_id).filter(Boolean))];
         const sites = hospitalIds.length;
@@ -271,10 +283,13 @@ export default function AdminSnapshotPage() {
         const invitationsAcceptedThisMonth = invitationsData.filter(
           (i) => i.status === 'accepted' && i.accepted_at && i.accepted_at >= invMonthStart
         ).length;
-        const milestonesData = (milestonesRes.data || []) as { status: string }[];
+        const milestonesData = (milestonesRes.error ? [] : milestonesRes.data || []) as { status: string }[];
         const siteMilestonesTotal = milestonesData.length;
         const siteMilestonesCompleted = milestonesData.filter((m) => m.status === 'completed').length;
-        const peccActivitiesData = (peccActivitiesRes.data || []) as { hours: number; date: string }[];
+        const peccActivitiesData = (peccActivitiesRes.error ? [] : peccActivitiesRes.data || []) as {
+          hours: number;
+          date: string;
+        }[];
         const peccHoursThisMonth = peccActivitiesData.reduce((s, a) => s + (a.hours || 0), 0);
         const peccActivitiesThisMonth = peccActivitiesData.length;
         const peccList = (peccsRes.data || []) as { id: string; hospital_facility_id: string }[];
