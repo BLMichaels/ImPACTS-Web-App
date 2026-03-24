@@ -230,7 +230,7 @@ function App() {
                   
                   {/* PECC Routes */}
                   <Route path="/dashboard" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><DashboardPage /></ProtectedRoute>} />
-                  <Route path="/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><SnapshotPage /></ProtectedRoute>} />
+                  <Route path="/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><ErrorBoundary><SnapshotPage /></ErrorBoundary></ProtectedRoute>} />
                   <Route path="/simulation" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><SimulationPage /></ProtectedRoute>} />
                   <Route path="/milestones" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><MilestonesPage /></ProtectedRoute>} />
                   <Route path="/activities" element={<ProtectedRoute allowedRoles={[UserRole.PECC]}><ActivitiesPage /></ProtectedRoute>} />

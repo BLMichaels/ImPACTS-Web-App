@@ -202,7 +202,8 @@ export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<
       } catch (err) {
         if (!cancelled) {
           console.error('Error resolving PRS section visibility:', err);
-          setIsVisible(false);
+          // Fail open: avoid hiding PRS when RPC/tables error (better UX than a blank section).
+          setIsVisible(true);
         }
       }
     };

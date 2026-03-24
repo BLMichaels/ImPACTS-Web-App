@@ -10,7 +10,8 @@ import {
   Chip,
   Alert,
   Container,
-  Paper
+  Paper,
+  Snackbar
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
@@ -26,36 +27,18 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import RemoveIcon from '@mui/icons-material/Remove';
 import { format } from 'date-fns';
-
-// Type definitions for PRS questions
-interface PRSQuestion {
-  id: string;
-  text: string;
-  type: 'yesno' | 'radio' | 'checkbox' | 'text' | 'numeric' | 'paragraph' | 'subquestions' | 'header';
-  options?: string[];
-  subQuestions?: PRSQuestion[];
-  answer?: string | string[] | null;
-  points?: number;
-}
-
-// Domain mapping - questions belong to specific domains based on PRS structure
-const DOMAIN_QUESTION_MAPPING: Record<string, string[]> = {
-  'Administration & Coordination': ['22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38'],
-  'Staffing': ['39', '40', '41', '42', '43', '44a', '44b', '44c', '44d', '44e'],
-  'Quality Improvement': ['45', '46', '47', '48', '49', '50', '51'],
-  'Patient Safety': ['52', '53', '54', '55', '56', '57', '58', '59', '60', '61a', '61b', '61c', '61d', '61e', '62'],
-  'Policies & Procedures': ['63', '64', '65', '66', '67', '68', '69', '70', '71', '72', '73', '74', '75', '76', '77', '78', '79'],
-  'Equipment': ['80', '81', '82', '83', '84', '85', '86', '87', '88', '89', '90', '91', '92', '93', '94', '95', '96', '97', '98', '99', '100']
-};
-
-const DOMAIN_MAX_POINTS: Record<string, number> = {
-  'Administration & Coordination': 19,
-  'Staffing': 10,
-  'Quality Improvement': 7,
-  'Patient Safety': 14,
-  'Policies & Procedures': 17,
-  'Equipment': 33
-};
+import {
+  type PRSQuestion,
+  calculateDomainScores,
+  calculateCurrentPRSScorePercent
+} from '../utils/snapshotPrsScoring';
+import {
+  gapPlanHasStatus,
+  isGapPlanCompleted,
+  isMilestoneCompleted,
+  isSimulationGapCompleted
+} from '../utils/snapshotGapStatus';
+import { parseActivityDate } from '../utils/snapshotActivityDate';
 
 const SnapshotPage = () => {
   useAuth();
@@ -68,8 +51,12 @@ const SnapshotPage = () => {
   const [readinessScores, setReadinessScores] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [renderError, setRenderError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [pdfSnackbar, setPdfSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error';
+  }>({ open: false, message: '', severity: 'success' });
   const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
   const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
@@ -88,135 +75,16 @@ const SnapshotPage = () => {
     setSnapshotReadinessChartsVisible(visible);
   };
 
-  // Calculate domain scores from PRS questions (loaded from user_data)
   const domainScores = useMemo(() => {
     try {
-      const questions = prsQuestions;
-      if (!questions || !Array.isArray(questions)) return null;
-      const domainData: Record<string, { earned: number; total: number; percentage: number }> = {};
-      
-      // Helper function to calculate points for a question
-      const calculateQuestionPoints = (question: PRSQuestion): { earned: number; total: number } => {
-        let earned = 0;
-        let total = 0;
-        
-        if (question.points) {
-          total = question.points;
-          
-          if (question.answer) {
-            let shouldEarnPoints = false;
-            
-            if (question.type === 'yesno') {
-              shouldEarnPoints = question.answer === 'yes';
-            } else if (question.type === 'radio') {
-              shouldEarnPoints = true;
-            } else if (question.type === 'checkbox') {
-              shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
-            } else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
-              shouldEarnPoints = question.answer !== '' && question.answer !== null;
-            } else {
-              shouldEarnPoints = true;
-            }
-            
-            if (shouldEarnPoints) {
-              earned = question.points;
-            }
-          }
-        }
-        
-        // Handle subquestions
-        if (question.subQuestions) {
-          question.subQuestions.forEach((subQ: PRSQuestion) => {
-            const subPoints = calculateQuestionPoints(subQ);
-            earned += subPoints.earned;
-            total += subPoints.total;
-          });
-        }
-        
-        return { earned, total };
-      };
-      
-      // Calculate scores for each domain
-      Object.entries(DOMAIN_QUESTION_MAPPING).forEach(([domain, questionIds]) => {
-        let domainEarned = 0;
-        let domainTotal = DOMAIN_MAX_POINTS[domain] || 0;
-        
-        questionIds.forEach(qId => {
-          const question = questions.find((q: PRSQuestion) => q.id === qId);
-          if (question) {
-            const points = calculateQuestionPoints(question);
-            domainEarned += points.earned;
-          }
-        });
-        
-        domainData[domain] = {
-          earned: domainEarned,
-          total: domainTotal,
-          percentage: domainTotal > 0 ? Math.round((domainEarned / domainTotal) * 100) : 0
-        };
-      });
-      
-      return domainData;
+      return calculateDomainScores(prsQuestions);
     } catch (error) {
       console.error('Error calculating domain scores:', error);
       return null;
     }
   }, [prsQuestions]);
 
-  // Calculate current PRS score
-  const currentPRSScore = useMemo(() => {
-    try {
-      const questions = prsQuestions;
-      if (!questions || !Array.isArray(questions)) return null;
-      let totalPoints = 0;
-      let earnedPoints = 0;
-
-      const calculateQuestionPoints = (question: PRSQuestion): number => {
-        if (question.points) {
-          totalPoints += question.points;
-          
-          if (question.answer) {
-            let shouldEarnPoints = false;
-            
-            if (question.type === 'yesno') {
-              shouldEarnPoints = question.answer === 'yes';
-            } else if (question.type === 'radio') {
-              shouldEarnPoints = true;
-            } else if (question.type === 'checkbox') {
-              shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
-            } else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
-              shouldEarnPoints = question.answer !== '' && question.answer !== null;
-            } else {
-              shouldEarnPoints = true;
-            }
-            
-            if (shouldEarnPoints) {
-              earnedPoints += question.points;
-            }
-          }
-        }
-
-        if (question.subQuestions) {
-          question.subQuestions.forEach((subQ: any) => {
-            calculateQuestionPoints(subQ);
-          });
-        }
-
-        return earnedPoints;
-      };
-
-      questions.forEach((question: PRSQuestion) => {
-        calculateQuestionPoints(question);
-      });
-
-      if (totalPoints > 0) {
-        return Math.round((earnedPoints / totalPoints) * 100);
-      }
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }, [prsQuestions]);
+  const currentPRSScore = useMemo(() => calculateCurrentPRSScorePercent(prsQuestions), [prsQuestions]);
 
   // Load all data for snapshot. When PRS section is hidden, do not load readiness scores or PRS questions.
   useEffect(() => {
@@ -290,7 +158,11 @@ const SnapshotPage = () => {
           jsPDF = require('jspdf');
         } catch (e) {
           console.error('jsPDF library not available:', e);
-          alert('PDF export library not available. Please contact support.');
+          setPdfSnackbar({
+            open: true,
+            message: 'PDF export library not available. Please contact support.',
+            severity: 'error'
+          });
           return null;
         }
         
@@ -472,13 +344,13 @@ const SnapshotPage = () => {
         
         // Calculate metrics exactly like the page does (no PRS data when section hidden)
         const currentScore = prsSectionVisible && readinessScores.length > 0 ? readinessScores[readinessScores.length - 1]?.score || 0 : 0;
-        const completedItems = milestones.filter(m => m.status === 'completed').length;
+        const completedItems = milestones.filter(isMilestoneCompleted).length;
         const totalItems = milestones.length;
         const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
-        const completedGapPlans = gapPlans.filter(p => p.status === 'Completed').length;
+        const completedGapPlans = gapPlans.filter(isGapPlanCompleted).length;
         const totalGapPlans = gapPlans.length;
         const gapCompletionRate = totalGapPlans > 0 ? Math.round((completedGapPlans / totalGapPlans) * 100) : 0;
-        const completedSimGaps = simulationGaps.filter((g: any) => g.status === 'completed').length;
+        const completedSimGaps = simulationGaps.filter(isSimulationGapCompleted).length;
         const totalSimGaps = simulationGaps.length;
         const simGapCompletionRate = totalSimGaps > 0 ? Math.round((completedSimGaps / totalSimGaps) * 100) : 0;
         
@@ -522,7 +394,7 @@ const SnapshotPage = () => {
             acc[stage] = { total: 0, completed: 0 };
           }
           acc[stage].total++;
-          if (milestone.status === 'completed') {
+          if (isMilestoneCompleted(milestone)) {
             acc[stage].completed++;
           }
           return acc;
@@ -599,25 +471,28 @@ const SnapshotPage = () => {
           // Calculate hours for different time periods
           const thisMonthHours = activities
             .filter(a => {
-              const activityDate = new Date(a.date);
-              return activityDate.getMonth() === currentMonth && 
+              const activityDate = parseActivityDate(a.date);
+              if (!activityDate) return false;
+              return activityDate.getMonth() === currentMonth &&
                      activityDate.getFullYear() === currentYear;
             })
             .reduce((sum, a) => sum + (a.hours || 0), 0);
           
           const lastMonthHours = activities
             .filter(a => {
-              const activityDate = new Date(a.date);
+              const activityDate = parseActivityDate(a.date);
+              if (!activityDate) return false;
               const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
               const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-              return activityDate.getMonth() === lastMonth && 
+              return activityDate.getMonth() === lastMonth &&
                      activityDate.getFullYear() === lastMonthYear;
             })
             .reduce((sum, a) => sum + (a.hours || 0), 0);
           
           const thisYearHours = activities
             .filter(a => {
-              const activityDate = new Date(a.date);
+              const activityDate = parseActivityDate(a.date);
+              if (!activityDate) return false;
               return activityDate.getFullYear() === currentYear;
             })
             .reduce((sum, a) => sum + (a.hours || 0), 0);
@@ -980,16 +855,21 @@ const SnapshotPage = () => {
         return doc;
       };
       
-      // Create and download the PDF
       const doc = createComprehensiveReport();
+      if (!doc) return;
       doc.save(`PECC_Comprehensive_Snapshot_Report_${new Date().toISOString().split('T')[0]}.pdf`);
-      
-      // Show success message
-      alert('Comprehensive Snapshot PDF Report downloaded! This report captures ALL the visual elements, charts, graphs, and metrics from your Snapshot page in a beautiful, professional format with proper text wrapping and scaling.');
-      
+      setPdfSnackbar({
+        open: true,
+        message: 'PDF downloaded. The report includes KPIs, progress, activities, and recommendations from this page.',
+        severity: 'success'
+      });
     } catch (error) {
       console.error('Error creating comprehensive snapshot report:', error);
-      alert('Error creating report. Please try again.');
+      setPdfSnackbar({
+        open: true,
+        message: 'Error creating report. Please try again.',
+        severity: 'error'
+      });
     }
   };
 
@@ -1033,45 +913,27 @@ const SnapshotPage = () => {
     );
   }
 
-  // Show render error state (e.g. after catch in render)
-  if (renderError) {
-    return (
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography variant="h4" gutterBottom color="error">
-            Something went wrong
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            There was an error rendering the snapshot page. Please try refreshing.
-          </Typography>
-          <Button variant="contained" onClick={() => window.location.reload()}>
-            Refresh Page
-          </Button>
-        </Box>
-      </Container>
-    );
-  }
-
   // Calculate trend
   const scoreTrend = readinessScores.length >= 2 
     ? readinessScores[readinessScores.length - 1].score - readinessScores[0].score
     : 0;
 
-  try {
-    return (
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+  return (
+    <>
+      <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
         {/* Header Section */}
         <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-            <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ maxWidth: { md: 'min(100%, 720px)' } }}>
               <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
                 Snapshot
               </Typography>
-              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-                Comprehensive overview of your pediatric readiness progress
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 1, fontWeight: 500 }}>
+                Your pediatric readiness at a glance
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Track your PRS scores, domain performance, activities, milestones, and gap plans all in one place
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                Readiness scores, checklist and gap plans, activities, and simulations—aligned with how you work in the other tabs.
+                Use Export PDF for a shareable summary.
               </Typography>
             </Box>
             <Button
@@ -1141,7 +1003,14 @@ const SnapshotPage = () => {
           )}
         </Box>
 
-        {/* Key Performance Indicators (KPIs) - Enhanced with better visuals */}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.02, textTransform: 'uppercase', fontSize: '0.75rem' }}>
+            Key metrics
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            High-level numbers from your saved data. PRS cards appear when that section is enabled.
+          </Typography>
+        </Box>
         {prsSectionVisible && (
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
             <Button size="small" variant="outlined" onClick={() => setPrsSectionVisible(false)}>
@@ -1195,7 +1064,7 @@ const SnapshotPage = () => {
                 </Box>
                 <Typography variant="h3" color="success.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
                   {(() => {
-                    const completed = milestones.filter((m: any) => m.status === 'completed' || m.completed).length;
+                    const completed = milestones.filter((m: any) => isMilestoneCompleted(m)).length;
                     const total = milestones.length;
                     return total > 0 ? `${completed}/${total}` : '0';
                   })()}
@@ -1206,7 +1075,7 @@ const SnapshotPage = () => {
                 {milestones.length > 0 && (
                   <LinearProgress 
                     variant="determinate" 
-                    value={(milestones.filter((m: any) => m.status === 'completed' || m.completed).length / milestones.length) * 100}
+                    value={(milestones.filter((m: any) => isMilestoneCompleted(m)).length / milestones.length) * 100}
                     sx={{ mt: 1, height: 6, borderRadius: 3 }}
                   />
                 )}
@@ -1234,7 +1103,7 @@ const SnapshotPage = () => {
                 </Typography>
                 {gapPlans.length > 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {gapPlans.filter((p: any) => p.status === 'Completed' || p.status === 'completed').length} completed
+                    {gapPlans.filter((p: any) => isGapPlanCompleted(p)).length} completed
                   </Typography>
                 )}
               </CardContent>
@@ -1288,7 +1157,7 @@ const SnapshotPage = () => {
                 </Typography>
                 {simulationGaps.length > 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {simulationGaps.filter((g: any) => g.status === 'completed').length} completed
+                    {simulationGaps.filter((g: any) => isSimulationGapCompleted(g)).length} completed
                   </Typography>
                 )}
               </CardContent>
@@ -1299,10 +1168,13 @@ const SnapshotPage = () => {
       {/* Progress Overview: Checklist (overall + by stage in one card) and Gap Plans */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6}>
-          <Card>
+          <Card variant="outlined" sx={{ borderRadius: 2, height: '100%' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Checklist Progress
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Milestone checklist completion. If your program uses stages with tasks, progress is counted by completed tasks.
               </Typography>
               <Box sx={{ mt: 2 }}>
                 {milestones && milestones.length > 0 ? (
@@ -1314,7 +1186,7 @@ const SnapshotPage = () => {
                         : milestones.length;
                       const completedTasks = hasStages
                         ? milestones.reduce((sum: number, s: any) => sum + (s.tasks?.filter((t: any) => t.completed)?.length || 0), 0)
-                        : milestones.filter((m: any) => m.status === 'completed' || m.completed).length;
+                        : milestones.filter((m: any) => isMilestoneCompleted(m)).length;
                       const overallPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
                       return (
                         <>
@@ -1372,10 +1244,13 @@ const SnapshotPage = () => {
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Card>
+          <Card variant="outlined" sx={{ borderRadius: 2, height: '100%' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Gap Plan Completion Overview
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Counts by status from your gap plan list (same labels as the Gap Plan tab).
               </Typography>
               <Box sx={{ mt: 2 }}>
                 {gapPlans.length > 0 ? (
@@ -1383,25 +1258,25 @@ const SnapshotPage = () => {
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">In Progress</Typography>
                       <Typography variant="body2">
-                        {gapPlans.filter(p => p.status === 'In Progress').length}
+                        {gapPlans.filter(p => gapPlanHasStatus(p, 'In Progress')).length}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Completed</Typography>
                       <Typography variant="body2">
-                        {gapPlans.filter(p => p.status === 'Completed').length}
+                        {gapPlans.filter(p => gapPlanHasStatus(p, 'Completed')).length}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Needs Update</Typography>
                       <Typography variant="body2">
-                        {gapPlans.filter(p => p.status === 'Needs Update').length}
+                        {gapPlans.filter(p => gapPlanHasStatus(p, 'Needs Update')).length}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Need to Develop</Typography>
                       <Typography variant="body2">
-                        {gapPlans.filter(p => p.status === 'Need to Develop').length}
+                        {gapPlans.filter(p => gapPlanHasStatus(p, 'Need to Develop')).length}
                       </Typography>
                     </Box>
                   </>
@@ -1473,73 +1348,7 @@ const SnapshotPage = () => {
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Current Live PRS</Typography>
                       <Typography variant="body2" color="warning.main" sx={{ fontWeight: 'bold' }}>
-                        {(() => {
-                          try {
-                            const questions = prsQuestions;
-                            if (questions && Array.isArray(questions)) {
-                              
-                              // Use the same scoring logic as the PRS page
-                              let totalPoints = 0;
-                              let earnedPoints = 0;
-
-                              const calculateQuestionPoints = (question: PRSQuestion): number => {
-                                if (question.points) {
-                                  totalPoints += question.points;
-                                  
-                                  // Check if the question has a valid answer that should earn points
-                                  if (question.answer) {
-                                    let shouldEarnPoints = false;
-                                    
-                                    // For yes/no questions, only 'yes' earns points
-                                    if (question.type === 'yesno') {
-                                      shouldEarnPoints = question.answer === 'yes';
-                                    }
-                                    // For radio questions, any selected option earns points
-                                    else if (question.type === 'radio') {
-                                      shouldEarnPoints = true;
-                                    }
-                                    // For checkbox questions, any selected options earn points
-                                    else if (question.type === 'checkbox') {
-                                      shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
-                                    }
-                                    // For text/numeric questions, any non-empty answer earns points
-                                    else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
-                                      shouldEarnPoints = question.answer !== '' && question.answer !== null;
-                                    }
-                                    // For other types, any answer earns points
-                                    else {
-                                      shouldEarnPoints = true;
-                                    }
-                                    
-                                    if (shouldEarnPoints) {
-                                      earnedPoints += question.points;
-                                    }
-                                  }
-                                }
-
-                                if (question.subQuestions) {
-                                  question.subQuestions.forEach((subQ: any) => {
-                                    calculateQuestionPoints(subQ);
-                                  });
-                                }
-
-                                return earnedPoints;
-                              };
-
-                              questions.forEach((question: PRSQuestion) => {
-                                calculateQuestionPoints(question);
-                              });
-
-                              if (totalPoints > 0) {
-                                const score = Math.round((earnedPoints / totalPoints) * 100);
-                                return score + '%';
-                              }
-                            }
-                            return 'N/A';
-                          } catch (error) {
-                            return 'N/A';
-                          }
-                        })()}
+                        {currentPRSScore !== null ? `${currentPRSScore}%` : 'N/A'}
                       </Typography>
                     </Box>
                   </>
@@ -1708,81 +1517,13 @@ const SnapshotPage = () => {
                           const today = new Date().toISOString().split('T')[0];
                           const hasTodayData = chartData.some(score => score.date === today);
                           
-                          if (!hasTodayData) {
-                            // Get current PRS score from localStorage using proper scoring logic
-                            let currentPRSScore = null;
-                            try {
-                              const questions = prsQuestions;
-                              if (questions && Array.isArray(questions)) {
-                                
-                                // Use the same scoring logic as the PRS page
-                                let totalPoints = 0;
-                                let earnedPoints = 0;
-
-                                const calculateQuestionPoints = (question: PRSQuestion): number => {
-                                  if (question.points) {
-                                    totalPoints += question.points;
-                                    
-                                    // Check if the question has a valid answer that should earn points
-                                    if (question.answer) {
-                                      let shouldEarnPoints = false;
-                                      
-                                      // For yes/no questions, only 'yes' earns points
-                                      if (question.type === 'yesno') {
-                                        shouldEarnPoints = question.answer === 'yes';
-                                      }
-                                      // For radio questions, any selected option earns points
-                                      else if (question.type === 'radio') {
-                                        shouldEarnPoints = true;
-                                      }
-                                      // For checkbox questions, any selected options earn points
-                                      else if (question.type === 'checkbox') {
-                                        shouldEarnPoints = Array.isArray(question.answer) && question.answer.length > 0;
-                                      }
-                                      // For text/numeric questions, any non-empty answer earns points
-                                      else if (question.type === 'text' || question.type === 'numeric' || question.type === 'paragraph') {
-                                        shouldEarnPoints = question.answer !== '' && question.answer !== null;
-                                      }
-                                      // For other types, any answer earns points
-                                      else {
-                                        shouldEarnPoints = true;
-                                      }
-                                      
-                                      if (shouldEarnPoints) {
-                                        earnedPoints += question.points;
-                                      }
-                                    }
-                                  }
-
-                                  if (question.subQuestions) {
-                                    question.subQuestions.forEach((subQ: any) => {
-                                      calculateQuestionPoints(subQ);
-                                    });
-                                  }
-
-                                  return earnedPoints;
-                                };
-
-                                questions.forEach((question: PRSQuestion) => {
-                                  calculateQuestionPoints(question);
-                                });
-
-                                if (totalPoints > 0) {
-                                  currentPRSScore = Math.round((earnedPoints / totalPoints) * 100);
-                                }
-                              }
-                            } catch (error) {
-                              console.log('Could not load current PRS score');
-                            }
-                            
-                            if (currentPRSScore !== null) {
-                              chartData.push({
-                                id: 'live-prs',
-                                date: today,
-                                score: currentPRSScore,
-                                isLive: true
-                              });
-                            }
+                          if (!hasTodayData && currentPRSScore !== null) {
+                            chartData.push({
+                              id: 'live-prs',
+                              date: today,
+                              score: currentPRSScore,
+                              isLive: true
+                            });
                           }
                           
                           // Sort by date
@@ -2160,7 +1901,7 @@ const SnapshotPage = () => {
                           }, {} as Record<string, number>);
                           
                           const totalPlans = gapPlans.length;
-                          const completedPlans = statusCounts['Completed'] || 0;
+                          const completedPlans = gapPlans.filter(isGapPlanCompleted).length;
                           const completionRate = totalPlans > 0 ? Math.round((completedPlans / totalPlans) * 100) : 0;
                           
                           return (
@@ -2801,30 +2542,23 @@ const SnapshotPage = () => {
         )}
 
 
-        </Container>
-      );
-    } catch (error) {
-      console.error('Error rendering SnapshotPage:', error);
-      setRenderError(true);
-      return (
-        <Container maxWidth="xl" sx={{ py: 4 }}>
-          <Box sx={{ textAlign: 'center' }}>
-            <Typography variant="h4" gutterBottom color="error">
-              Something went wrong
-            </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-              There was an error rendering the snapshot page. Please try refreshing.
-            </Typography>
-            <Button 
-              variant="contained" 
-              onClick={() => window.location.reload()}
-            >
-              Refresh Page
-            </Button>
-          </Box>
-        </Container>
-      );
-    }
-  };
+      </Container>
+      <Snackbar
+        open={pdfSnackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setPdfSnackbar(s => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity={pdfSnackbar.severity}
+          onClose={() => setPdfSnackbar(s => ({ ...s, open: false }))}
+          sx={{ width: '100%' }}
+        >
+          {pdfSnackbar.message}
+        </Alert>
+      </Snackbar>
+    </>
+  );
+};
 
 export default SnapshotPage;
