@@ -51,13 +51,16 @@ interface ReadinessScore {
 }
 
   const DashboardPage = () => {
-    const { userProfile } = useUserProfile();
+    const { userProfile, navbarBrandProgramId } = useUserProfile();
     const { currentUser } = useAuth();
     const [primaryProgramName, setPrimaryProgramName] = useState<string>('ImPACTS');
-    const primaryProgramId = (userProfile as { primary_program_id?: string | null })?.primary_program_id;
+    /** Matches navbar branding: resolved primary or membership (see resolveNavbarProgramLogo). */
+    const programIdForWelcome = navbarBrandProgramId
+      ?? (userProfile as { primary_program_id?: string | null })?.primary_program_id
+      ?? null;
 
     useEffect(() => {
-      const pid = primaryProgramId;
+      const pid = programIdForWelcome;
       if (!pid) {
         setPrimaryProgramName('ImPACTS');
         return;
@@ -71,7 +74,7 @@ interface ReadinessScore {
         }
       });
       return () => { mounted = false; };
-    }, [userProfile?.id, primaryProgramId]);
+    }, [userProfile?.id, programIdForWelcome]);
 
     // Mobile responsiveness
     const theme = useTheme();

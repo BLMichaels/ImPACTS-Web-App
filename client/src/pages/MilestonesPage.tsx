@@ -62,40 +62,15 @@ interface ProgramChecklistLoaded {
 
 const MilestonesPage = () => {
   useAuth();
-  const { siteId, effectiveUserId, userProfile } = useUserProfile();
-  const primaryProgramId = (userProfile as { primary_program_id?: string | null })?.primary_program_id ?? null;
-  const [resolvedProgramId, setResolvedProgramId] = useState<string | null>(primaryProgramId);
+  const { siteId, effectiveUserId, navbarBrandProgramId } = useUserProfile();
+  /** Same program id as navbar logo / branding (primary with logo, else membership with logo, etc.). */
+  const resolvedProgramId = navbarBrandProgramId;
   const { trackChecklist } = useUsageAnalytics();
   const dataLoadedRef = useRef(false);
   const defaultStagesRef = useRef<MilestoneStage[] | null>(null);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
   const [programChecklists, setProgramChecklists] = useState<ProgramChecklistLoaded[]>([]);
 
-  // Resolve program for checklists: use primary_program_id, or first program from program_members if member
-  useEffect(() => {
-    if (primaryProgramId) {
-      setResolvedProgramId(primaryProgramId);
-      return;
-    }
-    if (!effectiveUserId) {
-      setResolvedProgramId(null);
-      return;
-    }
-    let mounted = true;
-    (async () => {
-      const { data: members } = await supabase
-        .from('program_members')
-        .select('program_id')
-        .eq('user_id', effectiveUserId)
-        .eq('status', 'active')
-        .order('program_id')
-        .limit(1);
-      const first = (members && members[0]) ? (members[0] as { program_id: string }).program_id : null;
-      if (mounted) setResolvedProgramId(first);
-    })();
-    return () => { mounted = false; };
-  }, [primaryProgramId, effectiveUserId]);
-  
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
     // In a production app, you'd use a library like jsPDF or html2pdf

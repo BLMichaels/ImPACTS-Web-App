@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { UserRole, normalizeUserRole, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } from '../types/database';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import { getUserData } from '../utils/userData';
+import { resolveNavbarProgramLogo } from '../utils/resolveNavbarProgramLogo';
 
 // Re-export UserRole as UserTier for backward compatibility
 export { UserRole as UserTier } from '../types/database';
@@ -66,6 +67,8 @@ interface UserProfileContextType {
   visibleTabs: string[];  // Tab keys that are visible for this PECC's site; empty = all visible
   /** Logo URL for the user's primary program (for navbar). Null = use default ImPACTS logo. */
   primaryProgramLogoUrl: string | null;
+  /** Program id used for navbar logo + dashboard branding (resolved primary or membership). */
+  navbarBrandProgramId: string | null;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -95,6 +98,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [siteId, setSiteId] = useState<string | null>(null);
   const [visibleTabs, setVisibleTabs] = useState<string[]>([]);
   const [primaryProgramLogoUrl, setPrimaryProgramLogoUrl] = useState<string | null>(null);
+  const [navbarBrandProgramId, setNavbarBrandProgramId] = useState<string | null>(null);
   const [permissionOverrides, setPermissionOverrides] = useState<Record<string, boolean>>({});
   const [viewAsPermissionOverrides, setViewAsPermissionOverrides] = useState<Record<string, boolean>>({});
   // Guard against out-of-order async updates when rapidly switching "view as" users.
@@ -136,6 +140,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       setSiteId(null);
       setVisibleTabs([]);
       setPrimaryProgramLogoUrl(null);
+      setNavbarBrandProgramId(null);
       setIsLoading(false);
       return;
     }
@@ -412,25 +417,15 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       } else {
         setViewAsPermissionOverrides({});
       }
-      // Ensure navbar logo is updated immediately for the view-as user.
-      // (Navbar falls back to default when `primaryProgramLogoUrl` is null.)
-      const pid = (prof.primary_program_id ?? null) as string | null;
-      if (pid) {
-        const { data: progLogo } = await supabase
-          .from('programs')
-          .select('logo_url')
-          .eq('id', pid)
-          .maybeSingle();
-        if (latestViewAsUserIdRef.current !== userId) return { ok: true, dashboardPath: getDefaultDashboardForRole(normalizedRole) };
-        setPrimaryProgramLogoUrl(
-          typeof progLogo?.logo_url === 'string' && progLogo.logo_url.trim()
-            ? progLogo.logo_url.trim()
-            : null
-        );
-      } else {
-        if (latestViewAsUserIdRef.current !== userId) return { ok: true, dashboardPath: getDefaultDashboardForRole(normalizedRole) };
-        setPrimaryProgramLogoUrl(null);
-      }
+      // Navbar logo + branding id (same resolution as main logo effect; avoids stale/wrong logo during view-as)
+      const { logoUrl, brandProgramId } = await resolveNavbarProgramLogo(
+        supabase,
+        userId,
+        prof.primary_program_id ?? null
+      );
+      if (latestViewAsUserIdRef.current !== userId) return { ok: true, dashboardPath: getDefaultDashboardForRole(normalizedRole) };
+      setPrimaryProgramLogoUrl(logoUrl);
+      setNavbarBrandProgramId(brandProgramId);
       const dashboardPath = getDefaultDashboardForRole(normalizedRole);
       return { ok: true, dashboardPath };
     } catch {
@@ -545,56 +540,22 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     const fetchSeq = ++logoFetchSeqRef.current;
     (async () => {
       if (!effectiveLogoUserId) {
-        if (!cancelled) setPrimaryProgramLogoUrl(null);
+        if (!cancelled) {
+          setPrimaryProgramLogoUrl(null);
+          setNavbarBrandProgramId(null);
+        }
         return;
       }
 
-      const pidRaw = effectivePrimaryProgramId;
-      const pid = (typeof pidRaw === 'string' && pidRaw.trim()) ? pidRaw.trim() : null;
-
-      // 1) Prefer users.primary_program_id
-      if (pid) {
-        const { data: prog } = await supabase
-          .from('programs')
-          .select('logo_url')
-          .eq('id', pid)
-          .maybeSingle();
-
-        if (cancelled || fetchSeq !== logoFetchSeqRef.current) return;
-        const logoUrl = (prog as { logo_url?: string | null } | null)?.logo_url ?? null;
-        setPrimaryProgramLogoUrl(typeof logoUrl === 'string' && logoUrl.trim() ? logoUrl.trim() : null);
-        return;
-      }
-
-      // 2) Fallback: use first active program membership (common for PECCs)
-      const { data: members } = await supabase
-        .from('program_members')
-        .select('program_id')
-        .eq('user_id', effectiveLogoUserId)
-        .eq('status', 'active')
-        .order('program_id')
-        .limit(1);
-
-      const firstProgramId = (members && members[0] && (members[0] as { program_id?: string | null }).program_id)
-        ? String((members[0] as { program_id?: string | null }).program_id)
-        : null;
+      const { logoUrl, brandProgramId } = await resolveNavbarProgramLogo(
+        supabase,
+        effectiveLogoUserId,
+        effectivePrimaryProgramId
+      );
 
       if (cancelled || fetchSeq !== logoFetchSeqRef.current) return;
-
-      if (!firstProgramId) {
-        setPrimaryProgramLogoUrl(null);
-        return;
-      }
-
-      const { data: prog } = await supabase
-        .from('programs')
-        .select('logo_url')
-        .eq('id', firstProgramId)
-        .maybeSingle();
-
-      if (cancelled || fetchSeq !== logoFetchSeqRef.current) return;
-      const logoUrl = (prog as { logo_url?: string | null } | null)?.logo_url ?? null;
-      setPrimaryProgramLogoUrl(typeof logoUrl === 'string' && logoUrl.trim() ? logoUrl.trim() : null);
+      setPrimaryProgramLogoUrl(logoUrl);
+      setNavbarBrandProgramId(brandProgramId);
     })();
 
     return () => { cancelled = true; };
@@ -637,7 +598,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     effectiveUserId,
     siteId: effectiveSiteId,
     visibleTabs: effectiveVisibleTabs,
-    primaryProgramLogoUrl
+    primaryProgramLogoUrl,
+    navbarBrandProgramId
   };
 
   return (
