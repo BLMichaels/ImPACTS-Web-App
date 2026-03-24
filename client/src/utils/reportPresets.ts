@@ -116,6 +116,7 @@ export function buildReportDetailHref(scope: StaffReportScopeNav, h: ReportRowLi
       return `/manager/crm?hospital=${encodeURIComponent(h.hospitalId!)}&contact=${encodeURIComponent(h.hospitalContactId!)}`;
     }
     if (has(h.hospitalId)) return `/manager/crm?hospital=${encodeURIComponent(h.hospitalId!)}`;
+    if (has(h.userId)) return `/manager/crm?openUser=${encodeURIComponent(h.userId!)}`;
     return null;
   }
   if (has(h.hospitalContactId) && has(h.hospitalId)) {

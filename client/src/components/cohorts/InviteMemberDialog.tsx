@@ -70,7 +70,7 @@ function getFullDisplayName(o: AddMemberOption, nameFallback?: string): string {
   return 'Unknown';
 }
 
-const CRM_PERSON_TYPES = ['staff', 'manager', 'mentor', 'pecc', 'other'];
+const CRM_PERSON_TYPES = ['staff', 'manager', 'mentor', 'pecc', 'system', 'hiring_group', 'other'];
 
 const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
   open,

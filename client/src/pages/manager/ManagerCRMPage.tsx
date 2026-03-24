@@ -62,6 +62,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
 import { getUserDisplayName } from '../../utils/displayName';
+import { getRoleLabel } from '../../utils/roleUtils';
 import { PECC_TAB_KEYS } from '../../types/database';
 import { TypeDeleteConfirmDialog } from '../../components/crm/TypeDeleteConfirmDialog';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
@@ -114,6 +115,35 @@ interface MentorOption {
   email: string;
 }
 
+/** Users a manager may see in reports: self, managed mentors, and PECCs at assigned hospitals. */
+async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  ids.add(managerId);
+  const { data: mentors } = await supabase
+    .from('users')
+    .select('id')
+    .eq('manager_id', managerId)
+    .eq('role', 'mentor')
+    .eq('is_active', true);
+  (mentors || []).forEach((m: { id: string }) => ids.add(m.id));
+  const mentorIds = [...ids];
+  const { data: assignments } = await supabase
+    .from('mentor_hospital_assignments')
+    .select('hospital_id')
+    .in('mentor_id', mentorIds)
+    .eq('is_active', true);
+  const hospitalIds = [...new Set((assignments || []).map((r: { hospital_id: string }) => r.hospital_id))];
+  if (hospitalIds.length === 0) return ids;
+  const { data: peccs } = await supabase
+    .from('users')
+    .select('id')
+    .eq('role', 'pecc')
+    .eq('is_active', true)
+    .in('hospital_facility_id', hospitalIds);
+  (peccs || []).forEach((p: { id: string }) => ids.add(p.id));
+  return ids;
+}
+
 /** Tab keys match PECC_TAB_KEYS so Manager saves to view_tabs (source of truth for Navbar). */
 type TabKey = string;
 interface TabVisibilitySettings {
@@ -131,6 +161,21 @@ const ManagerCRMPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingReturnToRef = useRef<string | undefined>((location.state as { returnTo?: string } | null)?.returnTo);
   const deepLinkContactDone = useRef(false);
+  const deepLinkUserDone = useRef(false);
+
+  const [userPreviewOpen, setUserPreviewOpen] = useState(false);
+  const [userPreviewLoading, setUserPreviewLoading] = useState(false);
+  const [userPreviewUser, setUserPreviewUser] = useState<{
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string;
+    phone: string | null;
+    role: string;
+    hospital_facility_id: string | null;
+    is_active: boolean | null;
+  } | null>(null);
+  const [userPreviewError, setUserPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     const s = location.state as { returnTo?: string } | null;
@@ -150,7 +195,14 @@ const ManagerCRMPage: React.FC = () => {
     setContactDetailContact(null);
     navigateBackIfReport();
   }, [navigateBackIfReport]);
-  
+
+  const closeUserPreviewDrawer = useCallback(() => {
+    setUserPreviewOpen(false);
+    setUserPreviewUser(null);
+    setUserPreviewError(null);
+    navigateBackIfReport();
+  }, [navigateBackIfReport]);
+
   const [activeTab, setActiveTab] = useState(0);
   const [hospitals, setHospitals] = useState<HospitalData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -489,6 +541,100 @@ const ManagerCRMPage: React.FC = () => {
       }, { replace: true });
     }
   }, [contacts, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const openUserId = searchParams.get('openUser');
+    if (!openUserId || !userProfile?.id) {
+      if (!openUserId) deepLinkUserDone.current = false;
+      return;
+    }
+    if (deepLinkUserDone.current) return;
+    let cancelled = false;
+    (async () => {
+      setUserPreviewLoading(true);
+      setUserPreviewError(null);
+      try {
+        const visible = await fetchManagerVisibleUserIdsSet(userProfile.id);
+        if (!visible.has(openUserId)) {
+          if (cancelled) return;
+          setUserPreviewUser(null);
+          setUserPreviewError('This person is not in your manager scope.');
+          setUserPreviewOpen(true);
+          deepLinkUserDone.current = true;
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete('openUser');
+              return next;
+            },
+            { replace: true }
+          );
+          return;
+        }
+        const { data: u, error } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, email, phone, role, hospital_facility_id, is_active')
+          .eq('id', openUserId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) throw error;
+        if (!u) {
+          setUserPreviewError('User not found.');
+          setUserPreviewUser(null);
+        } else {
+          setUserPreviewUser(
+            u as {
+              id: string;
+              first_name: string | null;
+              last_name: string | null;
+              email: string;
+              phone: string | null;
+              role: string;
+              hospital_facility_id: string | null;
+              is_active: boolean | null;
+            }
+          );
+          setUserPreviewError(null);
+        }
+        setUserPreviewOpen(true);
+        deepLinkUserDone.current = true;
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('openUser');
+            return next;
+          },
+          { replace: true }
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setUserPreviewError(e instanceof Error ? e.message : 'Could not load user');
+          setUserPreviewUser(null);
+          setUserPreviewOpen(true);
+          deepLinkUserDone.current = true;
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete('openUser');
+              return next;
+            },
+            { replace: true }
+          );
+        }
+      } finally {
+        if (!cancelled) setUserPreviewLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, userProfile?.id, setSearchParams]);
+
+  const userPreviewHospitalName = useMemo(() => {
+    if (!userPreviewUser?.hospital_facility_id) return '';
+    const h = hospitals.find((x) => x.id === userPreviewUser.hospital_facility_id);
+    return h?.name || '';
+  }, [userPreviewUser, hospitals]);
 
   const openHospitalNotesDrawer = async (hospital: HospitalData) => {
     setHospitalNotesDrawerHospital(hospital);
@@ -1279,6 +1425,85 @@ const ManagerCRMPage: React.FC = () => {
               </Box>
             </>
           )}
+        </Box>
+      </Drawer>
+
+      <Drawer
+        anchor="right"
+        open={userPreviewOpen}
+        onClose={closeUserPreviewDrawer}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 420 }, maxWidth: '100%' } }}
+      >
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50', p: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h6" fontWeight={600}>
+              Platform user
+            </Typography>
+            <IconButton size="small" onClick={closeUserPreviewDrawer} aria-label="Close">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          {userPreviewLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : userPreviewError ? (
+            <Alert severity="warning">{userPreviewError}</Alert>
+          ) : userPreviewUser ? (
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
+                  {(userPreviewUser.first_name?.[0] || userPreviewUser.last_name?.[0] || '?').toUpperCase()}
+                </Avatar>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    {getUserDisplayName(userPreviewUser)}
+                  </Typography>
+                  <Chip size="small" label={getRoleLabel(userPreviewUser.role)} sx={{ mt: 0.5 }} />
+                </Box>
+              </Box>
+              <List dense disablePadding>
+                <ListItem disablePadding sx={{ py: 0.5 }}>
+                  <ListItemText
+                    primary="Email"
+                    secondary={userPreviewUser.email || '—'}
+                    primaryTypographyProps={{ variant: 'caption' }}
+                    secondaryTypographyProps={{ variant: 'body2' }}
+                  />
+                </ListItem>
+                <ListItem disablePadding sx={{ py: 0.5 }}>
+                  <ListItemText
+                    primary="Phone"
+                    secondary={userPreviewUser.phone || '—'}
+                    primaryTypographyProps={{ variant: 'caption' }}
+                    secondaryTypographyProps={{ variant: 'body2' }}
+                  />
+                </ListItem>
+                <ListItem disablePadding sx={{ py: 0.5 }}>
+                  <ListItemText
+                    primary="Primary site"
+                    secondary={userPreviewHospitalName || '—'}
+                    primaryTypographyProps={{ variant: 'caption' }}
+                    secondaryTypographyProps={{ variant: 'body2' }}
+                  />
+                </ListItem>
+                <ListItem disablePadding sx={{ py: 0.5 }}>
+                  <ListItemText
+                    primary="Status"
+                    secondary={userPreviewUser.is_active ? 'Active' : 'Inactive'}
+                    primaryTypographyProps={{ variant: 'caption' }}
+                    secondaryTypographyProps={{ variant: 'body2' }}
+                  />
+                </ListItem>
+              </List>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+                Opened from a report. Full CRM editing is available to administrators.
+              </Typography>
+            </Paper>
+          ) : null}
+          <Button fullWidth variant="outlined" sx={{ mt: 2 }} onClick={closeUserPreviewDrawer}>
+            Close
+          </Button>
         </Box>
       </Drawer>
 

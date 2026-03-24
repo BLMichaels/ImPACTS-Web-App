@@ -36,6 +36,7 @@ import {
   IconButton,
   Link,
   Menu,
+  Tooltip,
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -49,9 +50,14 @@ import { Link as RouterLink, useLocation } from 'react-router-dom';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
+import { getCrmContactTypeLabel } from '../../utils/crmLabels';
 import {
   buildReportDetailHref,
   saveReportSnapshotForRestore,
@@ -642,7 +648,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           scope,
           progMap,
           setRows,
-          contactTypes: ['organization'],
+          contactTypes: ['organization', 'other'],
         });
       } else if (dataset === 'crm_system') {
         await loadOrganizationDataset({
@@ -841,6 +847,65 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setDraggingColumnId(null);
   }, []);
 
+  const handleMoveColumnAmongVisible = useCallback(
+    (columnId: string, direction: -1 | 1) => {
+      setColumnOrder((prev) => {
+        const allowed = new Set(columnMetas.map((c) => c.id));
+        const vis = prev.filter((id) => allowed.has(id) && columns[id]);
+        const vi = vis.indexOf(columnId);
+        if (vi === -1) return prev;
+        const target = vis[vi + direction];
+        if (!target) return prev;
+        const next = [...prev];
+        const iA = next.indexOf(columnId);
+        const iB = next.indexOf(target);
+        if (iA === -1 || iB === -1) return prev;
+        const tmp = next[iA];
+        next[iA] = next[iB];
+        next[iB] = tmp;
+        return next;
+      });
+    },
+    [columnMetas, columns]
+  );
+
+  const presetFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportPresets = useCallback(() => {
+    const list = loadSavedReportPresets(actorUserId);
+    const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = 'impacts-saved-report-layouts.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [actorUserId]);
+
+  const handleImportPresetsFile = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result)) as unknown;
+          if (!Array.isArray(parsed)) return;
+          parsed.forEach((p: unknown) => {
+            const row = p as SavedReportPreset;
+            if (row?.id && row?.snapshot) saveReportPreset(actorUserId, row);
+          });
+          setSavedPresetsTick((t) => t + 1);
+        } catch {
+          /* invalid file */
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    },
+    [actorUserId]
+  );
+
   const exportPdf = () => {
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFont('helvetica', 'bold');
@@ -972,6 +1037,9 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         />
       );
     }
+    if (cid === 'contactType' && ['organization', 'crm_system', 'crm_hiring_group'].includes(dataset)) {
+      return getCrmContactTypeLabel(raw) || raw || '—';
+    }
     const hints = r.linkHints;
     const href =
       hints && isLinkedNameColumn(dataset, cid)
@@ -991,6 +1059,13 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         >
           {raw || '—'}
         </Link>
+      );
+    }
+    if (hints && isLinkedNameColumn(dataset, cid) && !href) {
+      return (
+        <Tooltip title="Open in CRM is not available for this row in your current role or scope.">
+          <span style={{ cursor: 'default' }}>{raw || '—'}</span>
+        </Tooltip>
       );
     }
     return raw || '—';
@@ -1047,6 +1122,19 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             </Menu>
             <Button size="small" variant="outlined" startIcon={<BookmarkAddIcon />} onClick={() => setSaveDialogOpen(true)}>
               Save layout
+            </Button>
+            <input
+              type="file"
+              hidden
+              accept="application/json,.json"
+              ref={presetFileInputRef}
+              onChange={handleImportPresetsFile}
+            />
+            <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportPresets}>
+              Export layouts
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => presetFileInputRef.current?.click()}>
+              Import layouts
             </Button>
             <Button size="small" variant="outlined" startIcon={<ViewColumnIcon />} onClick={() => setColumnDrawer(true)}>
               Columns
@@ -1377,8 +1465,39 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             Visible columns
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Toggle groups; custom fields match CRM definitions. PDF and Excel use the same selection. Reorder columns in the table using the grip icons; order is saved with &quot;Save layout&quot;.
+            Toggle groups; custom fields match CRM definitions. PDF and Excel use the same selection. Reorder columns in the table using the grip icons, or use the arrows below for visible columns only; order is saved with &quot;Save layout&quot;.
           </Typography>
+          <Divider sx={{ mb: 2 }} />
+          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+            Visible column order
+          </Typography>
+          <Stack spacing={0.5} sx={{ mb: 2 }}>
+            {visibleColumnIds.map((cid) => (
+              <Box key={cid} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'space-between' }}>
+                <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>
+                  {columnMetas.find((c) => c.id === cid)?.label || cid}
+                </Typography>
+                <Box sx={{ flexShrink: 0 }}>
+                  <IconButton
+                    size="small"
+                    aria-label={`Move ${cid} left`}
+                    onClick={() => handleMoveColumnAmongVisible(cid, -1)}
+                    disabled={visibleColumnIds[0] === cid}
+                  >
+                    <ChevronLeftIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    aria-label={`Move ${cid} right`}
+                    onClick={() => handleMoveColumnAmongVisible(cid, 1)}
+                    disabled={visibleColumnIds[visibleColumnIds.length - 1] === cid}
+                  >
+                    <ChevronRightIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Box>
+            ))}
+          </Stack>
           <Divider sx={{ mb: 2 }} />
           {[...columnsByGroup.entries()].map(([group, list]) => (
             <Box key={group} sx={{ mb: 2 }}>
@@ -2117,7 +2236,7 @@ async function loadOrganizationDataset(params: {
   const rows: ReportDataRow[] = filtered.map((row: Record<string, unknown>) => {
     const id = String(row.id);
     const rawType = String(row.contact_type ?? 'organization');
-    const isPerson = ['mentor', 'pecc', 'manager', 'staff', 'other'].includes(rawType);
+    const isPerson = ['mentor', 'pecc', 'manager', 'staff', 'other', 'system', 'hiring_group'].includes(rawType);
     const displayName = isPerson
       ? [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || String(row.name ?? '')
       : String(row.name ?? '');

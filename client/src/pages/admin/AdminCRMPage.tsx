@@ -13,6 +13,7 @@ import { createAndSendInvitation } from '../../utils/invitations';
 import { buildCrmExportCsv } from '../../utils/crmExport';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
+import { CRM_CONTACT_TYPE_LABELS as TYPE_LABELS, CRM_CONTACT_TYPE_COLORS as TYPE_COLORS } from '../../utils/crmLabels';
 import {
   Alert,
   Box,
@@ -169,30 +170,6 @@ function contactDisplayName(c: Contact): string {
 
 type SortField = 'name' | 'firstName' | 'lastName' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId' | 'hospitalSystem';
 type SortOrder = 'asc' | 'desc';
-
-const TYPE_LABELS: Record<ContactType, string> = {
-  organization: 'Organization',
-  hospital: 'Hospital',
-  system: 'System',
-  hiring_group: 'Hiring Group',
-  manager: 'Manager',
-  mentor: 'Mentor',
-  pecc: 'PECC',
-  staff: 'Staff',
-  other: 'Other'
-};
-
-const TYPE_COLORS: Record<ContactType, string> = {
-  organization: '#2196f3',
-  hospital: '#4caf50',
-  system: '#2e7d32',
-  hiring_group: '#1565c0',
-  manager: '#9c27b0',
-  mentor: '#ff9800',
-  pecc: '#e91e63',
-  staff: '#00bcd4',
-  other: '#607d8b'
-};
 
 /** Display order for type dropdown: Hospital, System, Hiring Group, then people, then Other */
 const CONTACT_TYPES: ContactType[] = ['hospital', 'system', 'hiring_group', 'manager', 'mentor', 'pecc', 'staff', 'other'];
@@ -760,8 +737,8 @@ const AdminCRMPage: React.FC = () => {
             manager: 'manager',
             mentor: 'mentor',
             pecc: 'pecc',
-            hospital_system: 'other',
-            hiring_group: 'other'
+            hospital_system: 'system',
+            hiring_group: 'hiring_group',
           };
           for (const u of userRows) {
             const role = normalizeUserRole(u.role);
@@ -836,8 +813,8 @@ const AdminCRMPage: React.FC = () => {
             manager: 'manager',
             mentor: 'mentor',
             pecc: 'pecc',
-            hospital_system: 'other',
-            hiring_group: 'other'
+            hospital_system: 'system',
+            hiring_group: 'hiring_group',
           };
           for (const inv of pendingInvitations) {
             if (existingEmails.has(inv.email)) continue;

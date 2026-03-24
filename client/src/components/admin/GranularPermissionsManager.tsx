@@ -26,6 +26,7 @@ import {
   Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
+import { crmContactTypeToListRole } from '../../utils/crmLabels';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { UserRole, normalizeUserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User } from '../../types/database';
 
@@ -207,7 +208,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               first_name: c.first_name ?? '',
               last_name: c.last_name ?? '',
               phone: null,
-              role: c.contact_type || 'pecc',
+              role: crmContactTypeToListRole(c.contact_type),
               is_admin: false,
               is_active: true,
               created_at: '',
