@@ -2136,10 +2136,12 @@ async function loadPeccDataset(params: {
   const managerIds = [...new Set(peccs.map((p) => p.manager_id).filter(Boolean))] as string[];
   const staffIds = [...new Set([...mentorIds, ...managerIds])];
 
+  type StaffNameRow = { id: string; first_name?: string | null; last_name?: string | null };
+
   const [staffRes, pm, cm, checklistByHospital, udMap, usageInWindow] = await Promise.all([
     staffIds.length
       ? supabase.from('users').select('id, first_name, last_name').in('id', staffIds)
-      : Promise.resolve({ data: [] as { id: string; first_name?: string; last_name?: string }[] }),
+      : Promise.resolve({ data: [] as StaffNameRow[], error: null }),
     fetchActiveProgramMembersForUsers(peccIds),
     fetchActiveCohortMembersForUsers(peccIds),
     loadChecklistForHospitals(hidSet),
@@ -2147,11 +2149,11 @@ async function loadPeccDataset(params: {
     loadUsageActivityPeccSet(peccIds, activityPreset),
   ]);
 
-  const staff = staffRes.data;
+  const staff: StaffNameRow[] = staffRes.data ?? [];
   const staffName = (id: string | null) => {
     if (!id) return '—';
-    const u = (staff || []).find((s: { id: string }) => s.id === id);
-    return u ? `${(u as { first_name?: string }).first_name || ''} ${(u as { last_name?: string }).last_name || ''}`.trim() || '—' : '—';
+    const u = staff.find((s) => s.id === id);
+    return u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || '—' : '—';
   };
 
   const programLabelsFor = (uid: string) => {
