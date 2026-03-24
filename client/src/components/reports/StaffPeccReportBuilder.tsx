@@ -1177,8 +1177,17 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   };
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: (t) => t.shadows[1] }}>
-      <Box sx={{ px: 2.5, py: 2.5, bgcolor: (t) => alpha(t.palette.primary.main, 0.06), borderBottom: 1, borderColor: 'divider' }}>
+    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'visible', boxShadow: (t) => t.shadows[1] }}>
+      <Box
+        sx={{
+          px: 2.5,
+          py: 2.5,
+          bgcolor: (t) => alpha(t.palette.primary.main, 0.06),
+          borderBottom: 1,
+          borderColor: 'divider',
+          overflow: 'visible',
+        }}
+      >
         <Stack spacing={1.5}>
           <Box>
             <Typography variant="h6" fontWeight={700}>
@@ -1191,151 +1200,155 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               Use Search and State for quick narrowing; open Filters to target specific columns. Column rules combine with AND.
             </Typography>
           </Box>
-          <Stack
-            direction="row"
-            flexWrap={{ xs: 'wrap', md: 'nowrap' }}
-            useFlexGap
-            spacing={1}
-            sx={{
-              width: '100%',
-              justifyContent: { xs: 'flex-start', md: 'flex-end' },
-              alignItems: 'center',
-              rowGap: 1,
-              columnGap: 1,
-              overflowX: { md: 'auto' },
-              pb: { md: 0.25 },
-            }}
-          >
-            <Button
-              size="small"
-              variant="outlined"
-              sx={REPORT_HEADER_ACTION_SX}
-              startIcon={<RefreshIcon />}
-              onClick={() => load()}
+          <Stack spacing={1.25} sx={{ width: '100%', alignItems: 'flex-start' }}>
+            <Stack
+              direction="row"
+              flexWrap="wrap"
+              useFlexGap
+              spacing={1}
+              sx={{
+                justifyContent: 'flex-start',
+                alignItems: 'center',
+                rowGap: 1,
+                columnGap: 1,
+                width: '100%',
+              }}
             >
-              Refresh
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              sx={REPORT_HEADER_ACTION_SX}
-              onClick={(e) => setSavedMenuAnchor(e.currentTarget)}
-            >
-              Load saved layout
-            </Button>
-            <Menu anchorEl={savedMenuAnchor} open={Boolean(savedMenuAnchor)} onClose={() => setSavedMenuAnchor(null)}>
-              {savedReportPresets.length === 0 ? (
-                <MenuItem disabled>No saved layouts yet</MenuItem>
-              ) : (
-                savedReportPresets.map((p) => (
-                  <MenuItem
-                    key={p.id}
-                    onClick={() => {
-                      applySnapshot(p.snapshot);
-                      setSavedMenuAnchor(null);
-                    }}
-                    sx={{ pr: 6, position: 'relative' }}
-                  >
-                    {p.name}
-                    <IconButton
-                      size="small"
-                      sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
-                      aria-label={`Delete ${p.name}`}
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        deleteSavedReportPreset(actorUserId, p.id);
-                        setSavedPresetsTick((t) => t + 1);
-                      }}
-                    >
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </MenuItem>
-                ))
-              )}
-            </Menu>
-            <Button
-              size="small"
-              variant="outlined"
-              sx={REPORT_HEADER_ACTION_SX}
-              startIcon={<BookmarkAddIcon />}
-              onClick={() => setSaveDialogOpen(true)}
-            >
-              Save layout
-            </Button>
-            <Divider
-              orientation="vertical"
-              flexItem
-              sx={{ display: { xs: 'none', md: 'flex' }, alignSelf: 'stretch', my: 0.25 }}
-            />
-            <input
-              type="file"
-              hidden
-              accept="application/json,.json"
-              ref={presetFileInputRef}
-              onChange={handleImportPresetsFile}
-            />
-            <Button
-              size="small"
-              variant="outlined"
-              sx={REPORT_HEADER_ACTION_SX}
-              startIcon={<FileDownloadIcon />}
-              onClick={handleExportPresets}
-            >
-              Export layouts
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              sx={REPORT_HEADER_ACTION_SX}
-              startIcon={<UploadFileIcon />}
-              onClick={() => presetFileInputRef.current?.click()}
-            >
-              Import layouts
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              sx={REPORT_HEADER_ACTION_SX}
-              startIcon={<ViewColumnIcon />}
-              onClick={() => setColumnDrawer(true)}
-            >
-              Columns
-            </Button>
-            <Badge badgeContent={columnFilters.length} color="primary" invisible={columnFilters.length === 0} overlap="rectangular">
               <Button
                 size="small"
                 variant="outlined"
                 sx={REPORT_HEADER_ACTION_SX}
-                startIcon={<TuneIcon />}
-                onClick={() => setFilterDrawerOpen(true)}
+                startIcon={<RefreshIcon />}
+                onClick={() => load()}
               >
-                Filters
+                Refresh
               </Button>
-            </Badge>
-            <Divider
-              orientation="vertical"
-              flexItem
-              sx={{ display: { xs: 'none', md: 'flex' }, alignSelf: 'stretch', my: 0.25 }}
-            />
-            <Button
-              size="small"
-              variant="contained"
-              color="secondary"
-              sx={REPORT_HEADER_ACTION_SX}
-              startIcon={<PictureAsPdfIcon />}
-              onClick={exportPdf}
+              <Button
+                size="small"
+                variant="outlined"
+                sx={REPORT_HEADER_ACTION_SX}
+                onClick={(e) => setSavedMenuAnchor(e.currentTarget)}
+              >
+                Load saved layout
+              </Button>
+              <Menu anchorEl={savedMenuAnchor} open={Boolean(savedMenuAnchor)} onClose={() => setSavedMenuAnchor(null)}>
+                {savedReportPresets.length === 0 ? (
+                  <MenuItem disabled>No saved layouts yet</MenuItem>
+                ) : (
+                  savedReportPresets.map((p) => (
+                    <MenuItem
+                      key={p.id}
+                      onClick={() => {
+                        applySnapshot(p.snapshot);
+                        setSavedMenuAnchor(null);
+                      }}
+                      sx={{ pr: 6, position: 'relative' }}
+                    >
+                      {p.name}
+                      <IconButton
+                        size="small"
+                        sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                        aria-label={`Delete ${p.name}`}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          deleteSavedReportPreset(actorUserId, p.id);
+                          setSavedPresetsTick((t) => t + 1);
+                        }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </MenuItem>
+                  ))
+                )}
+              </Menu>
+              <Button
+                size="small"
+                variant="outlined"
+                sx={REPORT_HEADER_ACTION_SX}
+                startIcon={<BookmarkAddIcon />}
+                onClick={() => setSaveDialogOpen(true)}
+              >
+                Save layout
+              </Button>
+              <input
+                type="file"
+                hidden
+                accept="application/json,.json"
+                ref={presetFileInputRef}
+                onChange={handleImportPresetsFile}
+              />
+              <Button
+                size="small"
+                variant="outlined"
+                sx={REPORT_HEADER_ACTION_SX}
+                startIcon={<FileDownloadIcon />}
+                onClick={handleExportPresets}
+              >
+                Export layouts
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                sx={REPORT_HEADER_ACTION_SX}
+                startIcon={<UploadFileIcon />}
+                onClick={() => presetFileInputRef.current?.click()}
+              >
+                Import layouts
+              </Button>
+            </Stack>
+            <Stack
+              direction="row"
+              flexWrap="wrap"
+              useFlexGap
+              spacing={1}
+              sx={{
+                justifyContent: 'flex-start',
+                alignItems: 'center',
+                rowGap: 1,
+                columnGap: 1,
+                width: '100%',
+              }}
             >
-              PDF
-            </Button>
-            <Button
-              size="small"
-              variant="contained"
-              sx={REPORT_HEADER_ACTION_SX}
-              startIcon={<TableChartIcon />}
-              onClick={exportExcel}
-            >
-              Excel
-            </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                sx={REPORT_HEADER_ACTION_SX}
+                startIcon={<ViewColumnIcon />}
+                onClick={() => setColumnDrawer(true)}
+              >
+                Columns
+              </Button>
+              <Badge badgeContent={columnFilters.length} color="primary" invisible={columnFilters.length === 0} overlap="rectangular">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  sx={REPORT_HEADER_ACTION_SX}
+                  startIcon={<TuneIcon />}
+                  onClick={() => setFilterDrawerOpen(true)}
+                >
+                  Filters
+                </Button>
+              </Badge>
+              <Button
+                size="small"
+                variant="contained"
+                color="secondary"
+                sx={REPORT_HEADER_ACTION_SX}
+                startIcon={<PictureAsPdfIcon />}
+                onClick={exportPdf}
+              >
+                PDF
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                sx={REPORT_HEADER_ACTION_SX}
+                startIcon={<TableChartIcon />}
+                onClick={exportExcel}
+              >
+                Excel
+              </Button>
+            </Stack>
           </Stack>
         </Stack>
       </Box>
