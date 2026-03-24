@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
+import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { UserRole, normalizeUserRole } from '../types/database';
 
 /**
  * Hook to check if a tab is visible for the current user in a cohort or program
@@ -107,20 +109,32 @@ export const usePermission = (permissionKey: string, cohortId?: string, programI
 /** Tab key used in view_tabs for Pediatric Readiness Scores section visibility (Dashboard + Snapshot). */
 export const PRS_SECTION_TAB_KEY = 'snapshot_prs_section';
 
+/** Mentor, manager, or admin may restore the PRS section for a PECC; PECCs cannot self-restore from the app. */
+export function canRestorePediatricReadinessSection(
+  actualRole: UserRole,
+  hasAdminAccess: boolean
+): boolean {
+  if (hasAdminAccess) return true;
+  const r = normalizeUserRole(actualRole);
+  return r === UserRole.MENTOR || r === UserRole.MANAGER || r === UserRole.ADMIN;
+}
+
 /**
- * Resolves whether the Pediatric Readiness Scores section is visible for the current user.
- * Uses view_tabs (same as Granular Permissions). Returns [visible, setVisible] so the dashboard
- * "Hide section" / "Show" and the admin toggle stay in sync.
+ * Resolves whether the Pediatric Readiness Scores section is visible for the **effective** PECC user
+ * (same id as Dashboard/Snapshot data: effectiveUserId). Dashboard and Snapshot stay in sync.
  */
 export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<void>] => {
-  const { userProfile } = useUserProfile();
+  const { currentUser } = useAuth();
+  const { userProfile, effectiveUserId, actualRole, hasAdminAccess } = useUserProfile();
   const [isVisible, setIsVisible] = useState(true);
   const [refreshCounter, setRefreshCounter] = useState(0);
-  const userId = userProfile?.id;
   const primaryProgramId = (userProfile as { primary_program_id?: string | null })?.primary_program_id ?? null;
+  const actorId =
+    currentUser?.uid ?? (currentUser as { id?: string } | null)?.id ?? undefined;
 
   useEffect(() => {
-    if (!userId) return;
+    const subjectId = effectiveUserId;
+    if (!subjectId) return;
 
     let cancelled = false;
 
@@ -131,7 +145,7 @@ export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<
         const { data: cm } = await supabase
           .from('cohort_members')
           .select('cohort_id')
-          .eq('user_id', userId)
+          .eq('user_id', subjectId)
           .eq('status', 'active')
           .limit(1)
           .maybeSingle();
@@ -141,7 +155,7 @@ export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<
 
         try {
           const { data, error } = await supabase.rpc('is_tab_visible', {
-            p_user_id: userId,
+            p_user_id: subjectId,
             p_tab_key: PRS_SECTION_TAB_KEY,
             p_cohort_id: cohortId,
             p_program_id: programId
@@ -164,7 +178,7 @@ export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<
         const { data: userTab } = await supabase
           .from('view_tabs')
           .select('is_visible')
-          .eq('user_id', userId)
+          .eq('user_id', subjectId)
           .eq('tab_key', PRS_SECTION_TAB_KEY)
           .maybeSingle();
         if (cancelled) return;
@@ -210,28 +224,35 @@ export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<
 
     resolve();
     return () => { cancelled = true; };
-  }, [userId, primaryProgramId, refreshCounter]);
+  }, [effectiveUserId, primaryProgramId, refreshCounter]);
 
-  const setPrsSectionVisible = useCallback(async (visible: boolean) => {
-    if (!userId) return;
-    const { error } = await supabase
-      .from('view_tabs')
-      .upsert(
-        {
-          user_id: userId,
-          tab_key: PRS_SECTION_TAB_KEY,
-          is_visible: visible,
-          granted_by: userId,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: 'user_id,tab_key' }
-      );
-    if (!error) {
-      setIsVisible(visible);
-    } else {
-      setRefreshCounter(c => c + 1);
-    }
-  }, [userId]);
+  const setPrsSectionVisible = useCallback(
+    async (visible: boolean) => {
+      const subjectId = effectiveUserId;
+      if (!subjectId) return;
+      if (visible && !canRestorePediatricReadinessSection(actualRole, hasAdminAccess)) {
+        return;
+      }
+      const { error } = await supabase
+        .from('view_tabs')
+        .upsert(
+          {
+            user_id: subjectId,
+            tab_key: PRS_SECTION_TAB_KEY,
+            is_visible: visible,
+            granted_by: actorId ?? subjectId,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'user_id,tab_key' }
+        );
+      if (!error) {
+        setIsVisible(visible);
+      } else {
+        setRefreshCounter(c => c + 1);
+      }
+    },
+    [effectiveUserId, actualRole, hasAdminAccess, actorId]
+  );
 
   return [isVisible, setPrsSectionVisible];
 };

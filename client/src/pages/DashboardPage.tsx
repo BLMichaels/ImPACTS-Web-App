@@ -24,10 +24,10 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useUserProfile } from '../context/UserProfileContext';
-import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
+import PrsSectionHiddenNotice from '../components/PrsSectionHiddenNotice';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -51,8 +51,7 @@ interface ReadinessScore {
 }
 
   const DashboardPage = () => {
-    const { userProfile, navbarBrandProgramId } = useUserProfile();
-    const { currentUser } = useAuth();
+    const { userProfile, navbarBrandProgramId, effectiveUserId } = useUserProfile();
     const [primaryProgramName, setPrimaryProgramName] = useState<string>('ImPACTS');
     /** Matches navbar branding: resolved primary or membership (see resolveNavbarProgramLogo). */
     const programIdForWelcome = navbarBrandProgramId
@@ -81,7 +80,8 @@ interface ReadinessScore {
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
     const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
-    const uid = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+    /** Same subject as Snapshot and PRS visibility (view-as aware). */
+    const uid = effectiveUserId;
 
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [readinessScoreDialogOpen, setReadinessScoreDialogOpen] = useState(false);
@@ -358,16 +358,9 @@ interface ReadinessScore {
         </Grid>
       </Grid>
 
-      {/* Pediatric Readiness Score Section - same source as Granular Permissions (view_tabs) */}
+      {/* Pediatric Readiness Score Section - same source as Snapshot + Granular Permissions (view_tabs) */}
       {!prsSectionVisible && (
-        <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            Pediatric Readiness Scores section is hidden.
-          </Typography>
-          <Button size="small" variant="text" onClick={() => setPrsSectionVisible(true)} sx={{ mt: 1, p: 0 }}>
-            Show Pediatric Readiness Scores
-          </Button>
-        </Box>
+        <PrsSectionHiddenNotice onShow={() => setPrsSectionVisible(true)} />
       )}
       {prsSectionVisible && (
         <Box sx={{ mb: 6 }}>
@@ -590,7 +583,7 @@ interface ReadinessScore {
         </Accordion>
       </Box>
 
-      <DashboardResources userId={currentUser?.uid} isMobile={isMobile} />
+      <DashboardResources userId={effectiveUserId} isMobile={isMobile} />
 
       {/* Readiness Score Dialog */}
       <LocalizationProvider dateAdapter={AdapterDateFns}>

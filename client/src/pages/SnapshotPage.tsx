@@ -11,8 +11,11 @@ import {
   Alert,
   Container,
   Paper,
-  Snackbar
+  Snackbar,
+  Stack,
+  Divider
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
@@ -39,6 +42,21 @@ import {
   isSimulationGapCompleted
 } from '../utils/snapshotGapStatus';
 import { parseActivityDate } from '../utils/snapshotActivityDate';
+import PrsSectionHiddenNotice from '../components/PrsSectionHiddenNotice';
+
+const metricCardSx = {
+  height: '100%',
+  borderRadius: 2,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  boxShadow: 'none',
+  transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
+  '&:hover': {
+    boxShadow: '0 4px 24px rgba(15, 23, 42, 0.08)',
+    borderColor: 'action.hover'
+  }
+} as const;
 
 const SnapshotPage = () => {
   useAuth();
@@ -874,41 +892,39 @@ const SnapshotPage = () => {
   };
 
 
-  // Show loading state
   if (isLoading) {
     return (
-      <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Typography variant="h4" gutterBottom>
-          Loading Snapshot...
-        </Typography>
-        <LinearProgress sx={{ width: '50%', mx: 'auto', mt: 2 }} />
+      <Box sx={{ bgcolor: 'grey.50', minHeight: '70vh', py: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Paper elevation={0} sx={{ p: 4, maxWidth: 400, width: '100%', mx: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            Loading snapshot
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Pulling your latest metrics and activity data…
+          </Typography>
+          <LinearProgress sx={{ borderRadius: 1 }} />
+        </Paper>
       </Box>
     );
   }
 
-  // Show error state
   if (hasError) {
     return (
-      <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Typography variant="h4" gutterBottom color="error">
-          Error Loading Snapshot
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          There was an error loading your snapshot data. Please try again.
-        </Typography>
-        <Button 
-          variant="contained" 
-          onClick={() => setRetryCount(c => c + 1)}
-          sx={{ mr: 1 }}
-        >
-          Retry
-        </Button>
-        <Button 
-          variant="outlined" 
-          onClick={() => window.location.reload()}
-        >
-          Refresh Page
-        </Button>
+      <Box sx={{ bgcolor: 'grey.50', minHeight: '70vh', py: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Paper elevation={0} sx={{ p: 4, maxWidth: 440, width: '100%', mx: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, textAlign: 'center' }}>
+          <Typography variant="h6" gutterBottom color="error" sx={{ fontWeight: 600 }}>
+            Couldn&apos;t load snapshot
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Check your connection and try again.
+          </Typography>
+          <Button variant="contained" onClick={() => setRetryCount(c => c + 1)} sx={{ mr: 1 }}>
+            Retry
+          </Button>
+          <Button variant="outlined" onClick={() => window.location.reload()}>
+            Refresh page
+          </Button>
+        </Paper>
       </Box>
     );
   }
@@ -920,42 +936,68 @@ const SnapshotPage = () => {
 
   return (
     <>
-      <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
-        {/* Header Section */}
-        <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
-            <Box sx={{ maxWidth: { md: 'min(100%, 720px)' } }}>
-              <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-                Snapshot
-              </Typography>
-              <Typography variant="h6" color="text.secondary" sx={{ mb: 1, fontWeight: 500 }}>
-                Your pediatric readiness at a glance
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                Readiness scores, checklist and gap plans, activities, and simulations—aligned with how you work in the other tabs.
-                Use Export PDF for a shareable summary.
-              </Typography>
-            </Box>
-            <Button
-              variant="contained"
-              startIcon={<PictureAsPdfIcon />}
-              onClick={exportToComprehensivePDF}
-              sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
-            >
-              Export PDF
-            </Button>
-          </Box>
-          
-          {/* Pediatric Readiness Scores section hidden by default */}
-          {!prsSectionVisible && (
-            <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Pediatric Readiness Scores section is hidden.
-              </Typography>
-              <Button size="small" variant="text" onClick={() => setPrsSectionVisible(true)} sx={{ mt: 1, p: 0 }}>
-                Show Pediatric Readiness Scores
+      <Box
+        sx={{
+          bgcolor: 'grey.50',
+          minHeight: '100%',
+          pb: { xs: 4, md: 6 },
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}
+      >
+      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, maxWidth: { xl: '1200px !important' } }}>
+        {/* Header — product-style hero */}
+        <Stack spacing={3} sx={{ mb: 3 }}>
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2.5, md: 3.5 },
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              background: (theme) =>
+                `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${theme.palette.background.paper} 55%, ${alpha(theme.palette.grey[100], 0.5)} 100%)`
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+              <Box sx={{ maxWidth: { md: 'min(100%, 640px)' } }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block', mb: 1 }}
+                >
+                  Performance overview
+                </Typography>
+                <Typography variant="h4" component="h1" sx={{ fontWeight: 700, letterSpacing: -0.02, mb: 1 }}>
+                  Snapshot
+                </Typography>
+                <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.65, fontSize: { xs: '0.95rem', sm: '1rem' } }}>
+                  One place for readiness trend, checklist and gap work, activities, and simulations—consistent with your other tabs.
+                  Export a PDF when you need to share progress offline.
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<PictureAsPdfIcon />}
+                onClick={exportToComprehensivePDF}
+                sx={{
+                  px: 2.5,
+                  py: 1.25,
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  boxShadow: 'none',
+                  bgcolor: 'grey.900',
+                  '&:hover': { bgcolor: 'grey.800', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }
+                }}
+              >
+                Export PDF
               </Button>
             </Box>
+          </Paper>
+
+          {!prsSectionVisible && (
+            <PrsSectionHiddenNotice onShow={() => setPrsSectionVisible(true)} />
           )}
           {/* Quick Stats Banner - Only show if PRS section is visible */}
           {prsSectionVisible && readinessScores.length > 0 && (
@@ -1001,10 +1043,12 @@ const SnapshotPage = () => {
               </Box>
             </Alert>
           )}
-        </Box>
+        </Stack>
 
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.02, textTransform: 'uppercase', fontSize: '0.75rem' }}>
+        <Divider sx={{ my: 1 }} />
+
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.08, textTransform: 'uppercase', fontSize: '0.7rem' }}>
             Key metrics
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -1021,16 +1065,16 @@ const SnapshotPage = () => {
         <Grid container spacing={3} sx={{ mb: 4 }}>
           {prsSectionVisible && (
             <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+              <Card sx={metricCardSx}>
                 <CardContent sx={{ textAlign: 'center', p: 3 }}>
                   <Box sx={{ 
                     display: 'inline-flex', 
                     p: 1.5, 
                     borderRadius: '50%', 
-                    bgcolor: 'primary.light', 
+                    bgcolor: (t) => alpha(t.palette.primary.main, 0.12), 
                     mb: 2 
                   }}>
-                    <TrendingUpIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+                    <TrendingUpIcon sx={{ fontSize: 28, color: 'primary.main' }} />
                   </Box>
                   <Typography variant="h3" color="primary" sx={{ fontWeight: 'bold', mb: 0.5 }}>
                     {readinessScores.length > 0 
@@ -1051,16 +1095,16 @@ const SnapshotPage = () => {
           )}
           
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+            <Card sx={metricCardSx}>
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
                 <Box sx={{ 
                   display: 'inline-flex', 
                   p: 1.5, 
                   borderRadius: '50%', 
-                  bgcolor: 'success.light', 
+                  bgcolor: (t) => alpha(t.palette.success.main, 0.12), 
                   mb: 2 
                 }}>
-                  <CheckCircleIcon sx={{ fontSize: 32, color: 'success.main' }} />
+                  <CheckCircleIcon sx={{ fontSize: 28, color: 'success.main' }} />
                 </Box>
                 <Typography variant="h3" color="success.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
                   {(() => {
@@ -1084,16 +1128,16 @@ const SnapshotPage = () => {
           </Grid>
           
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+            <Card sx={metricCardSx}>
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
                 <Box sx={{ 
                   display: 'inline-flex', 
                   p: 1.5, 
                   borderRadius: '50%', 
-                  bgcolor: 'warning.light', 
+                  bgcolor: (t) => alpha(t.palette.warning.main, 0.15), 
                   mb: 2 
                 }}>
-                  <AssessmentIcon sx={{ fontSize: 32, color: 'warning.main' }} />
+                  <AssessmentIcon sx={{ fontSize: 28, color: 'warning.main' }} />
                 </Box>
                 <Typography variant="h3" color="warning.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
                   {gapPlans.length}
@@ -1111,16 +1155,16 @@ const SnapshotPage = () => {
           </Grid>
           
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+            <Card sx={metricCardSx}>
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
                 <Box sx={{ 
                   display: 'inline-flex', 
                   p: 1.5, 
                   borderRadius: '50%', 
-                  bgcolor: 'info.light', 
+                  bgcolor: (t) => alpha(t.palette.info.main, 0.12), 
                   mb: 2 
                 }}>
-                  <WorkIcon sx={{ fontSize: 32, color: 'info.main' }} />
+                  <WorkIcon sx={{ fontSize: 28, color: 'info.main' }} />
                 </Box>
                 <Typography variant="h3" color="info.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
                   {activities.length}
@@ -1138,16 +1182,16 @@ const SnapshotPage = () => {
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
+            <Card sx={metricCardSx}>
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
                 <Box sx={{ 
                   display: 'inline-flex', 
                   p: 1.5, 
                   borderRadius: '50%', 
-                  bgcolor: 'secondary.light', 
+                  bgcolor: (t) => alpha(t.palette.secondary.main, 0.12), 
                   mb: 2 
                 }}>
-                  <SlideshowIcon sx={{ fontSize: 32, color: 'secondary.main' }} />
+                  <SlideshowIcon sx={{ fontSize: 28, color: 'secondary.main' }} />
                 </Box>
                 <Typography variant="h3" color="secondary.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
                   {simulationGaps.length}
@@ -2543,6 +2587,7 @@ const SnapshotPage = () => {
 
 
       </Container>
+      </Box>
       <Snackbar
         open={pdfSnackbar.open}
         autoHideDuration={6000}
