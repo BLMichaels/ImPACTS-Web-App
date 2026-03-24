@@ -1143,7 +1143,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   return (
     <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: (t) => t.shadows[1] }}>
       <Box sx={{ px: 2.5, py: 2.5, bgcolor: (t) => alpha(t.palette.primary.main, 0.06), borderBottom: 1, borderColor: 'divider' }}>
-        <Stack spacing={2.5}>
+        <Stack spacing={1.5}>
           <Box>
             <Typography variant="h6" fontWeight={700}>
               Advanced reports
@@ -1151,108 +1151,101 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 900 }}>
               PECCs (including CRM contacts without accounts), sites, organizations, hospital contacts, and staff — CRM fields, checklists, gap plans, activities, and custom columns. Exports respect your role scope.
             </Typography>
-          </Box>
-          <Stack
-            direction={{ xs: 'column', lg: 'row' }}
-            spacing={2}
-            alignItems={{ xs: 'stretch', lg: 'flex-start' }}
-            justifyContent="space-between"
-          >
-            <Typography variant="caption" color="text.secondary" sx={{ alignSelf: { lg: 'center' }, maxWidth: { lg: 380 } }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
               Use Search and State for quick narrowing; open Filters to target specific columns. Column rules combine with AND.
             </Typography>
-            <Stack spacing={1.5} sx={{ flexShrink: 0, alignSelf: { xs: 'stretch', lg: 'flex-end' } }}>
-              <Stack
-                direction="row"
-                spacing={1}
-                flexWrap="wrap"
-                useFlexGap
-                sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' }, rowGap: 1, columnGap: 1 }}
-              >
-                <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => load()}>
-                  Refresh
-                </Button>
-                <Button size="small" variant="outlined" onClick={(e) => setSavedMenuAnchor(e.currentTarget)}>
-                  Load saved layout
-                </Button>
-                <Menu anchorEl={savedMenuAnchor} open={Boolean(savedMenuAnchor)} onClose={() => setSavedMenuAnchor(null)}>
-                  {savedReportPresets.length === 0 ? (
-                    <MenuItem disabled>No saved layouts yet</MenuItem>
-                  ) : (
-                    savedReportPresets.map((p) => (
-                      <MenuItem
-                        key={p.id}
-                        onClick={() => {
-                          applySnapshot(p.snapshot);
-                          setSavedMenuAnchor(null);
-                        }}
-                        sx={{ pr: 6, position: 'relative' }}
-                      >
-                        {p.name}
-                        <IconButton
-                          size="small"
-                          sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
-                          aria-label={`Delete ${p.name}`}
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            deleteSavedReportPreset(actorUserId, p.id);
-                            setSavedPresetsTick((t) => t + 1);
-                          }}
-                        >
-                          <DeleteOutlineIcon fontSize="small" />
-                        </IconButton>
-                      </MenuItem>
-                    ))
-                  )}
-                </Menu>
-                <Button size="small" variant="outlined" startIcon={<BookmarkAddIcon />} onClick={() => setSaveDialogOpen(true)}>
-                  Save layout
-                </Button>
-              </Stack>
-              <Stack
-                direction="row"
-                spacing={1}
-                flexWrap="wrap"
-                useFlexGap
-                sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' }, rowGap: 1, columnGap: 1 }}
-              >
-                <input
-                  type="file"
-                  hidden
-                  accept="application/json,.json"
-                  ref={presetFileInputRef}
-                  onChange={handleImportPresetsFile}
-                />
-                <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportPresets}>
-                  Export layouts
-                </Button>
-                <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => presetFileInputRef.current?.click()}>
-                  Import layouts
-                </Button>
-                <Button size="small" variant="outlined" startIcon={<ViewColumnIcon />} onClick={() => setColumnDrawer(true)}>
-                  Columns
-                </Button>
-                <Badge badgeContent={columnFilters.length} color="primary" invisible={columnFilters.length === 0} overlap="rectangular">
-                  <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => setFilterDrawerOpen(true)}>
-                    Filters
-                  </Button>
-                </Badge>
-              </Stack>
-              <Stack
-                direction="row"
-                spacing={1}
-                flexWrap="wrap"
-                useFlexGap
-                sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' }, rowGap: 1, columnGap: 1 }}
-              >
-                <Button size="small" variant="contained" color="secondary" startIcon={<PictureAsPdfIcon />} onClick={exportPdf}>
-                  PDF
-                </Button>
-                <Button size="small" variant="contained" startIcon={<TableChartIcon />} onClick={exportExcel}>
-                  Excel
-                </Button>
-              </Stack>
-            </Stack>
+          </Box>
+          <Stack
+            direction="row"
+            flexWrap={{ xs: 'wrap', md: 'nowrap' }}
+            useFlexGap
+            spacing={1}
+            sx={{
+              width: '100%',
+              justifyContent: { xs: 'flex-start', md: 'flex-end' },
+              alignItems: 'center',
+              rowGap: 1,
+              columnGap: 1,
+              overflowX: { md: 'auto' },
+              pb: { md: 0.25 },
+            }}
+          >
+            <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => load()}>
+              Refresh
+            </Button>
+            <Button size="small" variant="outlined" onClick={(e) => setSavedMenuAnchor(e.currentTarget)}>
+              Load saved layout
+            </Button>
+            <Menu anchorEl={savedMenuAnchor} open={Boolean(savedMenuAnchor)} onClose={() => setSavedMenuAnchor(null)}>
+              {savedReportPresets.length === 0 ? (
+                <MenuItem disabled>No saved layouts yet</MenuItem>
+              ) : (
+                savedReportPresets.map((p) => (
+                  <MenuItem
+                    key={p.id}
+                    onClick={() => {
+                      applySnapshot(p.snapshot);
+                      setSavedMenuAnchor(null);
+                    }}
+                    sx={{ pr: 6, position: 'relative' }}
+                  >
+                    {p.name}
+                    <IconButton
+                      size="small"
+                      sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      aria-label={`Delete ${p.name}`}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        deleteSavedReportPreset(actorUserId, p.id);
+                        setSavedPresetsTick((t) => t + 1);
+                      }}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </MenuItem>
+                ))
+              )}
+            </Menu>
+            <Button size="small" variant="outlined" startIcon={<BookmarkAddIcon />} onClick={() => setSaveDialogOpen(true)}>
+              Save layout
+            </Button>
+            <Divider
+              orientation="vertical"
+              flexItem
+              sx={{ display: { xs: 'none', md: 'flex' }, alignSelf: 'stretch', my: 0.25 }}
+            />
+            <input
+              type="file"
+              hidden
+              accept="application/json,.json"
+              ref={presetFileInputRef}
+              onChange={handleImportPresetsFile}
+            />
+            <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportPresets}>
+              Export layouts
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => presetFileInputRef.current?.click()}>
+              Import layouts
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<ViewColumnIcon />} onClick={() => setColumnDrawer(true)}>
+              Columns
+            </Button>
+            <Badge badgeContent={columnFilters.length} color="primary" invisible={columnFilters.length === 0} overlap="rectangular">
+              <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => setFilterDrawerOpen(true)}>
+                Filters
+              </Button>
+            </Badge>
+            <Divider
+              orientation="vertical"
+              flexItem
+              sx={{ display: { xs: 'none', md: 'flex' }, alignSelf: 'stretch', my: 0.25 }}
+            />
+            <Button size="small" variant="contained" color="secondary" startIcon={<PictureAsPdfIcon />} onClick={exportPdf}>
+              PDF
+            </Button>
+            <Button size="small" variant="contained" startIcon={<TableChartIcon />} onClick={exportExcel}>
+              Excel
+            </Button>
           </Stack>
         </Stack>
       </Box>
