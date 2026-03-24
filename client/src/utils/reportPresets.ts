@@ -23,6 +23,8 @@ export interface ReportStateSnapshot {
   sortBy: string;
   sortDir: 'asc' | 'desc';
   columns: Record<string, boolean>;
+  /** Column ids in left-to-right order. Omitted in older saved layouts; defaults to definition order. */
+  columnOrder?: string[];
 }
 
 export interface SavedReportPreset {

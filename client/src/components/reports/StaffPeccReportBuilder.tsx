@@ -48,6 +48,7 @@ import * as XLSX from 'xlsx';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
@@ -397,6 +398,18 @@ function defaultVisibility(cols: ColumnMeta[]): Record<string, boolean> {
   return o;
 }
 
+/** Keep saved order, drop removed ids, append new column ids at the end. */
+function mergeColumnOrder(prev: string[], metas: ColumnMeta[]): string[] {
+  const metaIds = metas.map((c) => c.id);
+  const allowed = new Set(metaIds);
+  if (prev.length === 0) return metaIds;
+  const next = prev.filter((id) => allowed.has(id));
+  metaIds.forEach((id) => {
+    if (!next.includes(id)) next.push(id);
+  });
+  return next;
+}
+
 function isLinkedNameColumn(dataset: ReportDataset, columnId: string): boolean {
   const map: Record<ReportDataset, string[]> = {
     pecc: ['name'],
@@ -433,6 +446,8 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [hospitalCustomDefs, setHospitalCustomDefs] = useState<{ id: string; label: string }[]>([]);
   const [orgCustomDefs, setOrgCustomDefs] = useState<{ id: string; label: string }[]>([]);
   const [columns, setColumns] = useState<Record<string, boolean>>({});
+  /** Left-to-right order of all column ids for the current dataset (visibility is separate). */
+  const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [columnDrawer, setColumnDrawer] = useState(false);
   const [sortBy, setSortBy] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -443,6 +458,9 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [savedMenuAnchor, setSavedMenuAnchor] = useState<null | HTMLElement>(null);
   const skipColumnResetRef = useRef(false);
   const skipSortResetRef = useRef(false);
+  const dragColumnIdRef = useRef<string | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
+  const prevDatasetForColumnsRef = useRef<ReportDataset | null>(null);
 
   const columnMetas = useMemo(
     () => buildColumnList(dataset, hospitalCustomDefs, orgCustomDefs),
@@ -451,6 +469,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
 
   const applySnapshot = useCallback((snap: ReportStateSnapshot) => {
     setDataset(snap.dataset as ReportDataset);
+    prevDatasetForColumnsRef.current = snap.dataset as ReportDataset;
     setActivityPreset(snap.activityPreset);
     setProgramFilter(snap.programFilter);
     setCohortFilter(snap.cohortFilter);
@@ -461,6 +480,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setSortBy(snap.sortBy);
     setSortDir(snap.sortDir);
     setColumns(snap.columns);
+    setColumnOrder(snap.columnOrder?.length ? snap.columnOrder : []);
     skipColumnResetRef.current = true;
     skipSortResetRef.current = true;
   }, []);
@@ -476,9 +496,17 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   useEffect(() => {
     if (skipColumnResetRef.current) {
       skipColumnResetRef.current = false;
+      setColumnOrder((prev) => mergeColumnOrder(prev, columnMetas));
       return;
     }
     setColumns(defaultVisibility(columnMetas));
+    const prevDs = prevDatasetForColumnsRef.current;
+    prevDatasetForColumnsRef.current = dataset;
+    if (prevDs === null || prevDs !== dataset) {
+      setColumnOrder(columnMetas.map((c) => c.id));
+    } else {
+      setColumnOrder((prev) => mergeColumnOrder(prev, columnMetas));
+    }
   }, [dataset, columnMetas]);
 
   useEffect(() => {
@@ -605,7 +633,10 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     load();
   }, [load]);
 
-  const visibleColumnIds = useMemo(() => columnMetas.map((c) => c.id).filter((id) => columns[id]), [columnMetas, columns]);
+  const visibleColumnIds = useMemo(() => {
+    const allowed = new Set(columnMetas.map((c) => c.id));
+    return columnOrder.filter((id) => allowed.has(id) && columns[id]);
+  }, [columnMetas, columnOrder, columns]);
 
   const filtered = useMemo(() => {
     let list = rows;
@@ -680,6 +711,40 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     }
   };
 
+  const handleColumnDragStart = useCallback((e: React.DragEvent, columnId: string) => {
+    dragColumnIdRef.current = columnId;
+    setDraggingColumnId(columnId);
+    e.dataTransfer.setData('text/plain', columnId);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleColumnDragEnd = useCallback(() => {
+    dragColumnIdRef.current = null;
+    setDraggingColumnId(null);
+  }, []);
+
+  const handleColumnDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleColumnDrop = useCallback((e: React.DragEvent, targetColumnId: string) => {
+    e.preventDefault();
+    const sourceId = dragColumnIdRef.current || e.dataTransfer.getData('text/plain');
+    if (!sourceId || sourceId === targetColumnId) return;
+    setColumnOrder((prev) => {
+      const next = [...prev];
+      const fromIdx = next.indexOf(sourceId);
+      const toIdx = next.indexOf(targetColumnId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const [removed] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, removed);
+      return next;
+    });
+    dragColumnIdRef.current = null;
+    setDraggingColumnId(null);
+  }, []);
+
   const exportPdf = () => {
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFont('helvetica', 'bold');
@@ -733,6 +798,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       sortBy,
       sortDir,
       columns,
+      columnOrder,
     });
   }, [
     actorUserId,
@@ -747,6 +813,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     sortBy,
     sortDir,
     columns,
+    columnOrder,
   ]);
 
   const savedReportPresets = useMemo(() => loadSavedReportPresets(actorUserId), [actorUserId, savedPresetsTick]);
@@ -764,6 +831,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       sortBy,
       sortDir,
       columns,
+      columnOrder,
     }),
     [
       dataset,
@@ -777,6 +845,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       sortBy,
       sortDir,
       columns,
+      columnOrder,
     ]
   );
 
@@ -803,6 +872,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           label={raw || '—'}
           color={raw === 'Yes' ? 'success' : raw === 'No' ? 'warning' : 'default'}
           variant="outlined"
+          sx={{ height: 20, maxWidth: '100%', fontSize: '0.65rem', '& .MuiChip-label': { px: 0.75, py: 0 } }}
         />
       );
     }
@@ -819,7 +889,8 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           state={{ returnTo }}
           onClick={() => pushSnapshotForNavigate()}
           underline="hover"
-          fontWeight={600}
+          fontWeight={500}
+          sx={{ fontSize: 'inherit' }}
           color="primary"
         >
           {raw || '—'}
@@ -830,7 +901,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   };
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: (t) => t.shadows[1] }}>
       <Box sx={{ px: 2.5, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.06), borderBottom: 1, borderColor: 'divider' }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
           <Box>
@@ -894,8 +965,8 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         </Stack>
       </Box>
 
-      <Box sx={{ p: 2.5 }}>
-        <Stack spacing={2} sx={{ mb: 3 }}>
+      <Box sx={{ p: 2 }}>
+        <Stack spacing={2} sx={{ mb: 2 }}>
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} md={4}>
               <FormControl fullWidth size="small">
@@ -1051,32 +1122,117 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             <CircularProgress />
           </Box>
         ) : (
-          <TableContainer sx={{ maxHeight: 560, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-            <Table size="small" stickyHeader>
-              <TableHead>
-                <TableRow>
-                  {visibleColumnIds.map((cid) => (
-                    <TableCell key={cid}>
-                      <TableSortLabel active={sortBy === cid} direction={sortBy === cid ? sortDir : 'asc'} onClick={() => toggleSort(cid)}>
-                        {columnMetas.find((c) => c.id === cid)?.label || cid}
-                      </TableSortLabel>
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {sorted.map((r) => (
-                  <TableRow key={r.id} hover>
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Drag the grip beside a column header to reorder. Click the column title to sort.
+            </Typography>
+            <TableContainer
+              sx={{
+                maxHeight: 'min(70vh, 680px)',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                bgcolor: 'background.paper',
+                boxShadow: (t) => t.shadows[1],
+              }}
+            >
+              <Table
+                size="small"
+                stickyHeader
+                sx={{
+                  '& .MuiTableCell-root': {
+                    py: 0.5,
+                    px: 1,
+                    fontSize: '0.8125rem',
+                    lineHeight: 1.35,
+                    borderLeft: 'none',
+                    borderRight: 'none',
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    verticalAlign: 'top',
+                  },
+                  '& .MuiTableCell-head': {
+                    py: 0.65,
+                    fontWeight: 600,
+                    fontSize: '0.75rem',
+                    bgcolor: (t) => alpha(t.palette.grey[500], 0.1),
+                    color: 'text.secondary',
+                    whiteSpace: 'nowrap',
+                  },
+                }}
+              >
+                <TableHead>
+                  <TableRow>
                     {visibleColumnIds.map((cid) => (
-                      <TableCell key={cid} sx={{ maxWidth: 280, whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                        {renderCellContent(r, cid)}
+                      <TableCell
+                        key={cid}
+                        onDragOver={handleColumnDragOver}
+                        onDrop={(e) => handleColumnDrop(e, cid)}
+                        sx={{
+                          opacity: draggingColumnId === cid ? 0.45 : 1,
+                          transition: 'opacity 0.12s ease',
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, minWidth: 0 }}>
+                          <Box
+                            component="span"
+                            draggable
+                            onDragStart={(e) => handleColumnDragStart(e, cid)}
+                            onDragEnd={handleColumnDragEnd}
+                            onClick={(e) => e.stopPropagation()}
+                            sx={{
+                              cursor: 'grab',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              flexShrink: 0,
+                              color: 'text.disabled',
+                              '&:active': { cursor: 'grabbing' },
+                              touchAction: 'none',
+                            }}
+                            title="Drag to reorder columns"
+                          >
+                            <DragIndicatorIcon sx={{ fontSize: 14 }} />
+                          </Box>
+                          <TableSortLabel
+                            active={sortBy === cid}
+                            direction={sortBy === cid ? sortDir : 'asc'}
+                            onClick={() => toggleSort(cid)}
+                            sx={{
+                              flex: 1,
+                              minWidth: 0,
+                              '& .MuiTableSortLabel-icon': { fontSize: '0.85rem' },
+                            }}
+                          >
+                            {columnMetas.find((c) => c.id === cid)?.label || cid}
+                          </TableSortLabel>
+                        </Box>
                       </TableCell>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {sorted.map((r) => (
+                    <TableRow key={r.id} hover>
+                      {visibleColumnIds.map((cid) => (
+                        <TableCell
+                          key={cid}
+                          sx={{
+                            maxWidth: 240,
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
+                            opacity: draggingColumnId === cid ? 0.45 : 1,
+                            transition: 'opacity 0.12s ease',
+                          }}
+                        >
+                          {renderCellContent(r, cid)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
         )}
       </Box>
 
@@ -1107,7 +1263,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             Visible columns
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Toggle groups; custom fields match CRM definitions. PDF and Excel use the same selection.
+            Toggle groups; custom fields match CRM definitions. PDF and Excel use the same selection. Reorder columns in the table using the grip icons; order is saved with &quot;Save layout&quot;.
           </Typography>
           <Divider sx={{ mb: 2 }} />
           {[...columnsByGroup.entries()].map(([group, list]) => (
