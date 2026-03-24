@@ -111,23 +111,27 @@ const ACTIVITY_PRESETS = [
 ];
 
 /** Report dataset dropdown: labels A–Z within each group (People / CRM). */
-const REPORT_DATASET_PEOPLE_OPTIONS: { value: ReportDataset; label: string }[] = [
-  { value: 'user_hospital_system', label: 'Hospital System (user accounts)' },
-  { value: 'user_hiring_group', label: 'Hiring Group (user accounts)' },
-  { value: 'managers', label: 'Managers' },
-  { value: 'mentors', label: 'Mentors' },
-  { value: 'pecc', label: 'PECCs (people at sites)' },
-  { value: 'platform_users', label: 'Platform users (pick roles)' },
-  { value: 'internal_staff', label: 'Staff (internal team)' },
-].sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
+const REPORT_DATASET_PEOPLE_OPTIONS: { value: ReportDataset; label: string }[] = (
+  [
+    { value: 'user_hospital_system', label: 'Hospital System (user accounts)' },
+    { value: 'user_hiring_group', label: 'Hiring Group (user accounts)' },
+    { value: 'managers', label: 'Managers' },
+    { value: 'mentors', label: 'Mentors' },
+    { value: 'pecc', label: 'PECCs (people at sites)' },
+    { value: 'platform_users', label: 'Platform users (pick roles)' },
+    { value: 'internal_staff', label: 'Staff (internal team)' },
+  ] as { value: ReportDataset; label: string }[]
+).sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
 
-const REPORT_DATASET_CRM_OPTIONS: { value: ReportDataset; label: string }[] = [
-  { value: 'contacts', label: 'Hospital contacts' },
-  { value: 'crm_system', label: 'Hospital Systems (CRM)' },
-  { value: 'crm_hiring_group', label: 'Hiring Groups (CRM)' },
-  { value: 'hospital', label: 'Hospitals & sites' },
-  { value: 'organization', label: 'Organizations' },
-].sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
+const REPORT_DATASET_CRM_OPTIONS: { value: ReportDataset; label: string }[] = (
+  [
+    { value: 'contacts', label: 'Hospital contacts' },
+    { value: 'crm_system', label: 'Hospital Systems (CRM)' },
+    { value: 'crm_hiring_group', label: 'Hiring Groups (CRM)' },
+    { value: 'hospital', label: 'Hospitals & sites' },
+    { value: 'organization', label: 'Organizations' },
+  ] as { value: ReportDataset; label: string }[]
+).sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
 
 /** Shared sizing for Advanced reports header actions (single line, aligned grid). */
 const REPORT_HEADER_ACTION_SX = {
