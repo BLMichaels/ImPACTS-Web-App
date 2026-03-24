@@ -82,7 +82,15 @@ interface HospitalData {
   mentorCount: number;
   peccCount: number;
   contactCount: number;
+  customFields?: Record<string, string>;
 }
+
+type ManagerCustomFieldDefinition = {
+  id: string;
+  label: string;
+  applicableTypes: string[];
+  fieldType: 'checkbox' | 'radio' | 'date' | 'numeric' | 'short_answer' | 'paragraph' | 'dropdown' | 'dropdown_csv';
+};
 
 interface ContactData {
   id: string;
@@ -181,6 +189,8 @@ const ManagerCRMPage: React.FC = () => {
   const [hospitalNotesDrawerHospital, setHospitalNotesDrawerHospital] = useState<HospitalData | null>(null);
   const [hospitalNotesLog, setHospitalNotesLog] = useState<Array<{ date: string; text: string }>>([]);
   const [hospitalNotesLoading, setHospitalNotesLoading] = useState(false);
+  const [hospitalCustomFieldDefs, setHospitalCustomFieldDefs] = useState<ManagerCustomFieldDefinition[]>([]);
+  const [hospitalDrawerCustomFields, setHospitalDrawerCustomFields] = useState<Record<string, string>>({});
 
   // Contact record panel (click row to view)
   const [contactDetailOpen, setContactDetailOpen] = useState(false);
@@ -206,6 +216,25 @@ const ManagerCRMPage: React.FC = () => {
       }
     }
   }, [searchParams, hospitals]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('crm_custom_field_definitions')
+        .select('id, label, applicable_types, field_type')
+        .contains('applicable_types', ['hospital']);
+      if (cancelled || error || !data) return;
+      const defs = (data as Array<Record<string, unknown>>).map((row) => ({
+        id: String(row.id ?? ''),
+        label: String(row.label ?? ''),
+        applicableTypes: Array.isArray(row.applicable_types) ? (row.applicable_types as string[]) : [],
+        fieldType: (String(row.field_type ?? 'short_answer') as ManagerCustomFieldDefinition['fieldType'])
+      })).filter((d) => d.id && d.label);
+      setHospitalCustomFieldDefs(defs);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Load all hospitals from DB and mentors when opening Add Hospital dialog (paginate hospitals — PostgREST caps range per request)
   useEffect(() => {
@@ -291,7 +320,7 @@ const ManagerCRMPage: React.FC = () => {
       const { data: assignments, error: assignmentError } = await supabase
         .from('mentor_hospital_assignments')
         .select(`
-          hospital:hospital_id(id, name, city, state, trauma_level)
+          hospital:hospital_id(id, name, city, state, trauma_level, custom_fields)
         `)
         .in('mentor_id', mentorIds)
         .eq('is_active', true);
@@ -314,7 +343,8 @@ const ManagerCRMPage: React.FC = () => {
             traumaLevel: hospital.trauma_level || 'Non-Designated',
             mentorCount: 0,
             peccCount: 0,
-            contactCount: 0
+            contactCount: 0,
+            customFields: (hospital.custom_fields && typeof hospital.custom_fields === 'object') ? (hospital.custom_fields as Record<string, string>) : {}
           });
         }
       });
@@ -427,7 +457,7 @@ const ManagerCRMPage: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('hospitals')
-        .select('notes_log')
+        .select('notes_log, custom_fields')
         .eq('id', hospital.id)
         .maybeSingle();
       if (!error && data) {
@@ -436,9 +466,12 @@ const ManagerCRMPage: React.FC = () => {
           ? raw.map((e: any) => ({ date: e.date ?? '', text: e.text ?? '' })).filter((n) => n.date && n.text)
           : [];
         setHospitalNotesLog(log.sort((a, b) => b.date.localeCompare(a.date)));
+        const customRaw = (data as { custom_fields?: unknown }).custom_fields;
+        setHospitalDrawerCustomFields((customRaw && typeof customRaw === 'object') ? (customRaw as Record<string, string>) : {});
       }
     } catch {
       setHospitalNotesLog([]);
+      setHospitalDrawerCustomFields({});
     } finally {
       setHospitalNotesLoading(false);
     }
@@ -1092,6 +1125,28 @@ const ManagerCRMPage: React.FC = () => {
                   </Box>
                 ))}
               </Box>
+            )}
+
+            {hospitalCustomFieldDefs.filter((d) => hospitalDrawerCustomFields[d.id] != null && hospitalDrawerCustomFields[d.id] !== '').length > 0 && (
+              <>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, mt: 2.5, mb: 1.5 }}>
+                  Custom fields
+                </Typography>
+                <Paper variant="outlined" sx={{ p: 1.5 }}>
+                  {hospitalCustomFieldDefs
+                    .filter((d) => hospitalDrawerCustomFields[d.id] != null && hospitalDrawerCustomFields[d.id] !== '')
+                    .map((d) => (
+                      <Box key={d.id} sx={{ py: 0.75, borderBottom: 1, borderColor: 'divider', '&:last-of-type': { borderBottom: 0 } }}>
+                        <Typography variant="caption" color="text.secondary">{d.label}</Typography>
+                        <Typography variant="body2">
+                          {d.fieldType === 'checkbox'
+                            ? (hospitalDrawerCustomFields[d.id] === 'true' ? 'Yes' : 'No')
+                            : hospitalDrawerCustomFields[d.id]}
+                        </Typography>
+                      </Box>
+                    ))}
+                </Paper>
+              </>
             )}
 
             {/* Actions */}

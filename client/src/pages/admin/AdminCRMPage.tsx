@@ -284,6 +284,7 @@ type CustomFieldDefinition = {
   fieldType: CustomFieldType;
   options?: string[];
   allowMultiple?: boolean;
+  sortOrder?: number;
   showInCrm?: CustomFieldShowInCrm; // where to show in CRM: both (default), quick view only, or full view only
 };
 
@@ -317,6 +318,42 @@ const formatEntryDate = (dateStr: string): string => {
   } catch {
     return dateStr;
   }
+};
+
+const isIsoDateLike = (v: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v).getTime());
+const isNumericLike = (v: string): boolean => v.trim() !== '' && !Number.isNaN(Number(v));
+
+const validateCustomFieldValues = (
+  defs: CustomFieldDefinition[],
+  contactType: ContactType,
+  values: Record<string, string>
+): string | null => {
+  const applicable = defs.filter((d) => d.applicableTypes.includes(contactType));
+  for (const def of applicable) {
+    const raw = values[def.id];
+    if (raw == null || raw === '') continue;
+    if (def.allowMultiple) {
+      const entries = parseMultiEntryValue(raw);
+      for (const entry of entries) {
+        const v = entry.value?.trim() ?? '';
+        if (v === '') continue;
+        if ((def.fieldType === 'numeric') && !isNumericLike(v)) {
+          return `Custom field "${def.label}" must contain numeric values.`;
+        }
+        if ((def.fieldType === 'date') && !isIsoDateLike(v)) {
+          return `Custom field "${def.label}" must contain YYYY-MM-DD dates.`;
+        }
+      }
+    } else {
+      if ((def.fieldType === 'numeric') && !isNumericLike(raw)) {
+        return `Custom field "${def.label}" must be numeric.`;
+      }
+      if ((def.fieldType === 'date') && !isIsoDateLike(raw)) {
+        return `Custom field "${def.label}" must be a valid YYYY-MM-DD date.`;
+      }
+    }
+  }
+  return null;
 };
 
 const CUSTOM_FIELD_TYPE_LABELS: Record<CustomFieldType, string> = {
@@ -944,6 +981,7 @@ const AdminCRMPage: React.FC = () => {
           fieldType: (['checkbox', 'radio', 'date', 'numeric', 'short_answer', 'paragraph', 'dropdown', 'dropdown_csv'].includes(String(row.field_type)) ? row.field_type : 'short_answer') as CustomFieldType,
           options: Array.isArray(row.options) ? (row.options as string[]).filter(Boolean) : undefined,
           allowMultiple: Boolean(row.allow_multiple),
+          sortOrder: Number(row.sort_order ?? 0),
           showInCrm: (['both', 'quick_view_only', 'full_view_only'].includes(String(row.show_in_crm)) ? row.show_in_crm : 'both') as CustomFieldShowInCrm
         }));
         setCustomFieldDefs(mapped);
@@ -1783,6 +1821,15 @@ const AdminCRMPage: React.FC = () => {
       zip: formData.zip || undefined,
       ...(Object.keys(formData.customFields || {}).length ? { customFields: formData.customFields } : {})
     };
+    const customFieldValidationError = validateCustomFieldValues(
+      customFieldDefs,
+      formData.type,
+      formData.customFields || {}
+    );
+    if (customFieldValidationError) {
+      setSaveError(customFieldValidationError);
+      return;
+    }
     if (editingContact?.type === 'hospital' && (editingContact.facilityId || editingContact.id)) {
       // EDITING an existing hospital
       setSaveInProgress(true);
@@ -1857,9 +1904,7 @@ const AdminCRMPage: React.FC = () => {
       updatePayload.zip = formData.zip?.trim() || null;
       updatePayload.email = formData.email?.trim() || null;
       updatePayload.phone = formData.phone?.trim() || null;
-      if (formData.customFields && Object.keys(formData.customFields).length > 0) {
-        updatePayload.custom_fields = formData.customFields;
-      }
+      updatePayload.custom_fields = formData.customFields ?? {};
       updatePayload.notes_log = currentInState?.notesLog ?? editingContact.notesLog ?? [];
       updatePayload.activity_log = currentInState?.activityLog ?? editingContact.activityLog ?? [];
       updatePayload.hospital_system = formData.hospitalSystem?.trim() || null;
@@ -2071,12 +2116,13 @@ const AdminCRMPage: React.FC = () => {
         if (hasCrmData) {
           // Create/update a CRM record for this user to store CRM-specific data
           // Use upsert with the user's email as the unique identifier
-          const { data: existingCrm } = await supabase
+          const { data: existingCrmRows } = await supabase
             .from('crm_organizations')
-            .select('id')
+            .select('id, contact_type, updated_at, created_at')
             .eq('email', editingContact.email)
-            .eq('contact_type', editingContact.type)
-            .maybeSingle();
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          const existingCrm = (existingCrmRows && existingCrmRows.length > 0) ? existingCrmRows[0] : null;
           
           // Also update phone in users table if it changed (phone is stored in users table)
           if (formData.phone?.trim() !== editingContact.phone && editingContact.user_id) {
@@ -5342,27 +5388,29 @@ const AdminCRMPage: React.FC = () => {
                   
                   if (editingDefId) {
                     // Update existing field
-                    const updatePayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, show_in_crm: newDefShowInCrm, updated_at: new Date().toISOString() };
+                    const existingSortOrder = customFieldDefs.find((d) => d.id === editingDefId)?.sortOrder ?? 0;
+                    const updatePayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, show_in_crm: newDefShowInCrm, sort_order: existingSortOrder, updated_at: new Date().toISOString() };
                     const { error } = await supabase.from('crm_custom_field_definitions').update(updatePayload).eq('id', editingDefId);
                     if (error) {
                       console.error('Failed to update custom field:', error);
                       setCsvUploadError(`Failed to update field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
                       return;
                     }
-                    const updatedDef: CustomFieldDefinition = { id: editingDefId, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple, showInCrm: newDefShowInCrm };
-                    setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? updatedDef : d));
+                    const updatedDef: CustomFieldDefinition = { id: editingDefId, label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple, sortOrder: existingSortOrder, showInCrm: newDefShowInCrm };
+                    setCustomFieldDefs(prev => prev.map(d => d.id === editingDefId ? updatedDef : d).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
                     setEditingDefId(null);
                   } else {
                     // Insert new field - don't send id, let database generate UUID
-                    const insertPayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, show_in_crm: newDefShowInCrm, sort_order: 0 };
+                    const nextSortOrder = customFieldDefs.length > 0 ? Math.max(...customFieldDefs.map((d) => d.sortOrder ?? 0)) + 1 : 1;
+                    const insertPayload = { label: newDefLabel.trim(), applicable_types: newDefApplicableTypes, field_type: newDefFieldType, options: opts.length ? opts : [], allow_multiple: newDefAllowMultiple, show_in_crm: newDefShowInCrm, sort_order: nextSortOrder };
                     const { data, error } = await supabase.from('crm_custom_field_definitions').insert(insertPayload).select().single();
                     if (error) {
                       console.error('Failed to add custom field:', error);
                       setCsvUploadError(`Failed to add field: ${error.message || 'Database error'}. Make sure CRM_TABLES_MIGRATION.sql has been run.`);
                       return;
                     }
-                    const newDef: CustomFieldDefinition = { id: String(data.id), label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple, showInCrm: newDefShowInCrm };
-                    setCustomFieldDefs(prev => [...prev, newDef]);
+                    const newDef: CustomFieldDefinition = { id: String(data.id), label: newDefLabel.trim(), applicableTypes: newDefApplicableTypes, fieldType: newDefFieldType, options: opts.length ? opts : undefined, allowMultiple: newDefAllowMultiple, sortOrder: nextSortOrder, showInCrm: newDefShowInCrm };
+                    setCustomFieldDefs(prev => [...prev, newDef].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
                   }
                   setCsvUploadError(null);
                   setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false); setNewDefShowInCrm('both');
@@ -5376,7 +5424,7 @@ const AdminCRMPage: React.FC = () => {
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Existing fields</Typography>
           <List dense>
             {customFieldDefs.map((def) => (
-              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); setNewDefAllowMultiple(def.allowMultiple ?? false); setNewDefShowInCrm(def.showInCrm ?? 'both'); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { const { error } = await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); if (error) { console.error('Failed to delete custom field:', error); setCsvUploadError(`Failed to delete field: ${error.message}`); return; } setCsvUploadError(null); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
+              <ListItem key={def.id} secondaryAction={<><IconButton size="small" onClick={() => { setEditingDefId(def.id); setNewDefLabel(def.label); setNewDefApplicableTypes(def.applicableTypes.length ? def.applicableTypes : ['hospital']); setNewDefFieldType(def.fieldType); setNewDefOptions((def.options ?? []).join('\n')); setNewDefAllowMultiple(def.allowMultiple ?? false); setNewDefShowInCrm(def.showInCrm ?? 'both'); }}><EditIcon fontSize="small" /></IconButton><IconButton size="small" onClick={async () => { const [{ count: orgCount, error: orgErr }, { count: hospitalCount, error: hospitalErr }] = await Promise.all([supabase.from('crm_organizations').select('id', { count: 'exact', head: true }).not(`custom_fields->>${def.id}`, 'is', null), supabase.from('hospitals').select('id', { count: 'exact', head: true }).not(`custom_fields->>${def.id}`, 'is', null)]); if (orgErr || hospitalErr) { const msg = orgErr?.message || hospitalErr?.message || 'Could not check field usage'; setCsvUploadError(`Failed to check usage before delete: ${msg}`); return; } const totalUsage = (orgCount ?? 0) + (hospitalCount ?? 0); if (totalUsage > 0) { setCsvUploadError(`Cannot delete field in use by ${totalUsage} record(s). Clear values first or migrate data.`); return; } const { error } = await supabase.from('crm_custom_field_definitions').delete().eq('id', def.id); if (error) { console.error('Failed to delete custom field:', error); setCsvUploadError(`Failed to delete field: ${error.message}`); return; } setCsvUploadError(null); setCustomFieldDefs(prev => prev.filter(d => d.id !== def.id)); }}><DeleteIcon fontSize="small" /></IconButton></>}>
                 <ListItemText primary={def.label} secondary={`${CUSTOM_FIELD_TYPE_LABELS[def.fieldType]}${def.allowMultiple ? ' (multiple entries)' : ''} · ${def.applicableTypes.map(t => TYPE_LABELS[t]).join(', ')} · Show: ${def.showInCrm === 'quick_view_only' ? 'Quick view only' : def.showInCrm === 'full_view_only' ? 'Full view only' : 'Both'}`} />
               </ListItem>
             ))}
