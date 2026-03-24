@@ -272,7 +272,7 @@ function buildColumnList(
     { id: 'hospitalCrmStatus', label: 'CRM status', defaultOn: false, group: 'Site' },
     { id: 'traumaLevel', label: 'Trauma level', defaultOn: false, group: 'Site' },
     { id: 'edSize', label: 'ED size', defaultOn: false, group: 'Site' },
-    { id: 'peccCount', label: 'PECCs at site', defaultOn: true, group: 'Metrics' },
+    { id: 'peccCount', label: 'PECCs at site (all sources, deduped)', defaultOn: true, group: 'Metrics' },
     { id: 'checklistProgress', label: 'Site checklist %', defaultOn: true, group: 'Metrics' },
     { id: 'hospitalPrograms', label: 'Programs (site)', defaultOn: false, group: 'Programs' },
     { id: 'hospitalCohorts', label: 'Cohorts (site)', defaultOn: false, group: 'Programs' },
@@ -741,6 +741,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           </Alert>
         )}
 
+        {dataset === 'hospital' && !loading && (
+          <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+            <Typography variant="caption" color="text.secondary">
+              PECCs at site includes platform users with role PECC assigned to the site, PECC-tagged hospital contacts, and CRM PECC people linked to the site. The same email is counted once per site.
+            </Typography>
+          </Alert>
+        )}
+
         {dataset === 'pecc' && peccAudit && !loading && (
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
@@ -871,6 +879,96 @@ async function loadChecklistForHospitals(hospitalIds: string[]): Promise<Map<str
   return map;
 }
 
+function peccDedupeKey(source: 'user' | 'hc' | 'crm', id: string, email: string | null | undefined): string {
+  const e = (email || '').trim().toLowerCase();
+  if (e) return `email:${e}`;
+  return `${source}:${id}`;
+}
+
+function isPeccHospitalContactRecord(
+  c: { user_id: string | null; role_at_hospital: string | null; contact_status?: string | null },
+  linkedUserRole: Map<string, string>
+): boolean {
+  const status = (c.contact_status || '').toLowerCase();
+  const roleAt = (c.role_at_hospital || '').toLowerCase();
+  const userRole = c.user_id ? (linkedUserRole.get(c.user_id) || '').toLowerCase() : '';
+  if (userRole === 'pecc') return true;
+  if (status.includes('new pecc') || status.includes('already a pecc')) return true;
+  if (roleAt.includes('pecc')) return true;
+  return false;
+}
+
+async function loadLinkedUserRoles(userIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const part of chunk(userIds, 80)) {
+    const { data } = await supabase.from('users').select('id, role').in('id', part);
+    (data || []).forEach((u: { id: string; role: string }) => map.set(u.id, u.role || ''));
+  }
+  return map;
+}
+
+/** PECCs at site: users (role=pecc) + PECC hospital_contacts + CRM PECC orgs linked to the site; dedupe by email when present. */
+async function loadPeccCountByHospital(hospitalIds: string[]): Promise<Map<string, number>> {
+  const sets = new Map<string, Set<string>>();
+  hospitalIds.forEach((id) => sets.set(id, new Set()));
+  if (!hospitalIds.length) return new Map();
+
+  const hidAllow = new Set(hospitalIds);
+
+  for (const part of chunk(hospitalIds, 80)) {
+    const users = await fetchAllRows<{ id: string; email: string; hospital_facility_id: string | null }>((from, to) =>
+      supabase.from('users').select('id, email, hospital_facility_id').eq('role', 'pecc').in('hospital_facility_id', part).range(from, to)
+    );
+    users.forEach((u) => {
+      if (!u.hospital_facility_id) return;
+      const s = sets.get(u.hospital_facility_id);
+      if (s) s.add(peccDedupeKey('user', u.id, u.email));
+    });
+  }
+
+  for (const part of chunk(hospitalIds, 80)) {
+    const contacts = await fetchAllRowsOrEmpty<{
+      id: string;
+      hospital_id: string;
+      user_id: string | null;
+      email: string;
+      role_at_hospital: string | null;
+      contact_status: string | null;
+    }>((from, to) =>
+      supabase
+        .from('hospital_contacts')
+        .select('id, hospital_id, user_id, email, role_at_hospital, contact_status')
+        .in('hospital_id', part)
+        .range(from, to)
+    );
+    const linkedIds = [...new Set(contacts.map((c) => c.user_id).filter(Boolean))] as string[];
+    const linkedUserRole = await loadLinkedUserRoles(linkedIds);
+    contacts.forEach((c) => {
+      if (!isPeccHospitalContactRecord(c, linkedUserRole)) return;
+      const s = sets.get(c.hospital_id);
+      if (s) s.add(peccDedupeKey('hc', c.id, c.email));
+    });
+  }
+
+  const crmPeccs = await fetchAllRowsOrEmpty<Record<string, unknown>>((from, to) =>
+    supabase.from('crm_organizations').select('id, email, linked_hospital_ids').eq('contact_type', 'pecc').range(from, to)
+  );
+  crmPeccs.forEach((row) => {
+    const id = String(row.id);
+    const email = row.email != null ? String(row.email) : '';
+    const links = Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [];
+    links.forEach((hid) => {
+      if (!hidAllow.has(hid)) return;
+      const s = sets.get(hid);
+      if (s) s.add(peccDedupeKey('crm', id, email));
+    });
+  });
+
+  const counts = new Map<string, number>();
+  sets.forEach((set, hid) => counts.set(hid, set.size));
+  return counts;
+}
+
 async function loadPeccDataset(params: {
   hospitalScope: string[] | null;
   activityPreset: string;
@@ -951,26 +1049,8 @@ async function loadPeccDataset(params: {
   }
 
   const linkedUserIds = [...new Set(hospitalContactRows.map((c) => c.user_id).filter(Boolean))] as string[];
-  const linkedUserRole = new Map<string, string>();
-  for (const part of chunk(linkedUserIds, 80)) {
-    const { data: linkedUsers } = await supabase.from('users').select('id, role').in('id', part);
-    (linkedUsers || []).forEach((u: { id: string; role: string }) => linkedUserRole.set(u.id, u.role || ''));
-  }
-
-  const isPeccHospitalContact = (c: {
-    user_id: string | null;
-    role_at_hospital: string | null;
-    contact_status?: string | null;
-  }) => {
-    const status = (c.contact_status || '').toLowerCase();
-    const roleAt = (c.role_at_hospital || '').toLowerCase();
-    const userRole = c.user_id ? (linkedUserRole.get(c.user_id) || '').toLowerCase() : '';
-    if (userRole === 'pecc') return true;
-    if (status.includes('new pecc') || status.includes('already a pecc')) return true;
-    if (roleAt.includes('pecc')) return true;
-    return false;
-  };
-  const peccHospitalContactRows = hospitalContactRows.filter((c) => isPeccHospitalContact(c));
+  const linkedUserRole = await loadLinkedUserRoles(linkedUserIds);
+  const peccHospitalContactRows = hospitalContactRows.filter((c) => isPeccHospitalContactRecord(c, linkedUserRole));
 
   const crmPeccPeople = await fetchAllRowsOrEmpty<Record<string, unknown>>((from, to) =>
     supabase
@@ -1370,18 +1450,7 @@ async function loadHospitalDataset(params: {
   }
 
   const ids = hospitals.map((h) => String(h.id));
-  const peccCounts = new Map<string, number>();
-  if (ids.length) {
-    for (const part of chunk(ids, 80)) {
-      const peccRows = await fetchAllRows<{ hospital_facility_id: string | null }>((from, to) =>
-        supabase.from('users').select('hospital_facility_id').eq('role', 'pecc').in('hospital_facility_id', part).range(from, to)
-      );
-      peccRows.forEach((r) => {
-        if (!r.hospital_facility_id) return;
-        peccCounts.set(r.hospital_facility_id, (peccCounts.get(r.hospital_facility_id) || 0) + 1);
-      });
-    }
-  }
+  const peccCounts = ids.length ? await loadPeccCountByHospital(ids) : new Map<string, number>();
 
   const checklistByHospital = await loadChecklistForHospitals(ids);
 
