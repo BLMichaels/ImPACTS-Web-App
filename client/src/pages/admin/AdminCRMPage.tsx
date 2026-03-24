@@ -411,7 +411,7 @@ const AdminCRMPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actualRole, enterViewAsUser, hasAdminAccess } = useUserProfile();
+  const { actualRole, enterViewAsUser, hasAdminAccess, refreshProfile, userProfile } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
   const canViewAsUser = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
@@ -2334,6 +2334,89 @@ const AdminCRMPage: React.FC = () => {
         }
       }
     }
+
+    // When a person contact has program(s) in CRM, sync program_members (navbar logo & Programs page use this — CRM text alone was not enough).
+    if (isPersonType(formData.type)) {
+      const programNames = (formData.programs ?? []).map((n: string) => (n || '').trim()).filter(Boolean);
+      const emailNorm = formData.email?.trim().toLowerCase() || '';
+      const contactUserIdForPrograms =
+        editingContact?.user_id ??
+        (emailNorm ? (await supabase.from('users').select('id').eq('email', emailNorm).maybeSingle()).data?.id : null);
+      let programRows = availablePrograms;
+      if (programRows.length === 0) {
+        const { data: pData } = await supabase.from('programs').select('id, name').eq('is_active', true);
+        programRows = (pData ?? []) as { id: string; name: string }[];
+      }
+      if (contactUserIdForPrograms && programRows.length > 0) {
+        const norm = (s: string) => s.trim().toLowerCase();
+        const programIds = programNames
+          .map((name: string) => programRows.find(p => norm(p.name) === norm(name))?.id)
+          .filter((id): id is string => Boolean(id));
+        if (programNames.length > 0 && programIds.length === 0) {
+          console.warn(
+            '[CRM] Program name(s) on contact did not match any active program in Admin → Programs. Navbar logo needs an exact name match or use Program members / Primary program.'
+          );
+        }
+        const { data: existingPm, error: pmReadErr } = await supabase
+          .from('program_members')
+          .select('program_id')
+          .eq('user_id', contactUserIdForPrograms)
+          .eq('status', 'active');
+        if (pmReadErr) {
+          console.warn('program_members sync read failed:', pmReadErr.message);
+        } else {
+          const existingIds = (existingPm ?? []).map((r: { program_id: string }) => r.program_id);
+          for (const pid of existingIds) {
+            if (!programIds.includes(pid)) {
+              const { error: rmErr } = await supabase
+                .from('program_members')
+                .update({ status: 'removed' })
+                .eq('user_id', contactUserIdForPrograms)
+                .eq('program_id', pid);
+              if (rmErr) console.warn('program_members remove:', rmErr.message);
+            }
+          }
+        }
+        for (const pid of programIds) {
+          const { error: upErr } = await supabase
+            .from('program_members')
+            .upsert(
+              {
+                program_id: pid,
+                user_id: contactUserIdForPrograms,
+                added_by: currentUser?.id ?? contactUserIdForPrograms,
+                status: 'active'
+              },
+              { onConflict: 'program_id,user_id' }
+            );
+          if (upErr) {
+            setSaveError(`Program membership sync failed: ${upErr.message}. Contact saved; fix permissions and re-save.`);
+            return;
+          }
+        }
+        if (programIds.length > 0) {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('primary_program_id')
+            .eq('id', contactUserIdForPrograms)
+            .maybeSingle();
+          const currentPrimary = (userRow as { primary_program_id?: string | null } | null)?.primary_program_id;
+          if (!currentPrimary) {
+            await supabase
+              .from('users')
+              .update({
+                primary_program_id: programIds[0],
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', contactUserIdForPrograms);
+          }
+        }
+        if (userProfile?.id === contactUserIdForPrograms) {
+          await refreshProfile();
+        }
+      }
+    }
+
     if (fromFullScreen) {
       setFullScreenEditMode(false);
       setDetailContact(prev => (prev && prev.id === payload.id ? { ...prev, ...payload } : prev));

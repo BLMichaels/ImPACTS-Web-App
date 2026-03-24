@@ -362,6 +362,7 @@ label={getRoleLabel(userRole)}
           }}
         >
           <img 
+            key={primaryProgramLogoUrl || 'default-brand'}
             src={primaryProgramLogoUrl || '/impacts-logo.png'} 
             alt="Logo" 
             style={{ 
@@ -370,12 +371,21 @@ label={getRoleLabel(userRole)}
             }}
             onError={(e) => {
               const el = e.target as HTMLImageElement;
-              if (primaryProgramLogoUrl) {
-                el.src = '/impacts-logo.png';
-                el.alt = 'ImPACTS Logo';
-              } else {
+              const url = primaryProgramLogoUrl;
+              if (!url) {
                 el.style.display = 'none';
+                return;
               }
+              // One retry with cache-bust (stale CDN/browser cache after logo re-upload)
+              const sep = url.includes('?') ? '&' : '?';
+              if (!el.dataset.retried) {
+                el.dataset.retried = '1';
+                el.src = `${url}${sep}t=${Date.now()}`;
+                return;
+              }
+              console.warn('[Navbar] Program logo failed to load; using default.', url);
+              el.src = '/impacts-logo.png';
+              el.alt = 'ImPACTS Logo';
             }}
           />
         </Box>
