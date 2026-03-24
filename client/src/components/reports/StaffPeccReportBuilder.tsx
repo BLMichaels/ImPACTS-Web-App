@@ -68,7 +68,19 @@ import {
 
 export type StaffReportScope = 'admin' | 'manager' | 'mentor';
 
-export type ReportDataset = 'pecc' | 'hospital' | 'organization' | 'staff' | 'contacts';
+export type ReportDataset =
+  | 'pecc'
+  | 'hospital'
+  | 'organization'
+  | 'crm_system'
+  | 'crm_hiring_group'
+  | 'contacts'
+  | 'internal_staff'
+  | 'managers'
+  | 'mentors'
+  | 'user_hospital_system'
+  | 'user_hiring_group'
+  | 'platform_users';
 
 /** PostgREST returns at most 1000 rows per request unless we paginate. */
 const POSTGREST_PAGE = 1000;
@@ -88,11 +100,14 @@ const ACTIVITY_PRESETS = [
   { value: 'inactive30', label: 'No activity in last 30 days' },
 ];
 
-/** Staff report = operational roles, not platform admins (unless explicitly included). */
-const STAFF_ROLE_OPTIONS = [
-  { value: 'pecc', label: 'PECC' },
-  { value: 'mentor', label: 'Mentor' },
+/** Multi-role report: pick which platform user roles to include (admin = internal team). */
+const PLATFORM_USERS_ROLE_OPTIONS = [
+  { value: 'admin', label: 'Admin (internal team)' },
   { value: 'manager', label: 'Manager' },
+  { value: 'mentor', label: 'Mentor' },
+  { value: 'pecc', label: 'PECC' },
+  { value: 'hospital_system', label: 'Hospital System (user)' },
+  { value: 'hiring_group', label: 'Hiring Group (user)' },
 ];
 
 /** One row: string cells keyed by column id (includes dynamic CRM keys). */
@@ -380,8 +395,15 @@ function buildColumnList(
     case 'hospital':
       return hosp;
     case 'organization':
+    case 'crm_system':
+    case 'crm_hiring_group':
       return org;
-    case 'staff':
+    case 'internal_staff':
+    case 'managers':
+    case 'mentors':
+    case 'user_hospital_system':
+    case 'user_hiring_group':
+    case 'platform_users':
       return staff;
     case 'contacts':
       return contactsCols;
@@ -411,12 +433,25 @@ function mergeColumnOrder(prev: string[], metas: ColumnMeta[]): string[] {
 }
 
 function isLinkedNameColumn(dataset: ReportDataset, columnId: string): boolean {
-  const map: Record<ReportDataset, string[]> = {
+  if (
+    columnId === 'name' &&
+    [
+      'internal_staff',
+      'managers',
+      'mentors',
+      'user_hospital_system',
+      'user_hiring_group',
+      'platform_users',
+    ].includes(dataset)
+  ) {
+    return true;
+  }
+  if (['organization', 'crm_system', 'crm_hiring_group'].includes(dataset) && columnId === 'orgName') return true;
+  const map: Partial<Record<ReportDataset, string[]>> = {
     pecc: ['name'],
     hospital: ['hospitalName'],
     organization: ['orgName'],
     contacts: ['contactName', 'hospitalName'],
-    staff: ['name', 'hospitalName'],
   };
   return map[dataset]?.includes(columnId) ?? false;
 }
@@ -468,8 +503,10 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   );
 
   const applySnapshot = useCallback((snap: ReportStateSnapshot) => {
-    setDataset(snap.dataset as ReportDataset);
-    prevDatasetForColumnsRef.current = snap.dataset as ReportDataset;
+    const rawDs = snap.dataset as string;
+    const normalized = rawDs === 'staff' ? 'platform_users' : rawDs;
+    setDataset(normalized as ReportDataset);
+    prevDatasetForColumnsRef.current = normalized as ReportDataset;
     setActivityPreset(snap.activityPreset);
     setProgramFilter(snap.programFilter);
     setCohortFilter(snap.cohortFilter);
@@ -514,7 +551,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       skipSortResetRef.current = false;
       return;
     }
-    if (dataset === 'organization') setSortBy('orgName');
+    if (dataset === 'organization' || dataset === 'crm_system' || dataset === 'crm_hiring_group') setSortBy('orgName');
     else if (dataset === 'contacts') setSortBy('contactName');
     else if (dataset === 'hospital') setSortBy('hospitalName');
     else setSortBy('name');
@@ -561,7 +598,9 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setPeccAudit(null);
     try {
       const hospitalScope = await resolveHospitalIdsForScope(scope, actorUserId);
-      if (hospitalScope && hospitalScope.length === 0 && dataset !== 'staff') {
+      const adminGlobalDataset =
+        dataset === 'internal_staff' || dataset === 'user_hospital_system' || dataset === 'user_hiring_group';
+      if (hospitalScope && hospitalScope.length === 0 && !adminGlobalDataset) {
         setRows([]);
         setPeccAudit(null);
         setLoading(false);
@@ -603,19 +642,76 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           scope,
           progMap,
           setRows,
+          contactTypes: ['organization'],
+        });
+      } else if (dataset === 'crm_system') {
+        await loadOrganizationDataset({
+          hospitalScope,
+          scope,
+          progMap,
+          setRows,
+          contactTypes: ['system'],
+        });
+      } else if (dataset === 'crm_hiring_group') {
+        await loadOrganizationDataset({
+          hospitalScope,
+          scope,
+          progMap,
+          setRows,
+          contactTypes: ['hiring_group'],
         });
       } else if (dataset === 'contacts') {
         await loadContactsDataset({
           hospitalScope,
           setRows,
         });
-      } else {
-        await loadStaffDataset({
+      } else if (dataset === 'internal_staff') {
+        await loadInternalStaffDataset({ scope, setRows });
+      } else if (dataset === 'managers') {
+        await loadPlatformUsersByRoles({
           scope,
           actorUserId,
           hospitalScope,
-          staffRoleFilter,
-          includePlatformAdminAccounts,
+          roles: ['manager'],
+          stripPlatformAdmins: false,
+          setRows,
+        });
+      } else if (dataset === 'mentors') {
+        await loadPlatformUsersByRoles({
+          scope,
+          actorUserId,
+          hospitalScope,
+          roles: ['mentor'],
+          stripPlatformAdmins: false,
+          setRows,
+        });
+      } else if (dataset === 'user_hospital_system') {
+        await loadPlatformUsersByRoles({
+          scope,
+          actorUserId,
+          hospitalScope: null,
+          roles: ['hospital_system'],
+          stripPlatformAdmins: false,
+          setRows,
+          adminGlobal: true,
+        });
+      } else if (dataset === 'user_hiring_group') {
+        await loadPlatformUsersByRoles({
+          scope,
+          actorUserId,
+          hospitalScope: null,
+          roles: ['hiring_group'],
+          stripPlatformAdmins: false,
+          setRows,
+          adminGlobal: true,
+        });
+      } else {
+        await loadPlatformUsersByRoles({
+          scope,
+          actorUserId,
+          hospitalScope,
+          roles: staffRoleFilter,
+          stripPlatformAdmins: !includePlatformAdminAccounts,
           setRows,
         });
       }
@@ -976,11 +1072,20 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   label="Report dataset"
                   onChange={(e) => setDataset(e.target.value as ReportDataset)}
                 >
+                  <ListSubheader disableSticky sx={{ lineHeight: 2 }}>People (platform users)</ListSubheader>
+                  <MenuItem value="internal_staff">Staff (internal team)</MenuItem>
+                  <MenuItem value="managers">Managers</MenuItem>
+                  <MenuItem value="mentors">Mentors</MenuItem>
                   <MenuItem value="pecc">PECCs (people at sites)</MenuItem>
+                  <MenuItem value="user_hospital_system">Hospital System (user accounts)</MenuItem>
+                  <MenuItem value="user_hiring_group">Hiring Group (user accounts)</MenuItem>
+                  <MenuItem value="platform_users">Platform users (pick roles)</MenuItem>
+                  <ListSubheader disableSticky sx={{ lineHeight: 2 }}>CRM records</ListSubheader>
+                  <MenuItem value="contacts">Hospital contacts</MenuItem>
+                  <MenuItem value="organization">Organizations</MenuItem>
+                  <MenuItem value="crm_system">Hospital Systems (CRM)</MenuItem>
+                  <MenuItem value="crm_hiring_group">Hiring Groups (CRM)</MenuItem>
                   <MenuItem value="hospital">Hospitals &amp; sites</MenuItem>
-                  <MenuItem value="organization">CRM organizations</MenuItem>
-                  <MenuItem value="contacts">Hospital contacts (CRM)</MenuItem>
-                  <MenuItem value="staff">Staff (mentors, managers, PECCs…)</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -1049,15 +1154,15 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                 </Grid>
               </>
             )}
-            {dataset === 'staff' && (
+            {dataset === 'platform_users' && (
               <>
                 <Grid item xs={12} md={5}>
                   <Autocomplete
                     multiple
                     size="small"
-                    options={STAFF_ROLE_OPTIONS}
+                    options={PLATFORM_USERS_ROLE_OPTIONS}
                     getOptionLabel={(o) => o.label}
-                    value={STAFF_ROLE_OPTIONS.filter((o) => staffRoleFilter.includes(o.value))}
+                    value={PLATFORM_USERS_ROLE_OPTIONS.filter((o) => staffRoleFilter.includes(o.value))}
                     onChange={(_, v) => setStaffRoleFilter(v.map((x) => x.value))}
                     renderInput={(params) => <TextField {...params} label="Include roles" placeholder="Roles" />}
                   />
@@ -1091,6 +1196,15 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             {error}
           </Alert>
         )}
+
+        {scope !== 'admin' &&
+          (dataset === 'internal_staff' || dataset === 'user_hospital_system' || dataset === 'user_hiring_group') && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                This report is only available to administrators. Switch to an admin account or choose another dataset.
+              </Typography>
+            </Alert>
+          )}
 
         {dataset === 'hospital' && !loading && (
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
@@ -1301,10 +1415,24 @@ function datasetLabel(d: ReportDataset): string {
       return 'hospitals';
     case 'organization':
       return 'organizations';
-    case 'staff':
-      return 'staff';
+    case 'crm_system':
+      return 'crm-systems';
+    case 'crm_hiring_group':
+      return 'crm-hiring-groups';
     case 'contacts':
       return 'contacts';
+    case 'internal_staff':
+      return 'internal-staff';
+    case 'managers':
+      return 'managers';
+    case 'mentors':
+      return 'mentors';
+    case 'user_hospital_system':
+      return 'hospital-system-users';
+    case 'user_hiring_group':
+      return 'hiring-group-users';
+    case 'platform_users':
+      return 'platform-users';
     default:
       return 'report';
   }
@@ -1950,8 +2078,10 @@ async function loadOrganizationDataset(params: {
   scope: StaffReportScope;
   progMap: Map<string, string>;
   setRows: (r: ReportDataRow[]) => void;
+  /** When set, only include CRM rows whose contact_type matches (e.g. organization vs system vs hiring_group). */
+  contactTypes?: string[] | null;
 }): Promise<void> {
-  const { hospitalScope, scope, progMap, setRows } = params;
+  const { hospitalScope, scope, progMap, setRows, contactTypes } = params;
   const coList = await fetchAllRowsOrEmpty<{ id: string; name: string }>((from, to) =>
     supabase.from('cohorts').select('id, name').eq('is_active', true).order('name').range(from, to)
   );
@@ -1975,6 +2105,8 @@ async function loadOrganizationDataset(params: {
   const scopeSet = hospitalScope === null ? null : new Set(hospitalScope);
 
   const filtered = orgs.filter((row: Record<string, unknown>) => {
+    const ct = String(row.contact_type ?? 'organization');
+    if (contactTypes && contactTypes.length > 0 && !contactTypes.includes(ct)) return false;
     if (scope === 'admin' || hospitalScope === null) return true;
     if (hospitalScope.length === 0) return false;
     const links = Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [];
@@ -2113,18 +2245,113 @@ async function loadContactsDataset(params: {
   setRows(rows);
 }
 
-async function loadStaffDataset(params: {
+type StaffReportUserRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  role: string;
+  last_login: string | null;
+  manager_id: string | null;
+  mentor_id: string | null;
+  hospital_facility_id: string | null;
+  created_at: string | null;
+  is_admin: boolean | null;
+};
+
+const STAFF_USER_SELECT =
+  'id, first_name, last_name, email, phone, role, last_login, manager_id, mentor_id, hospital_facility_id, created_at, is_admin';
+
+async function enrichStaffUsersToReportRows(urows: StaffReportUserRow[]): Promise<ReportDataRow[]> {
+  const userRefIds = [...new Set(urows.flatMap((u) => [u.manager_id, u.mentor_id].filter(Boolean)))] as string[];
+  const hospitalIds = [...new Set(urows.map((u) => u.hospital_facility_id).filter(Boolean))] as string[];
+
+  const nameById = new Map<string, string>();
+  for (const uidPart of chunk(userRefIds, 80)) {
+    const { data: refUsers } = await supabase.from('users').select('id, first_name, last_name').in('id', uidPart);
+    (refUsers || []).forEach((u: { id: string; first_name?: string; last_name?: string }) => {
+      nameById.set(u.id, `${u.first_name || ''} ${u.last_name || ''}`.trim());
+    });
+  }
+
+  const hospById = new Map<string, { name: string; state?: string }>();
+  for (const hidPart of chunk(hospitalIds, 80)) {
+    const { data: refHosp } = await supabase.from('hospitals').select('id, name, state').in('id', hidPart);
+    (refHosp || []).forEach((h: { id: string; name: string; state?: string }) => hospById.set(h.id, h));
+  }
+
+  return urows.map((u) => {
+    const h = u.hospital_facility_id ? hospById.get(u.hospital_facility_id) : null;
+    return {
+      id: u.id,
+      cells: {
+        name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+        email: u.email || '',
+        userRole: u.role || '',
+        platformAdminAccess: u.is_admin ? 'Yes' : 'No',
+        userPhone: u.phone || '',
+        lastLogin: u.last_login ? format(new Date(u.last_login), 'yyyy-MM-dd') : '',
+        userCreatedAt: u.created_at ? format(new Date(u.created_at), 'yyyy-MM-dd') : '',
+        managerName: u.manager_id ? nameById.get(u.manager_id) || '' : '',
+        mentorName: u.mentor_id ? nameById.get(u.mentor_id) || '' : '',
+        hospitalName: h ? String(h.name) : '',
+        state: h && h.state ? String(h.state).toUpperCase() : '',
+      },
+      linkHints: { userId: u.id, hospitalId: u.hospital_facility_id || undefined },
+    };
+  });
+}
+
+/** ImPACTS internal team: admin role or platform admin flag (not managers/mentors/PECCs by role). */
+async function loadInternalStaffDataset(params: { scope: StaffReportScope; setRows: (r: ReportDataRow[]) => void }): Promise<void> {
+  const { scope, setRows } = params;
+  if (scope !== 'admin') {
+    setRows([]);
+    return;
+  }
+
+  const urows = await fetchAllRows<StaffReportUserRow>((from, to) =>
+    supabase
+      .from('users')
+      .select(STAFF_USER_SELECT)
+      .eq('is_active', true)
+      .or('role.eq.admin,is_admin.is.true')
+      .order('last_name')
+      .range(from, to)
+  );
+
+  const rows = await enrichStaffUsersToReportRows(urows);
+  setRows(rows);
+}
+
+async function loadPlatformUsersByRoles(params: {
   scope: StaffReportScope;
   actorUserId: string;
   hospitalScope: string[] | null;
-  staffRoleFilter: string[];
-  includePlatformAdminAccounts: boolean;
+  roles: string[];
+  stripPlatformAdmins: boolean;
   setRows: (r: ReportDataRow[]) => void;
+  /** Admins only: full list for this role (ignore hospital scope). */
+  adminGlobal?: boolean;
 }): Promise<void> {
-  const { scope, actorUserId, hospitalScope, staffRoleFilter, includePlatformAdminAccounts, setRows } = params;
+  const { scope, actorUserId, hospitalScope, roles, stripPlatformAdmins, setRows, adminGlobal } = params;
 
-  if (!staffRoleFilter.length) {
+  if (!roles.length) {
     setRows([]);
+    return;
+  }
+
+  if (adminGlobal) {
+    if (scope !== 'admin') {
+      setRows([]);
+      return;
+    }
+    let urows = await fetchAllRows<StaffReportUserRow>((from, to) =>
+      supabase.from('users').select(STAFF_USER_SELECT).eq('is_active', true).in('role', roles).order('last_name').range(from, to)
+    );
+    if (stripPlatformAdmins) urows = urows.filter((u) => !u.is_admin);
+    setRows(await enrichStaffUsersToReportRows(urows));
     return;
   }
 
@@ -2162,48 +2389,23 @@ async function loadStaffDataset(params: {
     allowedIds = [...new Set([actorUserId, ...peccIds])];
   }
 
-  type URow = {
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    phone: string | null;
-    role: string;
-    last_login: string | null;
-    manager_id: string | null;
-    mentor_id: string | null;
-    hospital_facility_id: string | null;
-    created_at: string | null;
-    is_admin: boolean | null;
-  };
-
-  let urows: URow[] = [];
+  let urows: StaffReportUserRow[] = [];
 
   if (allowedIds === null) {
-    urows = await fetchAllRows<URow>((from, to) =>
-      supabase
-        .from('users')
-        .select(
-          'id, first_name, last_name, email, phone, role, last_login, manager_id, mentor_id, hospital_facility_id, created_at, is_admin'
-        )
-        .eq('is_active', true)
-        .in('role', staffRoleFilter)
-        .order('last_name')
-        .range(from, to)
+    urows = await fetchAllRows<StaffReportUserRow>((from, to) =>
+      supabase.from('users').select(STAFF_USER_SELECT).eq('is_active', true).in('role', roles).order('last_name').range(from, to)
     );
   } else if (allowedIds.length === 0) {
     setRows([]);
     return;
   } else {
     for (const idPart of chunk(allowedIds, 80)) {
-      const part = await fetchAllRows<URow>((from, to) =>
+      const part = await fetchAllRows<StaffReportUserRow>((from, to) =>
         supabase
           .from('users')
-          .select(
-            'id, first_name, last_name, email, phone, role, last_login, manager_id, mentor_id, hospital_facility_id, created_at, is_admin'
-          )
+          .select(STAFF_USER_SELECT)
           .eq('is_active', true)
-          .in('role', staffRoleFilter)
+          .in('role', roles)
           .in('id', idPart)
           .order('last_name')
           .range(from, to)
@@ -2212,49 +2414,11 @@ async function loadStaffDataset(params: {
     }
   }
 
-  if (!includePlatformAdminAccounts) {
+  if (stripPlatformAdmins) {
     urows = urows.filter((u) => !u.is_admin);
   }
 
-  const userRefIds = [...new Set(urows.flatMap((u) => [u.manager_id, u.mentor_id].filter(Boolean)))] as string[];
-  const hospitalIds = [...new Set(urows.map((u) => u.hospital_facility_id).filter(Boolean))] as string[];
-
-  const nameById = new Map<string, string>();
-  for (const uidPart of chunk(userRefIds, 80)) {
-    const { data: refUsers } = await supabase.from('users').select('id, first_name, last_name').in('id', uidPart);
-    (refUsers || []).forEach((u: { id: string; first_name?: string; last_name?: string }) => {
-      nameById.set(u.id, `${u.first_name || ''} ${u.last_name || ''}`.trim());
-    });
-  }
-
-  const hospById = new Map<string, { name: string; state?: string }>();
-  for (const hidPart of chunk(hospitalIds, 80)) {
-    const { data: refHosp } = await supabase.from('hospitals').select('id, name, state').in('id', hidPart);
-    (refHosp || []).forEach((h: { id: string; name: string; state?: string }) => hospById.set(h.id, h));
-  }
-
-  const rows: ReportDataRow[] = urows.map((u) => {
-    const h = u.hospital_facility_id ? hospById.get(u.hospital_facility_id) : null;
-    return {
-      id: u.id,
-      cells: {
-        name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
-        email: u.email || '',
-        userRole: u.role || '',
-        platformAdminAccess: u.is_admin ? 'Yes' : 'No',
-        userPhone: u.phone || '',
-        lastLogin: u.last_login ? format(new Date(u.last_login), 'yyyy-MM-dd') : '',
-        userCreatedAt: u.created_at ? format(new Date(u.created_at), 'yyyy-MM-dd') : '',
-        managerName: u.manager_id ? nameById.get(u.manager_id) || '' : '',
-        mentorName: u.mentor_id ? nameById.get(u.mentor_id) || '' : '',
-        hospitalName: h ? String(h.name) : '',
-        state: h && h.state ? String(h.state).toUpperCase() : '',
-      },
-      linkHints: { userId: u.id, hospitalId: u.hospital_facility_id || undefined },
-    };
-  });
-
-  setRows(rows);
+  setRows(await enrichStaffUsersToReportRows(urows));
 }
 
 export default StaffPeccReportBuilder;

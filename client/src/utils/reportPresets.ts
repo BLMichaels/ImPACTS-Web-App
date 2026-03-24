@@ -9,7 +9,21 @@ export interface ReportRowLinkHints {
   hospitalContactId?: string;
 }
 
-export type ReportDatasetKey = 'pecc' | 'hospital' | 'organization' | 'staff' | 'contacts';
+export type ReportDatasetKey =
+  | 'pecc'
+  | 'hospital'
+  | 'organization'
+  | 'crm_system'
+  | 'crm_hiring_group'
+  | 'contacts'
+  /** @deprecated Presets may still store "staff"; map to platform_users when loading. */
+  | 'staff'
+  | 'internal_staff'
+  | 'managers'
+  | 'mentors'
+  | 'user_hospital_system'
+  | 'user_hiring_group'
+  | 'platform_users';
 
 export interface ReportStateSnapshot {
   dataset: ReportDatasetKey;
