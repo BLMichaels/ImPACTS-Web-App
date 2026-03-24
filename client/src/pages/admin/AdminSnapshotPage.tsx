@@ -55,6 +55,17 @@ import SearchIcon from '@mui/icons-material/Search';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
+import {
+  PlatformPeoplePieChart,
+  PlatformSitesBarChart,
+  ProgramBreakdownGroupedBar,
+  CohortBreakdownGroupedBar,
+  UsageActivityVolumeChart,
+  UsageTopPagesBar,
+  UsageUniqueLoginsPie,
+  UsageEventTypesBar,
+  ClicksByRoleBar,
+} from '../../components/admin/AdminReportCharts';
 import { supabase } from '../../supabase';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -555,6 +566,40 @@ export default function AdminSnapshotPage() {
     };
   }, [events, tableLimit]);
 
+  /** Events per calendar day (for volume chart). */
+  const usageByDay = useMemo(() => {
+    const byDay: Record<string, number> = {};
+    events.forEach((e) => {
+      const d = e.created_at.slice(0, 10);
+      byDay[d] = (byDay[d] || 0) + 1;
+    });
+    return Object.entries(byDay)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, count]) => ({ date, count }));
+  }, [events]);
+
+  const eventTypeBreakdown = useMemo(() => {
+    const m: Record<string, number> = {};
+    events.forEach((e) => {
+      const t = e.event_type || 'unknown';
+      m[t] = (m[t] || 0) + 1;
+    });
+    return Object.entries(m)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [events]);
+
+  const uniqueLoginsPieData = useMemo(() => {
+    return Object.entries(metrics.uniqueLoginsByRole).map(([name, set]) => ({
+      name,
+      value: (set as Set<string>).size,
+    }));
+  }, [metrics.uniqueLoginsByRole]);
+
+  const clicksByRoleData = useMemo(() => {
+    return Object.entries(metrics.clickCountByRole).map(([name, value]) => ({ name, value }));
+  }, [metrics.clickCountByRole]);
+
   const pathLabel = (path: string) => {
     if (path === '/') return 'Home';
     const p = path.replace(/^\//, '');
@@ -913,6 +958,41 @@ export default function AdminSnapshotPage() {
                     </Card>
                   </Grid>
                 </Grid>
+
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, mt: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Visual summary
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 1 }}>
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          People by role
+                        </Typography>
+                        <PlatformPeoplePieChart
+                          managers={aggregated.managers}
+                          mentors={aggregated.mentors}
+                          peccs={aggregated.peccs}
+                        />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          Sites &amp; network
+                        </Typography>
+                        <PlatformSitesBarChart
+                          sites={aggregated.sites}
+                          contacts={aggregated.contacts}
+                          activeAssignments={aggregated.activeAssignments}
+                          totalHospitals={aggregated.totalHospitals}
+                        />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
               </>
             ) : null}
           </Box>
@@ -968,6 +1048,28 @@ export default function AdminSnapshotPage() {
               </Box>
             ) : (
               <>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          Programs: mentors, PECCs, and sites
+                        </Typography>
+                        <ProgramBreakdownGroupedBar programs={filteredProgramBreakdowns} />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          Cohorts: mentors, PECCs, and sites
+                        </Typography>
+                        <CohortBreakdownGroupedBar cohorts={filteredCohortBreakdowns} />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
                 <Typography variant="subtitle1" fontWeight={600} gutterBottom>By program</Typography>
                 <TableContainer sx={{ mb: 4 }}>
                   <Table size="small">
@@ -1189,6 +1291,62 @@ export default function AdminSnapshotPage() {
                           <Typography variant="subtitle2" fontWeight={600}>Link clicks</Typography>
                         </Box>
                         <Typography variant="h5" color="primary">{metrics.totalLinkClicks}</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Visual summary
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} lg={6}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          Event volume by day
+                        </Typography>
+                        <UsageActivityVolumeChart byDay={usageByDay} />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} lg={6}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          Unique logins by role
+                        </Typography>
+                        <UsageUniqueLoginsPie byRole={uniqueLoginsPieData} />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} lg={6}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          Events by type
+                        </Typography>
+                        <UsageEventTypesBar rows={eventTypeBreakdown} />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} lg={6}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          Top pages (views)
+                        </Typography>
+                        <UsageTopPagesBar pages={filterUsageTable(metrics.mostUsedPages, usageSearch)} pathLabel={pathLabel} />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                          UI clicks by role
+                        </Typography>
+                        <ClicksByRoleBar byRole={clicksByRoleData} />
                       </CardContent>
                     </Card>
                   </Grid>
