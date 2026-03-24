@@ -185,7 +185,7 @@ const CohortsPage: React.FC = () => {
   // Determine permissions based on role
   const canInvite = userRole === UserRole.MENTOR;
   const canManage = false; // PECCs and Mentors cannot manage cohorts from this page
-  const canAnnounce = userRole === UserRole.MENTOR; // Mentors can post announcements and start discussions
+  const canAnnounce = userRole === UserRole.MANAGER; // Managers can post announcements
 
   if (selectedCohort) {
     return (
