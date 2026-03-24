@@ -79,7 +79,7 @@ export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: 
  * Uses user_has_permission RPC (role + user/cohort/program overrides) and fails closed on errors.
  */
 export const usePermission = (permissionKey: string, cohortId?: string, programId?: string) => {
-  const { userProfile } = useUserProfile();
+  const { userProfile, hasPermissionInScope } = useUserProfile();
   const [hasPermission, setHasPermission] = useState(false);
   const userId = userProfile?.id;
 
@@ -89,17 +89,8 @@ export const usePermission = (permissionKey: string, cohortId?: string, programI
 
     const checkPermission = async () => {
       try {
-        const { data, error } = await supabase.rpc('user_has_permission', {
-          p_user_id: userId,
-          p_permission_key: permissionKey,
-          p_cohort_id: cohortId || null,
-          p_program_id: programId || null
-        });
-        if (!error && typeof data === 'boolean') {
-          if (!cancelled) setHasPermission(data);
-          return;
-        }
-        if (!cancelled) setHasPermission(false);
+        const allowed = await hasPermissionInScope(permissionKey, cohortId, programId);
+        if (!cancelled) setHasPermission(allowed);
       } catch (err) {
         console.error('Error checking permission:', err);
         if (!cancelled) setHasPermission(false);
@@ -108,7 +99,7 @@ export const usePermission = (permissionKey: string, cohortId?: string, programI
 
     checkPermission();
     return () => { cancelled = true; };
-  }, [userId, permissionKey, cohortId, programId]);
+  }, [userId, permissionKey, cohortId, programId, hasPermissionInScope]);
 
   return hasPermission;
 };

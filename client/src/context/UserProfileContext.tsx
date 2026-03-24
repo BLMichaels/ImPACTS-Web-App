@@ -46,6 +46,7 @@ interface UserProfileContextType {
   /** True when the signed-in user has platform admin privileges (role admin or is_admin). Not affected by "view as" profile swap. */
   hasAdminAccess: boolean;
   hasPermission: (permission: string) => boolean;
+  hasPermissionInScope: (permission: string, cohortId?: string, programId?: string) => Promise<boolean>;
   permissions: string[];
   refreshProfile: () => Promise<void>;
   // Admin "View As" feature
@@ -509,6 +510,23 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     return (permission in permissionOverrides) ? !!permissionOverrides[permission] : permissions.includes(permission);
   };
 
+  const hasPermissionInScope = useCallback(async (permission: string, cohortId?: string, programId?: string): Promise<boolean> => {
+    const scopedUserId = viewAsUserId ?? currentUser?.id;
+    if (!scopedUserId) return false;
+    try {
+      const { data, error } = await supabase.rpc('user_has_permission', {
+        p_user_id: scopedUserId,
+        p_permission_key: permission,
+        p_cohort_id: cohortId || null,
+        p_program_id: programId || null
+      });
+      if (!error && typeof data === 'boolean') return data;
+      return hasPermission(permission);
+    } catch {
+      return hasPermission(permission);
+    }
+  }, [viewAsUserId, currentUser?.id, hasPermission]);
+
   const refreshProfile = async () => {
     setIsLoading(true);
     await fetchUserProfile();
@@ -605,6 +623,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     actualRole: userProfile?.role || UserRole.PECC,
     hasAdminAccess,
     hasPermission,
+    hasPermissionInScope,
     permissions,
     refreshProfile,
     viewAsRole,
