@@ -151,6 +151,7 @@ async function fetchUserDataBatch(
       .in('user_id', part)
       .in('data_key', dataKeys);
     if (error) {
+      if (isSupabaseMissingRelationError(error)) return new Map();
       console.warn('user_data batch:', error.message);
       continue;
     }
@@ -234,7 +235,7 @@ function buildColumnList(
     { id: 'traumaLevel', label: 'Trauma level', defaultOn: false, group: 'Site (CRM)' },
     { id: 'edSize', label: 'ED size', defaultOn: false, group: 'Site (CRM)' },
     { id: 'lastLogin', label: 'Last login', defaultOn: true, group: 'Engagement' },
-    { id: 'activeWindow', label: 'Met activity filter', defaultOn: true, group: 'Engagement' },
+    { id: 'activeWindow', label: 'Met activity filter (user accounts)', defaultOn: true, group: 'Engagement' },
     { id: 'checklistProgress', label: 'Site checklist %', defaultOn: true, group: 'Checklist & gaps' },
     { id: 'activitiesCount', label: 'Activities logged', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'gapPlansTotal', label: 'Gap plans (total)', defaultOn: false, group: 'Checklist & gaps' },
@@ -396,8 +397,20 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: defs } = await supabase.from('crm_custom_field_definitions').select('id, label, applicable_types').order('sort_order');
+      const { data: defs, error } = await supabase
+        .from('crm_custom_field_definitions')
+        .select('id, label, applicable_types')
+        .order('sort_order');
       if (cancelled) return;
+      if (error) {
+        if (isSupabaseMissingRelationError(error)) {
+          setHospitalCustomDefs([]);
+          setOrgCustomDefs([]);
+        } else {
+          console.warn('crm_custom_field_definitions:', error.message);
+        }
+        return;
+      }
       const h: { id: string; label: string }[] = [];
       const o: { id: string; label: string }[] = [];
       (defs || []).forEach((row: { id: string; label: string; applicable_types?: string[] }) => {
@@ -429,14 +442,24 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         return;
       }
 
-      const [{ data: progList }, { data: coList }] = await Promise.all([
+      const [progRes, coRes] = await Promise.all([
         supabase.from('programs').select('id, name').eq('is_active', true).order('name'),
         supabase.from('cohorts').select('id, name').eq('is_active', true).order('name'),
       ]);
-      setPrograms((progList || []) as { id: string; name: string }[]);
-      setCohorts((coList || []) as { id: string; name: string }[]);
-      const progMap = new Map((progList || []).map((p: { id: string; name: string }) => [p.id, p.name]));
-      const coMap = new Map((coList || []).map((c: { id: string; name: string }) => [c.id, c.name]));
+      const progList: { id: string; name: string }[] = progRes.error
+        ? isSupabaseMissingRelationError(progRes.error)
+          ? []
+          : (console.warn('programs:', progRes.error.message), [])
+        : ((progRes.data || []) as { id: string; name: string }[]);
+      const coList: { id: string; name: string }[] = coRes.error
+        ? isSupabaseMissingRelationError(coRes.error)
+          ? []
+          : (console.warn('cohorts:', coRes.error.message), [])
+        : ((coRes.data || []) as { id: string; name: string }[]);
+      setPrograms(progList);
+      setCohorts(coList);
+      const progMap = new Map(progList.map((p) => [p.id, p.name]));
+      const coMap = new Map(coList.map((c) => [c.id, c.name]));
 
       if (dataset === 'pecc') {
         await loadPeccDataset({
@@ -509,19 +532,21 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     if (dataset === 'pecc') {
       if (programFilter !== 'all') {
         list = list.filter((r) => {
-          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return true;
+          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return false;
           return (programIdsByRow[r.id] || []).includes(programFilter);
         });
       }
       if (cohortFilter !== 'all') {
         list = list.filter((r) => {
-          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return true;
+          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return false;
           return (cohortIdsByRow[r.id] || []).includes(cohortFilter);
         });
       }
       if (activityPreset !== 'any') {
         list = list.filter((r) => {
-          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return true;
+          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) {
+            return activityPreset === 'inactive30';
+          }
           return r.cells.activeWindow === 'Yes';
         });
       }
@@ -532,7 +557,23 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const sorted = useMemo(() => {
     const copy = [...filtered];
     const dir = sortDir === 'asc' ? 1 : -1;
+    const numericSortIds = new Set([
+      'peccCount',
+      'activitiesCount',
+      'gapPlansTotal',
+      'gapPlansOpen',
+      'gapPlansCompleted',
+      'checklistProgress',
+    ]);
     copy.sort((a, b) => {
+      if (numericSortIds.has(sortBy)) {
+        const av = a.cells[sortBy] ?? '';
+        const bv = b.cells[sortBy] ?? '';
+        const an = parseFloat(String(av).replace(/[^\d.-]/g, '')) || 0;
+        const bn = parseFloat(String(bv).replace(/[^\d.-]/g, '')) || 0;
+        if (an !== bn) return (an - bn) * dir;
+        return String(a.id).localeCompare(String(b.id)) * dir;
+      }
       const av = a.cells[sortBy] ?? '';
       const bv = b.cells[sortBy] ?? '';
       return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * dir;
@@ -762,7 +803,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               <Chip size="small" color="primary" variant="outlined" label={`Total rows: ${peccAudit.totalLoadedRows}`} />
             </Stack>
             <Typography variant="caption" color="text.secondary" display="block">
-              Visible now: {filtered.length} of {rows.length} loaded rows (search, state, program/cohort, and activity filters apply below). CRM PECCs can exist in more than one place; this report merges user accounts, hospital_contacts, and crm_organizations (contact_type=pecc).
+              Visible now: {filtered.length} of {rows.length} loaded rows. Program and cohort filters apply to user accounts only. Platform activity filters apply to user accounts; for &quot;No activity in last 30 days&quot;, hospital/CRM rows without a login are still listed. CRM PECCs can exist in more than one place; this report merges user accounts, hospital_contacts, and crm_organizations (contact_type=pecc).
             </Typography>
           </Alert>
         )}
@@ -794,7 +835,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                           <Chip
                             size="small"
                             label={r.cells[cid] || '—'}
-                            color={r.cells[cid] === 'Yes' ? 'success' : 'default'}
+                            color={r.cells[cid] === 'Yes' ? 'success' : r.cells[cid] === 'No' ? 'warning' : 'default'}
                             variant="outlined"
                           />
                         ) : (
@@ -1189,10 +1230,10 @@ async function loadPeccDataset(params: {
     return u ? `${(u as { first_name?: string }).first_name || ''} ${(u as { last_name?: string }).last_name || ''}`.trim() || '—' : '—';
   };
 
-  const pm = await fetchAllRows<{ program_id: string; user_id: string }>((from, to) =>
+  const pm = await fetchAllRowsOrEmpty<{ program_id: string; user_id: string }>((from, to) =>
     supabase.from('program_members').select('program_id, user_id').eq('status', 'active').range(from, to)
   );
-  const cm = await fetchAllRows<{ cohort_id: string; user_id: string }>((from, to) =>
+  const cm = await fetchAllRowsOrEmpty<{ cohort_id: string; user_id: string }>((from, to) =>
     supabase.from('cohort_members').select('cohort_id, user_id').eq('status', 'active').range(from, to)
   );
 
@@ -1229,27 +1270,19 @@ async function loadPeccDataset(params: {
   if (peccIds.length && activityPreset !== 'any' && activityPreset !== 'inactive30') {
     const days = parseInt(activityPreset, 10);
     const sinceIso = subDays(new Date(), days).toISOString();
-    try {
-      for (const part of chunk(peccIds, 100)) {
-        const evRows = await fetchAllRows<{ user_id: string }>((from, to) =>
-          supabase.from('usage_events').select('user_id').in('user_id', part).gte('created_at', sinceIso).range(from, to)
-        );
-        for (const e of evRows) usageInWindow.add(e.user_id);
-      }
-    } catch {
-      usageInWindow = new Set();
+    for (const part of chunk(peccIds, 100)) {
+      const evRows = await fetchAllRowsOrEmpty<{ user_id: string }>((from, to) =>
+        supabase.from('usage_events').select('user_id').in('user_id', part).gte('created_at', sinceIso).range(from, to)
+      );
+      for (const e of evRows) usageInWindow.add(e.user_id);
     }
   } else if (activityPreset === 'inactive30' && peccIds.length) {
     const sinceIso = subDays(new Date(), 30).toISOString();
-    try {
-      for (const part of chunk(peccIds, 100)) {
-        const evRows = await fetchAllRows<{ user_id: string }>((from, to) =>
-          supabase.from('usage_events').select('user_id').in('user_id', part).gte('created_at', sinceIso).range(from, to)
-        );
-        for (const e of evRows) usageInWindow.add(e.user_id);
-      }
-    } catch {
-      usageInWindow = new Set();
+    for (const part of chunk(peccIds, 100)) {
+      const evRows = await fetchAllRowsOrEmpty<{ user_id: string }>((from, to) =>
+        supabase.from('usage_events').select('user_id').in('user_id', part).gte('created_at', sinceIso).range(from, to)
+      );
+      for (const e of evRows) usageInWindow.add(e.user_id);
     }
   }
 
@@ -1327,14 +1360,6 @@ async function loadPeccDataset(params: {
     const h = hospById.get(c.hospital_id);
     const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
     const cf = h?.custom_fields || {};
-    let activeInWindow = true;
-    if (activityPreset === 'any') {
-      activeInWindow = true;
-    } else if (activityPreset === 'inactive30') {
-      activeInWindow = true;
-    } else if (['7', '30', '90'].includes(activityPreset)) {
-      activeInWindow = false;
-    }
 
     const cells: Record<string, string> = {
       accountSource: 'Hospital contact (no user account yet)',
@@ -1359,7 +1384,7 @@ async function loadPeccDataset(params: {
       traumaLevel: h?.trauma_level || '',
       edSize: h?.ed_size || '',
       lastLogin: '',
-      activeWindow: activeInWindow ? 'Yes' : 'No',
+      activeWindow: 'N/A',
       checklistProgress: checklistPercent(chk) + (chk && chk.total > 0 ? '%' : ''),
       activitiesCount: '0',
       gapPlansTotal: '0',
@@ -1384,7 +1409,6 @@ async function loadPeccDataset(params: {
     const h = c.hospital_id ? hospById.get(c.hospital_id) : null;
     const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
     const cf = h?.custom_fields || {};
-    const activeInWindow = activityPreset === 'any' || activityPreset === 'inactive30';
 
     const cells: Record<string, string> = {
       accountSource: 'CRM PECC contact',
@@ -1409,7 +1433,7 @@ async function loadPeccDataset(params: {
       traumaLevel: h?.trauma_level || '',
       edSize: h?.ed_size || '',
       lastLogin: '',
-      activeWindow: activeInWindow ? 'Yes' : 'No',
+      activeWindow: 'N/A',
       checklistProgress: checklistPercent(chk) + (chk && chk.total > 0 ? '%' : ''),
       activitiesCount: '0',
       gapPlansTotal: '0',
@@ -1446,7 +1470,7 @@ async function loadHospitalDataset(params: {
   setRows: (r: ReportDataRow[]) => void;
 }): Promise<void> {
   const { hospitalScope, progMap, setRows } = params;
-  const coList = await fetchAllRows<{ id: string; name: string }>((from, to) =>
+  const coList = await fetchAllRowsOrEmpty<{ id: string; name: string }>((from, to) =>
     supabase.from('cohorts').select('id, name').eq('is_active', true).order('name').range(from, to)
   );
   const cohortMap = new Map(coList.map((c) => [c.id, c.name]));
@@ -1518,12 +1542,12 @@ async function loadOrganizationDataset(params: {
   setRows: (r: ReportDataRow[]) => void;
 }): Promise<void> {
   const { hospitalScope, scope, progMap, setRows } = params;
-  const coList = await fetchAllRows<{ id: string; name: string }>((from, to) =>
+  const coList = await fetchAllRowsOrEmpty<{ id: string; name: string }>((from, to) =>
     supabase.from('cohorts').select('id, name').eq('is_active', true).order('name').range(from, to)
   );
   const coMap = new Map(coList.map((c) => [c.id, c.name]));
 
-  const orgs = await fetchAllRows<Record<string, unknown>>((from, to) =>
+  const orgs = await fetchAllRowsOrEmpty<Record<string, unknown>>((from, to) =>
     supabase
       .from('crm_organizations')
       .select(
@@ -1533,7 +1557,7 @@ async function loadOrganizationDataset(params: {
       .range(from, to)
   );
 
-  const hospNames = await fetchAllRows<{ id: string; name: string }>((from, to) =>
+  const hospNames = await fetchAllRowsOrEmpty<{ id: string; name: string }>((from, to) =>
     supabase.from('hospitals').select('id, name').order('id').range(from, to)
   );
   const hidToName = new Map(hospNames.map((h) => [h.id, h.name]));
