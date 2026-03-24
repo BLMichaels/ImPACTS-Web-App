@@ -221,7 +221,7 @@ const SnapshotPage = () => {
         // Helper function to add section headers
         const addSectionHeader = (text: string, y: number) => {
           doc.setFontSize(16);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.setTextColor(33, 150, 243); // Blue color
           doc.text(text, margin, y);
           doc.setTextColor(0, 0, 0); // Reset to black
@@ -237,19 +237,19 @@ const SnapshotPage = () => {
           
           // Add value (large, bold)
           doc.setFontSize(18);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.setTextColor(33, 37, 41);
           doc.text(value, x + 5, y + 12);
           
           // Add label
           doc.setFontSize(11);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.setTextColor(33, 37, 41);
           doc.text(label, x + 5, y + 22);
           
           // Add wrapped description
           doc.setFontSize(9);
-          doc.setFont(undefined, 'normal');
+          doc.setFont('helvetica', 'normal');
           doc.setTextColor(108, 117, 125);
           addWrappedText(description, x + 5, y + 30, width - 10, 9);
           
@@ -259,7 +259,7 @@ const SnapshotPage = () => {
         // Helper function to add progress bars (like the progress indicators)
         const addProgressBar = (label: string, percentage: number, y: number, description?: string) => {
           doc.setFontSize(11);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.setTextColor(33, 37, 41);
           doc.text(label, margin, y);
           
@@ -294,7 +294,7 @@ const SnapshotPage = () => {
         // Helper function to add chart-like visualizations
         const addChartSection = (title: string, data: Array<{label: string, value: number, color: string}>, y: number) => {
           doc.setFontSize(14);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.setTextColor(33, 37, 41);
           doc.text(title, margin, y);
           y += 15;
@@ -334,13 +334,13 @@ const SnapshotPage = () => {
         
         // Page 1: Executive Summary & Key Performance Indicators
         doc.setFontSize(24);
-        doc.setFont(undefined, 'bold');
+        doc.setFont('helvetica', 'bold');
         doc.setTextColor(33, 150, 243);
         doc.text('Pediatric Readiness', pageWidth / 2, titleY, { align: 'center' });
         doc.text('Comprehensive Snapshot Report', pageWidth / 2, titleY + 15, { align: 'center' });
         
         doc.setFontSize(12);
-        doc.setFont(undefined, 'normal');
+        doc.setFont('helvetica', 'normal');
         doc.setTextColor(108, 117, 125);
         doc.text(`Generated on: ${new Date().toLocaleDateString()}`, pageWidth / 2, titleY + 35, { align: 'center' });
         
@@ -506,35 +506,35 @@ const SnapshotPage = () => {
           
           // Add hour metrics
           doc.setFontSize(12);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.setTextColor(33, 37, 41);
           doc.text('This Month:', margin, currentY);
           doc.setFontSize(11);
-          doc.setFont(undefined, 'normal');
+          doc.setFont('helvetica', 'normal');
           doc.text(`${thisMonthHours} hours`, margin + 80, currentY);
           currentY += 15;
           
           doc.setFontSize(12);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.text('Last Month:', margin, currentY);
           doc.setFontSize(11);
-          doc.setFont(undefined, 'normal');
+          doc.setFont('helvetica', 'normal');
           doc.text(`${lastMonthHours} hours`, margin + 80, currentY);
           currentY += 15;
           
           doc.setFontSize(12);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.text('This Year:', margin, currentY);
           doc.setFontSize(11);
-          doc.setFont(undefined, 'normal');
+          doc.setFont('helvetica', 'normal');
           doc.text(`${thisYearHours} hours`, margin + 80, currentY);
           currentY += 15;
           
           doc.setFontSize(12);
-          doc.setFont(undefined, 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.text('Total Hours:', margin, currentY);
           doc.setFontSize(11);
-          doc.setFont(undefined, 'normal');
+          doc.setFont('helvetica', 'normal');
           doc.text(`${totalHours} hours`, margin + 80, currentY);
           currentY += 20;
         }
@@ -643,7 +643,7 @@ const SnapshotPage = () => {
           readinessScores.forEach((score, index) => {
             if (currentY < pageHeight - margin) {
               doc.setFontSize(11);
-              doc.setFont(undefined, 'bold');
+              doc.setFont('helvetica', 'bold');
               doc.setTextColor(33, 37, 41);
               doc.text(`Assessment ${index + 1}: ${score.score}`, margin, currentY);
               doc.setFontSize(9);
@@ -670,13 +670,13 @@ const SnapshotPage = () => {
             const improvement = lastScore - firstScore;
             
             doc.setFontSize(14);
-            doc.setFont(undefined, 'bold');
+            doc.setFont('helvetica', 'bold');
             doc.setTextColor(33, 37, 41);
             doc.text('Improvement Summary:', margin, currentY);
             currentY += 15;
             
             doc.setFontSize(11);
-            doc.setFont(undefined, 'normal');
+            doc.setFont('helvetica', 'normal');
             doc.text(`Initial Score: ${firstScore}`, margin, currentY);
             currentY += 10;
             doc.text(`Latest Score: ${lastScore}`, margin, currentY);
@@ -740,7 +740,7 @@ const SnapshotPage = () => {
           
           Object.entries(priorityStatuses).forEach(([priority, statuses]) => {
             doc.setFontSize(11);
-            doc.setFont(undefined, 'bold');
+            doc.setFont('helvetica', 'bold');
             doc.setTextColor(33, 37, 41);
             doc.text(`${priority} Priority:`, margin, currentY);
             currentY += 10;
@@ -748,7 +748,7 @@ const SnapshotPage = () => {
             const statusEntries = statuses as Record<string, number>;
             Object.entries(statusEntries).forEach(([status, count]) => {
               doc.setFontSize(9);
-              doc.setFont(undefined, 'normal');
+              doc.setFont('helvetica', 'normal');
               doc.setTextColor(108, 117, 125);
               doc.text(`  ${status}: ${count}`, margin + 10, currentY);
               currentY += 8;
@@ -783,11 +783,11 @@ const SnapshotPage = () => {
           sortedCategories.forEach(([category, stats]) => {
             if (currentY < pageHeight - margin) {
               doc.setFontSize(11);
-              doc.setFont(undefined, 'bold');
+              doc.setFont('helvetica', 'bold');
               doc.setTextColor(33, 37, 41);
               doc.text(category, margin, currentY);
               doc.setFontSize(10);
-              doc.setFont(undefined, 'normal');
+              doc.setFont('helvetica', 'normal');
               doc.setTextColor(108, 117, 125);
               doc.text(`Activities: ${(stats as { count: number }).count}`, margin + 80, currentY);
               doc.text(`Hours: ${(stats as { hours: number }).hours}`, margin + 150, currentY);
