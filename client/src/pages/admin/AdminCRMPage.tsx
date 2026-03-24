@@ -10,7 +10,8 @@ import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database
 import AdminTeamTab from './AdminTeamTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
 import { createAndSendInvitation } from '../../utils/invitations';
-import { formatCsvCell } from '../../utils/csvFormat';
+import { buildCrmExportCsv } from '../../utils/crmExport';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
 import {
   Alert,
@@ -400,6 +401,7 @@ const AdminCRMPage: React.FC = () => {
     else setSearchParams({});
   };
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -495,9 +497,12 @@ const AdminCRMPage: React.FC = () => {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportScope, setExportScope] = useState<'all' | 'selected'>('all');
   const [exportColumnIds, setExportColumnIds] = useState<string[]>(() => EXPORT_COLUMNS.map(c => c.id));
+  const [exportPiiDialogOpen, setExportPiiDialogOpen] = useState(false);
+  const [pendingExport, setPendingExport] = useState<{ scope: 'all' | 'selected'; columnIds: string[] } | null>(null);
 
   // Import state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importMappingConfirmed, setImportMappingConfirmed] = useState(false);
   const [importData, setImportData] = useState<Array<Record<string, string>>>([]);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
   const [importColumnMapping, setImportColumnMapping] = useState<Record<string, string>>({});
@@ -1609,10 +1614,10 @@ const AdminCRMPage: React.FC = () => {
   const getColById = (id: string) => COLUMNS.find(c => c.id === id);
 
   const filteredAndSortedContacts = useMemo(() => {
-    const searchTokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const searchTokens = debouncedSearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
     let list = contacts.filter(contact => {
       const matchesSearch = (() => {
-        if (!searchQuery || searchTokens.length === 0) return true;
+        if (!debouncedSearchQuery || searchTokens.length === 0) return true;
         const namePart = [contact.firstName ?? '', contact.lastName ?? '', contact.name].filter(Boolean).join(' ').toLowerCase();
         const orgPart = (contact.organization || '').toLowerCase();
         const searchable = [namePart, orgPart, (contact.email || '').toLowerCase(), (contact.region || '').toLowerCase(), (contact.notes || '').toLowerCase(), (contact.hospitalSystem ?? '').toLowerCase(), (contact.address ?? '').toLowerCase(), (contact.city ?? '').toLowerCase(), (contact.state ?? '').toLowerCase(), (contact.county ?? '').toLowerCase(), ...(contact.programs ?? []).map(p => p.toLowerCase())].join(' ');
@@ -1678,7 +1683,7 @@ const AdminCRMPage: React.FC = () => {
       return 0;
     });
     return list;
-  }, [contacts, searchQuery, tabValue, sortField, sortOrder, statusFilter, regionFilter, stateFilter, hospitalTypeFilter, programFilter, cohortFilter, crmQuickTypeFilter]);
+  }, [contacts, debouncedSearchQuery, tabValue, sortField, sortOrder, statusFilter, regionFilter, stateFilter, hospitalTypeFilter, programFilter, cohortFilter, crmQuickTypeFilter]);
 
   const displayedContacts = useMemo(() => {
     if (pageSize === 'all') return filteredAndSortedContacts;
@@ -2360,10 +2365,7 @@ const AdminCRMPage: React.FC = () => {
       return v != null ? String(v) : '';
     };
     const rows = contactsToExport.map(c => ids.map(id => valueFor(c, id)));
-    const csv = [
-      labels.map(formatCsvCell).join(','),
-      ...rows.map(r => r.map(x => formatCsvCell(x)).join(','))
-    ].join('\n');
+    const csv = buildCrmExportCsv(labels, rows);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -2414,6 +2416,7 @@ const AdminCRMPage: React.FC = () => {
   };
 
   const handleImportFileSelect = (file: File) => {
+    setImportMappingConfirmed(false);
     setImportError(null);
     setImportSuccess(null);
     const reader = new FileReader();
@@ -3241,7 +3244,7 @@ const AdminCRMPage: React.FC = () => {
             </Button>
           </Tooltip>
           <Tooltip title="Import contacts from a CSV file">
-            <Button startIcon={<UploadIcon />} onClick={() => { setImportDialogOpen(true); setImportData([]); setImportHeaders([]); setImportColumnMapping({}); setImportError(null); setImportSuccess(null); }} size="medium">
+            <Button startIcon={<UploadIcon />} onClick={() => { setImportDialogOpen(true); setImportData([]); setImportHeaders([]); setImportColumnMapping({}); setImportError(null); setImportSuccess(null); setImportMappingConfirmed(false); }} size="medium">
               Import
             </Button>
           </Tooltip>
@@ -3264,11 +3267,17 @@ const AdminCRMPage: React.FC = () => {
       {loadError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
           Could not load CRM contacts: {loadError}. Check your connection and try refreshing.
+          <Button size="small" sx={{ ml: 1 }} onClick={() => { setLoadError(null); void loadAllContactsFromSupabase(); }}>
+            Retry
+          </Button>
         </Alert>
       )}
       {usersLoadError && tabValue !== TEAM_TAB_INDEX && (
         <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setUsersLoadError(null)}>
           Team members (managers, mentors, PECCs) could not be loaded: {usersLoadError}. Check your connection and that you have access. You can manage users in the Team tab.
+          <Button size="small" sx={{ ml: 1 }} onClick={() => { setUsersLoadError(null); void loadAllContactsFromSupabase(); }}>
+            Retry
+          </Button>
         </Alert>
       )}
       {/* Summary cards – single row (hidden on Team tab) */}
@@ -5424,8 +5433,44 @@ const AdminCRMPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setExportDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" startIcon={<DownloadIcon />} onClick={() => runExport(exportScope, exportColumnIds)} disabled={exportColumnIds.length === 0 || (exportScope === 'selected' && selectedIds.size === 0)}>
-            Export
+          <Button
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            onClick={() => {
+              if (exportColumnIds.length === 0 || (exportScope === 'selected' && selectedIds.size === 0)) return;
+              setPendingExport({ scope: exportScope, columnIds: exportColumnIds });
+              setExportDialogOpen(false);
+              setExportPiiDialogOpen(true);
+            }}
+            disabled={exportColumnIds.length === 0 || (exportScope === 'selected' && selectedIds.size === 0)}
+          >
+            Continue
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={exportPiiDialogOpen} onClose={() => { setExportPiiDialogOpen(false); setPendingExport(null); }} maxWidth="xs" fullWidth>
+        <DialogTitle>Export may contain sensitive data</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            CSV exports can include names, emails, phone numbers, and other personally identifiable information (PII).
+            Only download and share with authorized recipients.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setExportPiiDialogOpen(false); setPendingExport(null); }}>Cancel</Button>
+          <Button
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            onClick={() => {
+              if (pendingExport) {
+                runExport(pendingExport.scope, pendingExport.columnIds);
+                setExportPiiDialogOpen(false);
+                setPendingExport(null);
+              }
+            }}
+          >
+            Download CSV
           </Button>
         </DialogActions>
       </Dialog>
@@ -5574,6 +5619,17 @@ const AdminCRMPage: React.FC = () => {
                   </tbody>
                 </table>
               </Box>
+
+              <FormControlLabel
+                sx={{ mt: 1, mb: 1, alignItems: 'flex-start' }}
+                control={
+                  <Checkbox
+                    checked={importMappingConfirmed}
+                    onChange={(e) => setImportMappingConfirmed(e.target.checked)}
+                  />
+                }
+                label="I have reviewed the column mapping and preview rows above and am ready to import"
+              />
               
               {importError && <Alert severity="error" sx={{ mb: 2 }}>{importError}</Alert>}
               {importSuccess && <Alert severity="success" sx={{ mb: 2 }}>Successfully imported {importSuccess.count} contact(s)!</Alert>}
@@ -5584,14 +5640,14 @@ const AdminCRMPage: React.FC = () => {
           <Button onClick={() => setImportDialogOpen(false)} disabled={importInProgress}>Cancel</Button>
           {importData.length > 0 && (
             <>
-              <Button onClick={() => { setImportData([]); setImportHeaders([]); setImportError(null); setImportSuccess(null); }}>
+              <Button onClick={() => { setImportData([]); setImportHeaders([]); setImportError(null); setImportSuccess(null); setImportMappingConfirmed(false); }}>
                 Choose Different File
               </Button>
               <Button
                 variant="contained"
                 startIcon={importInProgress ? <CircularProgress size={16} /> : <UploadIcon />}
                 onClick={runImport}
-                disabled={importInProgress || importData.length === 0}
+                disabled={importInProgress || importData.length === 0 || !importMappingConfirmed}
               >
                 {importInProgress ? 'Importing...' : `Import ${importData.length} Contact(s)`}
               </Button>

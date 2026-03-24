@@ -63,6 +63,8 @@ import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
 import { getUserDisplayName } from '../../utils/displayName';
 import { PECC_TAB_KEYS } from '../../types/database';
+import { TypeDeleteConfirmDialog } from '../../components/crm/TypeDeleteConfirmDialog';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
 const CONTACT_STATUSES = [
   'ED Employee (general contact)',
@@ -122,6 +124,7 @@ const ManagerCRMPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [hospitals, setHospitals] = useState<HospitalData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [, setSelectedHospital] = useState<HospitalData | null>(null);
@@ -149,6 +152,7 @@ const ManagerCRMPage: React.FC = () => {
   const [contacts, setContacts] = useState<ContactData[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
+  const debouncedContactSearch = useDebouncedValue(contactSearch, 300);
   const [contactHospitalFilter, setContactHospitalFilter] = useState('');
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<ContactData | null>(null);
@@ -181,6 +185,11 @@ const ManagerCRMPage: React.FC = () => {
   // Contact record panel (click row to view)
   const [contactDetailOpen, setContactDetailOpen] = useState(false);
   const [contactDetailContact, setContactDetailContact] = useState<ContactData | null>(null);
+
+  const [contactDeleteOpen, setContactDeleteOpen] = useState(false);
+  const [contactDeleteTarget, setContactDeleteTarget] = useState<ContactData | null>(null);
+  const [contactDeleteTyped, setContactDeleteTyped] = useState('');
+  const [contactsLoadError, setContactsLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     loadHospitals();
@@ -367,9 +376,11 @@ const ManagerCRMPage: React.FC = () => {
   const loadContacts = async () => {
     if (hospitals.length === 0) {
       setContacts([]);
+      setContactsLoadError(null);
       return;
     }
     setContactsLoading(true);
+    setContactsLoadError(null);
     try {
       const hospitalIds = hospitals.map(h => h.id);
       const { data: rows, error } = await supabase
@@ -396,6 +407,7 @@ const ManagerCRMPage: React.FC = () => {
       })));
     } catch (err) {
       console.error('Error loading contacts:', err);
+      setContactsLoadError('Failed to load contacts. Try again.');
       setSnackbar({ open: true, message: 'Error loading contacts', severity: 'error' });
     } finally {
       setContactsLoading(false);
@@ -681,8 +693,15 @@ const ManagerCRMPage: React.FC = () => {
     }
   };
 
-  const handleDeleteContact = async (contact: ContactData) => {
-    if (!window.confirm(`Remove ${contact.first_name} ${contact.last_name} from contacts?`)) return;
+  const openContactDeleteConfirm = (contact: ContactData) => {
+    setContactDeleteTarget(contact);
+    setContactDeleteTyped('');
+    setContactDeleteOpen(true);
+  };
+
+  const performDeleteContact = async () => {
+    const contact = contactDeleteTarget;
+    if (!contact) return;
     const allowedHospitalIds = new Set(hospitals.map((h) => h.id));
     if (!allowedHospitalIds.has(contact.hospital_id)) {
       setSnackbar({ open: true, message: 'You can only remove contacts from your managed sites', severity: 'error' });
@@ -692,6 +711,13 @@ const ManagerCRMPage: React.FC = () => {
       const { error } = await supabase.from('hospital_contacts').delete().eq('id', contact.id);
       if (error) throw error;
       setSnackbar({ open: true, message: 'Contact removed', severity: 'success' });
+      setContactDeleteOpen(false);
+      setContactDeleteTarget(null);
+      setContactDeleteTyped('');
+      if (contactDetailContact?.id === contact.id) {
+        setContactDetailOpen(false);
+        setContactDetailContact(null);
+      }
       loadContacts();
     } catch (err: any) {
       setSnackbar({ open: true, message: err?.message || 'Failed to remove contact', severity: 'error' });
@@ -734,7 +760,7 @@ const ManagerCRMPage: React.FC = () => {
 
   const filteredContacts = useMemo(() => {
     let list = contacts;
-    const q = (contactSearch || '').toLowerCase().trim();
+    const q = (debouncedContactSearch || '').toLowerCase().trim();
     if (q) {
       list = list.filter(c =>
         `${c.first_name} ${c.last_name}`.toLowerCase().includes(q) ||
@@ -746,7 +772,7 @@ const ManagerCRMPage: React.FC = () => {
       list = list.filter(c => c.hospital_id === contactHospitalFilter);
     }
     return list.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
-  }, [contacts, contactSearch, contactHospitalFilter]);
+  }, [contacts, debouncedContactSearch, contactHospitalFilter]);
 
   const handleToggleTabVisibility = (userId: string, tab: keyof TabVisibilitySettings['visibleTabs']) => {
     setVisibilitySettings(prev => {
@@ -788,14 +814,14 @@ const ManagerCRMPage: React.FC = () => {
   };
 
   const filteredHospitals = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = debouncedSearchQuery.toLowerCase().trim();
     if (!q) return hospitals;
     return hospitals.filter(h =>
       (h.name ?? '').toLowerCase().includes(q) ||
       (h.city ?? '').toLowerCase().includes(q) ||
       (h.state ?? '').toLowerCase().includes(q)
     );
-  }, [hospitals, searchQuery]);
+  }, [hospitals, debouncedSearchQuery]);
 
   const filteredVisibilitySettings = useMemo(() => {
     return visibilitySettings.filter(setting => {
@@ -820,6 +846,17 @@ const ManagerCRMPage: React.FC = () => {
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
           {loadError}
           <Button size="small" sx={{ ml: 1 }} onClick={() => { setLoadError(null); loadHospitals(); }}>
+            Retry
+          </Button>
+        </Alert>
+      )}
+      <Alert severity="info" sx={{ mb: 2 }}>
+        Manager CRM shows hospitals and contacts for your team’s assigned sites. Full organization-wide CRM (all contacts, merge, bulk import/export) is in the Admin CRM.
+      </Alert>
+      {contactsLoadError && activeTab === 1 && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setContactsLoadError(null)}>
+          {contactsLoadError}
+          <Button size="small" sx={{ ml: 1 }} onClick={() => { setContactsLoadError(null); void loadContacts(); }}>
             Retry
           </Button>
         </Alert>
@@ -1136,7 +1173,7 @@ const ManagerCRMPage: React.FC = () => {
                   <Button fullWidth variant="contained" startIcon={<EditIcon />} onClick={() => { setContactDetailOpen(false); openEditContact(contactDetailContact); }}>
                     Edit contact
                   </Button>
-                  <Button fullWidth variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { setContactDetailOpen(false); handleDeleteContact(contactDetailContact); }}>
+                  <Button fullWidth variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { if (contactDetailContact) openContactDeleteConfirm(contactDetailContact); }}>
                     Remove contact
                   </Button>
                   <Button fullWidth variant="outlined" onClick={() => { setContactDetailOpen(false); setContactDetailContact(null); }}>Close</Button>
@@ -1206,7 +1243,7 @@ const ManagerCRMPage: React.FC = () => {
               )}
             </Paper>
           ) : (
-            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
+            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, overflowX: 'auto', maxWidth: '100%' }}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, py: 1, bgcolor: 'grey.50', borderBottom: 1, borderColor: 'divider' }}>
                 Click a row to open the contact record. Use the action icons to edit or remove.
               </Typography>
@@ -1268,7 +1305,7 @@ const ManagerCRMPage: React.FC = () => {
                         <IconButton size="small" onClick={() => openEditContact(c)} title="Edit" aria-label="Edit contact">
                           <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" onClick={() => handleDeleteContact(c)} title="Remove" aria-label="Remove contact" color="error">
+                        <IconButton size="small" onClick={() => openContactDeleteConfirm(c)} title="Remove" aria-label="Remove contact" color="error">
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </TableCell>
@@ -1400,7 +1437,7 @@ const ManagerCRMPage: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setContactDialogOpen(false)}>Cancel</Button>
           {editingContact && (
-            <Button color="error" onClick={() => handleDeleteContact(editingContact)}>
+            <Button color="error" onClick={() => { if (editingContact) openContactDeleteConfirm(editingContact); }}>
               Remove
             </Button>
           )}
@@ -1723,6 +1760,21 @@ const ManagerCRMPage: React.FC = () => {
           <Button onClick={() => setVisibilityDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      <TypeDeleteConfirmDialog
+        open={contactDeleteOpen}
+        onClose={() => {
+          setContactDeleteOpen(false);
+          setContactDeleteTarget(null);
+          setContactDeleteTyped('');
+        }}
+        title="Remove contact from your site list?"
+        description="This removes the row from hospital contacts for sites you manage. The person may still exist elsewhere in the platform or CRM."
+        typedValue={contactDeleteTyped}
+        onTypedChange={setContactDeleteTyped}
+        onConfirm={performDeleteContact}
+        confirmButtonText="Remove"
+      />
 
       {/* Snackbar */}
       <Snackbar

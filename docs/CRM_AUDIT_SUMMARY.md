@@ -57,3 +57,47 @@
 ---
 
 *Batch rounds 11–20: implement together and deploy with one commit to `main`.*
+
+---
+
+## Rounds 21–30 – UX parity, export safety, debounced search, import acknowledgment
+
+### Round 21 – Manager CRM contact delete
+- **Issue:** `window.confirm` for removing a contact; inconsistent with Admin CRM type-DELETE pattern.
+- **Fix:** Shared `TypeDeleteConfirmDialog` (`client/src/components/crm/TypeDeleteConfirmDialog.tsx`); user must type DELETE before Remove.
+
+### Round 22 – Debounced CRM search (Admin + Manager)
+- **Issue:** Filtering ran on every keystroke on large lists.
+- **Fix:** `useDebouncedValue` (300ms) for Admin CRM main search and Manager hospital/contact search inputs.
+
+### Round 23 – CRM CSV export PII
+- **Issue:** One-click download of potentially sensitive PII.
+- **Fix:** After choosing columns, a second dialog explains PII; **Download CSV** runs the actual export.
+
+### Round 24 – CSV import acknowledgment
+- **Issue:** Import could run without explicit confirmation after mapping.
+- **Fix:** Checkbox “I have reviewed…” required before **Import N Contact(s)**.
+
+### Round 25 – `buildCrmExportCsv` helper
+- **Issue:** Export string building lived inline in AdminCRMPage.
+- **Fix:** `client/src/utils/crmExport.ts` uses `formatCsvCell` for a single place to maintain.
+
+### Round 26 – Load retries (Admin CRM)
+- **Fix:** **Retry** on primary `loadError` and `usersLoadError` alerts calling `loadAllContactsFromSupabase()`.
+
+### Round 27 – Manager contacts load error
+- **Fix:** `contactsLoadError` + **Retry** on Contacts tab when `loadContacts` fails.
+
+### Round 28 – Manager vs Admin scope copy
+- **Fix:** Info `Alert` at top of Manager CRM pointing admins to full Admin CRM for org-wide tools.
+
+### Round 29 – Manager contacts table narrow screens
+- **Fix:** `TableContainer` `overflowX: 'auto'` + `maxWidth: '100%'`.
+
+### Round 30 – Tests
+- **Fix:** `client/src/utils/csvFormat.test.ts` for `formatCsvCell` (Jest via react-scripts).
+
+### Deferred (larger refactors)
+- **Split `AdminCRMPage.tsx` into multiple files** (still recommended incrementally).
+- **Virtualized table** for 10k+ rows (add `@tanstack/react-virtual` or similar when needed).
+- **GranularPermissionsManager** split / tests (optional follow-up).
