@@ -883,36 +883,58 @@ async function loadPeccDataset(params: {
     peccs = peccs.filter((p) => p.hospital_facility_id && allow.has(p.hospital_facility_id));
   }
 
-  let contactOnlyRows: {
+  let hospitalContactRows: {
     id: string;
     hospital_id: string;
+    user_id: string | null;
     first_name: string;
     last_name: string;
     email: string;
     phone: string | null;
     role_at_hospital: string | null;
+    contact_status?: string | null;
   }[] = [];
 
   if (hospitalScope && hospitalScope.length > 0) {
-    contactOnlyRows = await fetchAllRowsOrEmpty((from, to) =>
+    hospitalContactRows = await fetchAllRowsOrEmpty((from, to) =>
       supabase
         .from('hospital_contacts')
-        .select('id, hospital_id, user_id, first_name, last_name, email, phone, role_at_hospital')
+        .select('id, hospital_id, user_id, first_name, last_name, email, phone, role_at_hospital, contact_status')
         .in('hospital_id', hospitalScope)
-        .is('user_id', null)
         .range(from, to)
     );
   } else if (!hospitalScope) {
-    contactOnlyRows = await fetchAllRowsOrEmpty((from, to) =>
+    hospitalContactRows = await fetchAllRowsOrEmpty((from, to) =>
       supabase
         .from('hospital_contacts')
-        .select('id, hospital_id, user_id, first_name, last_name, email, phone, role_at_hospital')
-        .is('user_id', null)
+        .select('id, hospital_id, user_id, first_name, last_name, email, phone, role_at_hospital, contact_status')
         .range(from, to)
     );
   }
 
-  const crmPeccPeople = await fetchAllRows<Record<string, unknown>>((from, to) =>
+  const linkedUserIds = [...new Set(hospitalContactRows.map((c) => c.user_id).filter(Boolean))] as string[];
+  const linkedUserRole = new Map<string, string>();
+  for (const part of chunk(linkedUserIds, 80)) {
+    const { data: linkedUsers } = await supabase.from('users').select('id, role').in('id', part);
+    (linkedUsers || []).forEach((u: { id: string; role: string }) => linkedUserRole.set(u.id, u.role || ''));
+  }
+
+  const isPeccHospitalContact = (c: {
+    user_id: string | null;
+    role_at_hospital: string | null;
+    contact_status?: string | null;
+  }) => {
+    const status = (c.contact_status || '').toLowerCase();
+    const roleAt = (c.role_at_hospital || '').toLowerCase();
+    const userRole = c.user_id ? (linkedUserRole.get(c.user_id) || '').toLowerCase() : '';
+    if (userRole === 'pecc') return true;
+    if (status.includes('new pecc') || status.includes('already a pecc')) return true;
+    if (roleAt.includes('pecc')) return true;
+    return false;
+  };
+  const peccHospitalContactRows = hospitalContactRows.filter((c) => isPeccHospitalContact(c));
+
+  const crmPeccPeople = await fetchAllRowsOrEmpty<Record<string, unknown>>((from, to) =>
     supabase
       .from('crm_organizations')
       .select('id, name, first_name, last_name, email, phone, linked_hospital_ids, status, contact_type')
@@ -921,23 +943,23 @@ async function loadPeccDataset(params: {
       .range(from, to)
   );
 
-  const crmPeccRows = crmPeccPeople
-    .map((row) => {
-      const links = Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [];
-      if (hospitalScope && links.length > 0 && !links.some((hid) => hospitalScope.includes(hid))) return null;
-      if (hospitalScope && links.length === 0) return null;
-      const fullName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || String(row.name ?? '');
-      return {
-        id: String(row.id),
-        hospital_id: links[0] || null,
-        first_name: fullName.split(' ').slice(0, -1).join(' ') || fullName,
-        last_name: fullName.split(' ').slice(-1).join(' '),
-        email: String(row.email ?? ''),
-        phone: row.phone != null ? String(row.phone) : null,
-        crm_status: row.status != null ? String(row.status) : '',
-      };
-    })
-    .filter(Boolean) as {
+  const crmPeccRows = crmPeccPeople.flatMap((row) => {
+    const links = Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [];
+    const filteredLinks = hospitalScope ? links.filter((hid) => hospitalScope.includes(hid)) : links;
+    if (hospitalScope && links.length > 0 && filteredLinks.length === 0) return [];
+    if (hospitalScope && links.length === 0) return [];
+    const fullName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || String(row.name ?? '');
+    const base = {
+      id: String(row.id),
+      first_name: fullName.split(' ').slice(0, -1).join(' ') || fullName,
+      last_name: fullName.split(' ').slice(-1).join(' '),
+      email: String(row.email ?? ''),
+      phone: row.phone != null ? String(row.phone) : null,
+      crm_status: row.status != null ? String(row.status) : '',
+    };
+    const hospitalIds = (filteredLinks.length ? filteredLinks : [null]) as (string | null)[];
+    return hospitalIds.map((hid) => ({ ...base, hospital_id: hid }));
+  }) as {
       id: string;
       hospital_id: string | null;
       first_name: string;
@@ -947,15 +969,11 @@ async function loadPeccDataset(params: {
       crm_status: string;
     }[];
 
-  const peccEmails = new Set(peccs.map((p) => p.email.toLowerCase().trim()).filter(Boolean));
-  contactOnlyRows = contactOnlyRows.filter((c) => !peccEmails.has((c.email || '').toLowerCase().trim()));
-  const crmOnlyRows = crmPeccRows.filter((c) => !peccEmails.has((c.email || '').toLowerCase().trim()));
-
   const hidSet = [
     ...new Set([
       ...peccs.map((p) => p.hospital_facility_id).filter(Boolean) as string[],
-      ...contactOnlyRows.map((c) => c.hospital_id),
-      ...crmOnlyRows.map((c) => c.hospital_id).filter(Boolean) as string[],
+      ...peccHospitalContactRows.map((c) => c.hospital_id),
+      ...crmPeccRows.map((c) => c.hospital_id).filter(Boolean) as string[],
     ]),
   ] as string[];
   let hospById = new Map<
@@ -1052,12 +1070,12 @@ async function loadPeccDataset(params: {
     pidMap[p.id] = (pm || []).filter((x: { user_id: string }) => x.user_id === p.id).map((x: { program_id: string }) => x.program_id);
     cidMap[p.id] = (cm || []).filter((x: { user_id: string }) => x.user_id === p.id).map((x: { cohort_id: string }) => x.cohort_id);
   });
-  contactOnlyRows.forEach((c) => {
+  peccHospitalContactRows.forEach((c) => {
     const key = `hc:${c.id}`;
     pidMap[key] = [];
     cidMap[key] = [];
   });
-  crmOnlyRows.forEach((c) => {
+  crmPeccRows.forEach((c) => {
     const key = `crm:${c.id}`;
     pidMap[key] = [];
     cidMap[key] = [];
@@ -1164,7 +1182,7 @@ async function loadPeccDataset(params: {
     return { id: p.id, cells };
   });
 
-  const contactRows: ReportDataRow[] = contactOnlyRows.map((c) => {
+  const contactRows: ReportDataRow[] = peccHospitalContactRows.map((c) => {
     const h = hospById.get(c.hospital_id);
     const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
     const cf = h?.custom_fields || {};
@@ -1179,7 +1197,7 @@ async function loadPeccDataset(params: {
 
     const cells: Record<string, string> = {
       accountSource: 'Hospital contact (no user account yet)',
-      registrationStatus: 'No user account (CRM contact only)',
+      registrationStatus: c.user_id ? 'Linked to user account' : 'No user account (hospital contact)',
       name: `${c.first_name || ''} ${c.last_name || ''}`.trim(),
       email: c.email || '',
       peccPhone: c.phone || '',
@@ -1221,7 +1239,7 @@ async function loadPeccDataset(params: {
     return { id: `hc:${c.id}`, cells };
   });
 
-  const crmRows: ReportDataRow[] = crmOnlyRows.map((c) => {
+  const crmRows: ReportDataRow[] = crmPeccRows.map((c) => {
     const h = c.hospital_id ? hospById.get(c.hospital_id) : null;
     const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
     const cf = h?.custom_fields || {};
