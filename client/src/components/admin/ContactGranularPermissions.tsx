@@ -81,6 +81,13 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
           supabase.from('pending_user_permissions').select('*').eq('email', email),
           supabase.from('pending_view_tabs').select('*').eq('email', email)
         ]);
+        if (permsRes.error || tabsRes.error) {
+          setSnack({
+            message: `Failed to load permissions: ${permsRes.error?.message || tabsRes.error?.message || 'Unknown error'}`,
+            severity: 'error'
+          });
+          return;
+        }
         setUserPermissions((permsRes.data || []).map((p: { id: string; permission_key: string; is_enabled: boolean; granted_by?: string | null; granted_at?: string; updated_at?: string }) => ({
           id: p.id,
           user_id: userId,
@@ -106,6 +113,13 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
           supabase.from('user_permissions').select('*').eq('user_id', userId),
           supabase.from('view_tabs').select('*').eq('user_id', userId).is('cohort_id', null).is('program_id', null)
         ]);
+        if (permsRes.error || tabsRes.error) {
+          setSnack({
+            message: `Failed to load permissions: ${permsRes.error?.message || tabsRes.error?.message || 'Unknown error'}`,
+            severity: 'error'
+          });
+          return;
+        }
         setUserPermissions((permsRes.data || []) as UserPermission[]);
         setViewTabs((tabsRes.data || []) as ViewTab[]);
       }
@@ -134,7 +148,7 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
         setSnack({ message: 'Permission saved. Will apply when they create an account.', severity: 'success' });
         await loadPermissions();
       } else {
-        setSnack({ message: 'Failed to save.', severity: 'error' });
+        setSnack({ message: error.message ? `Failed to save: ${error.message}` : 'Failed to save.', severity: 'error' });
       }
       return;
     }
@@ -149,7 +163,7 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
       setSnack({ message: 'Permission saved.', severity: 'success' });
       await loadPermissions();
     } else {
-      setSnack({ message: 'Failed to save.', severity: 'error' });
+      setSnack({ message: error.message ? `Failed to save: ${error.message}` : 'Failed to save.', severity: 'error' });
     }
   };
 
@@ -166,7 +180,7 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
         setSnack({ message: 'Tab visibility saved. Will apply when they create an account.', severity: 'success' });
         await loadPermissions();
       } else {
-        setSnack({ message: 'Failed to save tab visibility.', severity: 'error' });
+        setSnack({ message: error.message ? `Failed to save tab visibility: ${error.message}` : 'Failed to save tab visibility.', severity: 'error' });
       }
       return;
     }
@@ -183,7 +197,7 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
       setSnack({ message: 'Tab visibility saved.', severity: 'success' });
       await loadPermissions();
     } else {
-      setSnack({ message: 'Failed to save tab visibility.', severity: 'error' });
+      setSnack({ message: error.message ? `Failed to save tab visibility: ${error.message}` : 'Failed to save tab visibility.', severity: 'error' });
     }
   };
 

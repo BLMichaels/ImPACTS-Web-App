@@ -10,6 +10,7 @@ import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database
 import AdminTeamTab from './AdminTeamTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
 import { createAndSendInvitation } from '../../utils/invitations';
+import { formatCsvCell } from '../../utils/csvFormat';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
 import {
   Alert,
@@ -2359,7 +2360,10 @@ const AdminCRMPage: React.FC = () => {
       return v != null ? String(v) : '';
     };
     const rows = contactsToExport.map(c => ids.map(id => valueFor(c, id)));
-    const csv = [labels.join(','), ...rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const csv = [
+      labels.map(formatCsvCell).join(','),
+      ...rows.map(r => r.map(x => formatCsvCell(x)).join(','))
+    ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);

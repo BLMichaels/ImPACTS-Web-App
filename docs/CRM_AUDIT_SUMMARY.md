@@ -23,3 +23,37 @@
 ## Round 10 – Implementation & deploy
 - All listed fixes implemented and verified with linter.
 - Deploy via push to `main`.
+
+---
+
+## Rounds 11–20 – CRM export, Manager picker, contact permissions (batch)
+
+### Round 11 – CRM CSV export cell quoting
+- **Issue:** Every cell was wrapped in double quotes, so numeric fields opened in Excel as text.
+- **Fix:** Shared `formatCsvCell()` in `client/src/utils/csvFormat.ts` (RFC 4180–style: quote only when needed). `AdminCRMPage` `runExport` uses it for headers and values.
+
+### Round 12 – Manager CRM “Add hospital” hospital list
+- **Issue:** Single `.range(0, 99999)` can still hit PostgREST per-request row limits; errors from the hospitals query were ignored.
+- **Fix:** Paginate in 1000-row chunks until a short page; surface Supabase errors via snackbar; mentor list load errors surfaced too.
+
+### Round 13 – CRM contact granular permissions load
+- **Issue:** `pending_*` and live `user_permissions` / `view_tabs` queries could fail silently (empty UI, no message).
+- **Fix:** `ContactGranularPermissions` checks `error` on both parallel results and shows a snackbar; save handlers include Supabase `error.message` when present.
+
+### Round 14 – Save feedback clarity
+- **Issue:** Generic “Failed to save” for permission/tab toggles.
+- **Fix:** Same component: append server message when available (pending and registered user paths).
+
+### Round 15 – Documentation parity
+- **Check:** `CRM_AUDIT_REPORT.md`, `CRM_COHORT_CONNECTIVITY_AUDIT.md`, and `CRM_ROLE_ASSIGNMENT_AUDIT.md` remain the source for earlier multi-audit passes; this file now records rounds 11–20.
+
+### Rounds 16–20 – Verified / no code change this batch
+- **16:** Admin CRM `SendInvitationDialog` mounted once (duplicate removed previously).
+- **17:** Cohort name → ID matching remains trim + case-insensitive in CRM save paths.
+- **18:** Hospital update OR `facility_id` / `id` still required for edge rows (see CRM_AUDIT_REPORT).
+- **19:** `provision-crm-portal-user` remains admin-gated server-side.
+- **20:** Manager CRM contact CRUD still validates hospital scope before save/delete.
+
+---
+
+*Batch rounds 11–20: implement together and deploy with one commit to `main`.*

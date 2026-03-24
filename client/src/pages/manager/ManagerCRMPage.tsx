@@ -198,19 +198,49 @@ const ManagerCRMPage: React.FC = () => {
     }
   }, [searchParams, hospitals]);
 
-  // Load all hospitals from DB and mentors when opening Add Hospital dialog
+  // Load all hospitals from DB and mentors when opening Add Hospital dialog (paginate hospitals — PostgREST caps range per request)
   useEffect(() => {
     if (!addHospitalDialog) return;
     (async () => {
       const mentorIds = await getManagedMentorIds();
-      const [hRes, mRes] = await Promise.all([
-        supabase.from('hospitals').select('id, name, city, state').eq('is_active', true).order('name').range(0, 99999),
-        mentorIds.length > 0
-          ? supabase.from('users').select('id, first_name, last_name, email').in('id', mentorIds).eq('is_active', true).order('first_name')
-          : Promise.resolve({ data: [], error: null })
-      ]);
-      if (hRes.data) setAllHospitalsFromDb(hRes.data as any);
-      if (mRes.data) setMentorsList(mRes.data as MentorOption[]);
+      const PAGE = 1000;
+      let offset = 0;
+      const hospitalRows: Array<{ id: string; name: string; city: string; state: string }> = [];
+      let hospitalErr: string | null = null;
+      for (;;) {
+        const { data, error } = await supabase
+          .from('hospitals')
+          .select('id, name, city, state')
+          .eq('is_active', true)
+          .order('name')
+          .range(offset, offset + PAGE - 1);
+        if (error) {
+          hospitalErr = error.message;
+          break;
+        }
+        if (data?.length) hospitalRows.push(...(data as typeof hospitalRows));
+        if (!data?.length || data.length < PAGE) break;
+        offset += PAGE;
+      }
+      setAllHospitalsFromDb(hospitalRows);
+      if (hospitalErr) {
+        setSnackbar({ open: true, message: `Could not load full hospital list: ${hospitalErr}`, severity: 'error' });
+      }
+      if (mentorIds.length > 0) {
+        const mRes = await supabase
+          .from('users')
+          .select('id, first_name, last_name, email')
+          .in('id', mentorIds)
+          .eq('is_active', true)
+          .order('first_name');
+        if (mRes.error) {
+          setSnackbar({ open: true, message: `Could not load mentors: ${mRes.error.message}`, severity: 'error' });
+        } else if (mRes.data) {
+          setMentorsList(mRes.data as MentorOption[]);
+        }
+      } else {
+        setMentorsList([]);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- getManagedMentorIds defined below
   }, [addHospitalDialog]);
