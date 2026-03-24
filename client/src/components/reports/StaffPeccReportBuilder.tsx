@@ -817,12 +817,6 @@ function datasetLabel(d: ReportDataset): string {
   }
 }
 
-function isLikelyPeccHospitalContact(roleAt: string | null | undefined): boolean {
-  const r = (roleAt || '').trim();
-  if (!r) return true;
-  return /pecc|pediatric|nurse/i.test(r);
-}
-
 async function loadChecklistForHospitals(hospitalIds: string[]): Promise<Map<string, { total: number; completed: number }>> {
   const map = new Map<string, { total: number; completed: number }>();
   if (!hospitalIds.length) return map;
@@ -918,14 +912,50 @@ async function loadPeccDataset(params: {
     );
   }
 
-  contactOnlyRows = contactOnlyRows.filter((c) => isLikelyPeccHospitalContact(c.role_at_hospital));
+  const crmPeccPeople = await fetchAllRows<Record<string, unknown>>((from, to) =>
+    supabase
+      .from('crm_organizations')
+      .select('id, name, first_name, last_name, email, phone, linked_hospital_ids, status, contact_type')
+      .eq('contact_type', 'pecc')
+      .order('last_name')
+      .range(from, to)
+  );
+
+  const crmPeccRows = crmPeccPeople
+    .map((row) => {
+      const links = Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [];
+      if (hospitalScope && links.length > 0 && !links.some((hid) => hospitalScope.includes(hid))) return null;
+      if (hospitalScope && links.length === 0) return null;
+      const fullName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || String(row.name ?? '');
+      return {
+        id: String(row.id),
+        hospital_id: links[0] || null,
+        first_name: fullName.split(' ').slice(0, -1).join(' ') || fullName,
+        last_name: fullName.split(' ').slice(-1).join(' '),
+        email: String(row.email ?? ''),
+        phone: row.phone != null ? String(row.phone) : null,
+        crm_status: row.status != null ? String(row.status) : '',
+      };
+    })
+    .filter(Boolean) as {
+      id: string;
+      hospital_id: string | null;
+      first_name: string;
+      last_name: string;
+      email: string;
+      phone: string | null;
+      crm_status: string;
+    }[];
+
   const peccEmails = new Set(peccs.map((p) => p.email.toLowerCase().trim()).filter(Boolean));
   contactOnlyRows = contactOnlyRows.filter((c) => !peccEmails.has((c.email || '').toLowerCase().trim()));
+  const crmOnlyRows = crmPeccRows.filter((c) => !peccEmails.has((c.email || '').toLowerCase().trim()));
 
   const hidSet = [
     ...new Set([
       ...peccs.map((p) => p.hospital_facility_id).filter(Boolean) as string[],
       ...contactOnlyRows.map((c) => c.hospital_id),
+      ...crmOnlyRows.map((c) => c.hospital_id).filter(Boolean) as string[],
     ]),
   ] as string[];
   let hospById = new Map<
@@ -1024,6 +1054,11 @@ async function loadPeccDataset(params: {
   });
   contactOnlyRows.forEach((c) => {
     const key = `hc:${c.id}`;
+    pidMap[key] = [];
+    cidMap[key] = [];
+  });
+  crmOnlyRows.forEach((c) => {
+    const key = `crm:${c.id}`;
     pidMap[key] = [];
     cidMap[key] = [];
   });
@@ -1186,7 +1221,57 @@ async function loadPeccDataset(params: {
     return { id: `hc:${c.id}`, cells };
   });
 
-  setRows([...userRows, ...contactRows]);
+  const crmRows: ReportDataRow[] = crmOnlyRows.map((c) => {
+    const h = c.hospital_id ? hospById.get(c.hospital_id) : null;
+    const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
+    const cf = h?.custom_fields || {};
+    const activeInWindow = activityPreset === 'any' || activityPreset === 'inactive30';
+
+    const cells: Record<string, string> = {
+      accountSource: 'CRM PECC contact',
+      registrationStatus: 'No user account (CRM only)',
+      name: `${c.first_name || ''} ${c.last_name || ''}`.trim(),
+      email: c.email || '',
+      peccPhone: c.phone || '',
+      userCreatedAt: '',
+      hospitalName: h?.name || '',
+      facilityId: h?.facility_id || '',
+      hospitalCompany: h?.company_name || '',
+      hospitalAddress: h?.address || '',
+      city: h?.city || '',
+      state: (h?.state || '').toString().toUpperCase(),
+      hospitalZip: h?.zip || '',
+      hospitalCounty: h?.county || '',
+      hospitalPhone: h?.phone || '',
+      hospitalEmail: h?.email || '',
+      hospitalSystem: h?.hospital_system || '',
+      hospitalRegion: h?.region || '',
+      hospitalCrmStatus: h?.crm_status || c.crm_status || '',
+      traumaLevel: h?.trauma_level || '',
+      edSize: h?.ed_size || '',
+      lastLogin: '',
+      activeWindow: activeInWindow ? 'Yes' : 'No',
+      checklistProgress: checklistPercent(chk) + (chk && chk.total > 0 ? '%' : ''),
+      activitiesCount: '0',
+      gapPlansTotal: '0',
+      gapPlansOpen: '0',
+      gapPlansCompleted: '0',
+      mentorName: '—',
+      managerName: '—',
+      programs: '',
+      cohorts: '',
+      hospitalPrograms: (h?.programs || []).map((id) => progMap.get(id) || id).join('; '),
+      hospitalCohorts: (h?.cohorts || []).map((id) => coMap.get(id) || id).join('; '),
+    };
+
+    Object.keys(cf).forEach((k) => {
+      cells[`hcf_${k}`] = cf[k] ?? '';
+    });
+
+    return { id: `crm:${c.id}`, cells };
+  });
+
+  setRows([...userRows, ...contactRows, ...crmRows]);
 }
 
 async function loadHospitalDataset(params: {
