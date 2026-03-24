@@ -110,6 +110,38 @@ const ACTIVITY_PRESETS = [
   { value: 'inactive30', label: 'No activity in last 30 days' },
 ];
 
+/** Report dataset dropdown: labels A–Z within each group (People / CRM). */
+const REPORT_DATASET_PEOPLE_OPTIONS: { value: ReportDataset; label: string }[] = [
+  { value: 'user_hospital_system', label: 'Hospital System (user accounts)' },
+  { value: 'user_hiring_group', label: 'Hiring Group (user accounts)' },
+  { value: 'managers', label: 'Managers' },
+  { value: 'mentors', label: 'Mentors' },
+  { value: 'pecc', label: 'PECCs (people at sites)' },
+  { value: 'platform_users', label: 'Platform users (pick roles)' },
+  { value: 'internal_staff', label: 'Staff (internal team)' },
+].sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
+
+const REPORT_DATASET_CRM_OPTIONS: { value: ReportDataset; label: string }[] = [
+  { value: 'contacts', label: 'Hospital contacts' },
+  { value: 'crm_system', label: 'Hospital Systems (CRM)' },
+  { value: 'crm_hiring_group', label: 'Hiring Groups (CRM)' },
+  { value: 'hospital', label: 'Hospitals & sites' },
+  { value: 'organization', label: 'Organizations' },
+].sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
+
+/** Shared sizing for Advanced reports header actions (single line, aligned grid). */
+const REPORT_HEADER_ACTION_SX = {
+  minWidth: 172,
+  minHeight: 34,
+  maxHeight: 34,
+  py: 0.5,
+  px: 1,
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+  justifyContent: 'center',
+  '& .MuiButton-startIcon': { marginRight: 0.75 },
+} as const;
+
 /** Multi-role report: pick which platform user roles to include (admin = internal team). */
 const PLATFORM_USERS_ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin (internal team)' },
@@ -1170,10 +1202,21 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               pb: { md: 0.25 },
             }}
           >
-            <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => load()}>
+            <Button
+              size="small"
+              variant="outlined"
+              sx={REPORT_HEADER_ACTION_SX}
+              startIcon={<RefreshIcon />}
+              onClick={() => load()}
+            >
               Refresh
             </Button>
-            <Button size="small" variant="outlined" onClick={(e) => setSavedMenuAnchor(e.currentTarget)}>
+            <Button
+              size="small"
+              variant="outlined"
+              sx={REPORT_HEADER_ACTION_SX}
+              onClick={(e) => setSavedMenuAnchor(e.currentTarget)}
+            >
               Load saved layout
             </Button>
             <Menu anchorEl={savedMenuAnchor} open={Boolean(savedMenuAnchor)} onClose={() => setSavedMenuAnchor(null)}>
@@ -1206,7 +1249,13 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                 ))
               )}
             </Menu>
-            <Button size="small" variant="outlined" startIcon={<BookmarkAddIcon />} onClick={() => setSaveDialogOpen(true)}>
+            <Button
+              size="small"
+              variant="outlined"
+              sx={REPORT_HEADER_ACTION_SX}
+              startIcon={<BookmarkAddIcon />}
+              onClick={() => setSaveDialogOpen(true)}
+            >
               Save layout
             </Button>
             <Divider
@@ -1221,17 +1270,41 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               ref={presetFileInputRef}
               onChange={handleImportPresetsFile}
             />
-            <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportPresets}>
+            <Button
+              size="small"
+              variant="outlined"
+              sx={REPORT_HEADER_ACTION_SX}
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExportPresets}
+            >
               Export layouts
             </Button>
-            <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => presetFileInputRef.current?.click()}>
+            <Button
+              size="small"
+              variant="outlined"
+              sx={REPORT_HEADER_ACTION_SX}
+              startIcon={<UploadFileIcon />}
+              onClick={() => presetFileInputRef.current?.click()}
+            >
               Import layouts
             </Button>
-            <Button size="small" variant="outlined" startIcon={<ViewColumnIcon />} onClick={() => setColumnDrawer(true)}>
+            <Button
+              size="small"
+              variant="outlined"
+              sx={REPORT_HEADER_ACTION_SX}
+              startIcon={<ViewColumnIcon />}
+              onClick={() => setColumnDrawer(true)}
+            >
               Columns
             </Button>
             <Badge badgeContent={columnFilters.length} color="primary" invisible={columnFilters.length === 0} overlap="rectangular">
-              <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => setFilterDrawerOpen(true)}>
+              <Button
+                size="small"
+                variant="outlined"
+                sx={REPORT_HEADER_ACTION_SX}
+                startIcon={<TuneIcon />}
+                onClick={() => setFilterDrawerOpen(true)}
+              >
                 Filters
               </Button>
             </Badge>
@@ -1240,10 +1313,23 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               flexItem
               sx={{ display: { xs: 'none', md: 'flex' }, alignSelf: 'stretch', my: 0.25 }}
             />
-            <Button size="small" variant="contained" color="secondary" startIcon={<PictureAsPdfIcon />} onClick={exportPdf}>
+            <Button
+              size="small"
+              variant="contained"
+              color="secondary"
+              sx={REPORT_HEADER_ACTION_SX}
+              startIcon={<PictureAsPdfIcon />}
+              onClick={exportPdf}
+            >
               PDF
             </Button>
-            <Button size="small" variant="contained" startIcon={<TableChartIcon />} onClick={exportExcel}>
+            <Button
+              size="small"
+              variant="contained"
+              sx={REPORT_HEADER_ACTION_SX}
+              startIcon={<TableChartIcon />}
+              onClick={exportExcel}
+            >
               Excel
             </Button>
           </Stack>
@@ -1261,20 +1347,22 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   label="Report dataset"
                   onChange={(e) => setDataset(e.target.value as ReportDataset)}
                 >
-                  <ListSubheader disableSticky sx={{ lineHeight: 2 }}>People (platform users)</ListSubheader>
-                  <MenuItem value="internal_staff">Staff (internal team)</MenuItem>
-                  <MenuItem value="managers">Managers</MenuItem>
-                  <MenuItem value="mentors">Mentors</MenuItem>
-                  <MenuItem value="pecc">PECCs (people at sites)</MenuItem>
-                  <MenuItem value="user_hospital_system">Hospital System (user accounts)</MenuItem>
-                  <MenuItem value="user_hiring_group">Hiring Group (user accounts)</MenuItem>
-                  <MenuItem value="platform_users">Platform users (pick roles)</MenuItem>
-                  <ListSubheader disableSticky sx={{ lineHeight: 2 }}>CRM records</ListSubheader>
-                  <MenuItem value="contacts">Hospital contacts</MenuItem>
-                  <MenuItem value="organization">Organizations</MenuItem>
-                  <MenuItem value="crm_system">Hospital Systems (CRM)</MenuItem>
-                  <MenuItem value="crm_hiring_group">Hiring Groups (CRM)</MenuItem>
-                  <MenuItem value="hospital">Hospitals &amp; sites</MenuItem>
+                  <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
+                    People (platform users)
+                  </ListSubheader>
+                  {REPORT_DATASET_PEOPLE_OPTIONS.map(({ value, label }) => (
+                    <MenuItem key={value} value={value}>
+                      {label}
+                    </MenuItem>
+                  ))}
+                  <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
+                    CRM records
+                  </ListSubheader>
+                  {REPORT_DATASET_CRM_OPTIONS.map(({ value, label }) => (
+                    <MenuItem key={value} value={value}>
+                      {label}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
