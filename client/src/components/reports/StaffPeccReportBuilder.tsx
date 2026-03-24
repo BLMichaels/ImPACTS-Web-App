@@ -77,6 +77,18 @@ export interface ReportDataRow {
   cells: Record<string, string>;
 }
 
+/** Loaded-row breakdown for PECC dataset (helps reconcile CRM vs report). */
+export interface PeccAuditSnapshot {
+  userAccountRows: number;
+  hospitalContactRows: number;
+  crmOrganizationRows: number;
+  totalLoadedRows: number;
+}
+
+function crmPeccRowId(crmId: string, hospitalId: string | null): string {
+  return `crm:${crmId}:${hospitalId ?? 'unlinked'}`;
+}
+
 interface ColumnMeta {
   id: string;
   label: string;
@@ -366,6 +378,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [columnDrawer, setColumnDrawer] = useState(false);
   const [sortBy, setSortBy] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [peccAudit, setPeccAudit] = useState<PeccAuditSnapshot | null>(null);
 
   const columnMetas = useMemo(
     () => buildColumnList(dataset, hospitalCustomDefs, orgCustomDefs),
@@ -405,10 +418,12 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setError(null);
     setProgramIdsByRow({});
     setCohortIdsByRow({});
+    setPeccAudit(null);
     try {
       const hospitalScope = await resolveHospitalIdsForScope(scope, actorUserId);
       if (hospitalScope && hospitalScope.length === 0 && dataset !== 'staff') {
         setRows([]);
+        setPeccAudit(null);
         setLoading(false);
         return;
       }
@@ -431,6 +446,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           setRows,
           setProgramIdsByRow,
           setCohortIdsByRow,
+          setPeccAudit,
         });
       } else if (dataset === 'hospital') {
         await loadHospitalDataset({
@@ -464,6 +480,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       console.error(e);
       setError(e instanceof Error ? e.message : 'Failed to load report data');
       setRows([]);
+      setPeccAudit(null);
     } finally {
       setLoading(false);
     }
@@ -491,18 +508,21 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     if (dataset === 'pecc') {
       if (programFilter !== 'all') {
         list = list.filter((r) => {
-          if (r.id.startsWith('hc:')) return true;
+          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return true;
           return (programIdsByRow[r.id] || []).includes(programFilter);
         });
       }
       if (cohortFilter !== 'all') {
         list = list.filter((r) => {
-          if (r.id.startsWith('hc:')) return true;
+          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return true;
           return (cohortIdsByRow[r.id] || []).includes(cohortFilter);
         });
       }
       if (activityPreset !== 'any') {
-        list = list.filter((r) => r.cells.activeWindow === 'Yes');
+        list = list.filter((r) => {
+          if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return true;
+          return r.cells.activeWindow === 'Yes';
+        });
       }
     }
     return list;
@@ -721,6 +741,23 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           </Alert>
         )}
 
+        {dataset === 'pecc' && peccAudit && !loading && (
+          <Alert severity="info" sx={{ mb: 2 }} icon={false}>
+            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+              PECC row audit (what was loaded)
+            </Typography>
+            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1} sx={{ mb: 0.5 }}>
+              <Chip size="small" variant="outlined" label={`User accounts (role=PECC): ${peccAudit.userAccountRows}`} />
+              <Chip size="small" variant="outlined" label={`Hospital contacts (PECC): ${peccAudit.hospitalContactRows}`} />
+              <Chip size="small" variant="outlined" label={`CRM organization PECCs: ${peccAudit.crmOrganizationRows}`} />
+              <Chip size="small" color="primary" variant="outlined" label={`Total rows: ${peccAudit.totalLoadedRows}`} />
+            </Stack>
+            <Typography variant="caption" color="text.secondary" display="block">
+              Visible now: {filtered.length} of {rows.length} loaded rows (search, state, program/cohort, and activity filters apply below). CRM PECCs can exist in more than one place; this report merges user accounts, hospital_contacts, and crm_organizations (contact_type=pecc).
+            </Typography>
+          </Alert>
+        )}
+
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
             <CircularProgress />
@@ -842,8 +879,9 @@ async function loadPeccDataset(params: {
   setRows: (r: ReportDataRow[]) => void;
   setProgramIdsByRow: (m: Record<string, string[]>) => void;
   setCohortIdsByRow: (m: Record<string, string[]>) => void;
+  setPeccAudit: (a: PeccAuditSnapshot | null) => void;
 }): Promise<void> {
-  const { hospitalScope, activityPreset, progMap, coMap, setRows, setProgramIdsByRow, setCohortIdsByRow } = params;
+  const { hospitalScope, activityPreset, progMap, coMap, setRows, setProgramIdsByRow, setCohortIdsByRow, setPeccAudit } = params;
 
   let peccs = (await fetchAllRows<{
     id: string;
@@ -1076,7 +1114,7 @@ async function loadPeccDataset(params: {
     cidMap[key] = [];
   });
   crmPeccRows.forEach((c) => {
-    const key = `crm:${c.id}`;
+    const key = crmPeccRowId(c.id, c.hospital_id);
     pidMap[key] = [];
     cidMap[key] = [];
   });
@@ -1286,10 +1324,17 @@ async function loadPeccDataset(params: {
       cells[`hcf_${k}`] = cf[k] ?? '';
     });
 
-    return { id: `crm:${c.id}`, cells };
+    return { id: crmPeccRowId(c.id, c.hospital_id), cells };
   });
 
-  setRows([...userRows, ...contactRows, ...crmRows]);
+  const merged = [...userRows, ...contactRows, ...crmRows];
+  setPeccAudit({
+    userAccountRows: userRows.length,
+    hospitalContactRows: contactRows.length,
+    crmOrganizationRows: crmRows.length,
+    totalLoadedRows: merged.length,
+  });
+  setRows(merged);
 }
 
 async function loadHospitalDataset(params: {
