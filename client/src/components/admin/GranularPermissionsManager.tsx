@@ -408,6 +408,13 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   const getEmailFromPendingId = (id: string) => id.startsWith(PENDING_USER_PREFIX) ? id.slice(PENDING_USER_PREFIX.length) : '';
 
   const loadPermissions = async () => {
+    // Reset derived states first so switching selection doesn't show stale toggles.
+    setPermissionStates({});
+    setTabVisibilityStates({});
+    setUserPermissions([]);
+    setCohortPermissions([]);
+    setProgramPermissions([]);
+    setViewTabs([]);
     if (selectedUserId) {
       const pending = isPendingUser(selectedUserId);
       const email = getEmailFromPendingId(selectedUserId);
@@ -435,10 +442,14 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           permData.forEach((p: { permission_key: string; is_enabled: boolean }) => { states[p.permission_key] = p.is_enabled; });
           setPermissionStates(states);
         }
-        const { data: tabsData } = await supabase
+        const { data: tabsData, error: tabsError } = await supabase
           .from('pending_view_tabs')
           .select('*')
           .eq('email', email);
+        // Keep error guidance aligned with pending_user_permissions.
+        if (isTableMissingError(tabsError)) {
+          setSnack({ message: 'Run PENDING_USER_PERMISSIONS_MIGRATION.sql in Supabase SQL Editor.', severity: 'error' });
+        }
         setViewTabs((tabsData || []).map((t: { id: string; tab_key: string; is_visible: boolean; granted_by?: string | null; granted_at?: string; updated_at?: string }) => ({
           id: t.id,
           user_id: selectedUserId,

@@ -94,6 +94,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [siteId, setSiteId] = useState<string | null>(null);
   const [visibleTabs, setVisibleTabs] = useState<string[]>([]);
   const [primaryProgramLogoUrl, setPrimaryProgramLogoUrl] = useState<string | null>(null);
+  const [permissionOverrides, setPermissionOverrides] = useState<Record<string, boolean>>({});
+  const [viewAsPermissionOverrides, setViewAsPermissionOverrides] = useState<Record<string, boolean>>({});
   // Guard against out-of-order async updates when rapidly switching "view as" users.
   const latestViewAsUserIdRef = useRef<string | null>(null);
   const logoFetchSeqRef = useRef(0);
@@ -118,6 +120,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
 
     setUserProfile(defaultProfile);
     setPermissions(DEFAULT_ROLE_PERMISSIONS[UserRole.PECC]);
+    setPermissionOverrides({});
     setSiteId(null);
     setVisibleTabs([...PECC_TAB_KEYS]);
   }, [currentUser]);
@@ -127,6 +130,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     if (!currentUser) {
       setUserProfile(null);
       setPermissions([]);
+      setPermissionOverrides({});
+      setViewAsPermissionOverrides({});
       setSiteId(null);
       setVisibleTabs([]);
       setPrimaryProgramLogoUrl(null);
@@ -210,6 +215,19 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         } else {
           // Fall back to default permissions
           setPermissions(DEFAULT_ROLE_PERMISSIONS[normalizedRole] || []);
+        }
+        const { data: overrideRows } = await supabase
+          .from('user_permissions')
+          .select('permission_key, is_enabled')
+          .eq('user_id', currentUser.id);
+        if (overrideRows) {
+          const mapped = (overrideRows as { permission_key: string; is_enabled: boolean }[]).reduce((acc, row) => {
+            acc[row.permission_key] = row.is_enabled;
+            return acc;
+          }, {} as Record<string, boolean>);
+          setPermissionOverrides(mapped);
+        } else {
+          setPermissionOverrides({});
         }
 
         // PECC: resolve site and visible tabs. Granular Permissions (view_tabs by user_id) is source of truth.
@@ -359,8 +377,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
             acc[r.tab_key] = r.is_visible;
             return acc;
           }, {} as Record<string, boolean>);
-          const filtered = PECC_TAB_KEYS.filter(tab => (byKey[tab] ?? true));
-          tabs = filtered.length > 0 ? filtered : [...PECC_TAB_KEYS];
+          tabs = PECC_TAB_KEYS.filter(tab => (byKey[tab] ?? true));
         } else if (sid && !viewTabsError) {
           const { data: tabRows } = await supabase
             .from('site_tab_visibility')
@@ -372,8 +389,6 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           }
         }
         if (normalizedRole === UserRole.ADMIN) sid = null;
-        // Ensure view-as PECC never ends up with no tabs (e.g. RLS or missing data)
-        if (normalizedRole === UserRole.PECC && tabs.length === 0) tabs = [...PECC_TAB_KEYS];
       } else {
         sid = null;
         tabs = [];
@@ -383,6 +398,19 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       setViewAsUserProfile(profWithRole);
       setViewAsSiteId(sid);
       setViewAsVisibleTabs(tabs);
+      const { data: viewAsOverrides } = await supabase
+        .from('user_permissions')
+        .select('permission_key, is_enabled')
+        .eq('user_id', userId);
+      if (viewAsOverrides) {
+        const mapped = (viewAsOverrides as { permission_key: string; is_enabled: boolean }[]).reduce((acc, row) => {
+          acc[row.permission_key] = row.is_enabled;
+          return acc;
+        }, {} as Record<string, boolean>);
+        setViewAsPermissionOverrides(mapped);
+      } else {
+        setViewAsPermissionOverrides({});
+      }
       // Ensure navbar logo is updated immediately for the view-as user.
       // (Navbar falls back to default when `primaryProgramLogoUrl` is null.)
       const pid = (prof.primary_program_id ?? null) as string | null;
@@ -414,6 +442,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     setViewAsUserProfile(null);
     setViewAsSiteId(null);
     setViewAsVisibleTabs([]);
+    setViewAsPermissionOverrides({});
   }, []);
 
   const updateUserProfile = async (updates: Partial<UserProfile>) => {
@@ -467,7 +496,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const hasPermission = (permission: string): boolean => {
     // If viewing as a specific user, use that user's role permissions
     if (viewAsUserId && viewAsUserProfile) {
-      return DEFAULT_ROLE_PERMISSIONS[viewAsUserProfile.role]?.includes(permission) ?? false;
+      const base = DEFAULT_ROLE_PERMISSIONS[viewAsUserProfile.role]?.includes(permission) ?? false;
+      return (permission in viewAsPermissionOverrides) ? !!viewAsPermissionOverrides[permission] : base;
     }
     // If viewing as a different role (no specific user), check permissions for that role
     if (viewAsRole && (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin)) {
@@ -476,7 +506,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     if (userProfile?.role === UserRole.ADMIN || userProfile?.is_admin) {
       return true;
     }
-    return permissions.includes(permission);
+    return (permission in permissionOverrides) ? !!permissionOverrides[permission] : permissions.includes(permission);
   };
 
   const refreshProfile = async () => {

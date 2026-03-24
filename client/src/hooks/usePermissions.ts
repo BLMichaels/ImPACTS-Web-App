@@ -7,10 +7,11 @@ import { useUserProfile } from '../context/UserProfileContext';
  */
 export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: string) => {
   const { userProfile } = useUserProfile();
-  const [isVisible, setIsVisible] = useState(true);  // Default to visible
+  const [isVisible, setIsVisible] = useState(false);  // Fail closed while resolving
   
   useEffect(() => {
     if (!userProfile?.id) return;
+    let cancelled = false;
     
     const checkVisibility = async () => {
       try {
@@ -23,7 +24,7 @@ export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: 
           .maybeSingle();
         
         if (userTab) {
-          setIsVisible(userTab.is_visible);
+          if (!cancelled) setIsVisible(userTab.is_visible);
           return;
         }
         
@@ -37,7 +38,7 @@ export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: 
             .maybeSingle();
           
           if (cohortTab) {
-            setIsVisible(cohortTab.is_visible);
+            if (!cancelled) setIsVisible(cohortTab.is_visible);
             return;
           }
         }
@@ -52,21 +53,22 @@ export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: 
             .maybeSingle();
           
           if (programTab) {
-            setIsVisible(programTab.is_visible);
+            if (!cancelled) setIsVisible(programTab.is_visible);
             return;
           }
         }
         
         // Default: visible if no override exists
-        setIsVisible(true);
+        if (!cancelled) setIsVisible(true);
       } catch (error) {
         console.error('Error checking tab visibility:', error);
         // Fail closed on lookup errors to avoid accidental overexposure.
-        setIsVisible(false);
+        if (!cancelled) setIsVisible(false);
       }
     };
     
     checkVisibility();
+    return () => { cancelled = true; };
   }, [userProfile?.id, tabKey, cohortId, programId]);
   
   return isVisible;
@@ -83,6 +85,7 @@ export const usePermission = (permissionKey: string, cohortId?: string, programI
 
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
 
     const checkPermission = async () => {
       try {
@@ -93,17 +96,18 @@ export const usePermission = (permissionKey: string, cohortId?: string, programI
           p_program_id: programId || null
         });
         if (!error && typeof data === 'boolean') {
-          setHasPermission(data);
+          if (!cancelled) setHasPermission(data);
           return;
         }
-        setHasPermission(false);
+        if (!cancelled) setHasPermission(false);
       } catch (err) {
         console.error('Error checking permission:', err);
-        setHasPermission(false);
+        if (!cancelled) setHasPermission(false);
       }
     };
 
     checkPermission();
+    return () => { cancelled = true; };
   }, [userId, permissionKey, cohortId, programId]);
 
   return hasPermission;

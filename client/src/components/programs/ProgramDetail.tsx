@@ -40,7 +40,7 @@ import {
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { useTabVisibility } from '../../hooks/usePermissions';
+import { useTabVisibility, usePermission } from '../../hooks/usePermissions';
 import { 
   Program, 
   ProgramMember, 
@@ -83,7 +83,7 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
   onBack,
   onEdit
 }) => {
-  const { userProfile, hasPermission } = useUserProfile();
+  const { userProfile } = useUserProfile();
   const [program, setProgram] = useState<Program | null>(null);
   const [members, setMembers] = useState<ProgramMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +94,8 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
   // Check tab visibility permissions
   const showAnnouncementsTab = useTabVisibility('announcements', undefined, programId);
   const showMembersTab = useTabVisibility('members', undefined, programId);
+  const canManageProgramsByPermission = usePermission('manage_programs', undefined, programId);
+  const canProgramAnnounceByPermission = usePermission('program_announce', undefined, programId);
   
   // Add Member Dialog
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -114,12 +116,12 @@ export const ProgramDetail: React.FC<ProgramDetailProps> = ({
     member: null
   });
 
-  const canManageProgram = hasPermission('manage_programs') || 
+  const canManageProgram = canManageProgramsByPermission || 
     (userProfile?.role === UserRole.ADMIN) ||
     isManager;
 
   const showSnapshotTab = canManageProgram; // Admins and program managers see snapshot
-  const canAnnounce = canManageProgram || hasPermission('program_announce');
+  const canAnnounce = canManageProgram || canProgramAnnounceByPermission;
 
   const loadProgram = useCallback(async () => {
     try {
