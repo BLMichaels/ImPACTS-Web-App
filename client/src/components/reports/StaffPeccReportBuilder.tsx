@@ -147,9 +147,30 @@ const REPORT_HEADER_ACTION_SX = {
   '& .MuiButton-startIcon': { marginRight: 0.75 },
 } as const;
 
-/** Multi-role report: pick which platform user roles to include (admin = internal team). */
-const PLATFORM_USERS_ROLE_OPTIONS = [
-  { value: 'admin', label: 'Admin (internal team)' },
+/** Platform user role filter for the `platform_users` report (staff working in CRM). */
+const PLATFORM_STAFF_ROLE_VALUES = ['manager', 'mentor', 'pecc', 'hospital_system', 'hiring_group'] as const;
+
+type PlatformStaffRoleValue = typeof PLATFORM_STAFF_ROLE_VALUES[number] | 'staff';
+
+function normalizePlatformStaffRoleFilter(values: string[]): string[] {
+  const set = new Set(values);
+  // Back-compat: old presets may store value "admin" from the previous dropdown.
+  // Treat it as "staff" selection now (admins are controlled by `is_admin` checkbox).
+  if (set.has('admin')) {
+    set.delete('admin');
+    set.add('staff');
+  }
+  return Array.from(set);
+}
+
+function resolvePlatformUserRolesForQuery(values: string[]): string[] {
+  const set = new Set(values);
+  if (set.has('staff')) return Array.from(new Set([...PLATFORM_STAFF_ROLE_VALUES]));
+  return Array.from(new Set([...values].filter((v) => v !== 'staff' && v !== 'admin')));
+}
+
+const PLATFORM_USERS_ROLE_OPTIONS: { value: PlatformStaffRoleValue; label: string }[] = [
+  { value: 'staff', label: 'Staff (CRM users)' },
   { value: 'manager', label: 'Manager' },
   { value: 'mentor', label: 'Mentor' },
   { value: 'pecc', label: 'PECC' },
@@ -605,7 +626,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setActivityPreset(snap.activityPreset);
     setProgramFilter(snap.programFilter);
     setCohortFilter(snap.cohortFilter);
-    setStaffRoleFilter(snap.staffRoleFilter);
+    setStaffRoleFilter(normalizePlatformStaffRoleFilter(snap.staffRoleFilter));
     setIncludePlatformAdminAccounts(snap.includePlatformAdminAccounts);
     setSearch(snap.search);
     setStateFilter(snap.stateFilter);
@@ -811,7 +832,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           scope,
           actorUserId,
           hospitalScope,
-          roles: staffRoleFilter,
+          roles: resolvePlatformUserRolesForQuery(staffRoleFilter),
           stripPlatformAdmins: !includePlatformAdminAccounts,
           setRows,
         });
