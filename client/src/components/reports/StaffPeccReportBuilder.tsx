@@ -119,7 +119,7 @@ const REPORT_DATASET_PEOPLE_OPTIONS: { value: ReportDataset; label: string }[] =
     { value: 'managers', label: 'Managers' },
     { value: 'mentors', label: 'Mentors' },
     { value: 'pecc', label: 'PECCs (people at sites)' },
-    { value: 'platform_users', label: 'Platform users (pick roles)' },
+  { value: 'platform_users', label: 'People records (pick roles)' },
     { value: 'internal_staff', label: 'Staff (internal team)' },
   ] as { value: ReportDataset; label: string }[]
 ).sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
@@ -581,7 +581,8 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [activityPreset, setActivityPreset] = useState('any');
   const [programFilter, setProgramFilter] = useState<string>('all');
   const [cohortFilter, setCohortFilter] = useState<string>('all');
-  const [staffRoleFilter, setStaffRoleFilter] = useState<string[]>(['pecc', 'mentor', 'manager']);
+  // Default to "staff" so the platform people records view includes all CRM-working roles.
+  const [staffRoleFilter, setStaffRoleFilter] = useState<string[]>(['staff']);
   const [includePlatformAdminAccounts, setIncludePlatformAdminAccounts] = useState(false);
   const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
   const [cohorts, setCohorts] = useState<{ id: string; name: string }[]>([]);
@@ -1694,7 +1695,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                         size="small"
                       />
                     }
-                    label="Include platform admin accounts"
+                    label="Include admin accounts"
                   />
                 </Grid>
               </>
@@ -3184,8 +3185,10 @@ async function loadPlatformUsersByRoles(params: {
       setRows([]);
       return;
     }
+    // For "people records" we include everyone in CRM-related roles,
+    // even if they haven't finished creating an account yet.
     let urows = await fetchAllRows<StaffReportUserRow>((from, to) =>
-      supabase.from('users').select(STAFF_USER_SELECT).eq('is_active', true).in('role', roles).order('last_name').range(from, to)
+      supabase.from('users').select(STAFF_USER_SELECT).in('role', roles).order('last_name').range(from, to)
     );
     if (stripPlatformAdmins) urows = urows.filter((u) => !u.is_admin);
     setRows(await enrichStaffUsersToReportRows(urows));
@@ -3197,14 +3200,14 @@ async function loadPlatformUsersByRoles(params: {
   if (scope === 'admin') {
     allowedIds = null;
   } else if (scope === 'manager') {
-    const { data: mentors } = await supabase.from('users').select('id').eq('manager_id', actorUserId).eq('role', 'mentor').eq('is_active', true);
+    const { data: mentors } = await supabase.from('users').select('id').eq('manager_id', actorUserId).eq('role', 'mentor');
     const mentorIds = (mentors || []).map((m: { id: string }) => m.id);
     const hs = hospitalScope || [];
     const peccIdSet = new Set<string>();
     if (hs.length > 0) {
       for (const hpart of chunk(hs, 80)) {
         const rows = await fetchAllRowsOrEmpty<{ id: string }>((from, to) =>
-          supabase.from('users').select('id').eq('role', 'pecc').eq('is_active', true).in('hospital_facility_id', hpart).range(from, to)
+          supabase.from('users').select('id').eq('role', 'pecc').in('hospital_facility_id', hpart).range(from, to)
         );
         rows.forEach((r) => peccIdSet.add(r.id));
       }
@@ -3217,7 +3220,7 @@ async function loadPlatformUsersByRoles(params: {
     if (hs.length > 0) {
       for (const hpart of chunk(hs, 80)) {
         const rows = await fetchAllRowsOrEmpty<{ id: string }>((from, to) =>
-          supabase.from('users').select('id').eq('role', 'pecc').eq('is_active', true).in('hospital_facility_id', hpart).range(from, to)
+          supabase.from('users').select('id').eq('role', 'pecc').in('hospital_facility_id', hpart).range(from, to)
         );
         rows.forEach((r) => peccIdSet.add(r.id));
       }
@@ -3230,7 +3233,7 @@ async function loadPlatformUsersByRoles(params: {
 
   if (allowedIds === null) {
     urows = await fetchAllRows<StaffReportUserRow>((from, to) =>
-      supabase.from('users').select(STAFF_USER_SELECT).eq('is_active', true).in('role', roles).order('last_name').range(from, to)
+      supabase.from('users').select(STAFF_USER_SELECT).in('role', roles).order('last_name').range(from, to)
     );
   } else if (allowedIds.length === 0) {
     setRows([]);
@@ -3241,7 +3244,6 @@ async function loadPlatformUsersByRoles(params: {
         supabase
           .from('users')
           .select(STAFF_USER_SELECT)
-          .eq('is_active', true)
           .in('role', roles)
           .in('id', idPart)
           .order('last_name')
