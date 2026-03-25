@@ -51,6 +51,7 @@ import * as XLSX from 'xlsx';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditIcon from '@mui/icons-material/Edit';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -571,6 +572,13 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [columnDrawer, setColumnDrawer] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [columnFilters, setColumnFilters] = useState<ColumnFilterRule[]>([]);
+  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
+  const [selectedOnly, setSelectedOnly] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editRow, setEditRow] = useState<ReportDataRow | null>(null);
+  const [editDraft, setEditDraft] = useState<Record<string, string>>({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [peccAudit, setPeccAudit] = useState<PeccAuditSnapshot | null>(null);
@@ -822,6 +830,25 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     load();
   }, [load]);
 
+  // Selection is tied to the currently loaded dataset rows.
+  useEffect(() => {
+    setSelectedRowIds([]);
+    setSelectedOnly(false);
+    setEditDialogOpen(false);
+    setEditRow(null);
+    setEditDraft({});
+    setEditError(null);
+  }, [dataset]);
+
+  useEffect(() => {
+    const idSet = new Set(rows.map((r) => r.id));
+    setSelectedRowIds((prev) => prev.filter((id) => idSet.has(id)));
+  }, [rows]);
+
+  useEffect(() => {
+    if (selectedOnly && selectedRowIds.length === 0) setSelectedOnly(false);
+  }, [selectedOnly, selectedRowIds.length]);
+
   const visibleColumnIds = useMemo(() => {
     const allowed = new Set(columnMetas.map((c) => c.id));
     return columnOrder.filter((id) => allowed.has(id) && columns[id]);
@@ -905,6 +932,160 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     });
     return copy;
   }, [filtered, sortBy, sortDir]);
+
+  const selectedIdSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds]);
+
+  const displayRows = useMemo(() => {
+    if (!selectedOnly) return sorted;
+    return sorted.filter((r) => selectedIdSet.has(r.id));
+  }, [sorted, selectedOnly, selectedRowIds]);
+
+  const selectedInSortedCount = useMemo(() => {
+    if (!selectedRowIds.length) return 0;
+    let c = 0;
+    for (const r of sorted) if (selectedIdSet.has(r.id)) c += 1;
+    return c;
+  }, [sorted, selectedRowIds]);
+
+  const getEditableCellKeysForRow = (r: ReportDataRow): string[] => {
+    const out: string[] = [];
+    const hints = r.linkHints || {};
+    const cells = r.cells || {};
+
+    if (hints.userId) {
+      if (cells.email !== undefined) out.push('email');
+      if (cells.peccPhone !== undefined) out.push('peccPhone');
+      if (cells.userPhone !== undefined) out.push('userPhone');
+    }
+    if (hints.hospitalContactId) {
+      if (cells.email !== undefined) out.push('email');
+      if (cells.phone !== undefined) out.push('phone');
+    }
+    if (hints.crmContactId) {
+      if (cells.orgEmail !== undefined) out.push('orgEmail');
+      if (cells.orgPhone !== undefined) out.push('orgPhone');
+    }
+    if (hints.hospitalId) {
+      if (cells.hospitalEmail !== undefined) out.push('hospitalEmail');
+      if (cells.hospitalPhone !== undefined) out.push('hospitalPhone');
+    }
+    return Array.from(new Set(out));
+  };
+
+  const editCellKeyLabel = (key: string) => {
+    switch (key) {
+      case 'email':
+        return 'Email';
+      case 'peccPhone':
+      case 'userPhone':
+      case 'phone':
+        return 'Phone';
+      case 'orgEmail':
+        return 'Org email';
+      case 'orgPhone':
+        return 'Org phone';
+      case 'hospitalEmail':
+        return 'Site email';
+      case 'hospitalPhone':
+        return 'Site phone';
+      default:
+        return key;
+    }
+  };
+
+  const normalizePhoneDraftForDb = (v: string) => {
+    const t = (v || '').trim();
+    return t ? t : null;
+  };
+
+  const handleOpenEditForRow = (r: ReportDataRow) => {
+    const keys = getEditableCellKeysForRow(r);
+    if (keys.length === 0) return;
+    const nextDraft: Record<string, string> = {};
+    keys.forEach((k) => {
+      nextDraft[k] = r.cells[k] ?? '';
+    });
+    setEditRow(r);
+    setEditDraft(nextDraft);
+    setEditSaving(false);
+    setEditError(null);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editRow) return;
+    setEditSaving(true);
+    setEditError(null);
+
+    const hints = editRow.linkHints || {};
+    try {
+      // Update user accounts.
+      if (hints.userId) {
+        const payload: { email?: string; phone?: string | null } = {};
+        if (editDraft.email !== undefined) payload.email = editDraft.email.trim();
+        const userPhoneVal = editDraft.peccPhone ?? editDraft.userPhone;
+        if (userPhoneVal !== undefined) payload.phone = normalizePhoneDraftForDb(userPhoneVal);
+        if (Object.keys(payload).length) {
+          const { error: err } = await supabase.from('users').update(payload).eq('id', hints.userId);
+          if (err) throw err;
+        }
+      }
+
+      // Update hospital contacts.
+      if (hints.hospitalContactId) {
+        const payload: { email?: string; phone?: string | null } = {};
+        if (editDraft.email !== undefined) payload.email = editDraft.email.trim();
+        if (editDraft.phone !== undefined) payload.phone = normalizePhoneDraftForDb(editDraft.phone);
+        if (Object.keys(payload).length) {
+          const { error: err } = await supabase
+            .from('hospital_contacts')
+            .update(payload)
+            .eq('id', hints.hospitalContactId);
+          if (err) throw err;
+        }
+      }
+
+      // Update CRM organizations (PECC org records).
+      if (hints.crmContactId) {
+        const payload: { email?: string; phone?: string | null } = {};
+        if (editDraft.orgEmail !== undefined) payload.email = editDraft.orgEmail.trim();
+        if (editDraft.orgPhone !== undefined) payload.phone = normalizePhoneDraftForDb(editDraft.orgPhone);
+        if (Object.keys(payload).length) {
+          const { error: err } = await supabase.from('crm_organizations').update(payload).eq('id', hints.crmContactId);
+          if (err) throw err;
+        }
+      }
+
+      // Update hospitals/sites.
+      if (hints.hospitalId) {
+        const payload: { email?: string; phone?: string | null } = {};
+        if (editDraft.hospitalEmail !== undefined) payload.email = editDraft.hospitalEmail.trim();
+        if (editDraft.hospitalPhone !== undefined) payload.phone = normalizePhoneDraftForDb(editDraft.hospitalPhone);
+        if (Object.keys(payload).length) {
+          const { error: err } = await supabase.from('hospitals').update(payload).eq('id', hints.hospitalId);
+          if (err) throw err;
+        }
+      }
+
+      const updatedCellValues: Record<string, string> = {};
+      for (const [k, v] of Object.entries(editDraft)) {
+        if (['peccPhone', 'userPhone', 'phone', 'orgPhone', 'hospitalPhone'].includes(k)) {
+          updatedCellValues[k] = (v || '').trim();
+        } else {
+          updatedCellValues[k] = (v || '').trim();
+        }
+      }
+
+      setRows((prev) => prev.map((r) => (r.id === editRow.id ? { ...r, cells: { ...r.cells, ...updatedCellValues } } : r)));
+      setEditDialogOpen(false);
+      setEditRow(null);
+      setEditDraft({});
+    } catch (e: unknown) {
+      setEditError(e instanceof Error ? e.message : 'Failed to save changes');
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const toggleSort = (key: string) => {
     if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -1014,19 +1195,41 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     doc.text(`${datasetLabel(dataset)} — ImPACTS`, 14, 16);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Generated ${format(new Date(), 'PPpp')} · Scope: ${scope} · Rows: ${sorted.length}`, 14, 22);
+    const idSet = new Set(selectedRowIds);
+    const exportRows =
+      idSet.size > 0
+        ? (() => {
+            const selectedInSorted = sorted.filter((r) => idSet.has(r.id));
+            const selectedInSortedIdSet = new Set(selectedInSorted.map((r) => r.id));
+            const selectedRest = rows.filter((r) => idSet.has(r.id) && !selectedInSortedIdSet.has(r.id));
+            return [...selectedInSorted, ...selectedRest];
+          })()
+        : sorted;
+
+    doc.text(`Generated ${format(new Date(), 'PPpp')} · Scope: ${scope} · Rows: ${exportRows.length}`, 14, 22);
 
     const head = visibleColumnIds.map((id) => columnMetas.find((c) => c.id === id)?.label || id);
-    const body = sorted.map((r) => visibleColumnIds.map((id) => r.cells[id] ?? ''));
+    const body = exportRows.map((r) => visibleColumnIds.map((id) => r.cells[id] ?? ''));
 
     autoTable(doc, { head: [head], body, startY: 28, styles: { fontSize: 6 }, headStyles: { fillColor: [33, 150, 243] } });
     doc.save(`impacts-${dataset}-${scope}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   const exportExcel = () => {
+    const idSet = new Set(selectedRowIds);
+    const exportRows =
+      idSet.size > 0
+        ? (() => {
+            const selectedInSorted = sorted.filter((r) => idSet.has(r.id));
+            const selectedInSortedIdSet = new Set(selectedInSorted.map((r) => r.id));
+            const selectedRest = rows.filter((r) => idSet.has(r.id) && !selectedInSortedIdSet.has(r.id));
+            return [...selectedInSorted, ...selectedRest];
+          })()
+        : sorted;
+
     const head = visibleColumnIds.map((id) => columnMetas.find((c) => c.id === id)?.label || id);
     const aoa: string[][] = [head];
-    sorted.forEach((r) => {
+    exportRows.forEach((r) => {
       aoa.push(visibleColumnIds.map((id) => r.cells[id] ?? ''));
     });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -1479,8 +1682,41 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <FilterListIcon fontSize="small" color="action" />
             <Typography variant="caption" color="text.secondary">
-              Showing {sorted.length} of {rows.length} rows (after scope &amp; filters)
+              Showing {displayRows.length} of {rows.length} rows (after scope &amp; filters{selectedOnly ? ' · selected only' : ''})
             </Typography>
+            {selectedRowIds.length > 0 && (
+              <Chip size="small" label={`Selected: ${selectedRowIds.length}`} variant="outlined" />
+            )}
+            {sorted.length > 0 && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  const ids = sorted.map((r) => r.id);
+                  setSelectedRowIds((prev) => Array.from(new Set([...prev, ...ids])));
+                }}
+              >
+                Select all
+              </Button>
+            )}
+            {selectedRowIds.length > 0 && (
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => {
+                  setSelectedRowIds([]);
+                  setSelectedOnly(false);
+                }}
+              >
+                Clear
+              </Button>
+            )}
+            {selectedRowIds.length > 0 && (
+              <FormControlLabel
+                control={<Checkbox checked={selectedOnly} onChange={(_, v) => setSelectedOnly(v)} size="small" />}
+                label="Selected only"
+              />
+            )}
             {scope !== 'admin' && <Chip size="small" label={`Scope: ${scope}`} variant="outlined" />}
           </Stack>
         </Stack>
@@ -1571,6 +1807,23 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               >
                 <TableHead>
                   <TableRow>
+                    <TableCell padding="checkbox" sx={{ width: 44 }}>
+                      <Checkbox
+                        size="small"
+                        disabled={sorted.length === 0}
+                        checked={sorted.length > 0 && selectedInSortedCount === sorted.length}
+                        indeterminate={selectedInSortedCount > 0 && selectedInSortedCount < sorted.length}
+                        onChange={(_, v) => {
+                          if (!v) {
+                            const idsSet = new Set(sorted.map((r) => r.id));
+                            setSelectedRowIds((prev) => prev.filter((id) => !idsSet.has(id)));
+                            return;
+                          }
+                          const ids = sorted.map((r) => r.id);
+                          setSelectedRowIds((prev) => Array.from(new Set([...prev, ...ids])));
+                        }}
+                      />
+                    </TableCell>
                     {visibleColumnIds.map((cid) => (
                       <TableCell
                         key={cid}
@@ -1616,11 +1869,26 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                         </Box>
                       </TableCell>
                     ))}
+                    <TableCell sx={{ width: 80 }}>Edit</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {sorted.map((r) => (
+                  {displayRows.map((r) => (
                     <TableRow key={r.id} hover>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          size="small"
+                          checked={selectedIdSet.has(r.id)}
+                          onChange={(_, v) => {
+                            setSelectedRowIds((prev) => {
+                              const next = new Set(prev);
+                              if (v) next.add(r.id);
+                              else next.delete(r.id);
+                              return Array.from(next);
+                            });
+                          }}
+                        />
+                      </TableCell>
                       {visibleColumnIds.map((cid) => (
                         <TableCell
                           key={cid}
@@ -1635,6 +1903,18 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                           {renderCellContent(r, cid)}
                         </TableCell>
                       ))}
+                      <TableCell>
+                        <IconButton
+                          size="small"
+                          aria-label="Edit row"
+                          onClick={() => {
+                            handleOpenEditForRow(r);
+                          }}
+                          disabled={getEditableCellKeysForRow(r).length === 0}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1661,6 +1941,76 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           <Button onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleSavePresetConfirm}>
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setEditRow(null);
+          setEditDraft({});
+          setEditError(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Edit row</DialogTitle>
+        <DialogContent>
+          {editError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {editError}
+            </Alert>
+          )}
+
+          <Box sx={{ mt: 0.5 }}>
+            <Stack spacing={2}>
+              {Object.keys(editDraft).length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No editable fields for this row.
+                </Typography>
+              ) : (
+                Object.keys(editDraft).map((cellKey) => (
+                  <TextField
+                    key={cellKey}
+                    label={editCellKeyLabel(cellKey)}
+                    value={editDraft[cellKey] ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setEditDraft((prev) => ({ ...prev, [cellKey]: v }));
+                    }}
+                    fullWidth
+                    size="small"
+                    margin="dense"
+                    inputProps={{
+                      inputMode: ['peccPhone', 'userPhone', 'phone', 'orgPhone', 'hospitalPhone'].includes(cellKey)
+                        ? 'tel'
+                        : undefined,
+                    }}
+                  />
+                ))
+              )}
+            </Stack>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setEditDialogOpen(false);
+              setEditRow(null);
+              setEditDraft({});
+              setEditError(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveEdit}
+            disabled={editSaving || Object.keys(editDraft).length === 0}
+          >
+            {editSaving ? <CircularProgress size={16} sx={{ color: 'white' }} /> : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2352,7 +2702,7 @@ async function loadPeccDataset(params: {
       cells[`hcf_${k}`] = cf[k] ?? '';
     });
 
-    return { id: p.id, cells, linkHints: { userId: p.id } };
+    return { id: p.id, cells, linkHints: { userId: p.id, hospitalId: p.hospital_facility_id || undefined } };
   });
 
   const contactRows: ReportDataRow[] = peccHospitalContactRows.map((c) => {
