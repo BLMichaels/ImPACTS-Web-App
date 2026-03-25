@@ -33,11 +33,13 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  DialogContentText,
   IconButton,
   Link,
   Menu,
   Tooltip,
   Badge,
+  Snackbar,
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import TuneIcon from '@mui/icons-material/Tune';
@@ -76,6 +78,12 @@ import {
   type ColumnFilterRule,
   type ColumnFilterOp,
 } from '../../utils/reportPresets';
+import { useUserProfile } from '../../context/UserProfileContext';
+import {
+  buildExportRowsForMode,
+  exportModeDescription,
+  type ReportExportMode,
+} from '../../utils/reportExportHelpers';
 
 export type StaffReportScope = 'admin' | 'manager' | 'mentor';
 
@@ -433,7 +441,7 @@ function buildColumnList(
     { id: 'name', label: 'Name', defaultOn: true, group: 'Staff' },
     { id: 'email', label: 'Email', defaultOn: true, group: 'Staff' },
     { id: 'userRole', label: 'Primary role', defaultOn: true, group: 'Staff' },
-    { id: 'platformAdminAccess', label: 'Platform admin (is_admin)', defaultOn: false, group: 'Staff' },
+    { id: 'platformAdminAccess', label: 'CRM admin (can change settings)', defaultOn: false, group: 'Staff' },
     { id: 'userPhone', label: 'Phone', defaultOn: false, group: 'Staff' },
     { id: 'lastLogin', label: 'Last login', defaultOn: true, group: 'Staff' },
     { id: 'userCreatedAt', label: 'Created', defaultOn: false, group: 'Staff' },
@@ -568,7 +576,17 @@ interface Props {
   actorUserId: string;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmailField(v: string): boolean {
+  const t = (v || '').trim();
+  if (!t) return true;
+  return EMAIL_RE.test(t);
+}
+
 const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
+  const { hasAdminAccess } = useUserProfile();
+  const canInlineEdit = hasAdminAccess;
   const location = useLocation();
   const [dataset, setDataset] = useState<ReportDataset>('pecc');
   const [rows, setRows] = useState<ReportDataRow[]>([]);
@@ -601,6 +619,8 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccessOpen, setEditSuccessOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<ReportExportMode>('filtered');
   const [sortBy, setSortBy] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [peccAudit, setPeccAudit] = useState<PeccAuditSnapshot | null>(null);
@@ -856,6 +876,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   useEffect(() => {
     setSelectedRowIds([]);
     setSelectedOnly(false);
+    setExportMode('filtered');
     setEditDialogOpen(false);
     setEditRow(null);
     setEditDraft({});
@@ -962,12 +983,30 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     return sorted.filter((r) => selectedIdSet.has(r.id));
   }, [sorted, selectedOnly, selectedRowIds]);
 
-  const selectedInSortedCount = useMemo(() => {
+  /** Rows that bulk select / header checkbox apply to (matches the visible table when "Selected only" is on). */
+  const scopeRowsForBulkSelect = useMemo(
+    () => (selectedOnly ? displayRows : sorted),
+    [selectedOnly, displayRows, sorted]
+  );
+
+  const selectedInScopeCount = useMemo(() => {
     if (!selectedRowIds.length) return 0;
     let c = 0;
-    for (const r of sorted) if (selectedIdSet.has(r.id)) c += 1;
+    for (const r of scopeRowsForBulkSelect) if (selectedIdSet.has(r.id)) c += 1;
     return c;
-  }, [sorted, selectedRowIds]);
+  }, [scopeRowsForBulkSelect, selectedRowIds, selectedIdSet]);
+
+  const exportRows = useMemo(
+    () =>
+      buildExportRowsForMode({
+        mode: exportMode,
+        sorted,
+        displayRows,
+        rows,
+        selectedRowIds,
+      }),
+    [exportMode, sorted, displayRows, rows, selectedRowIds]
+  );
 
   const getEditableCellKeysForRow = (r: ReportDataRow): string[] => {
     const out: string[] = [];
@@ -1021,6 +1060,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   };
 
   const handleOpenEditForRow = (r: ReportDataRow) => {
+    if (!canInlineEdit) return;
     const keys = getEditableCellKeysForRow(r);
     if (keys.length === 0) return;
     const nextDraft: Record<string, string> = {};
@@ -1035,9 +1075,18 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   };
 
   const handleSaveEdit = async () => {
-    if (!editRow) return;
+    if (!editRow || !canInlineEdit) return;
     setEditSaving(true);
     setEditError(null);
+
+    const emailKeys = ['email', 'orgEmail', 'hospitalEmail'] as const;
+    for (const k of emailKeys) {
+      if (editDraft[k] !== undefined && !isValidEmailField(String(editDraft[k]))) {
+        setEditError('Enter a valid email address, or clear the field.');
+        setEditSaving(false);
+        return;
+      }
+    }
 
     const hints = editRow.linkHints || {};
     try {
@@ -1102,6 +1151,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       setEditDialogOpen(false);
       setEditRow(null);
       setEditDraft({});
+      setEditSuccessOpen(true);
     } catch (e: unknown) {
       setEditError(e instanceof Error ? e.message : 'Failed to save changes');
     } finally {
@@ -1214,41 +1264,28 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.text(`${datasetLabel(dataset)} — ImPACTS`, 14, 16);
+    doc.text(`${datasetReportTitle(dataset)} — ImPACTS`, 14, 16);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    const idSet = new Set(selectedRowIds);
-    const exportRows =
-      idSet.size > 0
-        ? (() => {
-            const selectedInSorted = sorted.filter((r) => idSet.has(r.id));
-            const selectedInSortedIdSet = new Set(selectedInSorted.map((r) => r.id));
-            const selectedRest = rows.filter((r) => idSet.has(r.id) && !selectedInSortedIdSet.has(r.id));
-            return [...selectedInSorted, ...selectedRest];
-          })()
-        : sorted;
-
-    doc.text(`Generated ${format(new Date(), 'PPpp')} · Scope: ${scope} · Rows: ${exportRows.length}`, 14, 22);
+    const modeLine = exportModeDescription(exportMode, {
+      filtered: sorted.length,
+      visible: displayRows.length,
+      selected: selectedRowIds.length,
+    });
+    doc.text(
+      `Generated ${format(new Date(), 'PPpp')} · Scope: ${scope} · ${modeLine} · Rows exported: ${exportRows.length}`,
+      14,
+      22
+    );
 
     const head = visibleColumnIds.map((id) => columnMetas.find((c) => c.id === id)?.label || id);
     const body = exportRows.map((r) => visibleColumnIds.map((id) => r.cells[id] ?? ''));
 
     autoTable(doc, { head: [head], body, startY: 28, styles: { fontSize: 6 }, headStyles: { fillColor: [33, 150, 243] } });
-    doc.save(`impacts-${dataset}-${scope}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    doc.save(`impacts-${exportSlugForDataset(dataset)}-${scope}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   const exportExcel = () => {
-    const idSet = new Set(selectedRowIds);
-    const exportRows =
-      idSet.size > 0
-        ? (() => {
-            const selectedInSorted = sorted.filter((r) => idSet.has(r.id));
-            const selectedInSortedIdSet = new Set(selectedInSorted.map((r) => r.id));
-            const selectedRest = rows.filter((r) => idSet.has(r.id) && !selectedInSortedIdSet.has(r.id));
-            return [...selectedInSorted, ...selectedRest];
-          })()
-        : sorted;
-
     const head = visibleColumnIds.map((id) => columnMetas.find((c) => c.id === id)?.label || id);
     const aoa: string[][] = [head];
     exportRows.forEach((r) => {
@@ -1256,8 +1293,8 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, datasetLabel(dataset).slice(0, 28));
-    XLSX.writeFile(wb, `impacts-${dataset}-${scope}-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, datasetReportTitle(dataset).slice(0, 28));
+    XLSX.writeFile(wb, `impacts-${exportSlugForDataset(dataset)}-${scope}-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
   const columnsByGroup = useMemo(() => {
@@ -1554,6 +1591,26 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   Filters
                 </Button>
               </Badge>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel id="export-mode-label">Export rows</InputLabel>
+                <Select
+                  labelId="export-mode-label"
+                  label="Export rows"
+                  value={exportMode}
+                  onChange={(e) => setExportMode(e.target.value as ReportExportMode)}
+                >
+                  <MenuItem value="filtered">
+                    All filtered ({sorted.length})
+                  </MenuItem>
+                  <MenuItem value="visible">
+                    Visible table only ({displayRows.length})
+                  </MenuItem>
+                  <MenuItem value="selected">
+                    Selected checkboxes ({selectedRowIds.length})
+                    {selectedRowIds.length === 0 ? ' — uses all filtered if none' : ''}
+                  </MenuItem>
+                </Select>
+              </FormControl>
               <Button
                 size="small"
                 variant="contained"
@@ -1590,7 +1647,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   onChange={(e) => setDataset(e.target.value as ReportDataset)}
                 >
                   <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
-                    People (platform users)
+                    People records
                   </ListSubheader>
                   {REPORT_DATASET_PEOPLE_OPTIONS.map(({ value, label }) => (
                     <MenuItem key={value} value={value}>
@@ -1703,22 +1760,24 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           </Grid>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <FilterListIcon fontSize="small" color="action" />
-            <Typography variant="caption" color="text.secondary">
-              Showing {displayRows.length} of {rows.length} rows (after scope &amp; filters{selectedOnly ? ' · selected only' : ''})
+            <Typography variant="caption" color="text.secondary" component="span">
+              Visible: {displayRows.length} of {rows.length} loaded rows (after scope &amp; filters)
+              {selectedRowIds.length > 0 ? ` · Selected: ${selectedRowIds.length}` : ''}
+              {selectedOnly ? ' · table: selected only' : ''}
             </Typography>
             {selectedRowIds.length > 0 && (
               <Chip size="small" label={`Selected: ${selectedRowIds.length}`} variant="outlined" />
             )}
-            {sorted.length > 0 && (
+            {scopeRowsForBulkSelect.length > 0 && (
               <Button
                 size="small"
                 variant="outlined"
                 onClick={() => {
-                  const ids = sorted.map((r) => r.id);
+                  const ids = scopeRowsForBulkSelect.map((r) => r.id);
                   setSelectedRowIds((prev) => Array.from(new Set([...prev, ...ids])));
                 }}
               >
-                Select all
+                Select all in view
               </Button>
             )}
             {selectedRowIds.length > 0 && (
@@ -1832,16 +1891,24 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                     <TableCell padding="checkbox" sx={{ width: 44 }}>
                       <Checkbox
                         size="small"
-                        disabled={sorted.length === 0}
-                        checked={sorted.length > 0 && selectedInSortedCount === sorted.length}
-                        indeterminate={selectedInSortedCount > 0 && selectedInSortedCount < sorted.length}
+                        disabled={scopeRowsForBulkSelect.length === 0}
+                        inputProps={{
+                          'aria-label': 'Select or deselect all rows in the current table view',
+                        }}
+                        checked={
+                          scopeRowsForBulkSelect.length > 0 &&
+                          selectedInScopeCount === scopeRowsForBulkSelect.length
+                        }
+                        indeterminate={
+                          selectedInScopeCount > 0 && selectedInScopeCount < scopeRowsForBulkSelect.length
+                        }
                         onChange={(_, v) => {
                           if (!v) {
-                            const idsSet = new Set(sorted.map((r) => r.id));
+                            const idsSet = new Set(scopeRowsForBulkSelect.map((r) => r.id));
                             setSelectedRowIds((prev) => prev.filter((id) => !idsSet.has(id)));
                             return;
                           }
-                          const ids = sorted.map((r) => r.id);
+                          const ids = scopeRowsForBulkSelect.map((r) => r.id);
                           setSelectedRowIds((prev) => Array.from(new Set([...prev, ...ids])));
                         }}
                       />
@@ -1891,7 +1958,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                         </Box>
                       </TableCell>
                     ))}
-                    <TableCell sx={{ width: 80 }}>Edit</TableCell>
+                    {canInlineEdit && <TableCell sx={{ width: 80 }}>Edit</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1901,6 +1968,9 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                         <Checkbox
                           size="small"
                           checked={selectedIdSet.has(r.id)}
+                          inputProps={{
+                            'aria-label': `Select row ${r.cells.name || r.cells.contactName || r.cells.email || r.id}`,
+                          }}
                           onChange={(_, v) => {
                             setSelectedRowIds((prev) => {
                               const next = new Set(prev);
@@ -1925,18 +1995,20 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                           {renderCellContent(r, cid)}
                         </TableCell>
                       ))}
-                      <TableCell>
-                        <IconButton
-                          size="small"
-                          aria-label="Edit row"
-                          onClick={() => {
-                            handleOpenEditForRow(r);
-                          }}
-                          disabled={getEditableCellKeysForRow(r).length === 0}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
+                      {canInlineEdit && (
+                        <TableCell>
+                          <IconButton
+                            size="small"
+                            aria-label={`Edit row ${r.cells.name || r.cells.contactName || r.cells.email || r.id}`}
+                            onClick={() => {
+                              handleOpenEditForRow(r);
+                            }}
+                            disabled={getEditableCellKeysForRow(r).length === 0}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1980,6 +2052,9 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       >
         <DialogTitle>Edit row</DialogTitle>
         <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Only email and phone fields can be changed here. Other CRM details are edited on the contact or site record.
+          </DialogContentText>
           {editError && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {editError}
@@ -2200,11 +2275,55 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           </Stack>
         </Box>
       </Drawer>
+
+      <Snackbar
+        open={editSuccessOpen}
+        autoHideDuration={4000}
+        onClose={() => setEditSuccessOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" variant="filled" onClose={() => setEditSuccessOpen(false)} sx={{ width: '100%' }}>
+          Changes saved
+        </Alert>
+      </Snackbar>
     </Paper>
   );
 };
 
-function datasetLabel(d: ReportDataset): string {
+/** Human-readable title for PDF/Excel headers and sheet names. */
+function datasetReportTitle(d: ReportDataset): string {
+  switch (d) {
+    case 'pecc':
+      return 'PECCs';
+    case 'hospital':
+      return 'Hospitals & sites';
+    case 'organization':
+      return 'Organizations';
+    case 'crm_system':
+      return 'Hospital Systems (CRM)';
+    case 'crm_hiring_group':
+      return 'Hiring Groups (CRM)';
+    case 'contacts':
+      return 'Hospital contacts';
+    case 'internal_staff':
+      return 'internal-staff';
+    case 'managers':
+      return 'Managers';
+    case 'mentors':
+      return 'Mentors';
+    case 'user_hospital_system':
+      return 'Hospital System users';
+    case 'user_hiring_group':
+      return 'Hiring Group users';
+    case 'platform_users':
+      return 'People records';
+    default:
+      return 'Report';
+  }
+}
+
+/** File-name slug (kebab-case, stable). */
+function exportSlugForDataset(d: ReportDataset): string {
   switch (d) {
     case 'pecc':
       return 'pecc';
@@ -2229,7 +2348,7 @@ function datasetLabel(d: ReportDataset): string {
     case 'user_hiring_group':
       return 'hiring-group-users';
     case 'platform_users':
-      return 'platform-users';
+      return 'people-records';
     default:
       return 'report';
   }

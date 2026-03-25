@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -51,13 +51,12 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import SearchIcon from '@mui/icons-material/Search';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
 import {
-  PlatformPeoplePieChart,
-  PlatformSitesBarChart,
   ProgramBreakdownGroupedBar,
   CohortBreakdownGroupedBar,
   UsageActivityVolumeChart,
@@ -66,6 +65,8 @@ import {
   UsageEventTypesBar,
   ClicksByRoleBar,
 } from '../../components/admin/AdminReportCharts';
+
+const AdminPlatformOverviewCharts = React.lazy(() => import('../../components/admin/AdminPlatformOverviewCharts'));
 import { supabase } from '../../supabase';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -85,6 +86,12 @@ const MENTOR_HOURS_PERIODS = [
 ];
 
 const TABLE_LIMITS = [5, 10, 15, 25, 50];
+
+function chunkIds<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 interface ProgramBreakdown {
   id: string;
@@ -203,7 +210,7 @@ export default function AdminSnapshotPage() {
         .from('usage_events')
         .select('id, user_id, role, event_type, path, metadata, created_at')
         .order('created_at', { ascending: false })
-        .limit(50000);
+        .limit(40000);
 
       if (periodValue === 'all') {
         // No date filter
@@ -320,16 +327,26 @@ export default function AdminSnapshotPage() {
         const peccHoursThisMonth = peccActivitiesData.reduce((s, a) => s + (a.hours || 0), 0);
         const peccActivitiesThisMonth = peccActivitiesData.length;
         const peccList = (peccsRes.data || []) as { id: string; hospital_facility_id: string }[];
+        const uniqueHospIds = [...new Set(peccList.map((p) => p.hospital_facility_id).filter(Boolean))] as string[];
+        const completedByHospital = new Map<string, number>();
+        for (const part of chunkIds(uniqueHospIds, 80)) {
+          const { data: checklistData } = await supabase
+            .from('site_checklist_progress')
+            .select('hospital_id, completed')
+            .in('hospital_id', part);
+          for (const row of checklistData || []) {
+            const hid = (row as { hospital_id: string; completed: boolean }).hospital_id;
+            if ((row as { completed: boolean }).completed) {
+              completedByHospital.set(hid, (completedByHospital.get(hid) || 0) + 1);
+            }
+          }
+        }
         let progressSum = 0;
         let progressCount = 0;
         const peccProgressByPecc: Record<string, number> = {};
         for (const p of peccList) {
           if (!p.hospital_facility_id) continue;
-          const { data: checklistData } = await supabase
-            .from('site_checklist_progress')
-            .select('completed')
-            .eq('hospital_id', p.hospital_facility_id);
-          const completed = (checklistData || []).filter((t: { completed: boolean }) => t.completed).length;
+          const completed = completedByHospital.get(p.hospital_facility_id) || 0;
           const totalTasks = 100;
           const pct = totalTasks > 0 ? Math.round((completed / totalTasks) * 100) : 0;
           progressSum += pct;
@@ -347,8 +364,10 @@ export default function AdminSnapshotPage() {
         let mentorActivitiesLast3Months = 0;
         const mentorHoursByMentor: Record<string, number> = {};
         const mentorActivitiesByMentor: Record<string, number> = {};
-        for (const mid of mentorIds) {
-          const acts = await getMentorActivitiesForUser(mid);
+        const mentorActivitiesLists = await Promise.all(mentorIds.map((mid) => getMentorActivitiesForUser(mid)));
+        for (let i = 0; i < mentorIds.length; i++) {
+          const mid = mentorIds[i];
+          const acts = mentorActivitiesLists[i];
           const thisMonth = acts.filter((a: { date: string }) => new Date(a.date) >= monthStart);
           const last3Months = acts.filter((a: { date: string }) => new Date(a.date) >= threeMonthsAgo);
           const h = thisMonth.reduce((s: number, a: { hours?: number }) => s + (a.hours || 0), 0);
@@ -599,6 +618,21 @@ export default function AdminSnapshotPage() {
   const clicksByRoleData = useMemo(() => {
     return Object.entries(metrics.clickCountByRole).map(([name, value]) => ({ name, value }));
   }, [metrics.clickCountByRole]);
+
+  const downloadUsageChartsCsv = useCallback(() => {
+    const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
+    const lines: string[] = ['section,key,value'];
+    usageByDay.forEach((r) => lines.push(`events_by_day,${esc(r.date)},${r.count}`));
+    eventTypeBreakdown.forEach((r) => lines.push(`event_type,${esc(r.name)},${r.value}`));
+    uniqueLoginsPieData.forEach((r) => lines.push(`unique_logins,${esc(r.name)},${r.value}`));
+    clicksByRoleData.forEach((r) => lines.push(`clicks_by_role,${esc(r.name)},${r.value}`));
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `usage-chart-data-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [usageByDay, eventTypeBreakdown, uniqueLoginsPieData, clicksByRoleData]);
 
   const pathLabel = (path: string) => {
     if (path === '/') return 'Home';
@@ -962,37 +996,15 @@ export default function AdminSnapshotPage() {
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, mt: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
                   Visual summary
                 </Typography>
-                <Grid container spacing={2} sx={{ mb: 1 }}>
-                  <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          People by role
-                        </Typography>
-                        <PlatformPeoplePieChart
-                          managers={aggregated.managers}
-                          mentors={aggregated.mentors}
-                          peccs={aggregated.peccs}
-                        />
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          Sites &amp; network
-                        </Typography>
-                        <PlatformSitesBarChart
-                          sites={aggregated.sites}
-                          contacts={aggregated.contacts}
-                          activeAssignments={aggregated.activeAssignments}
-                          totalHospitals={aggregated.totalHospitals}
-                        />
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
+                <Suspense
+                  fallback={
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                      <CircularProgress size={28} />
+                    </Box>
+                  }
+                >
+                  <AdminPlatformOverviewCharts aggregated={aggregated} />
+                </Suspense>
               </>
             ) : null}
           </Box>
@@ -1216,6 +1228,15 @@ export default function AdminSnapshotPage() {
                 disabled={loading}
               >
                 Refresh
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FileDownloadIcon />}
+                onClick={downloadUsageChartsCsv}
+                disabled={loading || events.length === 0}
+              >
+                Chart data (CSV)
               </Button>
             </Box>
           </Box>

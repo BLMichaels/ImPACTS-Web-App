@@ -1,5 +1,5 @@
-import React from 'react';
-import { Box, Typography } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, FormControlLabel, Switch, Stack } from '@mui/material';
 import {
   ResponsiveContainer,
   BarChart,
@@ -262,6 +262,7 @@ interface RoleRow {
 }
 
 export function UsageUniqueLoginsPie({ byRole }: { byRole: RoleRow[] }) {
+  const [showPercent, setShowPercent] = useState(false);
   const data = byRole.filter((d) => d.value > 0);
 
   if (data.length === 0) {
@@ -275,25 +276,35 @@ export function UsageUniqueLoginsPie({ byRole }: { byRole: RoleRow[] }) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={CHART_H}>
-      <PieChart>
-        <Pie
-          data={data}
-          dataKey="value"
-          nameKey="name"
-          cx="50%"
-          cy="50%"
-          outerRadius={100}
-          label={({ name, value }) => `${name}: ${value}`}
-        >
+    <Stack spacing={1}>
+      <FormControlLabel
+        control={<Switch size="small" checked={showPercent} onChange={(_, v) => setShowPercent(v)} />}
+        label="Show slice as %"
+      />
+      <ResponsiveContainer width="100%" height={CHART_H}>
+        <PieChart>
+          <Pie
+            data={data}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            outerRadius={100}
+            label={
+              showPercent
+                ? ({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`
+                : ({ name, value }) => `${name}: ${value}`
+            }
+          >
           {data.map((_, i) => (
             <Cell key={i} fill={REPORT_CHART_COLORS[i % REPORT_CHART_COLORS.length]} />
           ))}
         </Pie>
         <Tooltip formatter={(v: number) => [v, 'Unique users']} />
         <Legend />
-      </PieChart>
-    </ResponsiveContainer>
+        </PieChart>
+      </ResponsiveContainer>
+    </Stack>
   );
 }
 
