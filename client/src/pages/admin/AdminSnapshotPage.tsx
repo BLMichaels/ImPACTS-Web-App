@@ -65,12 +65,12 @@ import {
   UsageEventTypesBar,
   ClicksByRoleBar,
 } from '../../components/admin/AdminReportCharts';
-
-const AdminPlatformOverviewCharts = React.lazy(() => import('../../components/admin/AdminPlatformOverviewCharts'));
 import { supabase } from '../../supabase';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+
+const AdminPlatformOverviewCharts = React.lazy(() => import('../../components/admin/AdminPlatformOverviewCharts'));
 
 const PERIODS = [
   { value: '7', label: 'Last 7 days' },
