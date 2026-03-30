@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Box, 
   Typography, 
@@ -14,8 +14,6 @@ import {
   Avatar,
   FormControlLabel,
   Checkbox,
-  Tabs,
-  Tab
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -24,15 +22,13 @@ import {
   Group as GroupIcon,
   LocalHospital as HospitalIcon
 } from '@mui/icons-material';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { getUserData } from '../../utils/userData';
-import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
-
 interface MentorActivity {
   id: string;
   date: string;
@@ -67,22 +63,6 @@ interface HospitalMetrics {
 
 const MentorSnapshotPage = () => {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const rtab = Number(searchParams.get('rtab') ?? '0');
-  const reportTab = rtab >= 0 && rtab <= 1 ? rtab : 0;
-  const setReportTab = useCallback(
-    (v: number) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set('rtab', String(v));
-          return next;
-        },
-        { replace: true }
-      );
-    },
-    [setSearchParams]
-  );
   const { currentUser } = useAuth();
   const { userProfile } = useUserProfile();
   
@@ -374,38 +354,27 @@ const MentorSnapshotPage = () => {
     );
   }
 
-  // No hospitals: still show Reports tab; Overview explains how to assign sites
+  // No hospitals: overview explains how to assign sites
   if (assignedHospitals.length === 0) {
     return (
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-            Reports
+            Overview
           </Typography>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-            Custom PECC reports and mentoring overview
+            Mentoring metrics (advanced data reports are in Admin → Reports)
           </Typography>
         </Box>
-        <Tabs value={reportTab} onChange={(_, v) => setReportTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-          <Tab label="Reports" />
-          <Tab label="Overview" />
-        </Tabs>
-        {reportTab === 0 && userProfile?.id && (
-          <Box sx={{ mb: 4 }}>
-            <StaffPeccReportBuilder scope="mentor" actorUserId={userProfile.id} />
-          </Box>
-        )}
-        {reportTab === 1 && (
-          <Box sx={{ py: 4, textAlign: 'center', maxWidth: 'md', mx: 'auto' }}>
-            <Typography variant="h5" gutterBottom>No assigned hospitals</Typography>
-            <Typography color="text.secondary" sx={{ mb: 2 }}>
-              Your overview shows data for hospitals assigned to you. Add or link hospitals from the <strong>Hospitals</strong> page, or ask your manager to assign you in the CRM.
-            </Typography>
-            <Button variant="contained" onClick={() => navigate('/mentor/hospitals')}>
-              Go to Hospitals
-            </Button>
-          </Box>
-        )}
+        <Box sx={{ py: 4, textAlign: 'center', maxWidth: 'md', mx: 'auto' }}>
+          <Typography variant="h5" gutterBottom>No assigned hospitals</Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Your overview shows data for hospitals assigned to you. Add or link hospitals from the <strong>Hospitals</strong> page, or ask your manager to assign you in the CRM.
+          </Typography>
+          <Button variant="contained" onClick={() => navigate('/mentor/hospitals')}>
+            Go to Hospitals
+          </Button>
+        </Box>
       </Container>
     );
   }
@@ -416,10 +385,10 @@ const MentorSnapshotPage = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box>
             <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-              Reports
+              Overview
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              Custom PECC reports and mentoring overview
+              Mentoring metrics (advanced data reports are in Admin → Reports)
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Track your activities, monitor PECC progress, and measure engagement across all assigned hospitals
@@ -436,19 +405,6 @@ const MentorSnapshotPage = () => {
         </Box>
       </Box>
 
-      <Tabs value={reportTab} onChange={(_, v) => setReportTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tab label="Reports" />
-        <Tab label="Overview" />
-      </Tabs>
-
-      {reportTab === 0 && userProfile?.id && (
-        <Box sx={{ mb: 4 }}>
-          <StaffPeccReportBuilder scope="mentor" actorUserId={userProfile.id} />
-        </Box>
-      )}
-
-      {reportTab === 1 && (
-        <>
         <Box sx={{ mb: 4 }}>
           <Alert
             severity="info"
@@ -1252,8 +1208,6 @@ const MentorSnapshotPage = () => {
             </Card>
           </Grid>
         </Grid>
-      )}
-        </>
       )}
     </Container>
   );

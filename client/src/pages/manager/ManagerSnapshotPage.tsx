@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -17,8 +17,6 @@ import {
   Divider,
   IconButton,
   Collapse,
-  Tabs,
-  Tab
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -32,13 +30,11 @@ import {
   ExpandLess as ExpandLessIcon,
   Visibility as ViewIcon
 } from '@mui/icons-material';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
-import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
-
 interface AssignedHospital {
   id: string;
   name: string;
@@ -71,22 +67,6 @@ interface ManagerOwnMentoring {
 const ManagerSnapshotPage: React.FC = () => {
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const rtab = Number(searchParams.get('rtab') ?? '0');
-  const reportTab = rtab >= 0 && rtab <= 1 ? rtab : 0;
-  const setReportTab = useCallback(
-    (v: number) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set('rtab', String(v));
-          return next;
-        },
-        { replace: true }
-      );
-    },
-    [setSearchParams]
-  );
 
   const [mentors, setMentors] = useState<MentorSnapshotRow[]>([]);
   const [totalPeccs, setTotalPeccs] = useState(0);
@@ -373,10 +353,10 @@ const ManagerSnapshotPage: React.FC = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box>
             <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-              Reports
+              Team snapshot
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              Custom PECC reports and team-wide metrics
+              Team-wide mentoring metrics (advanced data reports are in Admin → Reports)
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Track your team’s mentors, sites, PECCs, and hours. If you also mentor, your own activity is included below.
@@ -393,19 +373,6 @@ const ManagerSnapshotPage: React.FC = () => {
         </Box>
       </Box>
 
-      <Tabs value={reportTab} onChange={(_, v) => setReportTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tab label="Reports" />
-        <Tab label="Overview" />
-      </Tabs>
-
-      {reportTab === 0 && userProfile?.id && (
-        <Box sx={{ mb: 4 }}>
-          <StaffPeccReportBuilder scope="manager" actorUserId={userProfile.id} />
-        </Box>
-      )}
-
-      {reportTab === 1 && (
-        <>
         <Alert severity="info" sx={{ mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
             <Box>
@@ -652,8 +619,6 @@ const ManagerSnapshotPage: React.FC = () => {
           </Grid>
         </Grid>
       )}
-          </>
-        )}
     </Container>
   );
 };

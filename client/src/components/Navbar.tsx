@@ -119,7 +119,8 @@ const Navbar: React.FC = () => {
 
       case UserRole.MANAGER: {
         const managerItems: NavItem[] = [
-          { path: '/manager/reports', label: 'Reports', icon: <TimelineIcon /> },
+          { path: '/manager/overview', label: 'Overview', icon: <DashboardIcon /> },
+          { path: '/manager/snapshot', label: 'Team snapshot', icon: <TimelineIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
@@ -140,7 +141,7 @@ const Navbar: React.FC = () => {
 
       case UserRole.MENTOR: {
         const mentorItems: NavItem[] = [
-          { path: '/mentor/reports', label: 'Reports', icon: <TimelineIcon /> },
+          { path: '/mentor/overview', label: 'Overview', icon: <DashboardIcon /> },
           { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
           { path: '/mentor/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> },
@@ -187,7 +188,7 @@ const Navbar: React.FC = () => {
   const getDashboardPath = (): string => {
     switch (userRole) {
       case UserRole.ADMIN: return '/admin/dashboard';
-      case UserRole.MANAGER: return '/manager/reports';
+      case UserRole.MANAGER: return '/manager/overview';
       case UserRole.MENTOR: return '/mentor/dashboard';
       case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';
       case UserRole.HIRING_GROUP: return '/hiring-group/snapshot';
