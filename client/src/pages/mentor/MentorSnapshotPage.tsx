@@ -261,6 +261,11 @@ const MentorSnapshotPage = () => {
     ).length;
   }, [peccData]);
 
+  const hospitalsAwaitingPeccSetup = useMemo(
+    () => hospitalMetrics.filter((metric) => metric.peccCount === 0),
+    [hospitalMetrics]
+  );
+
   const categoryBreakdown = useMemo(() => {
     const breakdown: Record<string, { count: number; hours: number }> = {};
     activities.forEach(a => {
@@ -327,7 +332,7 @@ const MentorSnapshotPage = () => {
     return (
       <Box sx={{ mt: 4, textAlign: 'center' }}>
         <Typography variant="h4" gutterBottom>
-          Loading Snapshot...
+          Loading Overview...
         </Typography>
         <LinearProgress sx={{ width: '50%', mx: 'auto', mt: 2 }} />
       </Box>
@@ -339,7 +344,7 @@ const MentorSnapshotPage = () => {
     return (
       <Box sx={{ mt: 4, textAlign: 'center' }}>
         <Typography variant="h4" gutterBottom color="error">
-          Error Loading Snapshot
+          Error Loading Overview
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           There was an error loading your snapshot data. Please try again.
@@ -421,6 +426,11 @@ const MentorSnapshotPage = () => {
                 <Typography variant="body2">
                   Average PECC progress: {avgPECCProgress}% • {activePECCs} active this month
                 </Typography>
+                {hospitalsAwaitingPeccSetup.length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    {hospitalsAwaitingPeccSetup.length} assigned hospital{hospitalsAwaitingPeccSetup.length === 1 ? '' : 's'} awaiting PECC setup or account creation
+                  </Typography>
+                )}
               </Box>
               <Chip
                 label={`${thisMonthHours.toFixed(1)} hours this month`}
@@ -649,7 +659,7 @@ const MentorSnapshotPage = () => {
                 PECC Development Progress
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 3, display: 'block' }}>
-                Checklist completion rates from site_checklist_progress table for assigned PECCs
+                Checklist completion rates for assigned PECCs, plus assigned hospitals that are still waiting for kickoff or account creation
               </Typography>
               <Box sx={{ mt: 2 }}>
                 {peccData.length > 0 ? (
@@ -689,6 +699,45 @@ const MentorSnapshotPage = () => {
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                               {pecc.lastActivity ? `Active ${format(new Date(pecc.lastActivity), 'MMM d')}` : 'No recent activity'}
+                            </Typography>
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                ) : hospitalMetrics.length > 0 ? (
+                  <Grid container spacing={2}>
+                    {hospitalMetrics.map((metric) => (
+                      <Grid item xs={12} md={6} key={metric.hospitalId}>
+                        <Paper sx={{ p: 2, borderLeft: 4, borderColor: 'info.main' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                            <Avatar sx={{ bgcolor: 'info.main' }}>
+                              <HospitalIcon />
+                            </Avatar>
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                {metric.hospitalName}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Assigned hospital
+                              </Typography>
+                            </Box>
+                            <Chip label="Awaiting PECC setup" size="small" color="info" variant="outlined" />
+                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={0}
+                            sx={{ height: 6, borderRadius: 3, mb: 1 }}
+                          />
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, gap: 1, flexWrap: 'wrap' }}>
+                            <Typography variant="caption" color="text.secondary">
+                              0 PECC accounts
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              0 gap plans
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Ready to begin once site work starts
                             </Typography>
                           </Box>
                         </Paper>
