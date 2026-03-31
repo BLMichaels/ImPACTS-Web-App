@@ -61,6 +61,13 @@ interface HospitalMetrics {
   peccCount: number;
 }
 
+interface MentorStoredHospital {
+  id: string;
+  name?: string;
+  city?: string;
+  state?: string;
+}
+
 const MentorSnapshotPage = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -88,27 +95,58 @@ const MentorSnapshotPage = () => {
         const parsedMentorActivities = await getMentorActivitiesForUser(userProfile.id);
         setActivities(parsedMentorActivities);
 
-        // Load assigned hospitals and PECCs from Supabase
-        const { data: hospitals, error: hospitalsError } = await supabase
-          .from('mentor_hospital_assignments')
-          .select(`
-            *,
-            hospital:hospital_id(id, name, facility_id)
-          `)
-          .eq('mentor_id', userProfile.id)
-          .eq('is_active', true);
+        // Load hospitals from both assignment rows and the mentor Hospitals page source of truth.
+        const [assignmentRes, storedMentorHospitals] = await Promise.all([
+          supabase
+            .from('mentor_hospital_assignments')
+            .select(`
+              *,
+              hospital:hospital_id(id, name, facility_id)
+            `)
+            .eq('mentor_id', userProfile.id)
+            .eq('is_active', true),
+          getUserData<MentorStoredHospital[]>(userProfile.id, 'mentorHospitals')
+        ]);
 
-        if (hospitalsError) throw hospitalsError;
-        
-        const normalizedHospitals = (hospitals || []).map(row => ({
+        if (assignmentRes.error) throw assignmentRes.error;
+
+        const normalizedHospitals = (assignmentRes.data || []).map(row => ({
           ...row,
           hospital: Array.isArray(row.hospital) ? row.hospital[0] : row.hospital
         }));
-        
-        setAssignedHospitals(normalizedHospitals);
 
-        if (normalizedHospitals.length > 0) {
-          const hospitalIds = normalizedHospitals
+        const mergedHospitals = [...normalizedHospitals];
+        const seenHospitalIds = new Set(
+          normalizedHospitals
+            .map((h) => String(h.hospital?.id || '').trim())
+            .filter(Boolean)
+        );
+
+        (Array.isArray(storedMentorHospitals) ? storedMentorHospitals : []).forEach((h) => {
+          const hid = String(h?.id || '').trim();
+          if (!hid || seenHospitalIds.has(hid)) return;
+          seenHospitalIds.add(hid);
+          mergedHospitals.push({
+            id: `stored-${hid}`,
+            hospital_id: hid,
+            mentor_id: userProfile.id,
+            is_active: true,
+            hospital: {
+              id: hid,
+              facility_id: hid,
+              name: h?.name || 'Assigned Hospital',
+            },
+            storedHospital: {
+              city: h?.city || '',
+              state: h?.state || '',
+            },
+          });
+        });
+        
+        setAssignedHospitals(mergedHospitals);
+
+        if (mergedHospitals.length > 0) {
+          const hospitalIds = mergedHospitals
             .map(h => h.hospital?.id)
             .filter(Boolean);
 
@@ -124,7 +162,7 @@ const MentorSnapshotPage = () => {
           // Load checklist progress for each PECC
           const peccDataPromises = (peccs || []).map(async (pecc) => {
             const peccHospitalId = pecc.hospital_facility_id;
-            const hospital = normalizedHospitals.find(h => h.hospital?.id === peccHospitalId);
+            const hospital = mergedHospitals.find(h => h.hospital?.id === peccHospitalId);
 
             // Get checklist progress from site_checklist_progress
             const { data: checklistData } = await supabase
@@ -171,7 +209,7 @@ const MentorSnapshotPage = () => {
           setPeccData(resolvedPeccData);
           
           // Calculate per-hospital metrics
-          const metrics: HospitalMetrics[] = normalizedHospitals.map(h => {
+          const metrics: HospitalMetrics[] = mergedHospitals.map(h => {
             const hospitalId = h.hospital?.id;
             const hospitalName = h.hospital?.name || 'Unknown Hospital';
             
