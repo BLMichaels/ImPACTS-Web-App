@@ -3,9 +3,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 /**
  * Resolves navbar program logo and which program id to use for branding (welcome text, etc.).
  *
- * RLS on `programs` typically allows SELECT only when the user is an active member. A stale
- * `primary_program_id` pointing at a program the user cannot read returns no row — we then
- * fall back to active memberships. If primary has no logo, we prefer another membership that does.
+ * Navbar branding must come only from active program memberships.
+ * A stale `primary_program_id` must NOT keep showing a removed program's logo.
+ * If the primary program is still active, prefer it; otherwise fall back to another active membership.
  */
 export async function resolveNavbarProgramLogo(
   supabase: SupabaseClient,
@@ -33,9 +33,10 @@ export async function resolveNavbarProgramLogo(
 
   const memberRows = (members ?? []) as { program_id: string; added_at?: string | null }[];
 
+  const memberIdSet = new Set(memberRows.map((row) => String(row.program_id)));
   const orderedIds: string[] = [];
   const seen = new Set<string>();
-  if (trimPid) {
+  if (trimPid && memberIdSet.has(trimPid)) {
     orderedIds.push(trimPid);
     seen.add(trimPid);
   }
@@ -74,10 +75,6 @@ export async function resolveNavbarProgramLogo(
       logoUrl: null,
       brandProgramId: String(memberRows[0].program_id)
     };
-  }
-
-  if (trimPid) {
-    return { logoUrl: null, brandProgramId: trimPid };
   }
 
   return { logoUrl: null, brandProgramId: null };
