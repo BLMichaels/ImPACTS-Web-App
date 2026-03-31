@@ -404,7 +404,7 @@ const AdminCRMPage: React.FC = () => {
     }
   }, [navigate]);
   const { currentUser } = useAuth();
-  const { actualRole, enterViewAsUser, refreshProfile, userProfile } = useUserProfile();
+  const { actualRole, enterViewAsUser, refreshProfile, userProfile, viewAsUserId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
   const canViewAsUser = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
@@ -2394,22 +2394,35 @@ const AdminCRMPage: React.FC = () => {
             return;
           }
         }
-        if (programIds.length > 0) {
-          const { data: userRow } = await supabase
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('primary_program_id')
+          .eq('id', contactUserIdForPrograms)
+          .maybeSingle();
+        const currentPrimary = (userRow as { primary_program_id?: string | null } | null)?.primary_program_id ?? null;
+        const nextPrimary =
+          programIds.length === 0
+            ? null
+            : currentPrimary && programIds.includes(currentPrimary)
+              ? currentPrimary
+              : programIds[0];
+
+        if (currentPrimary !== nextPrimary) {
+          const { error: primaryErr } = await supabase
             .from('users')
-            .select('primary_program_id')
-            .eq('id', contactUserIdForPrograms)
-            .maybeSingle();
-          const currentPrimary = (userRow as { primary_program_id?: string | null } | null)?.primary_program_id;
-          if (!currentPrimary) {
-            await supabase
-              .from('users')
-              .update({
-                primary_program_id: programIds[0],
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', contactUserIdForPrograms);
+            .update({
+              primary_program_id: nextPrimary,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', contactUserIdForPrograms);
+          if (primaryErr) {
+            setSaveError(`Primary program sync failed: ${primaryErr.message}. Contact saved; fix permissions and re-save.`);
+            return;
           }
+        }
+
+        if (viewAsUserId === contactUserIdForPrograms) {
+          await enterViewAsUser(contactUserIdForPrograms);
         }
         if (userProfile?.id === contactUserIdForPrograms) {
           await refreshProfile();
