@@ -38,6 +38,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, startOfMonth, endOfMonth, parseISO, getYear, getMonth, isWithinInterval } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+import { useUserProfile } from '../../context/UserProfileContext';
 import { getUserData, setUserData } from '../../utils/userData';
 
 // Constants
@@ -98,6 +99,8 @@ interface MentorWagesData {
 
 const MentorWagesExpensesPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { effectiveUserId } = useUserProfile();
+  const dataUserId = effectiveUserId ?? currentUser?.id;
   const currentYear = new Date().getFullYear();
   
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
@@ -116,7 +119,7 @@ const MentorWagesExpensesPage: React.FC = () => {
   const [activities, setActivities] = useState<any[]>([]);
 
   useEffect(() => {
-    const uid = currentUser?.id;
+    const uid = dataUserId;
     if (!uid) return;
     let mounted = true;
     (async () => {
@@ -149,7 +152,7 @@ const MentorWagesExpensesPage: React.FC = () => {
       if (Array.isArray(activitiesVal)) setActivities(activitiesVal);
     })();
     return () => { mounted = false; };
-  }, [currentUser?.id]);
+  }, [dataUserId]);
 
   // Calculate monthly hours from activities
   const calculateMonthlyHours = useCallback((month: number, year: number): number => {
@@ -213,7 +216,7 @@ const MentorWagesExpensesPage: React.FC = () => {
 
   const saveWagesData = async (data: MentorWagesData) => {
     setWagesData(data);
-    if (currentUser?.id) await setUserData(currentUser.id, 'mentorWages', data);
+    if (dataUserId) await setUserData(dataUserId, 'mentorWages', data);
   };
 
   // Expense handlers

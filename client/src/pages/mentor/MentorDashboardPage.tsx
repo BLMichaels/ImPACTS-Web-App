@@ -31,6 +31,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 import { format } from 'date-fns';
 import { supabase } from '../../supabase';
 import { getUserData } from '../../utils/userData';
@@ -98,7 +99,7 @@ interface HospitalSummary {
 
 const MentorDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, effectiveUserId } = useUserProfile();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -117,7 +118,7 @@ const MentorDashboardPage: React.FC = () => {
   const [hospitalDrawerOpen, setHospitalDrawerOpen] = useState(false);
 
   const loadDashboardData = async () => {
-    const uid = currentUser?.id;
+    const uid = effectiveUserId ?? currentUser?.id;
     if (!uid) {
       setLoading(false);
       return;
@@ -129,11 +130,35 @@ const MentorDashboardPage: React.FC = () => {
       getUserData<any[]>(uid, 'mentorHospitals'),
       getUserData<any[]>(uid, 'mentorContacts')
     ]);
+    let mergedRows: Awaited<ReturnType<typeof fetchMergedMentorHospitals>> = [];
+    try {
+      mergedRows = await fetchMergedMentorHospitals(uid);
+    } catch (e) {
+      console.warn('[MentorDashboard] merged mentor hospitals unavailable:', e);
+    }
     const activities: StoredActivity[] = Array.isArray(activitiesVal) ? activitiesVal : [];
-    const hospitals: StoredHospital[] = Array.isArray(hospitalsVal) ? hospitalsVal : [];
+    const storedHospitals: StoredHospital[] = Array.isArray(hospitalsVal) ? hospitalsVal : [];
     const contacts: StoredContact[] = Array.isArray(contactsVal) ? contactsVal : [];
 
-    const workingHospitals = hospitals.filter((h: StoredHospital) => h.isWorkingWith !== false);
+    const storedById = new Map(storedHospitals.map((h) => [h.id, h]));
+    let workingHospitals: StoredHospital[];
+    if (mergedRows.length > 0) {
+      workingHospitals = mergedRows
+        .map((m) => {
+          const s = storedById.get(m.hospital.id);
+          if (s && s.isWorkingWith === false) return null;
+          const base: StoredHospital = s ?? {
+            id: m.hospital.id,
+            name: m.hospital.name || 'Hospital',
+            city: m.storedHospital?.city,
+            state: m.storedHospital?.state
+          };
+          return { ...base, id: m.hospital.id, name: base.name || m.hospital.name || 'Hospital' };
+        })
+        .filter((h): h is StoredHospital => h != null);
+    } else {
+      workingHospitals = storedHospitals.filter((h: StoredHospital) => h.isWorkingWith !== false);
+    }
 
     // Sync hospital names from CRM (Supabase) so updates in CRM appear in tabs
     const nameByKey: Record<string, string> = {};
@@ -207,9 +232,9 @@ const MentorDashboardPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (currentUser) loadDashboardData();
+    if (effectiveUserId ?? currentUser?.id) loadDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadDashboardData defined below
-  }, [currentUser]);
+  }, [currentUser, effectiveUserId]);
 
   const handleHospitalClick = (hospital: HospitalSummary) => {
     setSelectedHospital(hospital);
@@ -485,7 +510,7 @@ const MentorDashboardPage: React.FC = () => {
         )}
       </Drawer>
 
-      <DashboardResources userId={currentUser?.uid} />
+      <DashboardResources userId={effectiveUserId ?? currentUser?.uid} />
     </Box>
   );
 };

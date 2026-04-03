@@ -104,6 +104,10 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   // Guard against out-of-order async updates when rapidly switching "view as" users.
   const latestViewAsUserIdRef = useRef<string | null>(null);
   const logoFetchSeqRef = useRef(0);
+  const userProfileRef = useRef<UserProfile | null>(null);
+  useEffect(() => {
+    userProfileRef.current = userProfile;
+  }, [userProfile]);
 
   const createDefaultProfile = useCallback(() => {
     if (!currentUser) return;
@@ -325,6 +329,20 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   useEffect(() => {
     fetchUserProfile();
   }, [fetchUserProfile]);
+
+  // Avoid infinite spinner if Supabase profile fetch hangs (network/tab sleep).
+  useEffect(() => {
+    if (!currentUser || !isLoading) return;
+    const timeoutMs = 25000;
+    const id = window.setTimeout(() => {
+      setIsLoading(false);
+      if (!userProfileRef.current) {
+        console.warn('[UserProfile] Profile load exceeded 25s; applying default profile so routing can proceed.');
+        createDefaultProfile();
+      }
+    }, timeoutMs);
+    return () => window.clearTimeout(id);
+  }, [currentUser, isLoading, createDefaultProfile]);
 
   const getDefaultDashboardForRole = useCallback((role: UserRole): string => {
     switch (role) {

@@ -26,6 +26,7 @@ import { supabase } from '../supabase';
 import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
+import { resolvePeccFacilityId } from '../utils/hospitalId';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface InvitationData {
@@ -99,13 +100,16 @@ const InvitationPage: React.FC = () => {
       let managerName: string | undefined;
       
       if (invitationData.hospital_id) {
+        const hid = String(invitationData.hospital_id);
         const { data: hospital } = await supabase
           .from('hospitals')
           .select('name')
-          .eq('id', invitationData.hospital_id)
-          .single();
+          .or(`id.eq.${hid},facility_id.eq.${hid}`)
+          .maybeSingle();
         if (cancelled) return;
-        if (hospital) hospitalName = normalizeHospitalOrOrgName(hospital.name);
+        if (hospital && typeof (hospital as { name?: string }).name === 'string') {
+          hospitalName = normalizeHospitalOrOrgName((hospital as { name: string }).name);
+        }
       }
       
       if (invitationData.mentor_id) {
@@ -315,7 +319,8 @@ const InvitationPage: React.FC = () => {
 
         if (invitation.role === 'pecc') {
           if (invData?.hospital_id) {
-            updatePayload.hospital_facility_id = String(invData.hospital_id);
+            const fid = await resolvePeccFacilityId(supabase, String(invData.hospital_id));
+            if (fid) updatePayload.hospital_facility_id = fid;
           }
           if (invData?.mentor_id) {
             updatePayload.mentor_id = invData.mentor_id;
@@ -421,6 +426,12 @@ const InvitationPage: React.FC = () => {
         navigate('/login?registered=success&message=Please check your email to confirm your account');
       }
     } catch (err: any) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) await supabase.auth.signOut();
+      } catch {
+        /* ignore */
+      }
       setError(err.message || 'Failed to create account. Please try again.');
     } finally {
       setSubmitting(false);

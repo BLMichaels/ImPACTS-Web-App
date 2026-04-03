@@ -133,7 +133,8 @@ const CONTACT_STATUSES = [
 
 const MentorHospitalContactsPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, effectiveUserId } = useUserProfile();
+  const dataUserId = effectiveUserId ?? currentUser?.id;
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -294,10 +295,10 @@ const MentorHospitalContactsPage: React.FC = () => {
       loadData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadData defined below
-  }, [currentUser]);
+  }, [currentUser, effectiveUserId]);
 
   const loadData = async () => {
-    const uid = currentUser?.id;
+    const uid = dataUserId;
     if (!uid) return;
 
     try {
@@ -386,12 +387,12 @@ const MentorHospitalContactsPage: React.FC = () => {
 
   const saveHospitals = async (newHospitals: Hospital[]) => {
     setHospitals(newHospitals);
-    if (currentUser?.id) await setUserData(currentUser.id, 'mentorHospitals', newHospitals);
+    if (dataUserId) await setUserData(dataUserId, 'mentorHospitals', newHospitals);
   };
 
   const saveContacts = async (newContacts: Contact[]) => {
     setContacts(newContacts);
-    if (currentUser?.id) await setUserData(currentUser.id, 'mentorContacts', newContacts);
+    if (dataUserId) await setUserData(dataUserId, 'mentorContacts', newContacts);
   };
 
   // CRM state → city → hospital options for Add Hospital
@@ -467,7 +468,7 @@ const MentorHospitalContactsPage: React.FC = () => {
 
   // Link PECCs and Mentors to CRM when hospital is selected
   const linkHospitalToCRM = async (hospital: Hospital) => {
-    if (!currentUser?.id) return;
+    if (!dataUserId) return;
 
     try {
       const hospitalId = hospital.id; // facility_id or id
@@ -485,7 +486,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       console.log('Linking hospital to CRM:', {
         hospitalId,
         peccs: peccUsers,
-        mentor: currentUser.id
+        mentor: dataUserId
       });
 
       // Could add to CRM notes_log or activity_log here
@@ -586,7 +587,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     (async () => {
       const [{ data, error }, activities] = await Promise.all([
         supabase.from('hospitals').select('notes_log').eq('id', hospitalId).maybeSingle(),
-        currentUser?.id ? getMentorActivitiesForUser(currentUser.id) : Promise.resolve([])
+        dataUserId ? getMentorActivitiesForUser(dataUserId) : Promise.resolve([])
       ]);
       if (cancelled) return;
       if (!error && data) {
@@ -603,7 +604,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       if (!cancelled) setSiteStats({ activities: atSite.length, hours });
     })();
     return () => { cancelled = true; };
-  }, [hospitalDetailsDialogOpen, selectedHospital?.id, currentUser?.id]);
+  }, [hospitalDetailsDialogOpen, selectedHospital?.id, dataUserId]);
 
   const handleAddDatedNote = async () => {
     if (!selectedHospital || !newNoteText.trim()) return;
@@ -613,7 +614,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       id: noteId,
       date: newNoteDate,
       text: noteText,
-      author_id: currentUser?.id ?? undefined
+      author_id: dataUserId ?? undefined
     };
     const notesLog = [...(selectedHospital.notesLog ?? []), note].sort((a, b) => b.date.localeCompare(a.date));
     const updated: Hospital = { ...selectedHospital, notesLog };
@@ -645,7 +646,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   };
 
   const canEditNote = (entry: DatedNote) =>
-    Boolean(entry.author_id && currentUser?.id && entry.author_id === currentUser.id);
+    Boolean(entry.author_id && dataUserId && entry.author_id === dataUserId);
 
   const handleEditNoteClick = (entry: DatedNote) => {
     setEditingNote(entry);
@@ -829,7 +830,7 @@ const MentorHospitalContactsPage: React.FC = () => {
 
   // Load cohorts when invite dialog opens (mentors only see cohorts they're allowed to invite to)
   useEffect(() => {
-    if (inviteDialogOpen && currentUser?.id) {
+    if (inviteDialogOpen && dataUserId) {
       setInviteCohortIds([]);
       setInviteCustomMessage('');
       setInviteSuccessCode(null);
@@ -837,7 +838,7 @@ const MentorHospitalContactsPage: React.FC = () => {
         const { data: allowedRows } = await supabase
           .from('cohort_invite_mentors')
           .select('cohort_id')
-          .eq('mentor_id', currentUser.id);
+          .eq('mentor_id', dataUserId);
         const allowedIds = (allowedRows || []).map(r => r.cohort_id);
         if (allowedIds.length === 0) {
           setInviteCohorts([]);
@@ -852,18 +853,18 @@ const MentorHospitalContactsPage: React.FC = () => {
         }
       })();
     }
-  }, [inviteDialogOpen, currentUser?.id]);
+  }, [inviteDialogOpen, dataUserId]);
 
   const handleSendInvite = async () => {
-    if (!inviteEmail.trim() || !currentUser?.id || !selectedHospital) return;
+    if (!inviteEmail.trim() || !dataUserId || !selectedHospital) return;
     setInviteSending(true);
     try {
       const { code, emailSent, emailError } = await createAndSendInvitation({
         email: inviteEmail.trim(),
         role: UserRole.PECC,
-        invitedBy: currentUser.id,
+        invitedBy: dataUserId,
         hospitalId: selectedHospital.id,
-        mentorId: currentUser.id,
+        mentorId: dataUserId,
         cohortIds: inviteCohortIds.length > 0 ? inviteCohortIds : undefined,
         customMessage: inviteCustomMessage.trim() || undefined
       });

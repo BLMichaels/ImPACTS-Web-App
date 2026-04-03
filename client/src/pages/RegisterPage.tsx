@@ -355,6 +355,12 @@ export default function RegisterPage() {
       await setUserData(userId, 'terms_accepted_at', new Date().toISOString());
       navigate('/', { replace: true });
     } catch (err: unknown) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) await supabase.auth.signOut();
+      } catch {
+        /* ignore */
+      }
       setError(err && typeof err === 'object' && 'message' in err ? String((err as { message: string }).message) : 'Failed to create an account.');
     } finally {
       setLoading(false);

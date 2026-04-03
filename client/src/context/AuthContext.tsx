@@ -11,6 +11,8 @@ interface AuthContextType {
   currentUser: ExtendedUser | null;
   session: Session | null;
   loading: boolean;
+  /** Last auth lifecycle note (e.g. token refresh) for debugging; not shown in UI by default. */
+  authLifecycleNote: string | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -38,6 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<ExtendedUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authLifecycleNote, setAuthLifecycleNote] = useState<string | null>(null);
 
   const login = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -81,28 +84,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('[Auth] getSession failed:', error.message);
+        setAuthLifecycleNote(`session_error:${error.message}`);
+      }
       setSession(session);
       setCurrentUser(extendUser(session?.user ?? null));
       setLoading(false);
     });
 
-    // Listen for auth changes
+    // Listen for auth changes (refresh, sign-out, etc.)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED') {
+        setAuthLifecycleNote(null);
+      } else if (event === 'SIGNED_OUT') {
+        setAuthLifecycleNote(null);
+      } else if (event === 'USER_UPDATED') {
+        setAuthLifecycleNote(null);
+      }
       setSession(session);
       setCurrentUser(extendUser(session?.user ?? null));
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      void supabase.auth.getSession().then(({ data: { session: s }, error }) => {
+        if (error) console.warn('[Auth] refresh on visibility failed:', error.message);
+        else if (s) {
+          setSession(s);
+          setCurrentUser(extendUser(s.user));
+        }
+      });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   const value = {
     currentUser,
     session,
     loading,
+    authLifecycleNote,
     login,
     signup,
     logout,

@@ -43,6 +43,8 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useUserProfile } from '../../context/UserProfileContext';
+import { fetchMergedMentorHospitals, mergedRowsToHospitalOptions } from '../../utils/mentorHospitalScope';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
@@ -100,6 +102,7 @@ type SortOrder = 'asc' | 'desc';
 
 const MentorActivitiesPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { effectiveUserId } = useUserProfile();
   const navigate = useNavigate();
   
   // State
@@ -135,7 +138,7 @@ const MentorActivitiesPage: React.FC = () => {
   
   const [error, setError] = useState<string | null>(null);
 
-  const userId = currentUser?.id ?? (currentUser as { uid?: string })?.uid;
+  const userId = effectiveUserId ?? currentUser?.id ?? (currentUser as { uid?: string })?.uid;
   // Load mentor activities, hospitals from Supabase (user_data); migrate from localStorage if needed
   useEffect(() => {
     if (!userId) return;
@@ -149,21 +152,34 @@ const MentorActivitiesPage: React.FC = () => {
       if (!mounted) return;
       if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
       else migrateFromLocalStorage(userId, 'mentorActivities', `mentorActivities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
-      if (hospitalsVal != null && Array.isArray(hospitalsVal)) {
-        const sorted = [...hospitalsVal].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
-        setHospitals(sorted);
-      } else {
+      const storedArr = Array.isArray(hospitalsVal) ? hospitalsVal : [];
+      const storedById = new Map(storedArr.map((h: { id: string }) => [h.id, h]));
+      let list: Hospital[] = [];
+      try {
+        const merged = await fetchMergedMentorHospitals(userId);
+        const opts = mergedRowsToHospitalOptions(merged);
+        list = opts.map((m) => {
+          const s = storedById.get(m.id) as { name?: string } | undefined;
+          return { id: m.id, name: s?.name ?? m.name };
+        });
+      } catch {
+        list = storedArr.map((h: { id: string; name?: string }) => ({ id: h.id, name: h.name || 'Hospital' }));
+      }
+      if (list.length === 0) {
         if (mounted) setHospitals([]);
         await migrateFromLocalStorage(userId, 'mentorHospitals', `mentorHospitals_${userId}`, (v) => {
           const arr = Array.isArray(v) ? v : [];
           if (mounted) setHospitals([...arr].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })));
         });
+      } else {
+        const sorted = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+        if (mounted) setHospitals(sorted);
       }
       const parsed = (categoriesRes.data as { value?: unknown } | null)?.value;
       if (parsed != null && Array.isArray(parsed) && parsed.length > 0) setCategories(parsed as Array<{ value: string; label: string }>);
     })();
     return () => { mounted = false; };
-  }, [userId]);
+  }, [userId, effectiveUserId]);
 
   const saveActivities = async (newActivities: MentorActivity[]) => {
     setActivities(newActivities);

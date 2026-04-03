@@ -34,10 +34,12 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+import { useUserProfile } from '../../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
+import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { sanitizeHtml } from '../../components/cohorts/RichTextEditor';
@@ -329,6 +331,7 @@ const renderTaskText = (task: MilestoneTask) => {
 
 const MentorSiteMilestonesPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { effectiveUserId } = useUserProfile();
   const navigate = useNavigate();
   const { trackChecklist } = useUsageAnalytics();
 
@@ -342,8 +345,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const [completionDate, setCompletionDate] = useState<Date | null>(null);
   const [hiddenHospitals, setHiddenHospitals] = useState<Set<string>>(new Set());
 
-  const uid = currentUser?.id;
-  // Load hospitals, hidden, order from Supabase (user_data)
+  const uid = effectiveUserId ?? currentUser?.id;
+  // Load hospitals: mentor_hospital_assignments + mentorHospitals (user_data); hidden/order from user_data
   useEffect(() => {
     if (!uid) return;
     let mounted = true;
@@ -363,24 +366,47 @@ const MentorSiteMilestonesPage: React.FC = () => {
       }
       const savedHidden = await getUserData<string[]>(uid, 'mentorHiddenHospitals');
       const savedOrder = await getUserData<string[]>(uid, 'mentorHospitalOrder');
-      if (!mounted) return;
-      if (savedHospitals != null && Array.isArray(savedHospitals)) {
-        let workingHospitals: Hospital[] = savedHospitals
-          .filter((h: any) => h.isWorkingWith !== false)
-          .map((h: any) => ({
-            id: String(h.id),
-            name: normalizeHospitalOrOrgName(String(h.name ?? '')),
-            facilityId: String(h.id),
-            siteId: String(h.id),
-            isWorkingWith: Boolean(h.isWorkingWith)
-          })) as Hospital[];
-        if (savedOrder && Array.isArray(savedOrder)) {
-          const ordered = savedOrder.map((id) => workingHospitals.find((h) => h.id === id)).filter((h): h is Hospital => Boolean(h));
-          const remaining = workingHospitals.filter((h) => !savedOrder.includes(h.id));
-          workingHospitals = [...ordered, ...remaining];
+      const storedById = new Map((Array.isArray(savedHospitals) ? savedHospitals : []).map((h: any) => [String(h.id), h]));
+
+      let workingHospitals: Hospital[] = [];
+      try {
+        const merged = await fetchMergedMentorHospitals(uid);
+        workingHospitals = merged
+          .map((m) => {
+            const s = storedById.get(m.hospital.id);
+            if (s && s.isWorkingWith === false) return null;
+            const rowId = String(m.hospital.id);
+            const fac = String(m.hospital.facility_id ?? m.hospital.id);
+            return {
+              id: rowId,
+              name: normalizeHospitalOrOrgName(String(s?.name ?? m.hospital.name ?? '')),
+              facilityId: fac,
+              siteId: fac,
+              isWorkingWith: s?.isWorkingWith !== false
+            } as Hospital;
+          })
+          .filter((h): h is Hospital => h != null);
+      } catch {
+        if (savedHospitals != null && Array.isArray(savedHospitals)) {
+          workingHospitals = savedHospitals
+            .filter((h: any) => h.isWorkingWith !== false)
+            .map((h: any) => ({
+              id: String(h.id),
+              name: normalizeHospitalOrOrgName(String(h.name ?? '')),
+              facilityId: String(h.id),
+              siteId: String(h.id),
+              isWorkingWith: Boolean(h.isWorkingWith)
+            })) as Hospital[];
         }
-        setHospitals(workingHospitals);
       }
+
+      if (!mounted) return;
+      if (savedOrder && Array.isArray(savedOrder) && workingHospitals.length > 0) {
+        const ordered = savedOrder.map((id) => workingHospitals.find((h) => h.id === id)).filter((h): h is Hospital => Boolean(h));
+        const remaining = workingHospitals.filter((h) => !savedOrder.includes(h.id));
+        workingHospitals = [...ordered, ...remaining];
+      }
+      setHospitals(workingHospitals);
       if (savedHidden != null && Array.isArray(savedHidden)) setHiddenHospitals(new Set(savedHidden));
     })();
     return () => { mounted = false; };
@@ -397,11 +423,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
   // Load milestones for each hospital's PECC(s)
   useEffect(() => {
     const loadMilestones = async () => {
-      if (!currentUser?.id || hospitals.length === 0) {
+      if (!(effectiveUserId ?? currentUser?.id) || hospitals.length === 0) {
         setLoading(false);
         return;
       }
 
+      const mentorDataUserId = uid!;
       const milestones: Record<string, HospitalMilestones> = {};
       const metrics: Record<string, HospitalMetrics> = {};
 
@@ -423,10 +450,14 @@ const MentorSiteMilestonesPage: React.FC = () => {
         ];
         const peccId = peccUserIds.length > 0 ? peccUserIds[0] : undefined;
 
+        const progressHospitalOr =
+          hospital.facilityId !== hospital.id
+            ? `hospital_id.eq.${hospital.id},hospital_id.eq.${hospital.facilityId}`
+            : `hospital_id.eq.${hospital.id}`;
         const { data: progressRows } = await supabase
           .from('site_checklist_progress')
           .select('task_id, completed, completed_at')
-          .eq('hospital_id', hospital.id);
+          .or(progressHospitalOr);
 
         const completedByTask: Record<string, { completed: boolean; completed_at: string | null }> = {};
         (progressRows || []).forEach((r: { task_id: string; completed: boolean; completed_at: string | null }) => {
@@ -489,7 +520,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
           stageCompletions[stage.id] = { completed: allComplete, completionDate };
         });
 
-        const allCompletions = await getUserData<Record<string, Record<string, StageCompletion>>>(currentUser.id, 'mentorStageCompletions');
+        const allCompletions = await getUserData<Record<string, Record<string, StageCompletion>>>(mentorDataUserId, 'mentorStageCompletions');
         const savedCompletions = allCompletions?.[hospital.id];
         if (savedCompletions) {
           Object.keys(savedCompletions).forEach(sid => {
@@ -506,20 +537,24 @@ const MentorSiteMilestonesPage: React.FC = () => {
         if (peccId) {
           const [peccActivitiesVal, mentorActivitiesList, readinessPecc, readinessMentor] = await Promise.all([
             getUserData<any[]>(peccId, 'activities'),
-            getMentorActivitiesForUser(currentUser.id),
+            getMentorActivitiesForUser(mentorDataUserId),
             getUserData<any[]>(peccId, 'readinessScores'),
-            getUserData<any[]>(currentUser.id, 'readinessScores')
+            getUserData<any[]>(mentorDataUserId, 'readinessScores')
           ]);
           const peccActivities = Array.isArray(peccActivitiesVal) ? peccActivitiesVal : [];
           const mentorActivities = mentorActivitiesList;
           let readinessScores = Array.isArray(readinessPecc) ? readinessPecc : (Array.isArray(readinessMentor) ? readinessMentor : []);
           
           const peccActivityHours = peccActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
+          const matchesHospital = (a: { hospitalIds?: string[] }) => {
+            const ids = a.hospitalIds || [];
+            return ids.some((hid) => hid === hospital.id || hid === hospital.facilityId);
+          };
           const mentorHours = mentorActivities
-            .filter((a: any) => a.hospitalIds?.includes(hospital.id))
+            .filter((a: any) => matchesHospital(a))
             .reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
           const simulations = mentorActivities
-            .filter((a: any) => a.hospitalIds?.includes(hospital.id) && a.category === 'SC')
+            .filter((a: any) => matchesHospital(a) && a.category === 'SC')
             .length;
           
           const latestScore = readinessScores.length > 0 
@@ -551,7 +586,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
     };
 
     loadMilestones();
-  }, [currentUser, hospitals]);
+  }, [uid, hospitals, effectiveUserId, currentUser?.id]);
 
   const saveStageCompletions = async (hospitalId: string, completions: Record<string, StageCompletion>) => {
     if (!uid) return;

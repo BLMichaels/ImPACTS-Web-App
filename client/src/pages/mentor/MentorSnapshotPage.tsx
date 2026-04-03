@@ -29,6 +29,7 @@ import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { getUserData } from '../../utils/userData';
+import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 interface MentorActivity {
   id: string;
   date: string;
@@ -61,13 +62,6 @@ interface HospitalMetrics {
   peccCount: number;
 }
 
-interface MentorStoredHospital {
-  id: string;
-  name?: string;
-  city?: string;
-  state?: string;
-}
-
 const MentorSnapshotPage = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -95,60 +89,34 @@ const MentorSnapshotPage = () => {
         const parsedMentorActivities = await getMentorActivitiesForUser(userProfile.id);
         setActivities(parsedMentorActivities);
 
-        // Load hospitals from both assignment rows and the mentor Hospitals page source of truth.
-        const [assignmentRes, storedMentorHospitals] = await Promise.all([
-          supabase
-            .from('mentor_hospital_assignments')
-            .select(`
-              *,
-              hospital:hospital_id(id, name, facility_id)
-            `)
-            .eq('mentor_id', userProfile.id)
-            .eq('is_active', true),
-          getUserData<MentorStoredHospital[]>(userProfile.id, 'mentorHospitals')
-        ]);
-
-        if (assignmentRes.error) throw assignmentRes.error;
-
-        const normalizedHospitals = (assignmentRes.data || []).map(row => ({
-          ...row,
-          hospital: Array.isArray(row.hospital) ? row.hospital[0] : row.hospital
+        const mergedRows = await fetchMergedMentorHospitals(userProfile.id);
+        const mergedHospitals = mergedRows.map((row) => ({
+          id: row.id,
+          hospital_id: row.hospital_id,
+          mentor_id: row.mentor_id,
+          is_active: row.is_active,
+          hospital: {
+            id: row.hospital.id,
+            facility_id: row.hospital.facility_id ?? row.hospital.id,
+            name: row.hospital.name,
+          },
+          ...(row.storedHospital
+            ? { storedHospital: { city: row.storedHospital.city || '', state: row.storedHospital.state || '' } }
+            : {}),
         }));
 
-        const mergedHospitals = [...normalizedHospitals];
-        const seenHospitalIds = new Set(
-          normalizedHospitals
-            .map((h) => String(h.hospital?.id || '').trim())
-            .filter(Boolean)
-        );
-
-        (Array.isArray(storedMentorHospitals) ? storedMentorHospitals : []).forEach((h) => {
-          const hid = String(h?.id || '').trim();
-          if (!hid || seenHospitalIds.has(hid)) return;
-          seenHospitalIds.add(hid);
-          mergedHospitals.push({
-            id: `stored-${hid}`,
-            hospital_id: hid,
-            mentor_id: userProfile.id,
-            is_active: true,
-            hospital: {
-              id: hid,
-              facility_id: hid,
-              name: h?.name || 'Assigned Hospital',
-            },
-            storedHospital: {
-              city: h?.city || '',
-              state: h?.state || '',
-            },
-          });
-        });
-        
         setAssignedHospitals(mergedHospitals);
 
         if (mergedHospitals.length > 0) {
-          const hospitalIds = mergedHospitals
-            .map(h => h.hospital?.id)
-            .filter(Boolean);
+          const hospitalIds = Array.from(
+            new Set(
+              mergedHospitals.flatMap((h) => {
+                const id = h.hospital?.id;
+                const fid = h.hospital?.facility_id;
+                return [id, fid].filter(Boolean) as string[];
+              })
+            )
+          );
 
           // Load PECCs assigned to these hospitals
           const { data: peccs, error: peccsError } = await supabase
@@ -162,13 +130,22 @@ const MentorSnapshotPage = () => {
           // Load checklist progress for each PECC
           const peccDataPromises = (peccs || []).map(async (pecc) => {
             const peccHospitalId = pecc.hospital_facility_id;
-            const hospital = mergedHospitals.find(h => h.hospital?.id === peccHospitalId);
+            const hospital = mergedHospitals.find(
+              (h) =>
+                h.hospital?.id === peccHospitalId ||
+                h.hospital?.facility_id === peccHospitalId
+            );
 
             // Get checklist progress from site_checklist_progress
+            const progressOr =
+              hospital?.hospital?.facility_id &&
+              hospital.hospital.facility_id !== hospital.hospital.id
+                ? `hospital_id.eq.${hospital.hospital.id},hospital_id.eq.${hospital.hospital.facility_id}`
+                : `hospital_id.eq.${peccHospitalId}`;
             const { data: checklistData } = await supabase
               .from('site_checklist_progress')
               .select('completed')
-              .eq('hospital_id', peccHospitalId);
+              .or(progressOr);
 
             const totalTasks = 100; // Approximate total from DEFAULT_STAGES
             const completedTasks = (checklistData || []).filter(t => t.completed).length;
