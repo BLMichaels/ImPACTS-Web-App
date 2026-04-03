@@ -1,3 +1,4 @@
+// Large CRM shell — prefer extracting tab-sized modules (see AdminTeamTab) when adding major features.
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';

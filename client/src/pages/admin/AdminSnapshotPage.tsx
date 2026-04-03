@@ -69,6 +69,7 @@ import { supabase } from '../../supabase';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { useAuth } from '../../context/AuthContext';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+import { batchGetUserDataForKey } from '../../utils/userData';
 
 const AdminPlatformOverviewCharts = React.lazy(() => import('../../components/admin/AdminPlatformOverviewCharts'));
 
@@ -324,9 +325,27 @@ export default function AdminSnapshotPage() {
           hours: number;
           date: string;
         }[];
-        const peccHoursThisMonth = peccActivitiesData.reduce((s, a) => s + (a.hours || 0), 0);
-        const peccActivitiesThisMonth = peccActivitiesData.length;
         const peccList = (peccsRes.data || []) as { id: string; hospital_facility_id: string }[];
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const peccActMap = await batchGetUserDataForKey<unknown[]>(peccList.map((p) => p.id), 'activities');
+        let peccHoursThisMonth = 0;
+        let peccActivitiesThisMonth = 0;
+        for (const p of peccList) {
+          const acts = peccActMap.get(p.id);
+          if (!Array.isArray(acts)) continue;
+          for (const a of acts) {
+            if (!a || typeof a !== 'object' || !('date' in a)) continue;
+            const d = new Date(String((a as { date: string }).date));
+            if (d < monthStart) continue;
+            peccActivitiesThisMonth += 1;
+            peccHoursThisMonth += Number((a as { hours?: number }).hours) || 0;
+          }
+        }
+        if (peccActivitiesThisMonth === 0 && peccActivitiesData.length > 0) {
+          peccHoursThisMonth = peccActivitiesData.reduce((s, a) => s + (a.hours || 0), 0);
+          peccActivitiesThisMonth = peccActivitiesData.length;
+        }
         const uniqueHospIds = [...new Set(peccList.map((p) => p.hospital_facility_id).filter(Boolean))] as string[];
         const completedByHospital = new Map<string, number>();
         for (const part of chunkIds(uniqueHospIds, 80)) {
@@ -355,8 +374,6 @@ export default function AdminSnapshotPage() {
         }
         const avgPeccProgress = progressCount > 0 ? Math.round(progressSum / progressCount) : 0;
         const mentorIds = ((mentorsRes.data || []) as { id: string }[]).map((m) => m.id);
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
         let mentorHoursThisMonth = 0;
         let mentorActivitiesThisMonth = 0;

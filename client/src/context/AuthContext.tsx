@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import { supabase } from '../supabase';
 
 // Extended User type with uid for backward compatibility
@@ -141,7 +142,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          minHeight: '100vh',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          gap: 2,
+          bgcolor: 'background.default',
+        }}
+      >
+        <CircularProgress aria-label="Loading session" />
+        <Typography variant="body2" color="text.secondary">
+          Signing you in…
+        </Typography>
+      </Box>
+    );
   }
 
   return (

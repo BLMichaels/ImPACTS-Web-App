@@ -467,12 +467,12 @@ const MentorHospitalContactsPage: React.FC = () => {
   };
 
   // Link PECCs and Mentors to CRM when hospital is selected
-  const linkHospitalToCRM = async (hospital: Hospital) => {
+  const linkHospitalToCRM = useCallback(async (hospital: Hospital) => {
     if (!dataUserId) return;
 
     try {
       const hospitalId = hospital.id; // facility_id or id
-      
+
       // Find PECCs for this hospital
       const { data: peccUsers } = await supabase
         .from('users')
@@ -493,7 +493,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     } catch (err) {
       console.error('Error linking hospital to CRM:', err);
     }
-  };
+  }, [dataUserId]);
 
   const handleSaveHospital = () => {
     if (editingHospital) {
@@ -576,7 +576,7 @@ const MentorHospitalContactsPage: React.FC = () => {
         return next;
       }, { replace: true });
     }
-  }, [hospitals, searchParams, setSearchParams]);
+  }, [hospitals, searchParams, setSearchParams, linkHospitalToCRM]);
 
   // When hospital detail dialog opens, refetch notes_log from DB and load site activity stats
   useEffect(() => {

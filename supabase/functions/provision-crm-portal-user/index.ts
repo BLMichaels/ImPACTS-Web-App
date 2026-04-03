@@ -10,25 +10,39 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
+const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const baseCorsHeaders: Record<string, string> = {
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type, x-supabase-api-version, prefer',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Max-Age': '86400',
 };
 
-const json = (body: Record<string, unknown>, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+function corsHeadersFor(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') ?? '';
+  if (allowedOrigins.length === 0) {
+    return { ...baseCorsHeaders, 'Access-Control-Allow-Origin': '*' };
+  }
+  const allowed = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  return { ...baseCorsHeaders, 'Access-Control-Allow-Origin': allowed, Vary: 'Origin' };
+}
 
 const ALLOWED_ROLES = new Set(['pecc', 'manager', 'mentor']);
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  const cors = corsHeadersFor(req);
+  const json = (body: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { status: 200, headers: corsHeaders });
+    return new Response('ok', { status: 200, headers: cors });
   }
   if (req.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405);

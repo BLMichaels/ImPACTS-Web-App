@@ -272,7 +272,16 @@ function App() {
                   <Route path="/admin/crm" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCRMPage /></ProtectedRoute>} />
                   <Route path="/admin/users" element={<Navigate to="/admin/crm?tab=team" replace />} />
                   <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSettingsPage /></ProtectedRoute>} />
-                  <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminSnapshotPage /></ProtectedRoute>} />
+                  <Route
+                    path="/admin/reports"
+                    element={
+                      <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
+                        <ErrorBoundary>
+                          <AdminSnapshotPage />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="/admin/snapshot" element={<Navigate to="/admin/reports" replace />} />
                   <Route path="/admin/pipeline" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProjectPipelinePage /></ProtectedRoute>} />
                   <Route path="/admin/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCohortsPage /></ProtectedRoute>} />

@@ -28,6 +28,7 @@ import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
+import { sanitizeHtml } from '../components/cohorts/RichTextEditor';
 
 interface EducationContent {
   domain?: string;
@@ -491,7 +492,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
                   </Typography>
                   <Box
                     sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.why }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedEducationContent.why) }}
                   />
                 </>
               ) : null}
@@ -503,7 +504,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
                   </Typography>
                   <Box
                     sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.background }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedEducationContent.background) }}
                   />
                 </>
               ) : null}
@@ -515,7 +516,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
                   </Typography>
                   <Box
                     sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.example }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedEducationContent.example) }}
                   />
                 </>
               ) : null}
@@ -527,7 +528,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
                   </Typography>
                   <Box
                     sx={{ mb: 3, '& ul, & ol': { pl: 3 }, '& li': { mb: 1 }, '& a': { color: 'primary.main', textDecoration: 'underline' }, '& strong': { fontWeight: 'bold' }, '& em': { fontStyle: 'italic' }, '& u': { textDecoration: 'underline' } }}
-                    dangerouslySetInnerHTML={{ __html: selectedEducationContent.sustainability }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedEducationContent.sustainability) }}
                   />
                 </>
               ) : null}

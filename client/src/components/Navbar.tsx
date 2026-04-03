@@ -291,40 +291,51 @@ label={getRoleLabel(userRole)}
     <>
       {/* View As Banner - viewing as another role or as a specific user */}
       {(isViewingAsUser || isViewingAs) && (
-        <Box 
-          sx={{ 
-            bgcolor: isViewingAsUser ? 'info.main' : 'warning.main', 
+        <Box
+          role="status"
+          aria-live="polite"
+          sx={{
+            bgcolor: isViewingAsUser ? 'info.main' : 'warning.main',
             color: isViewingAsUser ? 'info.contrastText' : 'warning.contrastText',
-            py: 0.5,
+            py: 0.75,
             px: 2,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 2
+            gap: 0.5,
+            width: '100%',
           }}
         >
-          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-            {isViewingAsUser && viewAsUserProfile
-              ? `👁️ Viewing as ${getUserDisplayName(viewAsUserProfile)} (${(userRole ?? viewAsUserProfile.role)?.toString().toUpperCase().replace('_', ' ') ?? 'User'})`
-              : `👁️ Viewing as ${viewAsRole?.toUpperCase()}`}
-          </Typography>
-          <Button 
-            size="small" 
-            variant="outlined" 
-            color="inherit"
-            onClick={() => {
-              if (isViewingAsUser) clearViewAsUser();
-              else setViewAsRole(null);
-            }}
-            sx={{ 
-              py: 0, 
-              minHeight: '24px',
-              borderColor: 'inherit',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
-            }}
-          >
-            Exit
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+              {isViewingAsUser && viewAsUserProfile
+                ? `👁️ Viewing as ${getUserDisplayName(viewAsUserProfile)} (${(userRole ?? viewAsUserProfile.role)?.toString().toUpperCase().replace('_', ' ') ?? 'User'})`
+                : `👁️ Viewing as ${viewAsRole?.toUpperCase()}`}
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              color="inherit"
+              onClick={() => {
+                if (isViewingAsUser) clearViewAsUser();
+                else setViewAsRole(null);
+              }}
+              sx={{
+                py: 0,
+                minHeight: '24px',
+                borderColor: 'inherit',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+              }}
+            >
+              Exit view as
+            </Button>
+          </Box>
+          {isViewingAsUser && (
+            <Typography variant="caption" sx={{ opacity: 0.92, textAlign: 'center', maxWidth: 720, px: 1 }}>
+              Some data still loads under your signed-in account (database row-level security). Counts and lists may not exactly match what this user sees when they log in themselves.
+            </Typography>
+          )}
         </Box>
       )}
       <AppBar

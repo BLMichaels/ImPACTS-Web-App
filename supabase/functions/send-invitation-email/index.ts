@@ -239,9 +239,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      console.error('Resend API error:', res.status, data);
+      console.error('Resend API error:', res.status);
       return new Response(
-        JSON.stringify({ error: data.message || data.error || 'Failed to send email', details: data }),
+        JSON.stringify({ error: data.message || data.error || 'Failed to send email' }),
         { status: 502, headers: jsonHeaders }
       );
     }

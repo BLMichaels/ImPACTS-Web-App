@@ -1,3 +1,7 @@
+/**
+ * Advanced staff/PECC reports. Large surface area: consider splitting loaders (e.g. staffReportLoaders.ts)
+ * and column metadata in a follow-up when touching exports or dataset queries.
+ */
 import React, { useState, useEffect, useMemo, useCallback, useLayoutEffect, useRef } from 'react';
 import {
   Box,
@@ -1029,7 +1033,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const displayRows = useMemo(() => {
     if (!selectedOnly) return sorted;
     return sorted.filter((r) => selectedIdSet.has(r.id));
-  }, [sorted, selectedOnly, selectedRowIds]);
+  }, [sorted, selectedOnly, selectedIdSet]);
 
   /** Rows that bulk select / header checkbox apply to (matches the visible table when "Selected only" is on). */
   const scopeRowsForBulkSelect = useMemo(
@@ -1390,7 +1394,12 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     columnFilters,
   ]);
 
-  const savedReportPresets = useMemo(() => loadSavedReportPresets(actorUserId), [actorUserId, savedPresetsTick]);
+  // savedPresetsTick busts cache when presets change on disk; loadSavedReportPresets only reads actorUserId.
+  const savedReportPresets = useMemo(
+    () => loadSavedReportPresets(actorUserId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional refresh when presets mutate
+    [actorUserId, savedPresetsTick]
+  );
 
   const buildSnapshot = useCallback(
     (): ReportStateSnapshot => ({
@@ -3035,13 +3044,13 @@ async function loadHospitalDataset(params: {
           .order('name')
           .range(from, to)
       );
-      partRows.forEach((row) => {
+      for (const row of partRows) {
         const rid = String((row as { id?: string }).id ?? '');
         if (rid && !seenRowIds.has(rid)) {
           seenRowIds.add(rid);
           hospitals.push(row);
         }
-      });
+      }
     }
     hospitals.sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { sensitivity: 'base' }));
   } else if (!hospitalScope) {

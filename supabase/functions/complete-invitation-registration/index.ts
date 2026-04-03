@@ -1,30 +1,44 @@
 /**
  * When a portal was pre-provisioned (CRM), signUp fails with "already registered".
- * This validates the invitation and sets the password via Admin API so the user can sign in.
+ * Validates the invitation and sets the password via Admin API so the user can sign in.
+ *
+ * Security model (JWT verify disabled at gateway: `deploy --no-verify-jwt`):
+ * - No user JWT is trusted; this endpoint is public.
+ * - Rate limiting (DB-backed when `edge_function_rate_limits` exists, else in-memory per isolate).
+ * - Body must match a pending invitation (code + email + expiry).
+ * - Password is applied only after invitation row matches; invitation finalized with conditional update (409 on race).
  *
  * Deploy: supabase functions deploy complete-invitation-registration --no-verify-jwt
+ * Secrets: set ALLOWED_ORIGINS=https://your-app.vercel.app,https://www.yourdomain.org (comma-separated). If unset, defaults to * for dev only.
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
+const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const baseCorsHeaders: Record<string, string> = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Max-Age': '86400',
 };
 
-const json = (body: Record<string, unknown>, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+function corsHeadersFor(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') ?? '';
+  if (allowedOrigins.length === 0) {
+    return { ...baseCorsHeaders, 'Access-Control-Allow-Origin': '*' };
+  }
+  const allowed = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  return { ...baseCorsHeaders, 'Access-Control-Allow-Origin': allowed, Vary: 'Origin' };
+}
 
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const ATTEMPT_LIMIT = 15;
 const attemptMap = new Map<string, { count: number; windowStart: number }>();
 
-function registerAttempt(key: string): boolean {
+function registerAttemptMemory(key: string): boolean {
   const now = Date.now();
   const row = attemptMap.get(key);
   if (!row || now - row.windowStart > ATTEMPT_WINDOW_MS) {
@@ -37,9 +51,49 @@ function registerAttempt(key: string): boolean {
   return true;
 }
 
+async function registerAttemptDurable(
+  admin: SupabaseClient,
+  bucketKey: string
+): Promise<boolean> {
+  const now = Date.now();
+  try {
+    const { data: row, error: selErr } = await admin
+      .from('edge_function_rate_limits')
+      .select('hit_count, window_start_ms')
+      .eq('bucket_key', bucketKey)
+      .maybeSingle();
+    if (selErr) throw selErr;
+    const r = row as { hit_count?: number; window_start_ms?: number } | null;
+    if (!r || now - Number(r.window_start_ms ?? 0) > ATTEMPT_WINDOW_MS) {
+      const { error: upErr } = await admin.from('edge_function_rate_limits').upsert(
+        { bucket_key: bucketKey, hit_count: 1, window_start_ms: now },
+        { onConflict: 'bucket_key' }
+      );
+      if (upErr) throw upErr;
+      return true;
+    }
+    if (Number(r.hit_count) >= ATTEMPT_LIMIT) return false;
+    const { error: up2 } = await admin
+      .from('edge_function_rate_limits')
+      .update({ hit_count: Number(r.hit_count) + 1 })
+      .eq('bucket_key', bucketKey);
+    if (up2) throw up2;
+    return true;
+  } catch {
+    return registerAttemptMemory(bucketKey);
+  }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
+  const cors = corsHeadersFor(req);
+  const json = (body: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { status: 200, headers: corsHeaders });
+    return new Response('ok', { status: 200, headers: cors });
   }
   if (req.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405);
@@ -61,8 +115,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const code = typeof body.invitation_code === 'string' ? body.invitation_code.trim() : '';
-  const emailNorm =
-    typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const emailNorm = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   const codeLooksValid = /^[A-Z2-9]{8}$/i.test(code);
   const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm);
@@ -70,8 +123,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!code || !emailNorm || password.length < 8 || !codeLooksValid || !emailLooksValid) {
     return json({ error: 'invitation_code, email, and password (min 8 chars) are required' }, 400);
   }
+
   const sourceIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
-  if (!registerAttempt(`${emailNorm}:${sourceIp}`)) {
+  const rateKey = `complete-invite:${emailNorm}:${sourceIp}`;
+  if (!(await registerAttemptDurable(admin, rateKey))) {
     return json({ error: 'Too many attempts. Please wait and try again.' }, 429);
   }
 
@@ -121,7 +176,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
 
   if (pwdErr) {
-    console.error('complete-invitation-registration: password update', pwdErr);
+    console.error('complete-invitation-registration: password update failed');
     return json({ error: pwdErr.message ?? 'Could not set password' }, 400);
   }
 

@@ -1,10 +1,13 @@
 /**
  * Per-user key/value storage in Supabase (replaces localStorage for user data).
  * All reads/writes go to public.user_data so data syncs across devices.
- * When the user_data table is missing (404), we fall back to localStorage so
- * Activities, Gap Plans, Simulation, Milestones, Snapshot, etc. still persist across refresh.
+ * localStorage fallback is only for missing table / network errors — not RLS denials (see shouldFallbackUserDataToLocalStorage).
  */
 import { supabase } from '../supabase';
+import {
+  logSupabaseError,
+  shouldFallbackUserDataToLocalStorage,
+} from './supabaseErrors';
 
 const LS_PREFIX = 'ud_';
 
@@ -23,8 +26,7 @@ export async function getUserData<T = unknown>(userId: string, dataKey: string):
   if (!error) {
     return (data?.value as T) ?? null;
   }
-  // Table missing or RLS error: fall back to localStorage so data persists across refresh
-  if (error) {
+  if (shouldFallbackUserDataToLocalStorage(error)) {
     try {
       const raw = localStorage.getItem(localStorageKey(userId, dataKey));
       if (raw !== null) return JSON.parse(raw) as T;
@@ -49,14 +51,45 @@ export async function setUserData(userId: string, dataKey: string, value: unknow
       { onConflict: 'user_id,data_key' }
     );
   if (error) {
-    console.error('userData set error:', error);
-    // Persist to localStorage so data survives refresh when user_data table is missing
-    try {
-      localStorage.setItem(localStorageKey(userId, dataKey), JSON.stringify(value));
-    } catch {
-      // ignore
+    logSupabaseError('userData set error', error);
+    if (shouldFallbackUserDataToLocalStorage(error)) {
+      try {
+        localStorage.setItem(localStorageKey(userId, dataKey), JSON.stringify(value));
+      } catch {
+        // ignore
+      }
     }
   }
+}
+
+const USER_DATA_BATCH = 120;
+
+/** Batch-load one data_key for many users (e.g. PECC activities for admin snapshot). */
+export async function batchGetUserDataForKey<T = unknown>(
+  userIds: string[],
+  dataKey: string
+): Promise<Map<string, T | null>> {
+  const out = new Map<string, T | null>();
+  const unique = [...new Set(userIds.filter(Boolean))];
+  unique.forEach((id) => out.set(id, null));
+  if (!dataKey || unique.length === 0) return out;
+
+  for (let i = 0; i < unique.length; i += USER_DATA_BATCH) {
+    const part = unique.slice(i, i + USER_DATA_BATCH);
+    const { data, error } = await supabase
+      .from('user_data')
+      .select('user_id, value')
+      .eq('data_key', dataKey)
+      .in('user_id', part);
+    if (error) {
+      logSupabaseError(`batchGetUserDataForKey(${dataKey})`, error);
+      continue;
+    }
+    (data || []).forEach((row: { user_id: string; value: unknown }) => {
+      out.set(row.user_id, row.value as T);
+    });
+  }
+  return out;
 }
 
 /** Migrate one key from localStorage to Supabase (call once on load if Supabase returns null). */
