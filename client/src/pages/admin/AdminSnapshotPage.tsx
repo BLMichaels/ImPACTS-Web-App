@@ -67,7 +67,7 @@ import {
 } from '../../components/admin/AdminReportCharts';
 import { supabase } from '../../supabase';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
-import { useUserProfile } from '../../context/UserProfileContext';
+import { useAuth } from '../../context/AuthContext';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 
 const AdminPlatformOverviewCharts = React.lazy(() => import('../../components/admin/AdminPlatformOverviewCharts'));
@@ -165,7 +165,7 @@ interface AggregatedPlatformData {
 }
 
 export default function AdminSnapshotPage() {
-  const { userProfile } = useUserProfile();
+  const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = Number(searchParams.get('tab') ?? '0');
   const activeTab = (tabParam >= 0 && tabParam <= 3 ? tabParam : 0) as 0 | 1 | 2 | 3;
@@ -712,8 +712,8 @@ export default function AdminSnapshotPage() {
         <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Usage analytics" />
       </Tabs>
 
-      {activeTab === 0 && userProfile?.id && (
-        <StaffPeccReportBuilder scope="admin" actorUserId={userProfile.id} />
+      {activeTab === 0 && currentUser?.id && (
+        <StaffPeccReportBuilder scope="admin" actorUserId={currentUser.id} />
       )}
 
       {activeTab === 1 && (

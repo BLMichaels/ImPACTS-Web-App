@@ -79,6 +79,7 @@ import {
   type ColumnFilterOp,
 } from '../../utils/reportPresets';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 import {
   buildExportRowsForMode,
   exportModeDescription,
@@ -312,20 +313,67 @@ function checklistPercent(stats: { total: number; completed: number } | undefine
   return String(Math.round((stats.completed / stats.total) * 100));
 }
 
+const HOSPITAL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isLikelyHospitalRowUuid(s: string): boolean {
+  return HOSPITAL_UUID_RE.test(String(s).trim());
+}
+
+/** Unify hospitals.id and hospitals.facility_id for reporting filters (PECC uses facility id; contacts use row id). */
+async function expandHospitalScopeKeys(rawIds: string[]): Promise<string[]> {
+  const set = new Set<string>();
+  rawIds.forEach((id) => {
+    const t = String(id || '').trim();
+    if (t) set.add(t);
+  });
+  if (set.size === 0) return [];
+  const queue = [...set];
+  for (const part of chunk(queue, 80)) {
+    const uuidPart = part.filter(isLikelyHospitalRowUuid);
+    const facilityPart = part.filter((x) => !isLikelyHospitalRowUuid(x));
+    if (uuidPart.length > 0) {
+      const { data } = await supabase.from('hospitals').select('id, facility_id').in('id', uuidPart);
+      (data || []).forEach((r: { id: string; facility_id: string | null }) => {
+        set.add(String(r.id));
+        if (r.facility_id != null && String(r.facility_id).trim()) set.add(String(r.facility_id).trim());
+      });
+    }
+    if (facilityPart.length > 0) {
+      const { data } = await supabase.from('hospitals').select('id, facility_id').in('facility_id', facilityPart);
+      (data || []).forEach((r: { id: string; facility_id: string | null }) => {
+        set.add(String(r.id));
+        if (r.facility_id != null && String(r.facility_id).trim()) set.add(String(r.facility_id).trim());
+      });
+    }
+  }
+  return [...set];
+}
+
 async function resolveHospitalIdsForScope(scope: StaffReportScope, userId: string): Promise<string[] | null> {
   if (scope === 'admin') return null;
   const set = new Set<string>();
   if (scope === 'mentor') {
-    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string }>((from, to) =>
-      supabase
-        .from('mentor_hospital_assignments')
-        .select('hospital_id')
-        .eq('mentor_id', userId)
-        .eq('is_active', true)
-        .range(from, to)
-    );
-    rows.forEach((r) => r.hospital_id && set.add(r.hospital_id));
-    return [...set];
+    try {
+      const merged = await fetchMergedMentorHospitals(userId);
+      merged.forEach((m) => {
+        const id = String(m.hospital.id || '').trim();
+        if (id) set.add(id);
+        const fid = m.hospital.facility_id != null ? String(m.hospital.facility_id).trim() : '';
+        if (fid) set.add(fid);
+      });
+    } catch (e) {
+      console.warn('Staff report: mentor hospital merge failed, using assignments only:', e);
+      const rows = await fetchAllRowsOrEmpty<{ hospital_id: string }>((from, to) =>
+        supabase
+          .from('mentor_hospital_assignments')
+          .select('hospital_id')
+          .eq('mentor_id', userId)
+          .eq('is_active', true)
+          .range(from, to)
+      );
+      rows.forEach((r) => r.hospital_id && set.add(r.hospital_id));
+    }
+    return expandHospitalScopeKeys([...set]);
   }
   const { data: mentors } = await supabase.from('users').select('id').eq('manager_id', userId).eq('role', 'mentor').eq('is_active', true);
   const mentorIds = [...(mentors || []).map((m: { id: string }) => m.id), userId];
@@ -340,7 +388,7 @@ async function resolveHospitalIdsForScope(scope: StaffReportScope, userId: strin
     );
     rows.forEach((r) => r.hospital_id && set.add(r.hospital_id));
   }
-  return [...set];
+  return expandHospitalScopeKeys([...set]);
 }
 
 /** Build column list for drawer + exports (order preserved). */
@@ -2974,11 +3022,26 @@ async function loadHospitalDataset(params: {
 
   let hospitals: Record<string, unknown>[] = [];
   if (hospitalScope && hospitalScope.length) {
-    for (const part of chunk(hospitalScope, 80)) {
+    const seenRowIds = new Set<string>();
+    for (const part of chunk(hospitalScope, 40)) {
+      const orParts = part.filter(Boolean).flatMap((id) => [`id.eq.${id}`, `facility_id.eq.${id}`]);
+      if (!orParts.length) continue;
       const partRows = await fetchAllRows<Record<string, unknown>>((from, to) =>
-        supabase.from('hospitals').select(hospitalSelect).in('id', part).eq('is_active', true).order('name').range(from, to)
+        supabase
+          .from('hospitals')
+          .select(hospitalSelect)
+          .or(orParts.join(','))
+          .eq('is_active', true)
+          .order('name')
+          .range(from, to)
       );
-      hospitals.push(...partRows);
+      partRows.forEach((row) => {
+        const rid = String((row as { id?: string }).id ?? '');
+        if (rid && !seenRowIds.has(rid)) {
+          seenRowIds.add(rid);
+          hospitals.push(row);
+        }
+      });
     }
     hospitals.sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { sensitivity: 'base' }));
   } else if (!hospitalScope) {
