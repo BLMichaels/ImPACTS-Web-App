@@ -25,7 +25,14 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useUserProfile } from '../context/UserProfileContext';
 import { supabase } from '../supabase';
-import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  migrateFromLocalStorage,
+  getHospitalData,
+  setHospitalData,
+  resolveHospitalUuid,
+} from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
 import PrsSectionHiddenNotice from '../components/PrsSectionHiddenNotice';
 import AddIcon from '@mui/icons-material/Add';
@@ -51,7 +58,7 @@ interface ReadinessScore {
 }
 
   const DashboardPage = () => {
-    const { userProfile, navbarBrandProgramId, effectiveUserId } = useUserProfile();
+    const { userProfile, navbarBrandProgramId, effectiveUserId, siteId } = useUserProfile();
     const [primaryProgramName, setPrimaryProgramName] = useState<string>('ImPACTS');
     /** Matches navbar branding: resolved primary or membership (see resolveNavbarProgramLogo). */
     const programIdForWelcome = navbarBrandProgramId
@@ -122,6 +129,23 @@ interface ReadinessScore {
     key: keyof DepartmentContact;
     direction: 'asc' | 'desc';
   } | null>(null);
+  const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
+  const [contactsHydrated, setContactsHydrated] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!siteId) {
+        if (mounted) setEffectiveHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(siteId);
+      if (mounted) setEffectiveHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [siteId]);
 
   // Load readiness scores only when PRS section is visible (granular permission)
   useEffect(() => {
@@ -131,18 +155,63 @@ interface ReadinessScore {
       return;
     }
     let mounted = true;
-    getUserData<ReadinessScore[]>(uid, 'readinessScores').then((val) => {
+    (async () => {
+      let val: ReadinessScore[] | null = effectiveHospitalId
+        ? await getHospitalData<ReadinessScore[]>(effectiveHospitalId, 'readinessScores')
+        : await getUserData<ReadinessScore[]>(uid, 'readinessScores');
+      if (effectiveHospitalId && !Array.isArray(val)) {
+        val = await getUserData<ReadinessScore[]>(uid, 'readinessScores');
+      }
       if (!mounted) return;
       if (val != null && Array.isArray(val)) setReadinessScores(val);
-      else migrateFromLocalStorage(uid, 'readinessScores', `readinessScores_${uid}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
-    });
+      else if (!effectiveHospitalId) {
+        migrateFromLocalStorage(uid, 'readinessScores', `readinessScores_${uid}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
+      }
+    })();
     return () => { mounted = false; };
-  }, [uid, prsSectionVisible]);
+  }, [uid, prsSectionVisible, effectiveHospitalId]);
 
   const saveReadinessScores = async (scores: ReadinessScore[]) => {
     setReadinessScores(scores);
-    if (uid) await setUserData(uid, 'readinessScores', scores);
+    if (!uid) return;
+    if (effectiveHospitalId) {
+      await Promise.all([
+        setHospitalData(effectiveHospitalId, 'readinessScores', scores),
+        setUserData(uid, 'readinessScores', scores),
+      ]);
+    } else {
+      await setUserData(uid, 'readinessScores', scores);
+    }
   };
+
+  // Hospital department contacts are hospital-owned for turnover continuity.
+  useEffect(() => {
+    if (!uid) return;
+    let mounted = true;
+    (async () => {
+      const contactsVal = effectiveHospitalId
+        ? await getHospitalData<DepartmentContact[]>(effectiveHospitalId, 'dashboard_department_contacts')
+        : await getUserData<DepartmentContact[]>(uid, 'dashboard_department_contacts');
+      if (!mounted) return;
+      if (Array.isArray(contactsVal) && contactsVal.length > 0) setDepartmentContacts(contactsVal);
+      setContactsHydrated(true);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [uid, effectiveHospitalId]);
+
+  useEffect(() => {
+    if (!uid || !contactsHydrated) return;
+    if (effectiveHospitalId) {
+      void Promise.all([
+        setHospitalData(effectiveHospitalId, 'dashboard_department_contacts', departmentContacts),
+        setUserData(uid, 'dashboard_department_contacts', departmentContacts),
+      ]);
+      return;
+    }
+    void setUserData(uid, 'dashboard_department_contacts', departmentContacts);
+  }, [uid, effectiveHospitalId, contactsHydrated, departmentContacts]);
 
   // Handle add readiness score
   const handleAddReadinessScore = () => {

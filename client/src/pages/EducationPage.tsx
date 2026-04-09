@@ -26,7 +26,14 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
-import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  migrateFromLocalStorage,
+  getHospitalData,
+  setHospitalData,
+  resolveHospitalUuid,
+} from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml } from '../components/cohorts/RichTextEditor';
 
@@ -95,7 +102,7 @@ interface EducationPageProps {
 
 const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFilter }) => {
   useAuth();
-  const { effectiveUserId } = useUserProfile();
+  const { effectiveUserId, siteId } = useUserProfile();
   const navigate = useNavigate();
   const { trackLinkClick } = useUsageAnalytics();
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
@@ -118,6 +125,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
   });
   const [gapPlansList, setGapPlansList] = useState<GapPlan[]>([]);
   const [userQuestionNotes, setUserQuestionNotes] = useState<Record<string, string>>({});
+  const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteDialogQuestionId, setNoteDialogQuestionId] = useState<string | null>(null);
   const [noteDialogLabel, setNoteDialogLabel] = useState('');
@@ -151,6 +159,21 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
   }, []);
 
   useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!siteId) {
+        if (mounted) setEffectiveHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(siteId);
+      if (mounted) setEffectiveHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [siteId]);
+
+  useEffect(() => {
     const onGapPlansUpdated = () => setGapPlansRefreshKey((k) => k + 1);
     window.addEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
     return () => window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
@@ -161,34 +184,53 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     if (!userId) return;
     let mounted = true;
     (async () => {
-      let plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+      let plans = effectiveHospitalId
+        ? await getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans')
+        : await getUserData<GapPlan[]>(userId, 'gapPlans');
+      if (effectiveHospitalId && (plans == null || !Array.isArray(plans))) {
+        plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+      }
       if (plans == null || !Array.isArray(plans)) {
-        await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
-          if (mounted) setGapPlansList(Array.isArray(raw) ? raw : []);
-        });
+        if (!effectiveHospitalId) {
+          await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
+            if (mounted) setGapPlansList(Array.isArray(raw) ? raw : []);
+          });
+        }
         return;
       }
       if (mounted) setGapPlansList(plans);
     })();
     return () => { mounted = false; };
-  }, [userId, gapPlansRefreshKey]);
+  }, [userId, gapPlansRefreshKey, effectiveHospitalId]);
 
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
     (async () => {
-      const notes = await getUserData<Record<string, string>>(userId, 'gap_closure_question_notes');
+      let notes = effectiveHospitalId
+        ? await getHospitalData<Record<string, string>>(effectiveHospitalId, 'gap_closure_question_notes')
+        : await getUserData<Record<string, string>>(userId, 'gap_closure_question_notes');
+      if (effectiveHospitalId && (!notes || typeof notes !== 'object')) {
+        notes = await getUserData<Record<string, string>>(userId, 'gap_closure_question_notes');
+      }
       if (mounted && notes && typeof notes === 'object') setUserQuestionNotes(notes);
     })();
     return () => { mounted = false; };
-  }, [userId]);
+  }, [userId, effectiveHospitalId]);
 
   const saveUserNote = async (questionId: string, value: string) => {
     if (!userId) return;
     const next = { ...userQuestionNotes, [questionId]: value.trim() };
     if (!value.trim()) delete next[questionId];
     setUserQuestionNotes(next);
-    await setUserData(userId, 'gap_closure_question_notes', next);
+    if (effectiveHospitalId) {
+      await Promise.all([
+        setHospitalData(effectiveHospitalId, 'gap_closure_question_notes', next),
+        setUserData(userId, 'gap_closure_question_notes', next),
+      ]);
+    } else {
+      await setUserData(userId, 'gap_closure_question_notes', next);
+    }
     setNoteDialogOpen(false);
     setNoteDialogQuestionId(null);
     setNoteDialogValue('');
@@ -260,7 +302,14 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     };
 
     const updatedPlans = [...gapPlansList, newGapPlan];
-    await setUserData(userId, 'gapPlans', updatedPlans);
+    if (effectiveHospitalId) {
+      await Promise.all([
+        setHospitalData(effectiveHospitalId, 'gapPlans', updatedPlans),
+        setUserData(userId, 'gapPlans', updatedPlans),
+      ]);
+    } else {
+      await setUserData(userId, 'gapPlans', updatedPlans);
+    }
     setGapPlansList(updatedPlans);
 
     onGapPlanSaved?.();
