@@ -124,6 +124,13 @@ const ACTIVITY_PRESETS = [
   { value: 'inactive30', label: 'No activity in last 30 days' },
 ];
 
+const PECC_SOURCE_FILTERS = [
+  { value: 'all', label: 'All sources' },
+  { value: 'user', label: 'User accounts only' },
+  { value: 'hospital_contact', label: 'Hospital contacts only' },
+  { value: 'crm', label: 'CRM contacts only' },
+] as const;
+
 /** Report dataset dropdown: labels A–Z within each group (People / CRM). */
 const REPORT_DATASET_PEOPLE_OPTIONS: { value: ReportDataset; label: string }[] = (
   [
@@ -649,6 +656,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState<string[]>([]);
   const [activityPreset, setActivityPreset] = useState('any');
+  const [peccSourceFilter, setPeccSourceFilter] = useState<(typeof PECC_SOURCE_FILTERS)[number]['value']>('all');
   const [programFilter, setProgramFilter] = useState<string>('all');
   const [cohortFilter, setCohortFilter] = useState<string>('all');
   // Default to "staff" so the platform people records view includes all CRM-working roles.
@@ -929,6 +937,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setSelectedRowIds([]);
     setSelectedOnly(false);
     setExportMode('filtered');
+    setPeccSourceFilter('all');
     setEditDialogOpen(false);
     setEditRow(null);
     setEditDraft({});
@@ -963,6 +972,15 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       });
     }
     if (dataset === 'pecc') {
+      if (peccSourceFilter !== 'all') {
+        list = list.filter((r) => {
+          const source = (r.cells.accountSource || '').toLowerCase();
+          if (peccSourceFilter === 'user') return !source.includes('hospital contact') && !source.includes('crm');
+          if (peccSourceFilter === 'hospital_contact') return source.includes('hospital contact');
+          if (peccSourceFilter === 'crm') return source.includes('crm');
+          return true;
+        });
+      }
       if (programFilter !== 'all') {
         list = list.filter((r) => {
           if (r.id.startsWith('hc:') || r.id.startsWith('crm:')) return false;
@@ -996,6 +1014,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     programFilter,
     cohortFilter,
     activityPreset,
+    peccSourceFilter,
     programIdsByRow,
     cohortIdsByRow,
     columnFilters,
@@ -1018,12 +1037,39 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       totalFiltered: filtered.length,
       activeFilters:
         Number(activityPreset !== 'any') +
+        Number(peccSourceFilter !== 'all') +
         Number(programFilter !== 'all') +
         Number(cohortFilter !== 'all') +
         Number(stateFilter.length > 0) +
         Number(search.trim().length > 0),
     };
-  }, [dataset, filtered, activityPreset, programFilter, cohortFilter, stateFilter, search]);
+  }, [dataset, filtered, activityPreset, peccSourceFilter, programFilter, cohortFilter, stateFilter, search]);
+
+  const applyPeccQuickView = useCallback(
+    (view: 'all' | 'active30' | 'inactive30' | 'crmOnly' | 'userOnly') => {
+      setProgramFilter('all');
+      setCohortFilter('all');
+      setSearch('');
+      setStateFilter([]);
+      if (view === 'all') {
+        setActivityPreset('any');
+        setPeccSourceFilter('all');
+      } else if (view === 'active30') {
+        setActivityPreset('30');
+        setPeccSourceFilter('all');
+      } else if (view === 'inactive30') {
+        setActivityPreset('inactive30');
+        setPeccSourceFilter('all');
+      } else if (view === 'crmOnly') {
+        setActivityPreset('any');
+        setPeccSourceFilter('crm');
+      } else if (view === 'userOnly') {
+        setActivityPreset('any');
+        setPeccSourceFilter('user');
+      }
+    },
+    []
+  );
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -1724,6 +1770,9 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               sx={{
                 p: 1.5,
                 borderRadius: 2,
+                position: 'sticky',
+                top: 8,
+                zIndex: 2,
                 background: (t) =>
                   `linear-gradient(135deg, ${alpha(t.palette.primary.light, 0.12)} 0%, ${alpha(
                     t.palette.background.paper,
@@ -1747,27 +1796,20 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   </Stack>
                 </Stack>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                  <Chip size="small" variant="filled" label={`Source: ${PECC_SOURCE_FILTERS.find((f) => f.value === peccSourceFilter)?.label ?? 'All sources'}`} />
                   <Chip size="small" variant="filled" label={`User accounts: ${peccSourceSummary?.userAccounts ?? 0}`} />
                   <Chip size="small" variant="filled" label={`Hospital contacts: ${peccSourceSummary?.hospitalContacts ?? 0}`} />
                   <Chip size="small" variant="filled" label={`CRM contacts: ${peccSourceSummary?.crmContacts ?? 0}`} />
                 </Stack>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                  <Button size="small" variant="outlined" onClick={() => setActivityPreset('30')}>
-                    Active in last 30 days
-                  </Button>
-                  <Button size="small" variant="outlined" onClick={() => setActivityPreset('inactive30')}>
-                    No activity in 30 days
-                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => applyPeccQuickView('active30')}>Active in 30 days</Button>
+                  <Button size="small" variant="outlined" onClick={() => applyPeccQuickView('inactive30')}>Inactive 30 days</Button>
+                  <Button size="small" variant="outlined" onClick={() => applyPeccQuickView('crmOnly')}>CRM contacts only</Button>
+                  <Button size="small" variant="outlined" onClick={() => applyPeccQuickView('userOnly')}>User accounts only</Button>
                   <Button
                     size="small"
                     variant="text"
-                    onClick={() => {
-                      setActivityPreset('any');
-                      setProgramFilter('all');
-                      setCohortFilter('all');
-                      setSearch('');
-                      setStateFilter([]);
-                    }}
+                    onClick={() => applyPeccQuickView('all')}
                   >
                     Clear PECC filters
                   </Button>
@@ -1851,6 +1893,18 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                       {programs.map((p) => (
                         <MenuItem key={p.id} value={p.id}>
                           {p.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>PECC source</InputLabel>
+                    <Select value={peccSourceFilter} label="PECC source" onChange={(e) => setPeccSourceFilter(e.target.value as (typeof PECC_SOURCE_FILTERS)[number]['value'])}>
+                      {PECC_SOURCE_FILTERS.map((source) => (
+                        <MenuItem key={source.value} value={source.value}>
+                          {source.label}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1946,6 +2000,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                 color="primary"
                 label={`Activity: ${ACTIVITY_PRESETS.find((p) => p.value === activityPreset)?.label ?? activityPreset}`}
                 onDelete={() => setActivityPreset('any')}
+              />
+            )}
+            {dataset === 'pecc' && peccSourceFilter !== 'all' && (
+              <Chip
+                size="small"
+                color="primary"
+                label={`Source: ${PECC_SOURCE_FILTERS.find((source) => source.value === peccSourceFilter)?.label ?? peccSourceFilter}`}
+                onDelete={() => setPeccSourceFilter('all')}
               />
             )}
             {dataset === 'pecc' && programFilter !== 'all' && (
