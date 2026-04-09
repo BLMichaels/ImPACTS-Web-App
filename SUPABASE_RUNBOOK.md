@@ -14,6 +14,10 @@ Apply scripts in the **Supabase SQL editor** for production. Track what you ran 
 
 - Checklists / mentors: `COMPLETE_CHECKLIST_MIGRATION.sql`  
 - Edge rate table: `EDGE_FUNCTION_RATE_LIMITS.sql` (for durable limits on `complete-invitation-registration`)  
+- PECC hospital continuity (run in order):  
+  1. `HOSPITAL_DATA_TABLE.sql`  
+  2. `HOSPITAL_DATA_RLS_POLICIES.sql`  
+  3. `HOSPITAL_DATA_BACKFILL.sql`  
 - Other root `*.sql` files: match name to feature; avoid applying duplicates.
 
 ## Edge functions

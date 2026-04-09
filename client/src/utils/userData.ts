@@ -63,6 +63,7 @@ export async function setUserData(userId: string, dataKey: string, value: unknow
 }
 
 const USER_DATA_BATCH = 120;
+const HOSPITAL_DATA_BATCH = 120;
 
 /** Batch-load one data_key for many users (e.g. PECC activities for admin snapshot). */
 export async function batchGetUserDataForKey<T = unknown>(
@@ -87,6 +88,84 @@ export async function batchGetUserDataForKey<T = unknown>(
     }
     (data || []).forEach((row: { user_id: string; value: unknown }) => {
       out.set(row.user_id, row.value as T);
+    });
+  }
+  return out;
+}
+
+/** Resolve facility_id / id-like site references to canonical hospitals.id (UUID text). */
+export async function resolveHospitalUuid(siteRef: string): Promise<string | null> {
+  const ref = String(siteRef || '').trim();
+  if (!ref) return null;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ref);
+
+  if (isUuid) {
+    const { data, error } = await supabase.from('hospitals').select('id').eq('id', ref).maybeSingle();
+    if (!error && data?.id) return String(data.id);
+  }
+
+  const { data, error } = await supabase.from('hospitals').select('id, facility_id').eq('facility_id', ref).maybeSingle();
+  if (error) {
+    logSupabaseError(`resolveHospitalUuid(${ref})`, error);
+    return null;
+  }
+  return data?.id ? String(data.id) : null;
+}
+
+/** Hospital-scoped key/value storage for PECC continuity across user turnover. */
+export async function getHospitalData<T = unknown>(hospitalId: string, dataKey: string): Promise<T | null> {
+  if (!hospitalId || !dataKey) return null;
+  const { data, error } = await supabase
+    .from('hospital_data')
+    .select('value')
+    .eq('hospital_id', hospitalId)
+    .eq('data_key', dataKey)
+    .maybeSingle();
+  if (!error) return (data?.value as T) ?? null;
+  logSupabaseError(`getHospitalData(${dataKey})`, error);
+  return null;
+}
+
+/** Upsert hospital-scoped JSON value, preserving actor attribution server-side via auth.uid(). */
+export async function setHospitalData(hospitalId: string, dataKey: string, value: unknown): Promise<void> {
+  if (!hospitalId || !dataKey) return;
+  const { error } = await supabase
+    .from('hospital_data')
+    .upsert(
+      {
+        hospital_id: hospitalId,
+        data_key: dataKey,
+        value: value as any,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'hospital_id,data_key' }
+    );
+  if (error) logSupabaseError(`setHospitalData(${dataKey})`, error);
+}
+
+/** Batch-load one key for many hospitals (e.g. hospital-owned PECC activities rollups). */
+export async function batchGetHospitalDataForKey<T = unknown>(
+  hospitalIds: string[],
+  dataKey: string
+): Promise<Map<string, T | null>> {
+  const out = new Map<string, T | null>();
+  const unique = [...new Set(hospitalIds.filter(Boolean))];
+  unique.forEach((id) => out.set(id, null));
+  if (!dataKey || unique.length === 0) return out;
+
+  for (let i = 0; i < unique.length; i += HOSPITAL_DATA_BATCH) {
+    const part = unique.slice(i, i + HOSPITAL_DATA_BATCH);
+    const { data, error } = await supabase
+      .from('hospital_data')
+      .select('hospital_id, value')
+      .eq('data_key', dataKey)
+      .in('hospital_id', part);
+    if (error) {
+      logSupabaseError(`batchGetHospitalDataForKey(${dataKey})`, error);
+      continue;
+    }
+    (data || []).forEach((row: { hospital_id: string; value: unknown }) => {
+      out.set(row.hospital_id, row.value as T);
     });
   }
   return out;
