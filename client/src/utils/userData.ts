@@ -174,6 +174,30 @@ export async function setHospitalData(hospitalId: string, dataKey: string, value
 }
 
 /**
+ * Insert default JSON only if no row exists for (hospital_id, data_key).
+ * Avoids wiping existing hospital continuity when a new PECC registers at a site that already has data.
+ */
+export async function ensureHospitalDataPlaceholder(
+  hospitalId: string,
+  dataKey: string,
+  defaultValue: unknown = []
+): Promise<void> {
+  if (!hospitalId || !dataKey) return;
+  const { data, error } = await supabase
+    .from('hospital_data')
+    .select('hospital_id')
+    .eq('hospital_id', hospitalId)
+    .eq('data_key', dataKey)
+    .maybeSingle();
+  if (error) {
+    logSupabaseError(`ensureHospitalDataPlaceholder(${dataKey})`, error);
+    return;
+  }
+  if (data) return;
+  await setHospitalData(hospitalId, dataKey, defaultValue);
+}
+
+/**
  * Feature flag for the final cutover:
  * - default: mirror writes to both hospital_data and user_data
  * - cutover on: set REACT_APP_DISABLE_LEGACY_USER_MIRROR=true (or localStorage override key)

@@ -27,7 +27,7 @@ import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
 import { resolvePeccFacilityId } from '../utils/hospitalId';
-import { setHospitalData } from '../utils/userData';
+import { ensureHospitalDataPlaceholder } from '../utils/userData';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface InvitationData {
@@ -374,18 +374,20 @@ const InvitationPage: React.FC = () => {
               .maybeSingle();
             const hospitalId = String((hospital as { id?: string } | null)?.id ?? '');
             if (hospitalId) {
-              const continuityKeys = [
-                'activities',
-                'gapPlans',
-                'milestones',
-                'simulation_sessions',
-                'simulation_gaps',
-                'readinessScores',
-                'prsQuestions',
-                'other_cases',
+              const continuityDefaults: [string, unknown][] = [
+                ['activities', []],
+                ['gapPlans', []],
+                ['milestones', []],
+                ['simulation_sessions', []],
+                ['simulation_gaps', []],
+                ['readinessScores', []],
+                ['prsReadinessScores', []],
+                ['prsQuestions', []],
+                ['other_cases', []],
+                ['gap_closure_question_notes', {}],
               ];
-              for (const key of continuityKeys) {
-                await setHospitalData(hospitalId, key, []);
+              for (const [key, def] of continuityDefaults) {
+                await ensureHospitalDataPlaceholder(hospitalId, key, def);
               }
             }
           } catch {

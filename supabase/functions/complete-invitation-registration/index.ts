@@ -216,23 +216,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
 
       if (hospitalId) {
-        const continuityKeys = [
-          'activities',
-          'gapPlans',
-          'milestones',
-          'simulation_sessions',
-          'simulation_gaps',
-          'readinessScores',
-          'prsQuestions',
-          'other_cases',
+        const continuityDefaults: [string, unknown][] = [
+          ['activities', []],
+          ['gapPlans', []],
+          ['milestones', []],
+          ['simulation_sessions', []],
+          ['simulation_gaps', []],
+          ['readinessScores', []],
+          ['prsReadinessScores', []],
+          ['prsQuestions', []],
+          ['other_cases', []],
+          ['gap_closure_question_notes', {}],
         ];
-        for (const key of continuityKeys) {
-          await admin
+        for (const [key, defaultValue] of continuityDefaults) {
+          const { data: existing } = await admin
             .from('hospital_data')
-            .upsert(
-              { hospital_id: hospitalId, data_key: key, value: [] },
-              { onConflict: 'hospital_id,data_key' }
-            );
+            .select('hospital_id')
+            .eq('hospital_id', hospitalId)
+            .eq('data_key', key)
+            .maybeSingle();
+          if (existing) continue;
+          await admin.from('hospital_data').upsert(
+            {
+              hospital_id: hospitalId,
+              data_key: key,
+              value: defaultValue,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'hospital_id,data_key' }
+          );
         }
       }
     }

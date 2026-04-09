@@ -30,6 +30,8 @@ supabase functions deploy complete-invitation-registration --no-verify-jwt
 supabase functions deploy provision-crm-portal-user
 ```
 
+`complete-invitation-registration` bootstraps `hospital_data` placeholders for new PECCs **only when a key has no row yet** (it does not overwrite existing site continuity). Redeploy after changes to that function.
+
 **Secrets**
 
 - `ALLOWED_ORIGINS`: comma-separated portal origins (e.g. `https://app.example.com`). If empty, functions fall back to `*` (dev only).  
