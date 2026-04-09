@@ -60,6 +60,7 @@ import {
   batchGetUserDataForKey,
   batchGetHospitalDataForKey,
   mapSiteRefsToHospitalRowIds,
+  shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -342,9 +343,10 @@ const ManagerMentorsPage: React.FC = () => {
       const canonHospitalIds = [
         ...new Set(peccSiteRefs.map((r) => refToHospitalId.get(r)).filter((x): x is string => Boolean(x))),
       ];
+      const legacyMirror = shouldMirrorLegacyUserData();
       const [udPeccActivities, udPeccGapPlans, hospActivities, hospGapPlans] = await Promise.all([
-        batchGetUserDataForKey<unknown[]>(peccIds, 'activities'),
-        batchGetUserDataForKey<unknown[]>(peccIds, 'gapPlans'),
+        legacyMirror ? batchGetUserDataForKey<unknown[]>(peccIds, 'activities') : Promise.resolve(new Map()),
+        legacyMirror ? batchGetUserDataForKey<unknown[]>(peccIds, 'gapPlans') : Promise.resolve(new Map()),
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIds, 'activities'),
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIds, 'gapPlans'),
       ]);
@@ -384,8 +386,8 @@ const ManagerMentorsPage: React.FC = () => {
                   const hGaps = hid ? hospGapPlans.get(hid) : null;
                   const uActs = udPeccActivities.get(pecc.id);
                   const uGaps = udPeccGapPlans.get(pecc.id);
-                  const activities = (hActs != null && Array.isArray(hActs)) ? hActs : (Array.isArray(uActs) ? uActs : []);
-                  const gapPlansList = (hGaps != null && Array.isArray(hGaps)) ? hGaps : (Array.isArray(uGaps) ? uGaps : []);
+                  const activities = Array.isArray(hActs) ? hActs : (Array.isArray(uActs) ? uActs : []);
+                  const gapPlansList = Array.isArray(hGaps) ? hGaps : (Array.isArray(uGaps) ? uGaps : []);
                   const activityCount = activities.length;
                   const gapPlanCount = gapPlansList.length;
                   const lastPeccActivity = activities.length > 0

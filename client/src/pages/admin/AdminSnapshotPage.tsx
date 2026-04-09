@@ -73,6 +73,7 @@ import {
   batchGetUserDataForKey,
   batchGetHospitalDataForKey,
   mapSiteRefsToHospitalRowIds,
+  shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 
 const AdminPlatformOverviewCharts = React.lazy(() => import('../../components/admin/AdminPlatformOverviewCharts'));
@@ -332,7 +333,9 @@ export default function AdminSnapshotPage() {
         const peccList = (peccsRes.data || []) as { id: string; hospital_facility_id: string }[];
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        const peccActMap = await batchGetUserDataForKey<unknown[]>(peccList.map((p) => p.id), 'activities');
+        const peccActMap = shouldMirrorLegacyUserData()
+          ? await batchGetUserDataForKey<unknown[]>(peccList.map((p) => p.id), 'activities')
+          : new Map<string, unknown[] | null>();
         const siteRefs = peccList.map((p) => p.hospital_facility_id).filter(Boolean) as string[];
         const refToHospitalId = await mapSiteRefsToHospitalRowIds(siteRefs);
         const hospitalUuids = [...new Set(
@@ -344,8 +347,7 @@ export default function AdminSnapshotPage() {
         for (const p of peccList) {
           const hid = p.hospital_facility_id ? refToHospitalId.get(p.hospital_facility_id) : undefined;
           const fromHospital = hid ? hospActMap.get(hid) : null;
-          const acts =
-            fromHospital != null && Array.isArray(fromHospital) ? fromHospital : peccActMap.get(p.id);
+          const acts = Array.isArray(fromHospital) ? fromHospital : peccActMap.get(p.id);
           if (!Array.isArray(acts)) continue;
           for (const a of acts) {
             if (!a || typeof a !== 'object' || !('date' in a)) continue;
