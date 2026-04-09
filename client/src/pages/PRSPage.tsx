@@ -40,7 +40,14 @@ import {
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, Upload as UploadIcon, Image as ImageIcon, Visibility as VisibilityIcon, Warning as WarningIcon, CloudUpload as CloudUploadIcon, Send as SendIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
-import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  migrateFromLocalStorage,
+  getHospitalData,
+  setHospitalData,
+  resolveHospitalUuid,
+} from '../utils/userData';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
 interface ReadinessScore {
@@ -1357,7 +1364,7 @@ export const ASSESSMENT_QUESTIONS: AssessmentQuestion[] = [
 
 const PRSPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, siteId } = useUserProfile();
   const [questions, setQuestions] = useState<AssessmentQuestion[]>(ASSESSMENT_QUESTIONS);
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
@@ -1382,44 +1389,98 @@ const PRSPage: React.FC = () => {
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [unansweredQuestions, setUnansweredQuestions] = useState<string[]>([]);
   const [legalWarningDialogOpen, setLegalWarningDialogOpen] = useState(false);
+  const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
 
   const prsUserId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!siteId) {
+        if (mounted) setEffectiveHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(siteId);
+      if (mounted) setEffectiveHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [siteId]);
+
   // Load data from user_data on mount
   useEffect(() => {
     if (!prsUserId) return;
     let mounted = true;
     (async () => {
       const [questionsVal, scoresVal, gapPlansVal] = await Promise.all([
-        getUserData<any[]>(prsUserId, 'prsQuestions'),
-        getUserData<any[]>(prsUserId, 'prsReadinessScores'),
-        getUserData<any[]>(prsUserId, 'gapPlans')
+        effectiveHospitalId ? getHospitalData<any[]>(effectiveHospitalId, 'prsQuestions') : getUserData<any[]>(prsUserId, 'prsQuestions'),
+        effectiveHospitalId ? getHospitalData<any[]>(effectiveHospitalId, 'prsReadinessScores') : getUserData<any[]>(prsUserId, 'prsReadinessScores'),
+        effectiveHospitalId ? getHospitalData<any[]>(effectiveHospitalId, 'gapPlans') : getUserData<any[]>(prsUserId, 'gapPlans')
       ]);
       if (!mounted) return;
-      if (questionsVal != null && Array.isArray(questionsVal)) setQuestions(questionsVal);
+      let resolvedQuestions = questionsVal;
+      let resolvedScores = scoresVal;
+      let resolvedGapPlans = gapPlansVal;
+      if (effectiveHospitalId) {
+        if (!Array.isArray(resolvedQuestions)) resolvedQuestions = await getUserData<any[]>(prsUserId, 'prsQuestions');
+        if (!Array.isArray(resolvedScores)) resolvedScores = await getUserData<any[]>(prsUserId, 'prsReadinessScores');
+        if (!Array.isArray(resolvedGapPlans)) resolvedGapPlans = await getUserData<any[]>(prsUserId, 'gapPlans');
+      }
+      if (resolvedQuestions != null && Array.isArray(resolvedQuestions)) setQuestions(resolvedQuestions);
       else await migrateFromLocalStorage(prsUserId, 'prsQuestions', 'prsQuestions', (v) => setQuestions(Array.isArray(v) ? v : ASSESSMENT_QUESTIONS));
-      if (scoresVal != null && Array.isArray(scoresVal)) setReadinessScores(scoresVal);
+      if (resolvedScores != null && Array.isArray(resolvedScores)) setReadinessScores(resolvedScores);
       else await migrateFromLocalStorage(prsUserId, 'prsReadinessScores', 'prsReadinessScores', (v) => setReadinessScores(Array.isArray(v) ? v : []));
-      if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
+      if (resolvedGapPlans != null && Array.isArray(resolvedGapPlans)) setGapPlans(resolvedGapPlans);
       else {
         await migrateFromLocalStorage(prsUserId, 'gapPlans', `gapPlans_${prsUserId}`, (v) => setGapPlans(Array.isArray(v) ? v : []));
         try {
           const oldGap = localStorage.getItem('prsGapPlans');
-          if (oldGap) { const p = JSON.parse(oldGap); if (Array.isArray(p)) { await setUserData(prsUserId, 'gapPlans', p); setGapPlans(p); localStorage.removeItem('prsGapPlans'); } }
+          if (oldGap) {
+            const p = JSON.parse(oldGap);
+            if (Array.isArray(p)) {
+              if (effectiveHospitalId) {
+                await Promise.all([
+                  setHospitalData(effectiveHospitalId, 'gapPlans', p),
+                  setUserData(prsUserId, 'gapPlans', p),
+                ]);
+              } else {
+                await setUserData(prsUserId, 'gapPlans', p);
+              }
+              setGapPlans(p);
+              localStorage.removeItem('prsGapPlans');
+            }
+          }
         } catch {}
       }
     })();
     return () => { mounted = false; };
-  }, [prsUserId]);
+  }, [prsUserId, effectiveHospitalId]);
 
   // Persist questions to user_data when they change
   useEffect(() => {
-    if (prsUserId) setUserData(prsUserId, 'prsQuestions', questions);
-  }, [prsUserId, questions]);
+    if (!prsUserId) return;
+    if (effectiveHospitalId) {
+      void Promise.all([
+        setHospitalData(effectiveHospitalId, 'prsQuestions', questions),
+        setUserData(prsUserId, 'prsQuestions', questions),
+      ]);
+      return;
+    }
+    void setUserData(prsUserId, 'prsQuestions', questions);
+  }, [prsUserId, effectiveHospitalId, questions]);
 
   // Persist readiness scores to user_data when they change
   useEffect(() => {
-    if (prsUserId) setUserData(prsUserId, 'prsReadinessScores', readinessScores);
-  }, [prsUserId, readinessScores]);
+    if (!prsUserId) return;
+    if (effectiveHospitalId) {
+      void Promise.all([
+        setHospitalData(effectiveHospitalId, 'prsReadinessScores', readinessScores),
+        setUserData(prsUserId, 'prsReadinessScores', readinessScores),
+      ]);
+      return;
+    }
+    void setUserData(prsUserId, 'prsReadinessScores', readinessScores);
+  }, [prsUserId, effectiveHospitalId, readinessScores]);
 
   // Handle viewing PDF files
   const handleViewPdf = (score: ReadinessScore) => {
@@ -1515,8 +1576,16 @@ const PRSPage: React.FC = () => {
 
   // Persist gap plans to user_data when they change
   useEffect(() => {
-    if (prsUserId) setUserData(prsUserId, 'gapPlans', gapPlans);
-  }, [prsUserId, gapPlans]);
+    if (!prsUserId) return;
+    if (effectiveHospitalId) {
+      void Promise.all([
+        setHospitalData(effectiveHospitalId, 'gapPlans', gapPlans),
+        setUserData(prsUserId, 'gapPlans', gapPlans),
+      ]);
+      return;
+    }
+    void setUserData(prsUserId, 'gapPlans', gapPlans);
+  }, [prsUserId, effectiveHospitalId, gapPlans]);
 
   // Calculate readiness score
   const calculateReadinessScore = () => {

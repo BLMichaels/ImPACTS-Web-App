@@ -28,7 +28,11 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
-import { getUserData } from '../../utils/userData';
+import {
+  getUserData,
+  batchGetHospitalDataForKey,
+  mapSiteRefsToHospitalRowIds,
+} from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 interface MentorActivity {
   id: string;
@@ -117,6 +121,13 @@ const MentorSnapshotPage = () => {
               })
             )
           );
+          const hospitalRefToUuid = await mapSiteRefsToHospitalRowIds(hospitalIds);
+          const canonicalHospitalIds = [...new Set([...hospitalRefToUuid.values()])];
+          const [hospActivitiesMap, hospGapPlansMap, hospReadinessMap] = await Promise.all([
+            batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'activities'),
+            batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'gapPlans'),
+            batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'readinessScores'),
+          ]);
 
           // Load PECCs assigned to these hospitals
           const { data: peccs, error: peccsError } = await supabase
@@ -151,21 +162,36 @@ const MentorSnapshotPage = () => {
             const completedTasks = (checklistData || []).filter(t => t.completed).length;
             const checklistProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-            // Get PECC data from Supabase (user_data)
+            const canonicalHospitalId =
+              (peccHospitalId ? hospitalRefToUuid.get(peccHospitalId) : undefined) ||
+              (hospital?.hospital?.id ? hospitalRefToUuid.get(hospital.hospital.id) : undefined) ||
+              (hospital?.hospital?.facility_id ? hospitalRefToUuid.get(hospital.hospital.facility_id) : undefined);
+
+            // Prefer hospital continuity values, with legacy user fallback.
             const [peccActivitiesVal, peccGapPlansVal, prsScoresVal, readinessVal] = await Promise.all([
               getUserData<any[]>(pecc.id, 'activities'),
               getUserData<any[]>(pecc.id, 'gapPlans'),
               getUserData<any[]>(pecc.id, 'prsReadinessScores'),
               getUserData<any[]>(pecc.id, 'readinessScores')
             ]);
-            const activities = Array.isArray(peccActivitiesVal) ? peccActivitiesVal : [];
+            const hospitalActivities = canonicalHospitalId ? hospActivitiesMap.get(canonicalHospitalId) : null;
+            const hospitalGapPlans = canonicalHospitalId ? hospGapPlansMap.get(canonicalHospitalId) : null;
+            const hospitalReadiness = canonicalHospitalId ? hospReadinessMap.get(canonicalHospitalId) : null;
+
+            const activities = Array.isArray(hospitalActivities)
+              ? hospitalActivities
+              : (Array.isArray(peccActivitiesVal) ? peccActivitiesVal : []);
             const activityCount = activities.length;
             const lastActivity = activities.length > 0
               ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
               : null;
-            const gapPlanCount = Array.isArray(peccGapPlansVal) ? peccGapPlansVal.length : 0;
+            const gapPlanCount = Array.isArray(hospitalGapPlans)
+              ? hospitalGapPlans.length
+              : (Array.isArray(peccGapPlansVal) ? peccGapPlansVal.length : 0);
             let readinessScores: Array<{ id: string; score: number; date: string }> = [];
-            const scoresRaw = Array.isArray(prsScoresVal) ? prsScoresVal : (Array.isArray(readinessVal) ? readinessVal : []);
+            const scoresRaw = Array.isArray(hospitalReadiness)
+              ? hospitalReadiness
+              : (Array.isArray(prsScoresVal) ? prsScoresVal : (Array.isArray(readinessVal) ? readinessVal : []));
             if (scoresRaw.length > 0) readinessScores = scoresRaw as Array<{ id: string; score: number; date: string }>;
 
             return {
