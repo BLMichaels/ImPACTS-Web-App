@@ -54,7 +54,13 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
-import { getUserData, setUserData } from '../../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  batchGetUserDataForKey,
+  batchGetHospitalDataForKey,
+  mapSiteRefsToHospitalRowIds,
+} from '../../utils/userData';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
 import ManagerWagesExpensesPage from './ManagerWagesExpensesPage';
@@ -329,6 +335,20 @@ const ManagerMentorsPage: React.FC = () => {
         checklistStatsByHospital.set(row.hospital_id, prev);
       });
 
+      const peccList = (peccs || []) as { id: string; first_name: string; last_name: string; email: string; hospital_facility_id: string }[];
+      const peccIds = peccList.map((p) => p.id);
+      const peccSiteRefs = peccList.map((p) => p.hospital_facility_id).filter(Boolean) as string[];
+      const refToHospitalId = await mapSiteRefsToHospitalRowIds(peccSiteRefs);
+      const canonHospitalIds = [
+        ...new Set(peccSiteRefs.map((r) => refToHospitalId.get(r)).filter((x): x is string => Boolean(x))),
+      ];
+      const [udPeccActivities, udPeccGapPlans, hospActivities, hospGapPlans] = await Promise.all([
+        batchGetUserDataForKey<unknown[]>(peccIds, 'activities'),
+        batchGetUserDataForKey<unknown[]>(peccIds, 'gapPlans'),
+        batchGetHospitalDataForKey<unknown[]>(canonHospitalIds, 'activities'),
+        batchGetHospitalDataForKey<unknown[]>(canonHospitalIds, 'gapPlans'),
+      ]);
+
       // Build mentor data with PECCs
       const mentorData: MentorData[] = await Promise.all(
         (mentorUsers || []).map(async (mentor) => {
@@ -349,30 +369,27 @@ const ManagerMentorsPage: React.FC = () => {
             ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
             : null;
 
-          const hospitalData = await Promise.all(
-            mentorAssignments.map(async (a: any) => {
+          const hospitalData = mentorAssignments.map((a: any) => {
               const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-              const hospitalPeccs = (peccs || []).filter(p => p.hospital_facility_id === hospital?.id);
+              const hospitalPeccs = peccList.filter((p) => p.hospital_facility_id === hospital?.id);
 
-              // Load PECC data from localStorage
-              const peccData: PECCData[] = await Promise.all(
-                hospitalPeccs.map(async (pecc) => {
+              const peccData: PECCData[] = hospitalPeccs.map((pecc) => {
                   const stats = checklistStatsByHospital.get(pecc.hospital_facility_id || '');
                   const totalTasks = stats?.total || 0;
                   const completedTasks = stats?.completed || 0;
                   const checklistProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-                  // Get activities and gap plans from Supabase (user_data)
-                  const [peccActivitiesVal, peccGapPlansVal] = await Promise.all([
-                    getUserData<any[]>(pecc.id, 'activities'),
-                    getUserData<any[]>(pecc.id, 'gapPlans')
-                  ]);
-                  const activities = Array.isArray(peccActivitiesVal) ? peccActivitiesVal : [];
-                  const gapPlansList = Array.isArray(peccGapPlansVal) ? peccGapPlansVal : [];
+                  const hid = pecc.hospital_facility_id ? refToHospitalId.get(pecc.hospital_facility_id) : undefined;
+                  const hActs = hid ? hospActivities.get(hid) : null;
+                  const hGaps = hid ? hospGapPlans.get(hid) : null;
+                  const uActs = udPeccActivities.get(pecc.id);
+                  const uGaps = udPeccGapPlans.get(pecc.id);
+                  const activities = (hActs != null && Array.isArray(hActs)) ? hActs : (Array.isArray(uActs) ? uActs : []);
+                  const gapPlansList = (hGaps != null && Array.isArray(hGaps)) ? hGaps : (Array.isArray(uGaps) ? uGaps : []);
                   const activityCount = activities.length;
                   const gapPlanCount = gapPlansList.length;
-                  const lastActivity = activities.length > 0
-                    ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
+                  const lastPeccActivity = activities.length > 0
+                    ? activities.sort((x: any, y: any) => new Date(y.date).getTime() - new Date(x.date).getTime())[0].date
                     : null;
 
                   const hospitalName = (hospitals || []).find(h => h.id === pecc.hospital_facility_id)?.name || 'Unknown';
@@ -386,20 +403,18 @@ const ManagerMentorsPage: React.FC = () => {
                     checklistProgress,
                     activityCount,
                     gapPlanCount,
-                    lastActivity,
+                    lastActivity: lastPeccActivity,
                     activities,
                     gapPlans: gapPlansList
                   };
-                })
-              );
+                });
 
               return {
                 id: hospital?.id || '',
                 name: hospital?.name || 'Unknown',
                 peccs: peccData
               };
-            })
-          );
+            });
 
           return {
             id: mentor.id,

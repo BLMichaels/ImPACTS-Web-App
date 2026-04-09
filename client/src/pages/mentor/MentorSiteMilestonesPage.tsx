@@ -38,7 +38,12 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { supabase } from '../../supabase';
-import { getUserData, setUserData } from '../../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  mapSiteRefsToHospitalRowIds,
+  batchGetHospitalDataForKey,
+} from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
@@ -432,6 +437,20 @@ const MentorSiteMilestonesPage: React.FC = () => {
       const milestones: Record<string, HospitalMilestones> = {};
       const metrics: Record<string, HospitalMetrics> = {};
 
+      const hospitalRefLists = hospitals.flatMap((h) => [h.id, h.facilityId].filter(Boolean) as string[]);
+      const hospitalRefToRowId = await mapSiteRefsToHospitalRowIds(hospitalRefLists);
+      const canonHospitalIdsForData = [
+        ...new Set(
+          hospitals
+            .map((h) => hospitalRefToRowId.get(h.id) || (h.facilityId ? hospitalRefToRowId.get(h.facilityId) : undefined))
+            .filter((x): x is string => Boolean(x))
+        ),
+      ];
+      const [hospitalActivitiesMap, hospitalReadinessMap] = await Promise.all([
+        batchGetHospitalDataForKey<unknown[]>(canonHospitalIdsForData, 'activities'),
+        batchGetHospitalDataForKey<unknown[]>(canonHospitalIdsForData, 'readinessScores'),
+      ]);
+
       for (const hospital of hospitals) {
         const { data: peccUsers } = await supabase
           .from('users')
@@ -535,15 +554,30 @@ const MentorSiteMilestonesPage: React.FC = () => {
         };
 
         if (peccId) {
+          const hospitalUuid =
+            hospitalRefToRowId.get(hospital.id) ||
+            (hospital.facilityId ? hospitalRefToRowId.get(hospital.facilityId) : undefined) ||
+            null;
+          const hospActs = hospitalUuid ? hospitalActivitiesMap.get(hospitalUuid) : null;
+          const hospReadiness = hospitalUuid ? hospitalReadinessMap.get(hospitalUuid) : null;
+
           const [peccActivitiesVal, mentorActivitiesList, readinessPecc, readinessMentor] = await Promise.all([
             getUserData<any[]>(peccId, 'activities'),
             getMentorActivitiesForUser(mentorDataUserId),
             getUserData<any[]>(peccId, 'readinessScores'),
             getUserData<any[]>(mentorDataUserId, 'readinessScores')
           ]);
-          const peccActivities = Array.isArray(peccActivitiesVal) ? peccActivitiesVal : [];
+          const peccActivities =
+            hospActs != null && Array.isArray(hospActs) ? hospActs : (Array.isArray(peccActivitiesVal) ? peccActivitiesVal : []);
           const mentorActivities = mentorActivitiesList;
-          let readinessScores = Array.isArray(readinessPecc) ? readinessPecc : (Array.isArray(readinessMentor) ? readinessMentor : []);
+          let readinessScores: any[] = [];
+          if (hospReadiness != null && Array.isArray(hospReadiness) && hospReadiness.length > 0) {
+            readinessScores = hospReadiness;
+          } else if (Array.isArray(readinessPecc) && readinessPecc.length > 0) {
+            readinessScores = readinessPecc;
+          } else if (Array.isArray(readinessMentor)) {
+            readinessScores = readinessMentor;
+          }
           
           const peccActivityHours = peccActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
           const matchesHospital = (a: { hospitalIds?: string[] }) => {

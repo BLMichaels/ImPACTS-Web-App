@@ -93,6 +93,35 @@ export async function batchGetUserDataForKey<T = unknown>(
   return out;
 }
 
+const SITE_REF_MAP_CHUNK = 60;
+
+/**
+ * Map hospitals.id or hospitals.facility_id string refs → canonical hospitals.id
+ * (for hospital_data keys and checklist joins).
+ */
+export async function mapSiteRefsToHospitalRowIds(refs: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const unique = [...new Set(refs.map((r) => String(r || '').trim()).filter(Boolean))];
+  if (!unique.length) return map;
+  for (let i = 0; i < unique.length; i += SITE_REF_MAP_CHUNK) {
+    const part = unique.slice(i, i + SITE_REF_MAP_CHUNK);
+    const orParts = part.flatMap((ref) => [`id.eq.${ref}`, `facility_id.eq.${ref}`]);
+    if (!orParts.length) continue;
+    const { data, error } = await supabase.from('hospitals').select('id, facility_id').or(orParts.join(','));
+    if (error) {
+      logSupabaseError('mapSiteRefsToHospitalRowIds', error);
+      continue;
+    }
+    (data || []).forEach((h: { id: string; facility_id: string | null }) => {
+      map.set(String(h.id), String(h.id));
+      if (h.facility_id != null && String(h.facility_id).trim()) {
+        map.set(String(h.facility_id).trim(), String(h.id));
+      }
+    });
+  }
+  return map;
+}
+
 /** Resolve facility_id / id-like site references to canonical hospitals.id (UUID text). */
 export async function resolveHospitalUuid(siteRef: string): Promise<string | null> {
   const ref = String(siteRef || '').trim();
