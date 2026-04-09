@@ -45,7 +45,14 @@ import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { supabase } from '../supabase';
-import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  migrateFromLocalStorage,
+  getHospitalData,
+  setHospitalData,
+  resolveHospitalUuid,
+} from '../utils/userData';
 import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
 
 interface Activity {
@@ -138,7 +145,7 @@ const PARTICIPANT_OPTIONS = Array.from({ length: 26 }, (_, i) => i);
 
 const ActivitiesPage = () => {
   const { currentUser, loading } = useAuth();
-  const { effectiveUserId } = useUserProfile();
+  const { effectiveUserId, siteId } = useUserProfile();
   const { trackClick, trackActivity } = useUsageAnalytics();
   useEffect(() => {
     trackActivity('view');
@@ -175,6 +182,22 @@ const ActivitiesPage = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!siteId) {
+        if (mounted) setEffectiveHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(siteId);
+      if (mounted) setEffectiveHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [siteId]);
 
   // Load activities, gap plans, simulation gaps from Supabase (syncs across devices)
   const userId = effectiveUserId;
@@ -182,24 +205,38 @@ const ActivitiesPage = () => {
     if (!userId) return;
     let mounted = true;
     (async () => {
-      const [activitiesVal, gapPlansVal, simGapsVal, categoriesRes] = await Promise.all([
-        getUserData<Activity[]>(userId, 'activities'),
-        getUserData<GapPlan[]>(userId, 'gapPlans'),
-        getUserData<unknown[]>(userId, 'simulation_gaps'),
+      let [activitiesVal, gapPlansVal, simGapsVal, categoriesRes] = await Promise.all([
+        effectiveHospitalId
+          ? getHospitalData<Activity[]>(effectiveHospitalId, 'activities')
+          : getUserData<Activity[]>(userId, 'activities'),
+        effectiveHospitalId
+          ? getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans')
+          : getUserData<GapPlan[]>(userId, 'gapPlans'),
+        effectiveHospitalId
+          ? getHospitalData<unknown[]>(effectiveHospitalId, 'simulation_gaps')
+          : getUserData<unknown[]>(userId, 'simulation_gaps'),
         supabase.from('app_settings').select('value').eq('key', 'pecc_activity_categories').maybeSingle()
       ]);
+      // During migration window: hospital-owned keys first, then fallback to legacy user_data if empty.
+      if (effectiveHospitalId) {
+        if (!Array.isArray(activitiesVal)) activitiesVal = await getUserData<Activity[]>(userId, 'activities');
+        if (!Array.isArray(gapPlansVal)) gapPlansVal = await getUserData<GapPlan[]>(userId, 'gapPlans');
+        if (!Array.isArray(simGapsVal)) simGapsVal = await getUserData<unknown[]>(userId, 'simulation_gaps');
+      }
       if (!mounted) return;
       if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
-      else migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
+      else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
+
       if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
-      else migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (v) => setGapPlans(Array.isArray(v) ? v : []));
+      else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (v) => setGapPlans(Array.isArray(v) ? v : []));
+
       if (simGapsVal != null && Array.isArray(simGapsVal)) setSimulationGaps(simGapsVal);
-      else migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setSimulationGaps(Array.isArray(v) ? v : []));
+      else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setSimulationGaps(Array.isArray(v) ? v : []));
       const parsed = (categoriesRes.data as { value?: unknown } | null)?.value;
       if (parsed != null && Array.isArray(parsed) && parsed.length > 0) setActivityCategories(parsed as string[]);
     })();
     return () => { mounted = false; };
-  }, [userId]);
+  }, [userId, effectiveHospitalId]);
 
   useEffect(() => {
     let mounted = true;
@@ -222,29 +259,43 @@ const ActivitiesPage = () => {
   useEffect(() => {
     if (!userId) return;
     const onGapPlansUpdated = () => {
-      getUserData<GapPlan[]>(userId, 'gapPlans').then((v) => {
+      const loadGapPlans = async () => {
+        if (!effectiveHospitalId) return getUserData<GapPlan[]>(userId, 'gapPlans');
+        const hv = await getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans');
+        if (Array.isArray(hv)) return hv;
+        return getUserData<GapPlan[]>(userId, 'gapPlans');
+      };
+      loadGapPlans().then((v) => {
         if (v != null && Array.isArray(v)) setGapPlans(v);
       });
     };
     window.addEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
     return () => window.removeEventListener(GAP_PLANS_UPDATED_EVENT, onGapPlansUpdated);
-  }, [userId]);
+  }, [userId, effectiveHospitalId]);
 
   // When add/edit activity dialog opens, refetch gap plans and simulation gaps so dropdowns are current
   useEffect(() => {
     if (!open || !userId) return;
     let mounted = true;
     (async () => {
-      const [gapPlansVal, simGapsVal] = await Promise.all([
-        getUserData<GapPlan[]>(userId, 'gapPlans'),
-        getUserData<unknown[]>(userId, 'simulation_gaps')
+      let [gapPlansVal, simGapsVal] = await Promise.all([
+        effectiveHospitalId
+          ? getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans')
+          : getUserData<GapPlan[]>(userId, 'gapPlans'),
+        effectiveHospitalId
+          ? getHospitalData<unknown[]>(effectiveHospitalId, 'simulation_gaps')
+          : getUserData<unknown[]>(userId, 'simulation_gaps')
       ]);
+      if (effectiveHospitalId) {
+        if (!Array.isArray(gapPlansVal)) gapPlansVal = await getUserData<GapPlan[]>(userId, 'gapPlans');
+        if (!Array.isArray(simGapsVal)) simGapsVal = await getUserData<unknown[]>(userId, 'simulation_gaps');
+      }
       if (!mounted) return;
       if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
       if (simGapsVal != null && Array.isArray(simGapsVal)) setSimulationGaps(simGapsVal);
     })();
     return () => { mounted = false; };
-  }, [open, userId]);
+  }, [open, userId, effectiveHospitalId]);
 
   const saveActivities = async (newActivities: Activity[]) => {
     try {
@@ -257,9 +308,19 @@ const ActivitiesPage = () => {
           updated_at: new Date().toISOString(),
           submitted_by: activity.submitted_by ?? uid
         }));
-        await setUserData(userId, 'activities', timestampedActivities);
+        if (effectiveHospitalId) {
+          await Promise.all([
+            setHospitalData(effectiveHospitalId, 'activities', timestampedActivities),
+            setUserData(userId, 'activities', timestampedActivities),
+          ]);
+        } else {
+          await setUserData(userId, 'activities', timestampedActivities);
+        }
 
-        const simulationGaps = await getUserData<unknown[]>(userId, 'simulation_gaps').then((v) => v ?? []);
+        const simulationGaps = await (effectiveHospitalId
+          ? getHospitalData<unknown[]>(effectiveHospitalId, 'simulation_gaps')
+          : getUserData<unknown[]>(userId, 'simulation_gaps')
+        ).then((v) => v ?? []);
         let gapsUpdated = false;
         timestampedActivities.forEach(activity => {
           if (activity.associatedSimulationGaps?.length) {
@@ -286,7 +347,16 @@ const ActivitiesPage = () => {
             if (gap.linkedActivities.length !== orig) gapsUpdated = true;
           }
         });
-        if (gapsUpdated) await setUserData(userId, 'simulation_gaps', simulationGaps);
+        if (gapsUpdated) {
+          if (effectiveHospitalId) {
+            await Promise.all([
+              setHospitalData(effectiveHospitalId, 'simulation_gaps', simulationGaps),
+              setUserData(userId, 'simulation_gaps', simulationGaps),
+            ]);
+          } else {
+            await setUserData(userId, 'simulation_gaps', simulationGaps);
+          }
+        }
       }
     } catch (err) {
       console.error('Error saving activities:', err);
