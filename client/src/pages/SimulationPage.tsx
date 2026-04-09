@@ -48,7 +48,14 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { supabase } from '../supabase';
-import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  migrateFromLocalStorage,
+  getHospitalData,
+  setHospitalData,
+  resolveHospitalUuid,
+} from '../utils/userData';
 
 interface SimulationCase {
   id: string;
@@ -369,7 +376,7 @@ const SEVERITY_LEVELS = [
 
 const SimulationPage: React.FC = () => {
   const { currentUser, loading } = useAuth();
-  const { effectiveUserId } = useUserProfile();
+  const { effectiveUserId, siteId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -432,43 +439,87 @@ const SimulationPage: React.FC = () => {
   });
 
   const userId = effectiveUserId;
+  const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
   // Activities list for linked-activities display and for updating activity–gap links (from user_data)
   const [activitiesSim, setActivitiesSim] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!siteId) {
+        if (mounted) setEffectiveHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(siteId);
+      if (mounted) setEffectiveHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [siteId]);
 
   // Load sessions, gaps, other_cases, activities from Supabase (with migration from localStorage)
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
     (async () => {
-      const [sessionsVal, gapsVal, otherVal, activitiesVal] = await Promise.all([
-        getUserData<SimulationSession[]>(userId, 'simulation_sessions'),
-        getUserData<SimulationGap[]>(userId, 'simulation_gaps'),
-        getUserData<string[]>(userId, 'other_cases'),
-        getUserData<any[]>(userId, 'activities')
+      let [sessionsVal, gapsVal, otherVal, activitiesVal] = await Promise.all([
+        effectiveHospitalId
+          ? getHospitalData<SimulationSession[]>(effectiveHospitalId, 'simulation_sessions')
+          : getUserData<SimulationSession[]>(userId, 'simulation_sessions'),
+        effectiveHospitalId
+          ? getHospitalData<SimulationGap[]>(effectiveHospitalId, 'simulation_gaps')
+          : getUserData<SimulationGap[]>(userId, 'simulation_gaps'),
+        effectiveHospitalId
+          ? getHospitalData<string[]>(effectiveHospitalId, 'other_cases')
+          : getUserData<string[]>(userId, 'other_cases'),
+        effectiveHospitalId
+          ? getHospitalData<any[]>(effectiveHospitalId, 'activities')
+          : getUserData<any[]>(userId, 'activities')
       ]);
+      if (effectiveHospitalId) {
+        if (!Array.isArray(sessionsVal)) sessionsVal = await getUserData<SimulationSession[]>(userId, 'simulation_sessions');
+        if (!Array.isArray(gapsVal)) gapsVal = await getUserData<SimulationGap[]>(userId, 'simulation_gaps');
+        if (!Array.isArray(otherVal)) otherVal = await getUserData<string[]>(userId, 'other_cases');
+        if (!Array.isArray(activitiesVal)) activitiesVal = await getUserData<any[]>(userId, 'activities');
+      }
       if (!mounted) return;
       if (sessionsVal != null && Array.isArray(sessionsVal)) setSessions(sessionsVal);
-      else migrateFromLocalStorage(userId, 'simulation_sessions', `simulation_sessions_${userId}`, (v) => setSessions(Array.isArray(v) ? v : []));
+      else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'simulation_sessions', `simulation_sessions_${userId}`, (v) => setSessions(Array.isArray(v) ? v : []));
       if (gapsVal != null && Array.isArray(gapsVal)) setGaps(gapsVal);
-      else migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setGaps(Array.isArray(v) ? v : []));
+      else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setGaps(Array.isArray(v) ? v : []));
       if (otherVal != null && Array.isArray(otherVal)) setOtherCases(otherVal);
-      else migrateFromLocalStorage(userId, 'other_cases', `other_cases_${userId}`, (v) => setOtherCases(Array.isArray(v) ? v : []));
+      else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'other_cases', `other_cases_${userId}`, (v) => setOtherCases(Array.isArray(v) ? v : []));
       if (activitiesVal != null && Array.isArray(activitiesVal)) setActivitiesSim(activitiesVal);
-      else migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivitiesSim(Array.isArray(v) ? v : []));
+      else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivitiesSim(Array.isArray(v) ? v : []));
     })();
     return () => { mounted = false; };
-  }, [userId]);
+  }, [userId, effectiveHospitalId]);
 
   // Persist to Supabase when state changes
   useEffect(() => {
     if (!userId) return;
-    setUserData(userId, 'simulation_sessions', sessions);
-  }, [userId, sessions]);
+    if (effectiveHospitalId) {
+      void Promise.all([
+        setHospitalData(effectiveHospitalId, 'simulation_sessions', sessions),
+        setUserData(userId, 'simulation_sessions', sessions),
+      ]);
+      return;
+    }
+    void setUserData(userId, 'simulation_sessions', sessions);
+  }, [userId, sessions, effectiveHospitalId]);
 
   useEffect(() => {
     if (!userId) return;
-    setUserData(userId, 'simulation_gaps', gaps);
-  }, [userId, gaps]);
+    if (effectiveHospitalId) {
+      void Promise.all([
+        setHospitalData(effectiveHospitalId, 'simulation_gaps', gaps),
+        setUserData(userId, 'simulation_gaps', gaps),
+      ]);
+      return;
+    }
+    void setUserData(userId, 'simulation_gaps', gaps);
+  }, [userId, gaps, effectiveHospitalId]);
 
   useEffect(() => {
     const load = async () => {
@@ -622,7 +673,16 @@ const SimulationPage: React.FC = () => {
     if (caseGapForm.caseName === 'other' && caseGapForm.otherCaseName && !otherCases.includes(caseGapForm.otherCaseName)) {
       const updatedOtherCases = [...otherCases, caseGapForm.otherCaseName];
       setOtherCases(updatedOtherCases);
-      if (userId) setUserData(userId, 'other_cases', updatedOtherCases);
+      if (userId) {
+        if (effectiveHospitalId) {
+          void Promise.all([
+            setHospitalData(effectiveHospitalId, 'other_cases', updatedOtherCases),
+            setUserData(userId, 'other_cases', updatedOtherCases),
+          ]);
+        } else {
+          void setUserData(userId, 'other_cases', updatedOtherCases);
+        }
+      }
     }
 
     const newGap: SimulationGap = {
@@ -724,7 +784,14 @@ const SimulationPage: React.FC = () => {
         });
         if (activitiesUpdated) {
           setActivitiesSim(activities);
-          setUserData(userId, 'activities', activities);
+          if (effectiveHospitalId) {
+            void Promise.all([
+              setHospitalData(effectiveHospitalId, 'activities', activities),
+              setUserData(userId, 'activities', activities),
+            ]);
+          } else {
+            void setUserData(userId, 'activities', activities);
+          }
           console.log('✅ Updated activities with bidirectional gap links');
         }
       }
@@ -836,7 +903,14 @@ const SimulationPage: React.FC = () => {
           });
           if (activitiesUpdated) {
             setActivitiesSim(activities);
-            setUserData(userId, 'activities', activities);
+            if (effectiveHospitalId) {
+              void Promise.all([
+                setHospitalData(effectiveHospitalId, 'activities', activities),
+                setUserData(userId, 'activities', activities),
+              ]);
+            } else {
+              void setUserData(userId, 'activities', activities);
+            }
             console.log('✅ Removed gap references from activities');
           }
         }
