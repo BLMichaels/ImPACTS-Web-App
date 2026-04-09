@@ -305,6 +305,32 @@ async function fetchUserDataBatch(
   return map;
 }
 
+async function fetchHospitalDataBatch(
+  hospitalIds: string[],
+  dataKeys: string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  const map = new Map<string, Record<string, unknown>>();
+  if (!hospitalIds.length || !dataKeys.length) return map;
+  for (const part of chunk(hospitalIds, 80)) {
+    const { data, error } = await supabase
+      .from('hospital_data')
+      .select('hospital_id, data_key, value')
+      .in('hospital_id', part)
+      .in('data_key', dataKeys);
+    if (error) {
+      if (isSupabaseMissingRelationError(error)) return new Map();
+      console.warn('hospital_data batch:', error.message);
+      continue;
+    }
+    (data || []).forEach((row: { hospital_id: string; data_key: string; value: unknown }) => {
+      const hid = row.hospital_id;
+      if (!map.has(hid)) map.set(hid, {});
+      map.get(hid)![row.data_key] = row.value;
+    });
+  }
+  return map;
+}
+
 function countGapPlans(value: unknown): { total: number; completed: number; open: number } {
   if (!Array.isArray(value)) return { total: 0, completed: 0, open: 0 };
   let completed = 0;
@@ -2951,6 +2977,7 @@ async function loadPeccDataset(params: {
         cohorts: Array.isArray(h.cohorts) ? (h.cohorts as string[]) : null,
       };
       hospById.set(row.id, row);
+      if (row.facility_id) hospById.set(row.facility_id, row);
     });
   }
 
@@ -2961,7 +2988,13 @@ async function loadPeccDataset(params: {
 
   type StaffNameRow = { id: string; first_name?: string | null; last_name?: string | null };
 
-  const [staffRes, pm, cm, checklistByHospital, udMap, usageInWindow] = await Promise.all([
+  const hospitalIdsForUsers = [...new Set(
+    peccs
+      .map((p) => (p.hospital_facility_id ? hospById.get(p.hospital_facility_id)?.id : null))
+      .filter(Boolean) as string[]
+  )];
+
+  const [staffRes, pm, cm, checklistByHospital, udMap, hdMap, usageInWindow] = await Promise.all([
     staffIds.length
       ? supabase.from('users').select('id, first_name, last_name').in('id', staffIds)
       : Promise.resolve({ data: [] as StaffNameRow[], error: null }),
@@ -2969,6 +3002,7 @@ async function loadPeccDataset(params: {
     fetchActiveCohortMembersForUsers(peccIds),
     loadChecklistForHospitals(hidSet),
     fetchUserDataBatch(peccIds, ['gapPlans', 'activities']),
+    fetchHospitalDataBatch(hospitalIdsForUsers, ['gapPlans', 'activities']),
     loadUsageActivityPeccSet(peccIds, activityPreset),
   ]);
 
@@ -3009,6 +3043,7 @@ async function loadPeccDataset(params: {
 
   const userRows: ReportDataRow[] = peccs.map((p) => {
     const h = p.hospital_facility_id ? hospById.get(p.hospital_facility_id) : null;
+    const continuity = h?.id ? hdMap.get(h.id) : undefined;
     let activeInWindow = true;
     if (activityPreset === 'any') {
       activeInWindow = true;
@@ -3023,9 +3058,9 @@ async function loadPeccDataset(params: {
       activeInWindow = usageInWindow.has(p.id) || loginOk;
     }
 
-    const chk = p.hospital_facility_id ? checklistByHospital.get(p.hospital_facility_id) : undefined;
-    const gap = countGapPlans(udMap.get(p.id)?.gapPlans);
-    const actCount = countActivities(udMap.get(p.id)?.activities);
+    const chk = h?.id ? checklistByHospital.get(h.id) : undefined;
+    const gap = countGapPlans(udMap.get(p.id)?.gapPlans ?? continuity?.gapPlans);
+    const actCount = countActivities(udMap.get(p.id)?.activities ?? continuity?.activities);
 
     const cf = h?.custom_fields || {};
     const registrationStatus = !p.is_active ? 'Inactive' : p.last_login ? 'Active' : 'Invited / pending login';
