@@ -1001,6 +1001,30 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     columnFilters,
   ]);
 
+  const peccSourceSummary = useMemo(() => {
+    if (dataset !== 'pecc') return null;
+    const sourceCounts = filtered.reduce(
+      (acc, r) => {
+        const source = (r.cells.accountSource || '').toLowerCase();
+        if (source.includes('hospital contact')) acc.hospitalContacts += 1;
+        else if (source.includes('crm')) acc.crmContacts += 1;
+        else acc.userAccounts += 1;
+        return acc;
+      },
+      { userAccounts: 0, hospitalContacts: 0, crmContacts: 0 }
+    );
+    return {
+      ...sourceCounts,
+      totalFiltered: filtered.length,
+      activeFilters:
+        Number(activityPreset !== 'any') +
+        Number(programFilter !== 'all') +
+        Number(cohortFilter !== 'all') +
+        Number(stateFilter.length > 0) +
+        Number(search.trim().length > 0),
+    };
+  }, [dataset, filtered, activityPreset, programFilter, cohortFilter, stateFilter, search]);
+
   const sorted = useMemo(() => {
     const copy = [...filtered];
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -1694,6 +1718,63 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
 
       <Box sx={{ p: 2 }}>
         <Stack spacing={2} sx={{ mb: 2 }}>
+          {dataset === 'pecc' && (
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 1.5,
+                borderRadius: 2,
+                background: (t) =>
+                  `linear-gradient(135deg, ${alpha(t.palette.primary.light, 0.12)} 0%, ${alpha(
+                    t.palette.background.paper,
+                    1
+                  )} 60%)`,
+              }}
+            >
+              <Stack spacing={1.25}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ md: 'center' }}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      PECC report controls
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Quickly tune activity, membership, and source mix before reviewing rows.
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                    <Chip size="small" color="primary" variant="outlined" label={`Filtered rows: ${peccSourceSummary?.totalFiltered ?? 0}`} />
+                    <Chip size="small" variant="outlined" label={`Active filters: ${peccSourceSummary?.activeFilters ?? 0}`} />
+                  </Stack>
+                </Stack>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                  <Chip size="small" variant="filled" label={`User accounts: ${peccSourceSummary?.userAccounts ?? 0}`} />
+                  <Chip size="small" variant="filled" label={`Hospital contacts: ${peccSourceSummary?.hospitalContacts ?? 0}`} />
+                  <Chip size="small" variant="filled" label={`CRM contacts: ${peccSourceSummary?.crmContacts ?? 0}`} />
+                </Stack>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                  <Button size="small" variant="outlined" onClick={() => setActivityPreset('30')}>
+                    Active in last 30 days
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => setActivityPreset('inactive30')}>
+                    No activity in 30 days
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => {
+                      setActivityPreset('any');
+                      setProgramFilter('all');
+                      setCohortFilter('all');
+                      setSearch('');
+                      setStateFilter([]);
+                    }}
+                  >
+                    Clear PECC filters
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          )}
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} md={4}>
               <FormControl fullWidth size="small">
@@ -1758,6 +1839,9 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                       ))}
                     </Select>
                   </FormControl>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Applies to PECC user accounts; non-user PECC contacts stay visible for inactive-only mode.
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} md={4}>
                   <FormControl fullWidth size="small">
@@ -1856,6 +1940,30 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               />
             )}
             {scope !== 'admin' && <Chip size="small" label={`Scope: ${scope}`} variant="outlined" />}
+            {dataset === 'pecc' && activityPreset !== 'any' && (
+              <Chip
+                size="small"
+                color="primary"
+                label={`Activity: ${ACTIVITY_PRESETS.find((p) => p.value === activityPreset)?.label ?? activityPreset}`}
+                onDelete={() => setActivityPreset('any')}
+              />
+            )}
+            {dataset === 'pecc' && programFilter !== 'all' && (
+              <Chip
+                size="small"
+                color="primary"
+                label={`Program: ${programs.find((p) => p.id === programFilter)?.name ?? 'Selected'}`}
+                onDelete={() => setProgramFilter('all')}
+              />
+            )}
+            {dataset === 'pecc' && cohortFilter !== 'all' && (
+              <Chip
+                size="small"
+                color="primary"
+                label={`Cohort: ${cohorts.find((c) => c.id === cohortFilter)?.name ?? 'Selected'}`}
+                onDelete={() => setCohortFilter('all')}
+              />
+            )}
           </Stack>
         </Stack>
 
