@@ -17,7 +17,12 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
-import { getUserData, migrateFromLocalStorage } from '../utils/userData';
+import {
+  getUserData,
+  migrateFromLocalStorage,
+  getHospitalData,
+  resolveHospitalUuid,
+} from '../utils/userData';
 
 interface GapPlan {
   id: string;
@@ -47,23 +52,46 @@ interface GapPlanReminder {
 
 const GapPlanReminderBanner: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, siteId } = useUserProfile();
   const navigate = useNavigate();
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [reminders, setReminders] = useState<GapPlanReminder[]>([]);
   const [expanded, setExpanded] = useState(false);
+  const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
 
   const userId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!siteId) {
+        if (mounted) setEffectiveHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(siteId);
+      if (mounted) setEffectiveHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [siteId]);
+
   useEffect(() => {
     if (!userId || userProfile?.role !== 'pecc') return;
     let mounted = true;
     (async () => {
       try {
-        let plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+        let plans = effectiveHospitalId
+          ? await getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans')
+          : await getUserData<GapPlan[]>(userId, 'gapPlans');
+        if (effectiveHospitalId && (plans == null || !Array.isArray(plans))) {
+          plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+        }
         if (plans == null || !Array.isArray(plans)) {
-          await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
-            if (mounted) setGapPlans(Array.isArray(raw) ? raw : []);
-          });
+          if (!effectiveHospitalId) {
+            await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
+              if (mounted) setGapPlans(Array.isArray(raw) ? raw : []);
+            });
+          }
           return;
         }
         if (mounted) setGapPlans(plans);
@@ -72,7 +100,7 @@ const GapPlanReminderBanner: React.FC = () => {
       }
     })();
     return () => { mounted = false; };
-  }, [userId, userProfile?.role]);
+  }, [userId, userProfile?.role, effectiveHospitalId]);
 
   const generateReminders = useCallback(() => {
     if (!userProfile || userProfile.role !== 'pecc') return;

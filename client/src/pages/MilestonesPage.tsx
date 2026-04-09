@@ -600,7 +600,7 @@ const MilestonesPage = () => {
         }, { onConflict: 'hospital_id,task_id' })
         .then(({ error }) => { if (error) console.error('Checklist save error:', error); });
     }
-    if (milestonesUserId) setUserData(milestonesUserId, 'milestones', newStages);
+    if (!hospitalId && milestonesUserId) setUserData(milestonesUserId, 'milestones', newStages);
   };
 
   const getStageProgress = (stage: MilestoneStage) => {
