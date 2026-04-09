@@ -39,3 +39,11 @@ supabase functions deploy provision-crm-portal-user
 
 - Production headers: `client/vercel.json` (CSP, X-Frame-Options, etc.).  
 - Add any third-party `connect-src` / `frame-src` hosts to CSP when integrating new APIs or embeds.
+
+### PECC hospital continuity (client cutover)
+
+After `HOSPITAL_DATA_BACKFILL.sql` has been applied and verified, set on the **impacts** Vercel project (Production):
+
+- `REACT_APP_DISABLE_LEGACY_USER_MIRROR=true` — stops dual-writing and legacy `user_data` reads for continuity keys (redeploy required).
+
+Optional in the browser: `localStorage` key `impacts_disable_legacy_user_mirror` (`true` / `false`) overrides for testing without a redeploy.

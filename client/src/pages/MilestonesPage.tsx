@@ -20,7 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
-import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import { getUserData, setUserData, migrateFromLocalStorage, writeContinuityData } from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml, stripHtmlToText } from '../components/cohorts/RichTextEditor';
 
@@ -599,6 +599,9 @@ const MilestonesPage = () => {
           updated_at: new Date().toISOString()
         }, { onConflict: 'hospital_id,task_id' })
         .then(({ error }) => { if (error) console.error('Checklist save error:', error); });
+      if (milestonesUserId) {
+        void writeContinuityData(hospitalId, milestonesUserId, 'milestones', newStages);
+      }
     }
     if (!hospitalId && milestonesUserId) setUserData(milestonesUserId, 'milestones', newStages);
   };
