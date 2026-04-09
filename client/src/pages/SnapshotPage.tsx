@@ -23,8 +23,8 @@ import {
   setUserData,
   migrateFromLocalStorage,
   getHospitalData,
-  setHospitalData,
   resolveHospitalUuid,
+  writeContinuityData,
 } from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -190,8 +190,7 @@ const SnapshotPage = () => {
             if (prsGap) {
               const p = JSON.parse(prsGap);
               if (Array.isArray(p)) {
-                await setUserData(userId, 'gapPlans', p);
-                if (effectiveHospitalId) await setHospitalData(effectiveHospitalId, 'gapPlans', p);
+                await writeContinuityData(effectiveHospitalId, userId, 'gapPlans', p);
                 setGapPlans(p);
                 localStorage.removeItem('prsGapPlans');
               }

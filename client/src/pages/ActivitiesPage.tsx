@@ -50,8 +50,8 @@ import {
   setUserData,
   migrateFromLocalStorage,
   getHospitalData,
-  setHospitalData,
   resolveHospitalUuid,
+  writeContinuityData,
 } from '../utils/userData';
 import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
 
@@ -309,10 +309,7 @@ const ActivitiesPage = () => {
           submitted_by: activity.submitted_by ?? uid
         }));
         if (effectiveHospitalId) {
-          await Promise.all([
-            setHospitalData(effectiveHospitalId, 'activities', timestampedActivities),
-            setUserData(userId, 'activities', timestampedActivities),
-          ]);
+          await writeContinuityData(effectiveHospitalId, userId, 'activities', timestampedActivities);
         } else {
           await setUserData(userId, 'activities', timestampedActivities);
         }
@@ -349,10 +346,7 @@ const ActivitiesPage = () => {
         });
         if (gapsUpdated) {
           if (effectiveHospitalId) {
-            await Promise.all([
-              setHospitalData(effectiveHospitalId, 'simulation_gaps', simulationGaps),
-              setUserData(userId, 'simulation_gaps', simulationGaps),
-            ]);
+            await writeContinuityData(effectiveHospitalId, userId, 'simulation_gaps', simulationGaps);
           } else {
             await setUserData(userId, 'simulation_gaps', simulationGaps);
           }

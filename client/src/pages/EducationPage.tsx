@@ -28,11 +28,10 @@ import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import {
   getUserData,
-  setUserData,
   migrateFromLocalStorage,
   getHospitalData,
-  setHospitalData,
   resolveHospitalUuid,
+  writeContinuityData,
 } from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml } from '../components/cohorts/RichTextEditor';
@@ -223,14 +222,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     const next = { ...userQuestionNotes, [questionId]: value.trim() };
     if (!value.trim()) delete next[questionId];
     setUserQuestionNotes(next);
-    if (effectiveHospitalId) {
-      await Promise.all([
-        setHospitalData(effectiveHospitalId, 'gap_closure_question_notes', next),
-        setUserData(userId, 'gap_closure_question_notes', next),
-      ]);
-    } else {
-      await setUserData(userId, 'gap_closure_question_notes', next);
-    }
+    await writeContinuityData(effectiveHospitalId, userId, 'gap_closure_question_notes', next);
     setNoteDialogOpen(false);
     setNoteDialogQuestionId(null);
     setNoteDialogValue('');
@@ -302,14 +294,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     };
 
     const updatedPlans = [...gapPlansList, newGapPlan];
-    if (effectiveHospitalId) {
-      await Promise.all([
-        setHospitalData(effectiveHospitalId, 'gapPlans', updatedPlans),
-        setUserData(userId, 'gapPlans', updatedPlans),
-      ]);
-    } else {
-      await setUserData(userId, 'gapPlans', updatedPlans);
-    }
+    await writeContinuityData(effectiveHospitalId, userId, 'gapPlans', updatedPlans);
     setGapPlansList(updatedPlans);
 
     onGapPlanSaved?.();

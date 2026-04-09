@@ -27,11 +27,10 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { supabase } from '../supabase';
 import {
   getUserData,
-  setUserData,
   migrateFromLocalStorage,
   getHospitalData,
-  setHospitalData,
   resolveHospitalUuid,
+  writeContinuityData,
 } from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
 import PrsSectionHiddenNotice from '../components/PrsSectionHiddenNotice';
@@ -174,14 +173,7 @@ interface ReadinessScore {
   const saveReadinessScores = async (scores: ReadinessScore[]) => {
     setReadinessScores(scores);
     if (!uid) return;
-    if (effectiveHospitalId) {
-      await Promise.all([
-        setHospitalData(effectiveHospitalId, 'readinessScores', scores),
-        setUserData(uid, 'readinessScores', scores),
-      ]);
-    } else {
-      await setUserData(uid, 'readinessScores', scores);
-    }
+    await writeContinuityData(effectiveHospitalId, uid, 'readinessScores', scores);
   };
 
   // Hospital department contacts are hospital-owned for turnover continuity.
@@ -203,14 +195,7 @@ interface ReadinessScore {
 
   useEffect(() => {
     if (!uid || !contactsHydrated) return;
-    if (effectiveHospitalId) {
-      void Promise.all([
-        setHospitalData(effectiveHospitalId, 'dashboard_department_contacts', departmentContacts),
-        setUserData(uid, 'dashboard_department_contacts', departmentContacts),
-      ]);
-      return;
-    }
-    void setUserData(uid, 'dashboard_department_contacts', departmentContacts);
+    void writeContinuityData(effectiveHospitalId, uid, 'dashboard_department_contacts', departmentContacts);
   }, [uid, effectiveHospitalId, contactsHydrated, departmentContacts]);
 
   // Handle add readiness score
