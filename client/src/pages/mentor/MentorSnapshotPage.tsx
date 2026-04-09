@@ -32,6 +32,7 @@ import {
   getUserData,
   batchGetHospitalDataForKey,
   mapSiteRefsToHospitalRowIds,
+  shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 interface MentorActivity {
@@ -170,12 +171,12 @@ const MentorSnapshotPage = () => {
             const hospitalActivities = canonicalHospitalId ? hospActivitiesMap.get(canonicalHospitalId) : null;
             const hospitalGapPlans = canonicalHospitalId ? hospGapPlansMap.get(canonicalHospitalId) : null;
             const hospitalReadiness = canonicalHospitalId ? hospReadinessMap.get(canonicalHospitalId) : null;
-            // Prefer hospital continuity values, with legacy user fallback.
+            const legacy = shouldMirrorLegacyUserData();
             const [peccActivitiesVal, peccGapPlansVal, prsScoresVal, readinessVal] = await Promise.all([
-              Array.isArray(hospitalActivities) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(pecc.id, 'activities'),
-              Array.isArray(hospitalGapPlans) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(pecc.id, 'gapPlans'),
-              Array.isArray(hospitalReadiness) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(pecc.id, 'prsReadinessScores'),
-              Array.isArray(hospitalReadiness) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(pecc.id, 'readinessScores')
+              legacy && !Array.isArray(hospitalActivities) ? getUserData<any[]>(pecc.id, 'activities') : Promise.resolve<any[] | null>(null),
+              legacy && !Array.isArray(hospitalGapPlans) ? getUserData<any[]>(pecc.id, 'gapPlans') : Promise.resolve<any[] | null>(null),
+              legacy && !Array.isArray(hospitalReadiness) ? getUserData<any[]>(pecc.id, 'prsReadinessScores') : Promise.resolve<any[] | null>(null),
+              legacy && !Array.isArray(hospitalReadiness) ? getUserData<any[]>(pecc.id, 'readinessScores') : Promise.resolve<any[] | null>(null),
             ]);
 
             const activities = Array.isArray(hospitalActivities)

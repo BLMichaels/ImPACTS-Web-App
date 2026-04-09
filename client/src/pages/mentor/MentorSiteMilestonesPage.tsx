@@ -43,6 +43,7 @@ import {
   setUserData,
   mapSiteRefsToHospitalRowIds,
   batchGetHospitalDataForKey,
+  shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
@@ -561,11 +562,16 @@ const MentorSiteMilestonesPage: React.FC = () => {
           const hospActs = hospitalUuid ? hospitalActivitiesMap.get(hospitalUuid) : null;
           const hospReadiness = hospitalUuid ? hospitalReadinessMap.get(hospitalUuid) : null;
 
+          const legacyPecc = shouldMirrorLegacyUserData();
           const [peccActivitiesVal, mentorActivitiesList, readinessPecc, readinessMentor] = await Promise.all([
-            Array.isArray(hospActs) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(peccId, 'activities'),
+            legacyPecc && !Array.isArray(hospActs) ? getUserData<any[]>(peccId, 'activities') : Promise.resolve<any[] | null>(null),
             getMentorActivitiesForUser(mentorDataUserId),
-            Array.isArray(hospReadiness) && hospReadiness.length > 0 ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(peccId, 'readinessScores'),
-            Array.isArray(hospReadiness) && hospReadiness.length > 0 ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(mentorDataUserId, 'readinessScores')
+            legacyPecc && !(Array.isArray(hospReadiness) && hospReadiness.length > 0)
+              ? getUserData<any[]>(peccId, 'readinessScores')
+              : Promise.resolve<any[] | null>(null),
+            Array.isArray(hospReadiness) && hospReadiness.length > 0
+              ? Promise.resolve<any[] | null>(null)
+              : getUserData<any[]>(mentorDataUserId, 'readinessScores'),
           ]);
           const peccActivities =
             hospActs != null && Array.isArray(hospActs) ? hospActs : (Array.isArray(peccActivitiesVal) ? peccActivitiesVal : []);

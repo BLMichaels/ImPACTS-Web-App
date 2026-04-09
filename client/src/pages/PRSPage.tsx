@@ -44,9 +44,9 @@ import {
   getUserData,
   setUserData,
   migrateFromLocalStorage,
-  getHospitalData,
   resolveHospitalUuid,
   writeContinuityData,
+  getContinuityData,
 } from '../utils/userData';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
@@ -1412,20 +1412,12 @@ const PRSPage: React.FC = () => {
     if (!prsUserId) return;
     let mounted = true;
     (async () => {
-      const [questionsVal, scoresVal, gapPlansVal] = await Promise.all([
-        effectiveHospitalId ? getHospitalData<any[]>(effectiveHospitalId, 'prsQuestions') : getUserData<any[]>(prsUserId, 'prsQuestions'),
-        effectiveHospitalId ? getHospitalData<any[]>(effectiveHospitalId, 'prsReadinessScores') : getUserData<any[]>(prsUserId, 'prsReadinessScores'),
-        effectiveHospitalId ? getHospitalData<any[]>(effectiveHospitalId, 'gapPlans') : getUserData<any[]>(prsUserId, 'gapPlans')
+      const [resolvedQuestions, resolvedScores, resolvedGapPlans] = await Promise.all([
+        getContinuityData<any[]>(effectiveHospitalId, prsUserId, 'prsQuestions'),
+        getContinuityData<any[]>(effectiveHospitalId, prsUserId, 'prsReadinessScores'),
+        getContinuityData<any[]>(effectiveHospitalId, prsUserId, 'gapPlans'),
       ]);
       if (!mounted) return;
-      let resolvedQuestions = questionsVal;
-      let resolvedScores = scoresVal;
-      let resolvedGapPlans = gapPlansVal;
-      if (effectiveHospitalId) {
-        if (!Array.isArray(resolvedQuestions)) resolvedQuestions = await getUserData<any[]>(prsUserId, 'prsQuestions');
-        if (!Array.isArray(resolvedScores)) resolvedScores = await getUserData<any[]>(prsUserId, 'prsReadinessScores');
-        if (!Array.isArray(resolvedGapPlans)) resolvedGapPlans = await getUserData<any[]>(prsUserId, 'gapPlans');
-      }
       if (resolvedQuestions != null && Array.isArray(resolvedQuestions)) setQuestions(resolvedQuestions);
       else await migrateFromLocalStorage(prsUserId, 'prsQuestions', 'prsQuestions', (v) => setQuestions(Array.isArray(v) ? v : ASSESSMENT_QUESTIONS));
       if (resolvedScores != null && Array.isArray(resolvedScores)) setReadinessScores(resolvedScores);

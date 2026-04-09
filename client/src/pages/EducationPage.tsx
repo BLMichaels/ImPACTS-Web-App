@@ -27,11 +27,10 @@ import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import {
-  getUserData,
   migrateFromLocalStorage,
-  getHospitalData,
   resolveHospitalUuid,
   writeContinuityData,
+  getContinuityData,
 } from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml } from '../components/cohorts/RichTextEditor';
@@ -183,12 +182,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     if (!userId) return;
     let mounted = true;
     (async () => {
-      let plans = effectiveHospitalId
-        ? await getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans')
-        : await getUserData<GapPlan[]>(userId, 'gapPlans');
-      if (effectiveHospitalId && (plans == null || !Array.isArray(plans))) {
-        plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
-      }
+      const plans = await getContinuityData<GapPlan[]>(effectiveHospitalId, userId, 'gapPlans');
       if (plans == null || !Array.isArray(plans)) {
         if (!effectiveHospitalId) {
           await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
@@ -206,12 +200,11 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     if (!userId) return;
     let mounted = true;
     (async () => {
-      let notes = effectiveHospitalId
-        ? await getHospitalData<Record<string, string>>(effectiveHospitalId, 'gap_closure_question_notes')
-        : await getUserData<Record<string, string>>(userId, 'gap_closure_question_notes');
-      if (effectiveHospitalId && (!notes || typeof notes !== 'object')) {
-        notes = await getUserData<Record<string, string>>(userId, 'gap_closure_question_notes');
-      }
+      const notes = await getContinuityData<Record<string, string>>(
+        effectiveHospitalId,
+        userId,
+        'gap_closure_question_notes'
+      );
       if (mounted && notes && typeof notes === 'object') setUserQuestionNotes(notes);
     })();
     return () => { mounted = false; };

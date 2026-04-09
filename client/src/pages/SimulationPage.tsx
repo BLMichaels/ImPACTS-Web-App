@@ -49,11 +49,10 @@ import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { supabase } from '../supabase';
 import {
-  getUserData,
   migrateFromLocalStorage,
-  getHospitalData,
   resolveHospitalUuid,
   writeContinuityData,
+  getContinuityData,
 } from '../utils/userData';
 
 interface SimulationCase {
@@ -462,26 +461,12 @@ const SimulationPage: React.FC = () => {
     if (!userId) return;
     let mounted = true;
     (async () => {
-      let [sessionsVal, gapsVal, otherVal, activitiesVal] = await Promise.all([
-        effectiveHospitalId
-          ? getHospitalData<SimulationSession[]>(effectiveHospitalId, 'simulation_sessions')
-          : getUserData<SimulationSession[]>(userId, 'simulation_sessions'),
-        effectiveHospitalId
-          ? getHospitalData<SimulationGap[]>(effectiveHospitalId, 'simulation_gaps')
-          : getUserData<SimulationGap[]>(userId, 'simulation_gaps'),
-        effectiveHospitalId
-          ? getHospitalData<string[]>(effectiveHospitalId, 'other_cases')
-          : getUserData<string[]>(userId, 'other_cases'),
-        effectiveHospitalId
-          ? getHospitalData<any[]>(effectiveHospitalId, 'activities')
-          : getUserData<any[]>(userId, 'activities')
+      const [sessionsVal, gapsVal, otherVal, activitiesVal] = await Promise.all([
+        getContinuityData<SimulationSession[]>(effectiveHospitalId, userId, 'simulation_sessions'),
+        getContinuityData<SimulationGap[]>(effectiveHospitalId, userId, 'simulation_gaps'),
+        getContinuityData<string[]>(effectiveHospitalId, userId, 'other_cases'),
+        getContinuityData<any[]>(effectiveHospitalId, userId, 'activities'),
       ]);
-      if (effectiveHospitalId) {
-        if (!Array.isArray(sessionsVal)) sessionsVal = await getUserData<SimulationSession[]>(userId, 'simulation_sessions');
-        if (!Array.isArray(gapsVal)) gapsVal = await getUserData<SimulationGap[]>(userId, 'simulation_gaps');
-        if (!Array.isArray(otherVal)) otherVal = await getUserData<string[]>(userId, 'other_cases');
-        if (!Array.isArray(activitiesVal)) activitiesVal = await getUserData<any[]>(userId, 'activities');
-      }
       if (!mounted) return;
       if (sessionsVal != null && Array.isArray(sessionsVal)) setSessions(sessionsVal);
       else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'simulation_sessions', `simulation_sessions_${userId}`, (v) => setSessions(Array.isArray(v) ? v : []));

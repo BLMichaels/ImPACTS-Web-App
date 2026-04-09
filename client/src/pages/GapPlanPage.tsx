@@ -39,11 +39,10 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import {
-  getUserData,
   migrateFromLocalStorage,
-  getHospitalData,
   resolveHospitalUuid,
   writeContinuityData,
+  getContinuityData,
 } from '../utils/userData';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -186,12 +185,7 @@ const GapPlanPage: React.FC = () => {
   const loadGapPlans = async () => {
     if (!userId) return;
     try {
-      let plans = effectiveHospitalId
-        ? await getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans')
-        : await getUserData<GapPlan[]>(userId, 'gapPlans');
-      if (effectiveHospitalId && (plans == null || !Array.isArray(plans))) {
-        plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
-      }
+      const plans = await getContinuityData<GapPlan[]>(effectiveHospitalId, userId, 'gapPlans');
       if (plans == null || !Array.isArray(plans)) {
         if (!effectiveHospitalId) {
           await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
@@ -215,14 +209,8 @@ const GapPlanPage: React.FC = () => {
         }))
       }));
       setGapPlans(fixedPlans);
-      const acts = await (effectiveHospitalId
-        ? getHospitalData<any[]>(effectiveHospitalId, 'activities')
-        : getUserData<any[]>(userId, 'activities'));
+      const acts = await getContinuityData<any[]>(effectiveHospitalId, userId, 'activities');
       if (Array.isArray(acts)) setActivitiesForGapPlan(acts);
-      else if (effectiveHospitalId) {
-        const fallbackActs = await getUserData<any[]>(userId, 'activities');
-        if (Array.isArray(fallbackActs)) setActivitiesForGapPlan(fallbackActs);
-      }
     } catch (err) {
       console.error('Error loading gap plans:', err);
       setError('Failed to load gap plans');
@@ -231,14 +219,9 @@ const GapPlanPage: React.FC = () => {
 
   useEffect(() => {
     if (!userId) return;
-    if (effectiveHospitalId) {
-      getHospitalData<any[]>(effectiveHospitalId, 'activities').then((v) => {
-        if (Array.isArray(v)) setActivitiesForGapPlan(v);
-        else getUserData<any[]>(userId, 'activities').then((fv) => { if (Array.isArray(fv)) setActivitiesForGapPlan(fv); });
-      });
-      return;
-    }
-    getUserData<any[]>(userId, 'activities').then((v) => { if (Array.isArray(v)) setActivitiesForGapPlan(v); });
+    void getContinuityData<any[]>(effectiveHospitalId, userId, 'activities').then((v) => {
+      if (Array.isArray(v)) setActivitiesForGapPlan(v);
+    });
   }, [userId, effectiveHospitalId]);
 
   const saveGapPlans = async (plans: GapPlan[]) => {

@@ -26,9 +26,8 @@ import { format, parseISO } from 'date-fns';
 import { useUserProfile } from '../context/UserProfileContext';
 import { supabase } from '../supabase';
 import {
-  getUserData,
   migrateFromLocalStorage,
-  getHospitalData,
+  getContinuityData,
   resolveHospitalUuid,
   writeContinuityData,
 } from '../utils/userData';
@@ -155,12 +154,7 @@ interface ReadinessScore {
     }
     let mounted = true;
     (async () => {
-      let val: ReadinessScore[] | null = effectiveHospitalId
-        ? await getHospitalData<ReadinessScore[]>(effectiveHospitalId, 'readinessScores')
-        : await getUserData<ReadinessScore[]>(uid, 'readinessScores');
-      if (effectiveHospitalId && !Array.isArray(val)) {
-        val = await getUserData<ReadinessScore[]>(uid, 'readinessScores');
-      }
+      let val = await getContinuityData<ReadinessScore[]>(effectiveHospitalId, uid, 'readinessScores');
       if (!mounted) return;
       if (val != null && Array.isArray(val)) setReadinessScores(val);
       else if (!effectiveHospitalId) {
@@ -181,9 +175,11 @@ interface ReadinessScore {
     if (!uid) return;
     let mounted = true;
     (async () => {
-      const contactsVal = effectiveHospitalId
-        ? await getHospitalData<DepartmentContact[]>(effectiveHospitalId, 'dashboard_department_contacts')
-        : await getUserData<DepartmentContact[]>(uid, 'dashboard_department_contacts');
+      const contactsVal = await getContinuityData<DepartmentContact[]>(
+        effectiveHospitalId,
+        uid,
+        'dashboard_department_contacts'
+      );
       if (!mounted) return;
       if (Array.isArray(contactsVal) && contactsVal.length > 0) setDepartmentContacts(contactsVal);
       setContactsHydrated(true);

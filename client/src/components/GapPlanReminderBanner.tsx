@@ -18,10 +18,9 @@ import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
 import {
-  getUserData,
   migrateFromLocalStorage,
-  getHospitalData,
   resolveHospitalUuid,
+  getContinuityData,
 } from '../utils/userData';
 
 interface GapPlan {
@@ -80,12 +79,7 @@ const GapPlanReminderBanner: React.FC = () => {
     let mounted = true;
     (async () => {
       try {
-        let plans = effectiveHospitalId
-          ? await getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans')
-          : await getUserData<GapPlan[]>(userId, 'gapPlans');
-        if (effectiveHospitalId && (plans == null || !Array.isArray(plans))) {
-          plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
-        }
+        const plans = await getContinuityData<GapPlan[]>(effectiveHospitalId, userId, 'gapPlans');
         if (plans == null || !Array.isArray(plans)) {
           if (!effectiveHospitalId) {
             await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {

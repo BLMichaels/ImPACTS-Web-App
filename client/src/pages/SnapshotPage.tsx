@@ -22,9 +22,9 @@ import {
   getUserData,
   setUserData,
   migrateFromLocalStorage,
-  getHospitalData,
   resolveHospitalUuid,
   writeContinuityData,
+  getContinuityData,
 } from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -135,45 +135,14 @@ const SnapshotPage = () => {
       try {
         setIsLoading(true);
         setHasError(false);
-        const prsPromises = prsSectionVisible
-          ? [
-              effectiveHospitalId
-                ? getHospitalData<any[]>(effectiveHospitalId, 'readinessScores')
-                : getUserData<any[]>(userId, 'readinessScores'),
-              effectiveHospitalId
-                ? getHospitalData<any[]>(effectiveHospitalId, 'prsQuestions')
-                : getUserData<any[]>(userId, 'prsQuestions'),
-            ]
-          : [Promise.resolve(null), Promise.resolve(null)];
-        let [activitiesVal, milestonesVal, gapPlansVal, simulationGapsVal, ...prsVals] = await Promise.all([
-          effectiveHospitalId
-            ? getHospitalData<any[]>(effectiveHospitalId, 'activities')
-            : getUserData<any[]>(userId, 'activities'),
-          effectiveHospitalId
-            ? getHospitalData<any[]>(effectiveHospitalId, 'milestones')
-            : getUserData<any[]>(userId, 'milestones'),
-          effectiveHospitalId
-            ? getHospitalData<any[]>(effectiveHospitalId, 'gapPlans')
-            : getUserData<any[]>(userId, 'gapPlans'),
-          effectiveHospitalId
-            ? getHospitalData<any[]>(effectiveHospitalId, 'simulation_gaps')
-            : getUserData<any[]>(userId, 'simulation_gaps'),
-          ...prsPromises
+        let [activitiesVal, milestonesVal, gapPlansVal, simulationGapsVal, scoresVal, questionsVal] = await Promise.all([
+          getContinuityData<any[]>(effectiveHospitalId, userId, 'activities'),
+          getContinuityData<any[]>(effectiveHospitalId, userId, 'milestones'),
+          getContinuityData<any[]>(effectiveHospitalId, userId, 'gapPlans'),
+          getContinuityData<any[]>(effectiveHospitalId, userId, 'simulation_gaps'),
+          prsSectionVisible ? getContinuityData<any[]>(effectiveHospitalId, userId, 'readinessScores') : Promise.resolve(null),
+          prsSectionVisible ? getContinuityData<any[]>(effectiveHospitalId, userId, 'prsQuestions') : Promise.resolve(null),
         ]);
-        let scoresVal = prsSectionVisible ? (prsVals[0] as any[] | null) : null;
-        let questionsVal = prsSectionVisible ? (prsVals[1] as any[] | null) : null;
-
-        // Migration window: prefer hospital data but fallback to legacy user_data.
-        if (effectiveHospitalId) {
-          if (!Array.isArray(activitiesVal)) activitiesVal = await getUserData<any[]>(userId, 'activities');
-          if (!Array.isArray(milestonesVal)) milestonesVal = await getUserData<any[]>(userId, 'milestones');
-          if (!Array.isArray(gapPlansVal)) gapPlansVal = await getUserData<any[]>(userId, 'gapPlans');
-          if (!Array.isArray(simulationGapsVal)) simulationGapsVal = await getUserData<any[]>(userId, 'simulation_gaps');
-          if (prsSectionVisible) {
-            if (!Array.isArray(scoresVal)) scoresVal = await getUserData<any[]>(userId, 'readinessScores');
-            if (!Array.isArray(questionsVal)) questionsVal = await getUserData<any[]>(userId, 'prsQuestions');
-          }
-        }
 
         if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
         else if (!effectiveHospitalId) await migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));

@@ -65,6 +65,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
+import { shouldMirrorLegacyUserData } from '../../utils/userData';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { getCrmContactTypeLabel } from '../../utils/crmLabels';
 import {
@@ -3001,7 +3002,9 @@ async function loadPeccDataset(params: {
     fetchActiveProgramMembersForUsers(peccIds),
     fetchActiveCohortMembersForUsers(peccIds),
     loadChecklistForHospitals(hidSet),
-    fetchUserDataBatch(peccIds, ['gapPlans', 'activities']),
+    shouldMirrorLegacyUserData()
+      ? fetchUserDataBatch(peccIds, ['gapPlans', 'activities'])
+      : Promise.resolve(new Map<string, Record<string, unknown>>()),
     fetchHospitalDataBatch(hospitalIdsForUsers, ['gapPlans', 'activities']),
     loadUsageActivityPeccSet(peccIds, activityPreset),
   ]);
@@ -3059,8 +3062,8 @@ async function loadPeccDataset(params: {
     }
 
     const chk = h?.id ? checklistByHospital.get(h.id) : undefined;
-    const gap = countGapPlans(udMap.get(p.id)?.gapPlans ?? continuity?.gapPlans);
-    const actCount = countActivities(udMap.get(p.id)?.activities ?? continuity?.activities);
+    const gap = countGapPlans(continuity?.gapPlans ?? udMap.get(p.id)?.gapPlans);
+    const actCount = countActivities(continuity?.activities ?? udMap.get(p.id)?.activities);
 
     const cf = h?.custom_fields || {};
     const registrationStatus = !p.is_active ? 'Inactive' : p.last_login ? 'Active' : 'Invited / pending login';

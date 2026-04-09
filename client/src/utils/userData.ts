@@ -189,6 +189,26 @@ export function shouldMirrorLegacyUserData(): boolean {
   return process.env.REACT_APP_DISABLE_LEGACY_USER_MIRROR !== 'true';
 }
 
+/**
+ * Read a continuity key: hospital_data first, then optional legacy user_data (same flag as writes).
+ * After REACT_APP_DISABLE_LEGACY_USER_MIRROR=true, only hospital rows are used when hospitalId is set.
+ */
+export async function getContinuityData<T = unknown>(
+  hospitalId: string | null | undefined,
+  userId: string | null | undefined,
+  dataKey: string
+): Promise<T | null> {
+  if (!dataKey) return null;
+  if (hospitalId) {
+    const fromHospital = await getHospitalData<T>(hospitalId, dataKey);
+    if (fromHospital != null) return fromHospital;
+    if (shouldMirrorLegacyUserData() && userId) return getUserData<T>(userId, dataKey);
+    return null;
+  }
+  if (userId) return getUserData<T>(userId, dataKey);
+  return null;
+}
+
 /** Write continuity keys to hospital_data and (optionally) legacy user_data mirror. */
 export async function writeContinuityData(
   hospitalId: string | null | undefined,
