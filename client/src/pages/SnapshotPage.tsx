@@ -18,7 +18,14 @@ import {
 import { alpha } from '@mui/material/styles';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
-import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  migrateFromLocalStorage,
+  getHospitalData,
+  setHospitalData,
+  resolveHospitalUuid,
+} from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AssessmentIcon from '@mui/icons-material/Assessment';
@@ -61,7 +68,7 @@ const metricCardSx = {
 
 const SnapshotPage = () => {
   useAuth();
-  const { effectiveUserId } = useUserProfile();
+  const { effectiveUserId, siteId } = useUserProfile();
   
   const [activities, setActivities] = useState<any[]>([]);
   const [milestones, setMilestones] = useState<any[]>([]);
@@ -79,7 +86,23 @@ const SnapshotPage = () => {
   const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
   const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
+  const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
   const userId = effectiveUserId;
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!siteId) {
+        if (mounted) setEffectiveHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(siteId);
+      if (mounted) setEffectiveHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [siteId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -113,48 +136,83 @@ const SnapshotPage = () => {
         setIsLoading(true);
         setHasError(false);
         const prsPromises = prsSectionVisible
-          ? [getUserData<any[]>(userId, 'readinessScores'), getUserData<any[]>(userId, 'prsQuestions')]
+          ? [
+              effectiveHospitalId
+                ? getHospitalData<any[]>(effectiveHospitalId, 'readinessScores')
+                : getUserData<any[]>(userId, 'readinessScores'),
+              effectiveHospitalId
+                ? getHospitalData<any[]>(effectiveHospitalId, 'prsQuestions')
+                : getUserData<any[]>(userId, 'prsQuestions'),
+            ]
           : [Promise.resolve(null), Promise.resolve(null)];
-        const [activitiesVal, milestonesVal, gapPlansVal, simulationGapsVal, ...prsVals] = await Promise.all([
-          getUserData<any[]>(userId, 'activities'),
-          getUserData<any[]>(userId, 'milestones'),
-          getUserData<any[]>(userId, 'gapPlans'),
-          getUserData<any[]>(userId, 'simulation_gaps'),
+        let [activitiesVal, milestonesVal, gapPlansVal, simulationGapsVal, ...prsVals] = await Promise.all([
+          effectiveHospitalId
+            ? getHospitalData<any[]>(effectiveHospitalId, 'activities')
+            : getUserData<any[]>(userId, 'activities'),
+          effectiveHospitalId
+            ? getHospitalData<any[]>(effectiveHospitalId, 'milestones')
+            : getUserData<any[]>(userId, 'milestones'),
+          effectiveHospitalId
+            ? getHospitalData<any[]>(effectiveHospitalId, 'gapPlans')
+            : getUserData<any[]>(userId, 'gapPlans'),
+          effectiveHospitalId
+            ? getHospitalData<any[]>(effectiveHospitalId, 'simulation_gaps')
+            : getUserData<any[]>(userId, 'simulation_gaps'),
           ...prsPromises
         ]);
-        const scoresVal = prsSectionVisible ? (prsVals[0] as any[] | null) : null;
-        const questionsVal = prsSectionVisible ? (prsVals[1] as any[] | null) : null;
+        let scoresVal = prsSectionVisible ? (prsVals[0] as any[] | null) : null;
+        let questionsVal = prsSectionVisible ? (prsVals[1] as any[] | null) : null;
+
+        // Migration window: prefer hospital data but fallback to legacy user_data.
+        if (effectiveHospitalId) {
+          if (!Array.isArray(activitiesVal)) activitiesVal = await getUserData<any[]>(userId, 'activities');
+          if (!Array.isArray(milestonesVal)) milestonesVal = await getUserData<any[]>(userId, 'milestones');
+          if (!Array.isArray(gapPlansVal)) gapPlansVal = await getUserData<any[]>(userId, 'gapPlans');
+          if (!Array.isArray(simulationGapsVal)) simulationGapsVal = await getUserData<any[]>(userId, 'simulation_gaps');
+          if (prsSectionVisible) {
+            if (!Array.isArray(scoresVal)) scoresVal = await getUserData<any[]>(userId, 'readinessScores');
+            if (!Array.isArray(questionsVal)) questionsVal = await getUserData<any[]>(userId, 'prsQuestions');
+          }
+        }
 
         if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
-        else await migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
+        else if (!effectiveHospitalId) await migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
 
         if (milestonesVal != null && Array.isArray(milestonesVal)) setMilestones(milestonesVal);
-        else await migrateFromLocalStorage(userId, 'milestones', `milestones_${userId}`, (v) => setMilestones(Array.isArray(v) ? v : []));
+        else if (!effectiveHospitalId) await migrateFromLocalStorage(userId, 'milestones', `milestones_${userId}`, (v) => setMilestones(Array.isArray(v) ? v : []));
 
         // Load gap plans (try both user-specific and generic keys)
         if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
-        else {
+        else if (!effectiveHospitalId) {
           await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (v) => setGapPlans(Array.isArray(v) ? v : []));
           try {
             const prsGap = localStorage.getItem('prsGapPlans');
-            if (prsGap) { const p = JSON.parse(prsGap); if (Array.isArray(p)) { await setUserData(userId, 'gapPlans', p); setGapPlans(p); localStorage.removeItem('prsGapPlans'); } }
+            if (prsGap) {
+              const p = JSON.parse(prsGap);
+              if (Array.isArray(p)) {
+                await setUserData(userId, 'gapPlans', p);
+                if (effectiveHospitalId) await setHospitalData(effectiveHospitalId, 'gapPlans', p);
+                setGapPlans(p);
+                localStorage.removeItem('prsGapPlans');
+              }
+            }
           } catch {}
         }
 
         if (simulationGapsVal != null && Array.isArray(simulationGapsVal)) setSimulationGaps(simulationGapsVal);
-        else await migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setSimulationGaps(Array.isArray(v) ? v : []));
+        else if (!effectiveHospitalId) await migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setSimulationGaps(Array.isArray(v) ? v : []));
 
         if (!prsSectionVisible) {
           setReadinessScores([]);
           setPrsQuestions(null);
         } else {
           if (scoresVal != null && Array.isArray(scoresVal)) setReadinessScores(scoresVal);
-          else {
+          else if (!effectiveHospitalId) {
             await migrateFromLocalStorage(userId, 'readinessScores', `readinessScores_${userId}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
             await migrateFromLocalStorage(userId, 'prsReadinessScores', 'prsReadinessScores', (v) => setReadinessScores(Array.isArray(v) ? v : []));
           }
           if (questionsVal != null && Array.isArray(questionsVal)) setPrsQuestions(questionsVal);
-          else await migrateFromLocalStorage(userId, 'prsQuestions', 'prsQuestions', (v) => setPrsQuestions(Array.isArray(v) ? v : null));
+          else if (!effectiveHospitalId) await migrateFromLocalStorage(userId, 'prsQuestions', 'prsQuestions', (v) => setPrsQuestions(Array.isArray(v) ? v : null));
         }
       } catch (err) {
         console.error('Error loading snapshot data:', err);
@@ -165,7 +223,7 @@ const SnapshotPage = () => {
     };
 
     loadData();
-  }, [userId, prsSectionVisible, retryCount]);
+  }, [userId, prsSectionVisible, retryCount, effectiveHospitalId]);
 
   const exportToComprehensivePDF = () => {
     try {
