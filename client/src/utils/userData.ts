@@ -10,6 +10,7 @@ import {
 } from './supabaseErrors';
 
 const LS_PREFIX = 'ud_';
+const LEGACY_MIRROR_OVERRIDE_KEY = 'impacts_disable_legacy_user_mirror';
 
 function localStorageKey(userId: string, dataKey: string): string {
   return `${LS_PREFIX}${userId}_${dataKey}`;
@@ -170,6 +171,44 @@ export async function setHospitalData(hospitalId: string, dataKey: string, value
       { onConflict: 'hospital_id,data_key' }
     );
   if (error) logSupabaseError(`setHospitalData(${dataKey})`, error);
+}
+
+/**
+ * Feature flag for the final cutover:
+ * - default: mirror writes to both hospital_data and user_data
+ * - cutover on: set REACT_APP_DISABLE_LEGACY_USER_MIRROR=true (or localStorage override key)
+ */
+export function shouldMirrorLegacyUserData(): boolean {
+  try {
+    const override = localStorage.getItem(LEGACY_MIRROR_OVERRIDE_KEY);
+    if (override === 'true') return false;
+    if (override === 'false') return true;
+  } catch {
+    // ignore localStorage unavailability
+  }
+  return process.env.REACT_APP_DISABLE_LEGACY_USER_MIRROR !== 'true';
+}
+
+/** Write continuity keys to hospital_data and (optionally) legacy user_data mirror. */
+export async function writeContinuityData(
+  hospitalId: string | null | undefined,
+  userId: string | null | undefined,
+  dataKey: string,
+  value: unknown
+): Promise<void> {
+  if (!dataKey) return;
+  if (hospitalId) {
+    if (shouldMirrorLegacyUserData() && userId) {
+      await Promise.all([
+        setHospitalData(hospitalId, dataKey, value),
+        setUserData(userId, dataKey, value),
+      ]);
+      return;
+    }
+    await setHospitalData(hospitalId, dataKey, value);
+    return;
+  }
+  if (userId) await setUserData(userId, dataKey, value);
 }
 
 /** Batch-load one key for many hospitals (e.g. hospital-owned PECC activities rollups). */

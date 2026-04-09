@@ -45,8 +45,8 @@ import {
   setUserData,
   migrateFromLocalStorage,
   getHospitalData,
-  setHospitalData,
   resolveHospitalUuid,
+  writeContinuityData,
 } from '../utils/userData';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
@@ -1439,10 +1439,7 @@ const PRSPage: React.FC = () => {
             const p = JSON.parse(oldGap);
             if (Array.isArray(p)) {
               if (effectiveHospitalId) {
-                await Promise.all([
-                  setHospitalData(effectiveHospitalId, 'gapPlans', p),
-                  setUserData(prsUserId, 'gapPlans', p),
-                ]);
+                await writeContinuityData(effectiveHospitalId, prsUserId, 'gapPlans', p);
               } else {
                 await setUserData(prsUserId, 'gapPlans', p);
               }
@@ -1459,27 +1456,13 @@ const PRSPage: React.FC = () => {
   // Persist questions to user_data when they change
   useEffect(() => {
     if (!prsUserId) return;
-    if (effectiveHospitalId) {
-      void Promise.all([
-        setHospitalData(effectiveHospitalId, 'prsQuestions', questions),
-        setUserData(prsUserId, 'prsQuestions', questions),
-      ]);
-      return;
-    }
-    void setUserData(prsUserId, 'prsQuestions', questions);
+    void writeContinuityData(effectiveHospitalId, prsUserId, 'prsQuestions', questions);
   }, [prsUserId, effectiveHospitalId, questions]);
 
   // Persist readiness scores to user_data when they change
   useEffect(() => {
     if (!prsUserId) return;
-    if (effectiveHospitalId) {
-      void Promise.all([
-        setHospitalData(effectiveHospitalId, 'prsReadinessScores', readinessScores),
-        setUserData(prsUserId, 'prsReadinessScores', readinessScores),
-      ]);
-      return;
-    }
-    void setUserData(prsUserId, 'prsReadinessScores', readinessScores);
+    void writeContinuityData(effectiveHospitalId, prsUserId, 'prsReadinessScores', readinessScores);
   }, [prsUserId, effectiveHospitalId, readinessScores]);
 
   // Handle viewing PDF files
@@ -1577,14 +1560,7 @@ const PRSPage: React.FC = () => {
   // Persist gap plans to user_data when they change
   useEffect(() => {
     if (!prsUserId) return;
-    if (effectiveHospitalId) {
-      void Promise.all([
-        setHospitalData(effectiveHospitalId, 'gapPlans', gapPlans),
-        setUserData(prsUserId, 'gapPlans', gapPlans),
-      ]);
-      return;
-    }
-    void setUserData(prsUserId, 'gapPlans', gapPlans);
+    void writeContinuityData(effectiveHospitalId, prsUserId, 'gapPlans', gapPlans);
   }, [prsUserId, effectiveHospitalId, gapPlans]);
 
   // Calculate readiness score

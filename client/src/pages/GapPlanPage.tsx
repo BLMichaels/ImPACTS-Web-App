@@ -40,11 +40,10 @@ import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import {
   getUserData,
-  setUserData,
   migrateFromLocalStorage,
   getHospitalData,
-  setHospitalData,
   resolveHospitalUuid,
+  writeContinuityData,
 } from '../utils/userData';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -245,14 +244,7 @@ const GapPlanPage: React.FC = () => {
   const saveGapPlans = async (plans: GapPlan[]) => {
     if (!userId) return;
     try {
-      if (effectiveHospitalId) {
-        await Promise.all([
-          setHospitalData(effectiveHospitalId, 'gapPlans', plans),
-          setUserData(userId, 'gapPlans', plans),
-        ]);
-      } else {
-        await setUserData(userId, 'gapPlans', plans);
-      }
+      await writeContinuityData(effectiveHospitalId, userId, 'gapPlans', plans);
     } catch (err) {
       console.error('Error saving gap plans:', err);
       setError('Failed to save gap plans');

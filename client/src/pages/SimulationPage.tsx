@@ -50,11 +50,10 @@ import ScormPackagesSection from '../components/ScormPackagesSection';
 import { supabase } from '../supabase';
 import {
   getUserData,
-  setUserData,
   migrateFromLocalStorage,
   getHospitalData,
-  setHospitalData,
   resolveHospitalUuid,
+  writeContinuityData,
 } from '../utils/userData';
 
 interface SimulationCase {
@@ -499,26 +498,12 @@ const SimulationPage: React.FC = () => {
   // Persist to Supabase when state changes
   useEffect(() => {
     if (!userId) return;
-    if (effectiveHospitalId) {
-      void Promise.all([
-        setHospitalData(effectiveHospitalId, 'simulation_sessions', sessions),
-        setUserData(userId, 'simulation_sessions', sessions),
-      ]);
-      return;
-    }
-    void setUserData(userId, 'simulation_sessions', sessions);
+    void writeContinuityData(effectiveHospitalId, userId, 'simulation_sessions', sessions);
   }, [userId, sessions, effectiveHospitalId]);
 
   useEffect(() => {
     if (!userId) return;
-    if (effectiveHospitalId) {
-      void Promise.all([
-        setHospitalData(effectiveHospitalId, 'simulation_gaps', gaps),
-        setUserData(userId, 'simulation_gaps', gaps),
-      ]);
-      return;
-    }
-    void setUserData(userId, 'simulation_gaps', gaps);
+    void writeContinuityData(effectiveHospitalId, userId, 'simulation_gaps', gaps);
   }, [userId, gaps, effectiveHospitalId]);
 
   useEffect(() => {
@@ -674,14 +659,7 @@ const SimulationPage: React.FC = () => {
       const updatedOtherCases = [...otherCases, caseGapForm.otherCaseName];
       setOtherCases(updatedOtherCases);
       if (userId) {
-        if (effectiveHospitalId) {
-          void Promise.all([
-            setHospitalData(effectiveHospitalId, 'other_cases', updatedOtherCases),
-            setUserData(userId, 'other_cases', updatedOtherCases),
-          ]);
-        } else {
-          void setUserData(userId, 'other_cases', updatedOtherCases);
-        }
+        void writeContinuityData(effectiveHospitalId, userId, 'other_cases', updatedOtherCases);
       }
     }
 
@@ -784,14 +762,7 @@ const SimulationPage: React.FC = () => {
         });
         if (activitiesUpdated) {
           setActivitiesSim(activities);
-          if (effectiveHospitalId) {
-            void Promise.all([
-              setHospitalData(effectiveHospitalId, 'activities', activities),
-              setUserData(userId, 'activities', activities),
-            ]);
-          } else {
-            void setUserData(userId, 'activities', activities);
-          }
+          void writeContinuityData(effectiveHospitalId, userId, 'activities', activities);
           console.log('✅ Updated activities with bidirectional gap links');
         }
       }
@@ -903,14 +874,7 @@ const SimulationPage: React.FC = () => {
           });
           if (activitiesUpdated) {
             setActivitiesSim(activities);
-            if (effectiveHospitalId) {
-              void Promise.all([
-                setHospitalData(effectiveHospitalId, 'activities', activities),
-                setUserData(userId, 'activities', activities),
-              ]);
-            } else {
-              void setUserData(userId, 'activities', activities);
-            }
+            void writeContinuityData(effectiveHospitalId, userId, 'activities', activities);
             console.log('✅ Removed gap references from activities');
           }
         }
