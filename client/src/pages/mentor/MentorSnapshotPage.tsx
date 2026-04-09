@@ -167,16 +167,16 @@ const MentorSnapshotPage = () => {
               (hospital?.hospital?.id ? hospitalRefToUuid.get(hospital.hospital.id) : undefined) ||
               (hospital?.hospital?.facility_id ? hospitalRefToUuid.get(hospital.hospital.facility_id) : undefined);
 
-            // Prefer hospital continuity values, with legacy user fallback.
-            const [peccActivitiesVal, peccGapPlansVal, prsScoresVal, readinessVal] = await Promise.all([
-              getUserData<any[]>(pecc.id, 'activities'),
-              getUserData<any[]>(pecc.id, 'gapPlans'),
-              getUserData<any[]>(pecc.id, 'prsReadinessScores'),
-              getUserData<any[]>(pecc.id, 'readinessScores')
-            ]);
             const hospitalActivities = canonicalHospitalId ? hospActivitiesMap.get(canonicalHospitalId) : null;
             const hospitalGapPlans = canonicalHospitalId ? hospGapPlansMap.get(canonicalHospitalId) : null;
             const hospitalReadiness = canonicalHospitalId ? hospReadinessMap.get(canonicalHospitalId) : null;
+            // Prefer hospital continuity values, with legacy user fallback.
+            const [peccActivitiesVal, peccGapPlansVal, prsScoresVal, readinessVal] = await Promise.all([
+              Array.isArray(hospitalActivities) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(pecc.id, 'activities'),
+              Array.isArray(hospitalGapPlans) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(pecc.id, 'gapPlans'),
+              Array.isArray(hospitalReadiness) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(pecc.id, 'prsReadinessScores'),
+              Array.isArray(hospitalReadiness) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(pecc.id, 'readinessScores')
+            ]);
 
             const activities = Array.isArray(hospitalActivities)
               ? hospitalActivities

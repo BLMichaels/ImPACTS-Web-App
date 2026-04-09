@@ -562,10 +562,10 @@ const MentorSiteMilestonesPage: React.FC = () => {
           const hospReadiness = hospitalUuid ? hospitalReadinessMap.get(hospitalUuid) : null;
 
           const [peccActivitiesVal, mentorActivitiesList, readinessPecc, readinessMentor] = await Promise.all([
-            getUserData<any[]>(peccId, 'activities'),
+            Array.isArray(hospActs) ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(peccId, 'activities'),
             getMentorActivitiesForUser(mentorDataUserId),
-            getUserData<any[]>(peccId, 'readinessScores'),
-            getUserData<any[]>(mentorDataUserId, 'readinessScores')
+            Array.isArray(hospReadiness) && hospReadiness.length > 0 ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(peccId, 'readinessScores'),
+            Array.isArray(hospReadiness) && hospReadiness.length > 0 ? Promise.resolve<any[] | null>(null) : getUserData<any[]>(mentorDataUserId, 'readinessScores')
           ]);
           const peccActivities =
             hospActs != null && Array.isArray(hospActs) ? hospActs : (Array.isArray(peccActivitiesVal) ? peccActivitiesVal : []);
