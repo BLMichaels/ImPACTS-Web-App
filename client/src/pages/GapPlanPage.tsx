@@ -38,7 +38,14 @@ import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
-import { getUserData, setUserData, migrateFromLocalStorage } from '../utils/userData';
+import {
+  getUserData,
+  setUserData,
+  migrateFromLocalStorage,
+  getHospitalData,
+  setHospitalData,
+  resolveHospitalUuid,
+} from '../utils/userData';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -82,7 +89,7 @@ interface GapPlanAttachment {
 
 const GapPlanPage: React.FC = () => {
   useAuth();
-  const { effectiveUserId } = useUserProfile();
+  const { effectiveUserId, siteId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<GapPlan[]>([]);
@@ -115,13 +122,29 @@ const GapPlanPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [renderError, setRenderError] = useState(false);
   const [activitiesForGapPlan, setActivitiesForGapPlan] = useState<any[]>([]);
+  const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!siteId) {
+        if (mounted) setEffectiveHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(siteId);
+      if (mounted) setEffectiveHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [siteId]);
 
   useEffect(() => {
     if (effectiveUserId) {
       loadGapPlans();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadGapPlans defined below; tied to effectiveUserId
-  }, [effectiveUserId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadGapPlans defined below; tied to user + hospital context
+  }, [effectiveUserId, effectiveHospitalId]);
 
   useEffect(() => {
     let mounted = true;
@@ -153,7 +176,7 @@ const GapPlanPage: React.FC = () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadGapPlans defined below
-  }, [effectiveUserId]);
+  }, [effectiveUserId, effectiveHospitalId]);
 
   useEffect(() => {
     applyFiltersAndSort();
@@ -164,18 +187,25 @@ const GapPlanPage: React.FC = () => {
   const loadGapPlans = async () => {
     if (!userId) return;
     try {
-      let plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+      let plans = effectiveHospitalId
+        ? await getHospitalData<GapPlan[]>(effectiveHospitalId, 'gapPlans')
+        : await getUserData<GapPlan[]>(userId, 'gapPlans');
+      if (effectiveHospitalId && (plans == null || !Array.isArray(plans))) {
+        plans = await getUserData<GapPlan[]>(userId, 'gapPlans');
+      }
       if (plans == null || !Array.isArray(plans)) {
-        await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
-          const parsed = Array.isArray(raw) ? raw : [];
-          setGapPlans(parsed.map((plan: GapPlan) => ({
-            ...plan,
-            attachments: (plan.attachments || []).map((att: GapPlanAttachment) => ({
-              ...att,
-              uploadedAt: att.uploadedAt instanceof Date ? att.uploadedAt : new Date((att as any).uploadedAt)
-            }))
-          })));
-        });
+        if (!effectiveHospitalId) {
+          await migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (raw) => {
+            const parsed = Array.isArray(raw) ? raw : [];
+            setGapPlans(parsed.map((plan: GapPlan) => ({
+              ...plan,
+              attachments: (plan.attachments || []).map((att: GapPlanAttachment) => ({
+                ...att,
+                uploadedAt: att.uploadedAt instanceof Date ? att.uploadedAt : new Date((att as any).uploadedAt)
+              }))
+            })));
+          });
+        }
         return;
       }
       const fixedPlans = plans.map((plan: GapPlan) => ({
@@ -186,8 +216,14 @@ const GapPlanPage: React.FC = () => {
         }))
       }));
       setGapPlans(fixedPlans);
-      const acts = await getUserData<any[]>(userId, 'activities');
+      const acts = await (effectiveHospitalId
+        ? getHospitalData<any[]>(effectiveHospitalId, 'activities')
+        : getUserData<any[]>(userId, 'activities'));
       if (Array.isArray(acts)) setActivitiesForGapPlan(acts);
+      else if (effectiveHospitalId) {
+        const fallbackActs = await getUserData<any[]>(userId, 'activities');
+        if (Array.isArray(fallbackActs)) setActivitiesForGapPlan(fallbackActs);
+      }
     } catch (err) {
       console.error('Error loading gap plans:', err);
       setError('Failed to load gap plans');
@@ -195,13 +231,28 @@ const GapPlanPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (userId) getUserData<any[]>(userId, 'activities').then((v) => { if (Array.isArray(v)) setActivitiesForGapPlan(v); });
-  }, [userId]);
+    if (!userId) return;
+    if (effectiveHospitalId) {
+      getHospitalData<any[]>(effectiveHospitalId, 'activities').then((v) => {
+        if (Array.isArray(v)) setActivitiesForGapPlan(v);
+        else getUserData<any[]>(userId, 'activities').then((fv) => { if (Array.isArray(fv)) setActivitiesForGapPlan(fv); });
+      });
+      return;
+    }
+    getUserData<any[]>(userId, 'activities').then((v) => { if (Array.isArray(v)) setActivitiesForGapPlan(v); });
+  }, [userId, effectiveHospitalId]);
 
   const saveGapPlans = async (plans: GapPlan[]) => {
     if (!userId) return;
     try {
-      await setUserData(userId, 'gapPlans', plans);
+      if (effectiveHospitalId) {
+        await Promise.all([
+          setHospitalData(effectiveHospitalId, 'gapPlans', plans),
+          setUserData(userId, 'gapPlans', plans),
+        ]);
+      } else {
+        await setUserData(userId, 'gapPlans', plans);
+      }
     } catch (err) {
       console.error('Error saving gap plans:', err);
       setError('Failed to save gap plans');
