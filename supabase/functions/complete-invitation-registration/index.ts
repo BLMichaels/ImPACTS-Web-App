@@ -132,7 +132,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const { data: inv, error: invErr } = await admin
     .from('invitations')
-    .select('id, email, status, expires_at')
+    .select('id, email, status, expires_at, role, hospital_id')
     .eq('code', code)
     .eq('status', 'pending')
     .maybeSingle();
@@ -193,6 +193,51 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
   if (acceptErr || !accepted?.id) {
     return json({ error: 'Invitation could not be finalized. Please retry.' }, 409);
+  }
+
+  // Continuity bootstrap for PECC invitations: ensure shared site membership + hospital_data keys exist.
+  try {
+    const role = String((inv as { role?: string }).role ?? '');
+    const hospitalRef = String((inv as { hospital_id?: string }).hospital_id ?? '').trim();
+    if (role === 'pecc' && hospitalRef) {
+      const { data: hospital } = await admin
+        .from('hospitals')
+        .select('id, facility_id')
+        .or(`id.eq.${hospitalRef},facility_id.eq.${hospitalRef}`)
+        .maybeSingle();
+      const h = hospital as { id?: string; facility_id?: string | null } | null;
+      const hospitalId = String(h?.id ?? '');
+      const siteId = String(h?.facility_id || h?.id || '');
+
+      if (siteId) {
+        await admin
+          .from('site_members')
+          .upsert({ site_id: siteId, user_id: userId }, { onConflict: 'site_id,user_id' });
+      }
+
+      if (hospitalId) {
+        const continuityKeys = [
+          'activities',
+          'gapPlans',
+          'milestones',
+          'simulation_sessions',
+          'simulation_gaps',
+          'readinessScores',
+          'prsQuestions',
+          'other_cases',
+        ];
+        for (const key of continuityKeys) {
+          await admin
+            .from('hospital_data')
+            .upsert(
+              { hospital_id: hospitalId, data_key: key, value: [] },
+              { onConflict: 'hospital_id,data_key' }
+            );
+        }
+      }
+    }
+  } catch {
+    // Non-fatal: account creation should still succeed even if continuity bootstrap fails.
   }
 
   return json({ ok: true, user_id: userId });

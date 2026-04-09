@@ -27,6 +27,7 @@ import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
 import { resolvePeccFacilityId } from '../utils/hospitalId';
+import { setHospitalData } from '../utils/userData';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface InvitationData {
@@ -359,6 +360,36 @@ const InvitationPage: React.FC = () => {
             if (cohortMentorError) {
               throw new Error(`Failed to assign mentor cohort access: ${cohortMentorError.message}`);
             }
+          }
+        }
+
+        // Initialize hospital continuity keys for new PECC users (non-fatal best effort).
+        if (invitation.role === 'pecc' && invData?.hospital_id) {
+          try {
+            const hid = String(invData.hospital_id);
+            const { data: hospital } = await supabase
+              .from('hospitals')
+              .select('id')
+              .or(`id.eq.${hid},facility_id.eq.${hid}`)
+              .maybeSingle();
+            const hospitalId = String((hospital as { id?: string } | null)?.id ?? '');
+            if (hospitalId) {
+              const continuityKeys = [
+                'activities',
+                'gapPlans',
+                'milestones',
+                'simulation_sessions',
+                'simulation_gaps',
+                'readinessScores',
+                'prsQuestions',
+                'other_cases',
+              ];
+              for (const key of continuityKeys) {
+                await setHospitalData(hospitalId, key, []);
+              }
+            }
+          } catch {
+            // Ignore bootstrap failures here; registration should still complete.
           }
         }
 
