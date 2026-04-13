@@ -109,6 +109,7 @@ const AccountPage = () => {
   const getTier = () => userProfile?.tier || userProfile?.role || 'PECC';
   const getDepartment = () => userProfile?.department || '';
   const profileHospitalId = (userProfile as { hospital_facility_id?: string | null })?.hospital_facility_id ?? null;
+  const canEditHospitalInfo = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER;
 
   const [hospitalInfo, setHospitalInfo] = useState<HospitalInfo>({
     name: '',
@@ -172,7 +173,7 @@ const AccountPage = () => {
         const { data: hospital } = await supabase
           .from('hospitals')
           .select('id, name, address, city, state, zip, phone, trauma_level, ed_size, region')
-          .eq('id', hid)
+          .or(`id.eq.${hid},facility_id.eq.${hid}`)
           .maybeSingle();
         if (hospital) {
           setHospitalLoadId((hospital as { id: string }).id);
@@ -430,7 +431,7 @@ const AccountPage = () => {
                     Hospital Information
                   </Typography>
                   <Box sx={{ ml: 'auto' }}>
-                    {editingHospital ? (
+                    {canEditHospitalInfo && editingHospital ? (
                       <>
                         <IconButton onClick={handleHospitalSave} color="primary" size="small">
                           <SaveIcon />
@@ -439,13 +440,18 @@ const AccountPage = () => {
                           <CancelIcon />
                         </IconButton>
                       </>
-                    ) : (
+                    ) : canEditHospitalInfo ? (
                       <IconButton onClick={() => setEditingHospital(true)} color="primary" size="small">
                         <EditIcon />
                       </IconButton>
-                    )}
+                    ) : null}
                   </Box>
                 </Box>
+                {!canEditHospitalInfo && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    Hospital information is read-only and automatically synced from CRM.
+                  </Alert>
+                )}
 
                 <Grid container spacing={2}>
                   <Grid item xs={12}>
@@ -454,7 +460,7 @@ const AccountPage = () => {
                       label="Hospital Name"
                       value={normalizeHospitalOrOrgName(hospitalInfo.name)}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, name: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
@@ -464,7 +470,7 @@ const AccountPage = () => {
                       label="Hospital Type"
                       value={hospitalInfo.type}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, type: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
@@ -474,7 +480,7 @@ const AccountPage = () => {
                       label="Phone"
                       value={hospitalInfo.phone}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, phone: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
@@ -484,7 +490,7 @@ const AccountPage = () => {
                       label="Address"
                       value={hospitalInfo.address}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, address: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
@@ -494,7 +500,7 @@ const AccountPage = () => {
                       label="City"
                       value={hospitalInfo.city}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, city: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
@@ -504,7 +510,7 @@ const AccountPage = () => {
                       label="State"
                       value={hospitalInfo.state}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, state: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
@@ -514,7 +520,7 @@ const AccountPage = () => {
                       label="ZIP Code"
                       value={hospitalInfo.zipCode}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, zipCode: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
@@ -524,7 +530,7 @@ const AccountPage = () => {
                       label="Emergency Department"
                       value={hospitalInfo.emergencyDepartment}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, emergencyDepartment: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
@@ -534,7 +540,7 @@ const AccountPage = () => {
                       label="Pediatric Volume"
                       value={hospitalInfo.pediatricVolume}
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, pediatricVolume: e.target.value })}
-                      disabled={!editingHospital}
+                      disabled={!canEditHospitalInfo || !editingHospital}
                       size="small"
                     />
                   </Grid>
