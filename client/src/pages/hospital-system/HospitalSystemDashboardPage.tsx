@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
+import { batchGetHospitalDataForKey, mapSiteRefsToHospitalRowIds } from '../../utils/userData';
 
 const CHECKLIST_STEPS = [
   { num: 1, title: 'Identify & Engage Stakeholders', description: 'Identify key system-level stakeholders; appoint system-wide Peds Ready Project Lead; support identifying local hospital PECCs and champions.' },
@@ -55,12 +56,22 @@ interface ChecklistRow {
   updated_at: string;
 }
 
+interface HospitalMetric {
+  activityCount: number;
+  gapPlanCount: number;
+  readinessCount: number;
+  checklistProgress: number;
+  lastActivity: string | null;
+}
+
 const HospitalSystemDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const actorUserId = currentUser?.id ?? (currentUser as { uid?: string })?.uid ?? null;
   const [systemNames, setSystemNames] = useState<string[]>([]);
   const [selectedSystem, setSelectedSystem] = useState<string>('');
   const [hospitals, setHospitals] = useState<HospitalRow[]>([]);
   const [checklist, setChecklist] = useState<ChecklistRow[]>([]);
+  const [metricsByHospital, setMetricsByHospital] = useState<Record<string, HospitalMetric>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
@@ -69,16 +80,22 @@ const HospitalSystemDashboardPage: React.FC = () => {
 
   useEffect(() => {
     const load = async () => {
-      if (!currentUser?.id) return;
+      if (!actorUserId) return;
       setLoading(true);
       setError(null);
       try {
         const { data: assignments, error: assignErr } = await supabase
           .from('hospital_system_assignments')
           .select('hospital_system_name')
-          .eq('user_id', currentUser.id);
+          .eq('user_id', actorUserId);
         if (assignErr) throw assignErr;
-        const names = (assignments || []).map((a: { hospital_system_name: string }) => a.hospital_system_name).filter(Boolean);
+        const names = [
+          ...new Set(
+            (assignments || [])
+              .map((a: { hospital_system_name: string }) => a.hospital_system_name)
+              .filter(Boolean)
+          ),
+        ];
         setSystemNames(names);
         setSelectedSystem((prev) => (names.length > 0 && (!prev || !names.includes(prev)) ? names[0] : prev));
       } catch (e: any) {
@@ -88,38 +105,100 @@ const HospitalSystemDashboardPage: React.FC = () => {
       }
     };
     load();
-  }, [currentUser?.id, retryCount]);
+  }, [actorUserId, retryCount]);
 
   useEffect(() => {
     if (!selectedSystem) {
       setHospitals([]);
       setChecklist([]);
+      setMetricsByHospital({});
       return;
     }
     let cancelled = false;
     (async () => {
-      const { data: hospData, error: hospErr } = await supabase
-        .from('hospitals')
-        .select('id, name, facility_id, city, state')
-        .eq('hospital_system', selectedSystem)
-        .order('name');
+      const [hospRes, checklistRes] = await Promise.all([
+        supabase
+          .from('hospitals')
+          .select('id, name, facility_id, city, state')
+          .eq('hospital_system', selectedSystem)
+          .order('name'),
+        supabase
+          .from('hospital_system_checklist')
+          .select('hospital_system_name, step_number, status, notes, updated_at')
+          .eq('hospital_system_name', selectedSystem)
+          .order('step_number'),
+      ]);
       if (cancelled) return;
-      if (hospErr) {
-        setError(hospErr.message);
+      if (hospRes.error) {
+        setError(hospRes.error.message);
         return;
       }
-      setHospitals((hospData as HospitalRow[]) || []);
+      const rows = (hospRes.data as HospitalRow[]) || [];
+      setHospitals(rows);
+      if (!checklistRes.error) setChecklist((checklistRes.data as ChecklistRow[]) || []);
 
-      const { data: checkData, error: checkErr } = await supabase
-        .from('hospital_system_checklist')
-        .select('hospital_system_name, step_number, status, notes, updated_at')
-        .eq('hospital_system_name', selectedSystem)
-        .order('step_number');
+      const refs = rows.flatMap((h) => [h.id, h.facility_id]).filter(Boolean) as string[];
+      const refToHospitalId = await mapSiteRefsToHospitalRowIds(refs);
+      const canonicalHospitalIds = [...new Set([...refToHospitalId.values()])];
+
+      const [activityMap, gapPlansMap, readinessMap, prsReadinessMap, checklistRowsRes] = await Promise.all([
+        batchGetHospitalDataForKey<unknown[]>(canonicalHospitalIds, 'activities'),
+        batchGetHospitalDataForKey<unknown[]>(canonicalHospitalIds, 'gapPlans'),
+        batchGetHospitalDataForKey<unknown[]>(canonicalHospitalIds, 'readinessScores'),
+        batchGetHospitalDataForKey<unknown[]>(canonicalHospitalIds, 'prsReadinessScores'),
+        canonicalHospitalIds.length > 0
+          ? supabase.from('site_checklist_progress').select('hospital_id, completed').in('hospital_id', canonicalHospitalIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
       if (cancelled) return;
-      if (!checkErr) setChecklist((checkData as ChecklistRow[]) || []);
+      if (checklistRowsRes.error) {
+        setError(checklistRowsRes.error.message);
+        return;
+      }
+
+      const checklistStats = new Map<string, { total: number; completed: number }>();
+      (checklistRowsRes.data || []).forEach((row: { hospital_id: string; completed: boolean }) => {
+        const prev = checklistStats.get(row.hospital_id) || { total: 0, completed: 0 };
+        prev.total += 1;
+        if (row.completed) prev.completed += 1;
+        checklistStats.set(row.hospital_id, prev);
+      });
+
+      const nextMetrics: Record<string, HospitalMetric> = {};
+      rows.forEach((h) => {
+        const canonicalId = refToHospitalId.get(h.id) || (h.facility_id ? refToHospitalId.get(h.facility_id) : undefined);
+        const activities = canonicalId ? activityMap.get(canonicalId) : null;
+        const gapPlans = canonicalId ? gapPlansMap.get(canonicalId) : null;
+        const prsReadiness = canonicalId ? prsReadinessMap.get(canonicalId) : null;
+        const readiness = canonicalId ? readinessMap.get(canonicalId) : null;
+        const scores = Array.isArray(prsReadiness) ? prsReadiness : readiness;
+        const stats = canonicalId ? checklistStats.get(canonicalId) : undefined;
+        const checklistProgress = stats && stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+        const activityList = Array.isArray(activities) ? activities : [];
+        const lastActivity = activityList.length
+          ? activityList
+              .map((a: any) => (a?.date ? String(a.date) : null))
+              .filter(Boolean)
+              .sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime())[0] || null
+          : null;
+        nextMetrics[h.id] = {
+          activityCount: activityList.length,
+          gapPlanCount: Array.isArray(gapPlans) ? gapPlans.length : 0,
+          readinessCount: Array.isArray(scores) ? scores.length : 0,
+          checklistProgress,
+          lastActivity,
+        };
+      });
+      setMetricsByHospital(nextMetrics);
     })();
     return () => { cancelled = true; };
   }, [selectedSystem]);
+
+  const totalActivities = Object.values(metricsByHospital).reduce((sum, m) => sum + m.activityCount, 0);
+  const totalGapPlans = Object.values(metricsByHospital).reduce((sum, m) => sum + m.gapPlanCount, 0);
+  const avgChecklistProgress = hospitals.length
+    ? Math.round(Object.values(metricsByHospital).reduce((sum, m) => sum + m.checklistProgress, 0) / hospitals.length)
+    : 0;
 
   const getStepStatus = (stepNum: number): 'not_started' | 'in_progress' | 'completed' => {
     const row = checklist.find((c) => c.step_number === stepNum);
@@ -191,7 +270,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
         Hospital System Support Tool
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        View PECC data and track pediatric readiness progress for your assigned system(s).
+        View hospital-scoped PECC continuity data and track pediatric readiness progress for your assigned system(s).
       </Typography>
 
       <FormControl size="small" sx={{ minWidth: 280, mb: 2 }}>
@@ -229,7 +308,21 @@ const HospitalSystemDashboardPage: React.FC = () => {
                     <ListItem key={h.id}>
                       <ListItemText
                         primary={h.name || 'Unnamed'}
-                        secondary={[h.city, h.state].filter(Boolean).join(', ') || (h.facility_id ? `Facility ID: ${h.facility_id}` : undefined)}
+                        secondary={
+                          [
+                            [h.city, h.state].filter(Boolean).join(', '),
+                            `Activities: ${metricsByHospital[h.id]?.activityCount ?? 0}`,
+                            `Gap plans: ${metricsByHospital[h.id]?.gapPlanCount ?? 0}`,
+                            `Readiness: ${metricsByHospital[h.id]?.readinessCount ?? 0}`,
+                            `Checklist: ${metricsByHospital[h.id]?.checklistProgress ?? 0}%`,
+                            metricsByHospital[h.id]?.lastActivity
+                              ? `Last activity: ${new Date(metricsByHospital[h.id].lastActivity as string).toLocaleDateString()}`
+                              : undefined,
+                            h.facility_id ? `Facility ID: ${h.facility_id}` : undefined,
+                          ]
+                            .filter(Boolean)
+                            .join(' • ')
+                        }
                       />
                     </ListItem>
                   ))}
@@ -237,7 +330,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
               )}
               {hospitals.length > 0 && (
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                  Total: {hospitals.length} site(s). PECC-entered data (readiness, gap plans, milestones) for these sites is visible to your system.
+                  Total: {hospitals.length} site(s). Metrics are hospital-scoped for PECC continuity across staff turnover.
                 </Typography>
               )}
             </CardContent>
@@ -252,6 +345,9 @@ const HospitalSystemDashboardPage: React.FC = () => {
               </Typography>
               <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 <Chip icon={<HospitalIcon />} label={`${hospitals.length} hospitals`} />
+                <Chip label={`${totalActivities} activities`} />
+                <Chip label={`${totalGapPlans} gap plans`} />
+                <Chip label={`${avgChecklistProgress}% avg checklist`} />
                 <Chip
                   label={`${checklist.filter((c) => c.status === 'completed').length} of 7 steps completed`}
                   color={checklist.filter((c) => c.status === 'completed').length === 7 ? 'success' : 'default'}
