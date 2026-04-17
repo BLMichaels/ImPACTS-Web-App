@@ -1289,11 +1289,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
 
       const updatedCellValues: Record<string, string> = {};
       for (const [k, v] of Object.entries(editDraft)) {
-        if (['peccPhone', 'userPhone', 'phone', 'orgPhone', 'hospitalPhone'].includes(k)) {
-          updatedCellValues[k] = (v || '').trim();
-        } else {
-          updatedCellValues[k] = (v || '').trim();
-        }
+        updatedCellValues[k] = (v || '').trim();
       }
 
       setRows((prev) => prev.map((r) => (r.id === editRow.id ? { ...r, cells: { ...r.cells, ...updatedCellValues } } : r)));
@@ -2888,13 +2884,14 @@ async function loadPeccDataset(params: {
       crm_status: string;
     }[];
 
-  const hidSet = [
+  const hidSetRaw = [
     ...new Set([
       ...peccs.map((p) => p.hospital_facility_id).filter(Boolean) as string[],
       ...peccHospitalContactRows.map((c) => c.hospital_id),
       ...crmPeccRows.map((c) => c.hospital_id).filter(Boolean) as string[],
     ]),
   ] as string[];
+  const hidSet = await expandHospitalScopeKeys(hidSetRaw);
   let hospById = new Map<
     string,
     {

@@ -299,26 +299,34 @@ const ManagerMentorsPage: React.FC = () => {
         .filter(Boolean);
       const uniqueHospitalIds = Array.from(new Set(hospitalIds));
 
-      // Load PECCs for these hospitals
-      const { data: peccs, error: peccsError } = uniqueHospitalIds.length > 0
-        ? await supabase
-          .from('users')
-          .select('id, first_name, last_name, email, hospital_facility_id')
-          .eq('role', 'pecc')
-          .in('hospital_facility_id', uniqueHospitalIds)
-        : { data: [], error: null };
-
-      if (peccsError) throw peccsError;
-
-      // Load hospitals to get names
+      // Load hospitals to get names + facility refs
       const { data: hospitals, error: hospitalsError } = uniqueHospitalIds.length > 0
         ? await supabase
           .from('hospitals')
-          .select('id, name')
+          .select('id, name, facility_id')
           .in('id', uniqueHospitalIds)
         : { data: [], error: null };
 
       if (hospitalsError) throw hospitalsError;
+      const hospitalRefs = [
+        ...new Set(
+          (hospitals || []).flatMap((h: { id: string; facility_id?: string | null }) => [
+            String(h.id),
+            h.facility_id != null ? String(h.facility_id) : null,
+          ]).filter(Boolean) as string[]
+        ),
+      ];
+
+      // Load PECCs for these hospitals (supports users keyed by either hospital UUID or facility ref).
+      const { data: peccs, error: peccsError } = hospitalRefs.length > 0
+        ? await supabase
+          .from('users')
+          .select('id, first_name, last_name, email, hospital_facility_id')
+          .eq('role', 'pecc')
+          .in('hospital_facility_id', hospitalRefs)
+        : { data: [], error: null };
+
+      if (peccsError) throw peccsError;
 
       // Batch checklist progress by hospital to avoid per-PECC N+1 queries.
       const { data: checklistRows, error: checklistError } = uniqueHospitalIds.length > 0
@@ -351,6 +359,13 @@ const ManagerMentorsPage: React.FC = () => {
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIds, 'gapPlans'),
       ]);
 
+      const hospitalRefsByCanonical = new Map<string, Set<string>>();
+      (hospitals || []).forEach((h: { id: string; facility_id?: string | null }) => {
+        const refs = new Set<string>([String(h.id)]);
+        if (h.facility_id != null && String(h.facility_id).trim()) refs.add(String(h.facility_id).trim());
+        hospitalRefsByCanonical.set(String(h.id), refs);
+      });
+
       // Build mentor data with PECCs
       const mentorData: MentorData[] = await Promise.all(
         (mentorUsers || []).map(async (mentor) => {
@@ -373,17 +388,18 @@ const ManagerMentorsPage: React.FC = () => {
 
           const hospitalData = mentorAssignments.map((a: any) => {
               const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-              const hospitalPeccs = peccList.filter((p) => p.hospital_facility_id === hospital?.id);
+              const hospitalRefs = hospital?.id ? hospitalRefsByCanonical.get(String(hospital.id)) : undefined;
+              const hospitalPeccs = peccList.filter((p) => hospitalRefs?.has(String(p.hospital_facility_id)) ?? false);
 
               const peccData: PECCData[] = hospitalPeccs.map((pecc) => {
-                  const stats = checklistStatsByHospital.get(pecc.hospital_facility_id || '');
+                  const canonicalHospitalId = pecc.hospital_facility_id ? refToHospitalId.get(pecc.hospital_facility_id) : undefined;
+                  const stats = canonicalHospitalId ? checklistStatsByHospital.get(canonicalHospitalId) : undefined;
                   const totalTasks = stats?.total || 0;
                   const completedTasks = stats?.completed || 0;
                   const checklistProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-                  const hid = pecc.hospital_facility_id ? refToHospitalId.get(pecc.hospital_facility_id) : undefined;
-                  const hActs = hid ? hospActivities.get(hid) : null;
-                  const hGaps = hid ? hospGapPlans.get(hid) : null;
+                  const hActs = canonicalHospitalId ? hospActivities.get(canonicalHospitalId) : null;
+                  const hGaps = canonicalHospitalId ? hospGapPlans.get(canonicalHospitalId) : null;
                   const uActs = udPeccActivities.get(pecc.id);
                   const uGaps = udPeccGapPlans.get(pecc.id);
                   const activities = Array.isArray(hActs) ? hActs : (Array.isArray(uActs) ? uActs : []);
@@ -394,7 +410,10 @@ const ManagerMentorsPage: React.FC = () => {
                     ? activities.sort((x: any, y: any) => new Date(y.date).getTime() - new Date(x.date).getTime())[0].date
                     : null;
 
-                  const hospitalName = (hospitals || []).find(h => h.id === pecc.hospital_facility_id)?.name || 'Unknown';
+                  const hospitalName =
+                    (hospitals || []).find((h: { id: string; facility_id?: string | null }) =>
+                      h.id === canonicalHospitalId || String(h.facility_id || '') === String(pecc.hospital_facility_id)
+                    )?.name || 'Unknown';
 
                   return {
                     id: pecc.id,

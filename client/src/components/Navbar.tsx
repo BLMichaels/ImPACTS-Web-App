@@ -54,7 +54,7 @@ interface NavItem {
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser } = useUserProfile();
+  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser, isLoading: profileLoading } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const { trackLinkClick } = useUsageAnalytics();
@@ -164,10 +164,11 @@ const Navbar: React.FC = () => {
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
         const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
-        // Empty visibleTabs = show all PECC tabs (e.g. view-as before load or no restrictions). Non-empty = filter to allowed tabs.
-        let filteredItems = visibleTabs && visibleTabs.length > 0
-          ? peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''))
-          : peccItems;
+        // Once profile is loaded, empty visibleTabs means all PECC tabs are hidden by permissions.
+        // During early profile hydration, keep default tabs visible to avoid a blank nav flash.
+        let filteredItems = profileLoading
+          ? peccItems
+          : peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''));
         // Cohorts is always available (not site-specific)
         filteredItems.push({ path: '/cohorts', label: 'Cohorts', icon: <CohortsIcon /> });
         return filteredItems;

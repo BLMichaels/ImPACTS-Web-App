@@ -361,8 +361,8 @@ export default function AdminSnapshotPage() {
           peccHoursThisMonth = peccActivitiesData.reduce((s, a) => s + (a.hours || 0), 0);
           peccActivitiesThisMonth = peccActivitiesData.length;
         }
-        const uniqueHospIds = [...new Set(peccList.map((p) => p.hospital_facility_id).filter(Boolean))] as string[];
-        const completedByHospital = new Map<string, number>();
+        const uniqueHospIds = [...new Set(hospitalUuids)];
+        const checklistStatsByHospital = new Map<string, { total: number; completed: number }>();
         for (const part of chunkIds(uniqueHospIds, 80)) {
           const { data: checklistData } = await supabase
             .from('site_checklist_progress')
@@ -370,9 +370,10 @@ export default function AdminSnapshotPage() {
             .in('hospital_id', part);
           for (const row of checklistData || []) {
             const hid = (row as { hospital_id: string; completed: boolean }).hospital_id;
-            if ((row as { completed: boolean }).completed) {
-              completedByHospital.set(hid, (completedByHospital.get(hid) || 0) + 1);
-            }
+            const prev = checklistStatsByHospital.get(hid) || { total: 0, completed: 0 };
+            prev.total += 1;
+            if ((row as { completed: boolean }).completed) prev.completed += 1;
+            checklistStatsByHospital.set(hid, prev);
           }
         }
         let progressSum = 0;
@@ -380,8 +381,11 @@ export default function AdminSnapshotPage() {
         const peccProgressByPecc: Record<string, number> = {};
         for (const p of peccList) {
           if (!p.hospital_facility_id) continue;
-          const completed = completedByHospital.get(p.hospital_facility_id) || 0;
-          const totalTasks = 100;
+          const canonicalHospitalId = refToHospitalId.get(p.hospital_facility_id);
+          if (!canonicalHospitalId) continue;
+          const stats = checklistStatsByHospital.get(canonicalHospitalId);
+          const completed = stats?.completed || 0;
+          const totalTasks = stats?.total || 0;
           const pct = totalTasks > 0 ? Math.round((completed / totalTasks) * 100) : 0;
           progressSum += pct;
           progressCount += 1;

@@ -133,36 +133,47 @@ const ManagerSnapshotPage: React.FC = () => {
           .filter(Boolean);
         const uniqueHospitalIds = Array.from(new Set(hospitalIds));
 
-        // Load PECCs for these hospitals
-        const { data: peccs, error: peccsError } = uniqueHospitalIds.length > 0
+        const { data: hospitalRows, error: hospitalsError } = uniqueHospitalIds.length > 0
+          ? await supabase
+            .from('hospitals')
+            .select('id, name, facility_id')
+            .in('id', uniqueHospitalIds)
+          : { data: [], error: null };
+        if (hospitalsError) throw hospitalsError;
+        const allHospitalRefs = new Set<string>();
+        const refToCanonicalHospitalId = new Map<string, string>();
+        (hospitalRows || []).forEach((h: { id: string; facility_id?: string | null }) => {
+          allHospitalRefs.add(String(h.id));
+          refToCanonicalHospitalId.set(String(h.id), String(h.id));
+          if (h.facility_id != null && String(h.facility_id).trim()) {
+            allHospitalRefs.add(String(h.facility_id).trim());
+            refToCanonicalHospitalId.set(String(h.facility_id).trim(), String(h.id));
+          }
+        });
+
+        // Load PECCs for these hospitals (supports UUID and facility refs).
+        const { data: peccs, error: peccsError } = allHospitalRefs.size > 0
           ? await supabase
             .from('users')
             .select('id, hospital_facility_id')
             .eq('role', 'pecc')
-            .in('hospital_facility_id', uniqueHospitalIds)
+            .in('hospital_facility_id', [...allHospitalRefs])
           : { data: [], error: null };
 
         if (peccsError) throw peccsError;
         const peccCountByHospital = new Map<string, number>();
         (peccs || []).forEach((p: { hospital_facility_id: string }) => {
-          const hid = p.hospital_facility_id;
-          peccCountByHospital.set(hid, (peccCountByHospital.get(hid) || 0) + 1);
+          const canonicalHospitalId = refToCanonicalHospitalId.get(String(p.hospital_facility_id));
+          if (!canonicalHospitalId) return;
+          peccCountByHospital.set(canonicalHospitalId, (peccCountByHospital.get(canonicalHospitalId) || 0) + 1);
         });
 
         if (cancelled) return;
         setTotalPeccs((peccs || []).length);
         setTotalSites(new Set(hospitalIds).size);
 
-        // Load hospitals for names
-        const { data: hospitals } = uniqueHospitalIds.length > 0
-          ? await supabase
-            .from('hospitals')
-            .select('id, name')
-            .in('id', uniqueHospitalIds)
-          : { data: [] };
-
         const hospitalMap = new Map<string, string>();
-        (hospitals || []).forEach((h: any) => hospitalMap.set(h.id, h.name || 'Unknown'));
+        (hospitalRows || []).forEach((h: any) => hospitalMap.set(h.id, h.name || 'Unknown'));
 
         // Checklist progress by hospital (avoid per-PECC N+1).
         const { data: checklistRows, error: checklistError } = uniqueHospitalIds.length > 0
@@ -189,7 +200,8 @@ const ManagerSnapshotPage: React.FC = () => {
         let progressSum = 0;
         let progressCount = 0;
         for (const pecc of peccs || []) {
-          const pct = checklistPctByHospital.get(pecc.hospital_facility_id) || 0;
+          const canonicalHospitalId = refToCanonicalHospitalId.get(String(pecc.hospital_facility_id));
+          const pct = canonicalHospitalId ? (checklistPctByHospital.get(canonicalHospitalId) || 0) : 0;
           progressSum += pct;
           progressCount += 1;
         }

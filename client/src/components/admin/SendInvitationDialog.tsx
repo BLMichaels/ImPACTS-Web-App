@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -75,11 +75,20 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   const [programIds, setProgramIds] = useState<string[]>([]);
   const [customMessage, setCustomMessage] = useState('');
   const [optionsLoading, setOptionsLoading] = useState(false);
+  const roleOptions = useMemo(
+    () =>
+      actualRole === UserRole.ADMIN
+        ? [UserRole.PECC, UserRole.MENTOR, UserRole.MANAGER, UserRole.ADMIN]
+        : [UserRole.PECC, UserRole.MENTOR],
+    [actualRole]
+  );
   
   useEffect(() => {
     if (open) {
       setEmail(contactEmail);
-      setRole(initialRole ?? UserRole.PECC);
+      const requestedRole = initialRole ?? UserRole.PECC;
+      const allowedRole = roleOptions.includes(requestedRole) ? requestedRole : UserRole.PECC;
+      setRole(allowedRole);
       setHospitalId(initialHospitalId ?? null);
       setMentorId(null);
       setManagerId(null);
@@ -100,6 +109,12 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- dialog reset + loadOptions when opened; loadOptions defined below
   }, [open, contactEmail, initialHospitalId, initialProgramIds, initialCohortIds, initialRole]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (roleOptions.includes(role)) return;
+    setRole(UserRole.PECC);
+  }, [open, role, roleOptions]);
   
   const loadOptions = async () => {
     setOptionsLoading(true);
@@ -287,6 +302,10 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setError('You must be logged in to send invitations');
       return;
     }
+    if (actualRole !== UserRole.ADMIN && (role === UserRole.MANAGER || role === UserRole.ADMIN)) {
+      setError('Only admins can send manager or admin invitations');
+      return;
+    }
     
     // Validate role-specific requirements (admins may send PECC without mentor/manager)
     if (role === UserRole.PECC && !mentorId && !managerIdForPECC && actualRole !== UserRole.ADMIN) {
@@ -465,10 +484,10 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                 label="Role"
                 disabled={loading}
               >
-                <MenuItem value={UserRole.PECC}>PECC</MenuItem>
-                <MenuItem value={UserRole.MENTOR}>Mentor</MenuItem>
-                <MenuItem value={UserRole.MANAGER}>Manager</MenuItem>
-                <MenuItem value={UserRole.ADMIN}>Admin</MenuItem>
+                {roleOptions.includes(UserRole.PECC) && <MenuItem value={UserRole.PECC}>PECC</MenuItem>}
+                {roleOptions.includes(UserRole.MENTOR) && <MenuItem value={UserRole.MENTOR}>Mentor</MenuItem>}
+                {roleOptions.includes(UserRole.MANAGER) && <MenuItem value={UserRole.MANAGER}>Manager</MenuItem>}
+                {roleOptions.includes(UserRole.ADMIN) && <MenuItem value={UserRole.ADMIN}>Admin</MenuItem>}
               </Select>
             </FormControl>
             

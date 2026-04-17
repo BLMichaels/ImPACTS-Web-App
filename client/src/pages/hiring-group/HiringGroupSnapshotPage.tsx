@@ -24,6 +24,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
 import { batchGetHospitalDataForKey, mapSiteRefsToHospitalRowIds } from '../../utils/userData';
+import { parseActivityDate } from '../../utils/snapshotActivityDate';
 
 interface HospitalRow {
   id: string;
@@ -127,16 +128,22 @@ const HiringGroupSnapshotPage: React.FC = () => {
           const gapPlans = canonicalId ? gapPlansMap.get(canonicalId) : null;
           const prsReadiness = canonicalId ? prsReadinessMap.get(canonicalId) : null;
           const readiness = canonicalId ? readinessMap.get(canonicalId) : null;
-          const scores = Array.isArray(prsReadiness) ? prsReadiness : readiness;
+          const scores =
+            Array.isArray(prsReadiness) && prsReadiness.length > 0
+              ? prsReadiness
+              : readiness;
           const stats = canonicalId ? checklistStats.get(canonicalId) : undefined;
           const checklistProgress = stats && stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
           const activityList = Array.isArray(activities) ? activities : [];
-          const lastActivity = activityList.length
-            ? activityList
-                .map((a: any) => (a?.date ? String(a.date) : null))
-                .filter(Boolean)
-                .sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime())[0] || null
-            : null;
+          const lastActivity = activityList.reduce<string | null>((latest, a: any) => {
+            const raw = a?.date ? String(a.date) : null;
+            if (!raw) return latest;
+            const next = parseActivityDate(raw);
+            if (!next) return latest;
+            if (!latest) return raw;
+            const prev = parseActivityDate(latest);
+            return prev && prev >= next ? latest : raw;
+          }, null);
           nextMetrics[h.id] = {
             activityCount: activityList.length,
             gapPlanCount: Array.isArray(gapPlans) ? gapPlans.length : 0,

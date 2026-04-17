@@ -76,6 +76,7 @@ const CONTACT_STATUSES = [
 
 interface HospitalData {
   id: string;
+  facilityId?: string | null;
   name: string;
   city: string;
   state: string;
@@ -209,7 +210,6 @@ const ManagerCRMPage: React.FC = () => {
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [, setSelectedHospital] = useState<HospitalData | null>(null);
   
   // Add Hospital Dialog: default = select from existing CRM list; option = add unlisted site
   const [addHospitalDialog, setAddHospitalDialog] = useState(false);
@@ -285,7 +285,6 @@ const ManagerCRMPage: React.FC = () => {
     if (hospitalId && hospitals.length > 0) {
       const hospital = hospitals.find(h => h.id === hospitalId);
       if (hospital) {
-        setSelectedHospital(hospital);
         setActiveTab(0);
       }
     }
@@ -394,7 +393,7 @@ const ManagerCRMPage: React.FC = () => {
       const { data: assignments, error: assignmentError } = await supabase
         .from('mentor_hospital_assignments')
         .select(`
-          hospital:hospital_id(id, name, city, state, trauma_level, custom_fields)
+          hospital:hospital_id(id, facility_id, name, city, state, trauma_level, custom_fields)
         `)
         .in('mentor_id', mentorIds)
         .eq('is_active', true);
@@ -411,6 +410,7 @@ const ManagerCRMPage: React.FC = () => {
           uniqueHospitalIds.add(hospital.id);
           hospitalList.push({
             id: hospital.id,
+            facilityId: hospital.facility_id || null,
             name: hospital.name,
             city: hospital.city || '',
             state: hospital.state || '',
@@ -425,6 +425,11 @@ const ManagerCRMPage: React.FC = () => {
 
       // Count mentors, PECCs, and contacts in batch (avoid N+1 query fanout).
       const hospitalIds = hospitalList.map((h) => h.id);
+      const hospitalRefs = [
+        ...new Set(
+          hospitalList.flatMap((h) => [h.id, h.facilityId || null]).filter(Boolean) as string[]
+        ),
+      ];
       const [mentorRowsRes, peccRowsRes, contactRowsRes] = await Promise.all([
         supabase
           .from('mentor_hospital_assignments')
@@ -436,7 +441,7 @@ const ManagerCRMPage: React.FC = () => {
           .from('users')
           .select('id, hospital_facility_id')
           .eq('role', 'pecc')
-          .in('hospital_facility_id', hospitalIds),
+          .in('hospital_facility_id', hospitalRefs),
         supabase
           .from('hospital_contacts')
           .select('id, hospital_id')
@@ -453,8 +458,11 @@ const ManagerCRMPage: React.FC = () => {
       });
       const peccCountByHospital = new Map<string, number>();
       (peccRowsRes.data || []).forEach((r: { hospital_facility_id: string }) => {
-        const hid = r.hospital_facility_id;
-        peccCountByHospital.set(hid, (peccCountByHospital.get(hid) || 0) + 1);
+        const canonicalHospitalId = hospitalList.find(
+          (h) => h.id === r.hospital_facility_id || String(h.facilityId || '') === String(r.hospital_facility_id)
+        )?.id;
+        if (!canonicalHospitalId) return;
+        peccCountByHospital.set(canonicalHospitalId, (peccCountByHospital.get(canonicalHospitalId) || 0) + 1);
       });
       const contactCountByHospital = new Map<string, number>();
       (contactRowsRes.data || []).forEach((r: { hospital_id: string }) => {
@@ -1002,6 +1010,7 @@ const ManagerCRMPage: React.FC = () => {
             ...setting.visibleTabs,
             [tab]: !setting.visibleTabs[tab]
           };
+          void syncViewTabsForUser(userId, newVisibleTabs);
           setUserData(userId, 'tab_visibility', newVisibleTabs);
           return { ...setting, visibleTabs: newVisibleTabs };
         }
@@ -1019,6 +1028,7 @@ const ManagerCRMPage: React.FC = () => {
             ...setting.visibleTabs,
             [tab]: visible
           };
+          void syncViewTabsForUser(setting.userId, newVisibleTabs);
           setUserData(setting.userId, 'tab_visibility', newVisibleTabs);
           return { ...setting, visibleTabs: newVisibleTabs };
         }
@@ -1031,6 +1041,26 @@ const ManagerCRMPage: React.FC = () => {
       message: `${tab} tab ${visible ? 'shown' : 'hidden'} for ${roleFilter || 'all users'}`, 
       severity: 'success' 
     });
+  };
+
+  const syncViewTabsForUser = async (
+    userId: string,
+    visibleTabs: Record<string, boolean>
+  ): Promise<void> => {
+    try {
+      const rows = PECC_TAB_KEYS.map((tabKey) => ({
+        user_id: userId,
+        tab_key: tabKey,
+        is_visible: visibleTabs[tabKey] ?? true,
+      }));
+      const { error } = await supabase
+        .from('view_tabs')
+        .upsert(rows, { onConflict: 'user_id,tab_key,cohort_id,program_id' });
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error syncing view_tabs:', err);
+      setSnackbar({ open: true, message: 'Could not sync tab visibility to permissions table', severity: 'error' });
+    }
   };
 
   const filteredHospitals = useMemo(() => {

@@ -29,6 +29,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
 import { batchGetHospitalDataForKey, mapSiteRefsToHospitalRowIds } from '../../utils/userData';
+import { parseActivityDate } from '../../utils/snapshotActivityDate';
 
 const CHECKLIST_STEPS = [
   { num: 1, title: 'Identify & Engage Stakeholders', description: 'Identify key system-level stakeholders; appoint system-wide Peds Ready Project Lead; support identifying local hospital PECCs and champions.' },
@@ -171,16 +172,22 @@ const HospitalSystemDashboardPage: React.FC = () => {
         const gapPlans = canonicalId ? gapPlansMap.get(canonicalId) : null;
         const prsReadiness = canonicalId ? prsReadinessMap.get(canonicalId) : null;
         const readiness = canonicalId ? readinessMap.get(canonicalId) : null;
-        const scores = Array.isArray(prsReadiness) ? prsReadiness : readiness;
+        const scores =
+          Array.isArray(prsReadiness) && prsReadiness.length > 0
+            ? prsReadiness
+            : readiness;
         const stats = canonicalId ? checklistStats.get(canonicalId) : undefined;
         const checklistProgress = stats && stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
         const activityList = Array.isArray(activities) ? activities : [];
-        const lastActivity = activityList.length
-          ? activityList
-              .map((a: any) => (a?.date ? String(a.date) : null))
-              .filter(Boolean)
-              .sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime())[0] || null
-          : null;
+        const lastActivity = activityList.reduce<string | null>((latest, a: any) => {
+          const raw = a?.date ? String(a.date) : null;
+          if (!raw) return latest;
+          const next = parseActivityDate(raw);
+          if (!next) return latest;
+          if (!latest) return raw;
+          const prev = parseActivityDate(latest);
+          return prev && prev >= next ? latest : raw;
+        }, null);
         nextMetrics[h.id] = {
           activityCount: activityList.length,
           gapPlanCount: Array.isArray(gapPlans) ? gapPlans.length : 0,
@@ -206,7 +213,7 @@ const HospitalSystemDashboardPage: React.FC = () => {
   };
 
   const handleStepStatusChange = async (stepNum: number, status: 'not_started' | 'in_progress' | 'completed') => {
-    if (!selectedSystem || !currentUser?.id) return;
+    if (!selectedSystem || !actorUserId) return;
     setSavingStep(stepNum);
     const existing = checklist.find((c) => c.step_number === stepNum);
     const payload = {
@@ -215,16 +222,20 @@ const HospitalSystemDashboardPage: React.FC = () => {
       status,
       notes: existing?.notes ?? null,
       updated_at: new Date().toISOString(),
-      updated_by: currentUser.id,
+      updated_by: actorUserId,
     };
     try {
-      await supabase.from('hospital_system_checklist').upsert(payload, {
+      const { error } = await supabase.from('hospital_system_checklist').upsert(payload, {
         onConflict: 'hospital_system_name,step_number',
       });
+      if (error) throw error;
       setChecklist((prev) => {
         const rest = prev.filter((c) => c.step_number !== stepNum);
         return [...rest, { hospital_system_name: selectedSystem, step_number: stepNum, status, notes: payload.notes, updated_at: payload.updated_at }];
       });
+    } catch (err) {
+      console.error('hospital_system_checklist upsert failed:', err);
+      setError('Could not save checklist step. Please retry.');
     } finally {
       setSavingStep(null);
     }

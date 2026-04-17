@@ -124,10 +124,11 @@ const MentorSnapshotPage = () => {
           );
           const hospitalRefToUuid = await mapSiteRefsToHospitalRowIds(hospitalIds);
           const canonicalHospitalIds = [...new Set([...hospitalRefToUuid.values()])];
-          const [hospActivitiesMap, hospGapPlansMap, hospReadinessMap] = await Promise.all([
+          const [hospActivitiesMap, hospGapPlansMap, hospReadinessMap, hospPrsReadinessMap] = await Promise.all([
             batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'activities'),
             batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'gapPlans'),
             batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'readinessScores'),
+            batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'prsReadinessScores'),
           ]);
 
           // Load PECCs assigned to these hospitals
@@ -171,11 +172,12 @@ const MentorSnapshotPage = () => {
             const hospitalActivities = canonicalHospitalId ? hospActivitiesMap.get(canonicalHospitalId) : null;
             const hospitalGapPlans = canonicalHospitalId ? hospGapPlansMap.get(canonicalHospitalId) : null;
             const hospitalReadiness = canonicalHospitalId ? hospReadinessMap.get(canonicalHospitalId) : null;
+            const hospitalPrsReadiness = canonicalHospitalId ? hospPrsReadinessMap.get(canonicalHospitalId) : null;
             const legacy = shouldMirrorLegacyUserData();
             const [peccActivitiesVal, peccGapPlansVal, prsScoresVal, readinessVal] = await Promise.all([
               legacy && !Array.isArray(hospitalActivities) ? getUserData<any[]>(pecc.id, 'activities') : Promise.resolve<any[] | null>(null),
               legacy && !Array.isArray(hospitalGapPlans) ? getUserData<any[]>(pecc.id, 'gapPlans') : Promise.resolve<any[] | null>(null),
-              legacy && !Array.isArray(hospitalReadiness) ? getUserData<any[]>(pecc.id, 'prsReadinessScores') : Promise.resolve<any[] | null>(null),
+              legacy && !Array.isArray(hospitalPrsReadiness) ? getUserData<any[]>(pecc.id, 'prsReadinessScores') : Promise.resolve<any[] | null>(null),
               legacy && !Array.isArray(hospitalReadiness) ? getUserData<any[]>(pecc.id, 'readinessScores') : Promise.resolve<any[] | null>(null),
             ]);
 
@@ -190,9 +192,13 @@ const MentorSnapshotPage = () => {
               ? hospitalGapPlans.length
               : (Array.isArray(peccGapPlansVal) ? peccGapPlansVal.length : 0);
             let readinessScores: Array<{ id: string; score: number; date: string }> = [];
-            const scoresRaw = Array.isArray(hospitalReadiness)
-              ? hospitalReadiness
-              : (Array.isArray(prsScoresVal) ? prsScoresVal : (Array.isArray(readinessVal) ? readinessVal : []));
+            const scoresRaw = Array.isArray(hospitalPrsReadiness) && hospitalPrsReadiness.length > 0
+              ? hospitalPrsReadiness
+              : (
+                Array.isArray(hospitalReadiness)
+                  ? hospitalReadiness
+                  : (Array.isArray(prsScoresVal) ? prsScoresVal : (Array.isArray(readinessVal) ? readinessVal : []))
+              );
             if (scoresRaw.length > 0) readinessScores = scoresRaw as Array<{ id: string; score: number; date: string }>;
 
             return {
@@ -200,7 +206,7 @@ const MentorSnapshotPage = () => {
               name: `${pecc.first_name} ${pecc.last_name}`,
               email: pecc.email,
               hospital: hospital?.hospital?.name || 'Unknown Hospital',
-              hospitalId: peccHospitalId,
+              hospitalId: canonicalHospitalId || peccHospitalId,
               checklistProgress,
               activityCount,
               lastActivity,
