@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
+import { batchGetHospitalDataForKey, mapSiteRefsToHospitalRowIds } from '../../utils/userData';
 
 interface HospitalRow {
   id: string;
@@ -33,10 +34,20 @@ interface HospitalRow {
   hospital_system?: string | null;
 }
 
+interface HospitalMetric {
+  activityCount: number;
+  gapPlanCount: number;
+  readinessCount: number;
+  checklistProgress: number;
+  lastActivity: string | null;
+}
+
 const HiringGroupSnapshotPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const hiringGroupUserId = currentUser?.id ?? (currentUser as { uid?: string })?.uid ?? null;
   const [systemNames, setSystemNames] = useState<string[]>([]);
   const [hospitalsBySystem, setHospitalsBySystem] = useState<Record<string, HospitalRow[]>>({});
+  const [metricsByHospital, setMetricsByHospital] = useState<Record<string, HospitalMetric>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSystem, setExpandedSystem] = useState<string | null>(null);
@@ -44,29 +55,97 @@ const HiringGroupSnapshotPage: React.FC = () => {
 
   useEffect(() => {
     const load = async () => {
-      if (!currentUser?.id) return;
+      if (!hiringGroupUserId) return;
       setLoading(true);
       setError(null);
       try {
         const { data: assignments, error: assignErr } = await supabase
           .from('hiring_group_assignments')
           .select('hospital_system_name')
-          .eq('user_id', currentUser.id);
+          .eq('user_id', hiringGroupUserId);
         if (assignErr) throw assignErr;
-        const names = (assignments || []).map((a: { hospital_system_name: string }) => a.hospital_system_name).filter(Boolean);
+        const names = [
+          ...new Set(
+            (assignments || [])
+              .map((a: { hospital_system_name: string }) => a.hospital_system_name)
+              .filter(Boolean)
+          ),
+        ];
         setSystemNames(names);
         if (names.length > 0) setExpandedSystem((prev) => (prev == null ? names[0] : prev));
 
-        const bySystem: Record<string, HospitalRow[]> = {};
-        for (const sys of names) {
-          const { data: hospData, error: hospErr } = await supabase
-            .from('hospitals')
-            .select('id, name, facility_id, city, state, hospital_system')
-            .eq('hospital_system', sys)
-            .order('name');
-          if (!hospErr && hospData) bySystem[sys] = hospData as HospitalRow[];
+        if (names.length === 0) {
+          setHospitalsBySystem({});
+          setMetricsByHospital({});
+          return;
         }
+
+        const { data: hospData, error: hospErr } = await supabase
+          .from('hospitals')
+          .select('id, name, facility_id, city, state, hospital_system')
+          .in('hospital_system', names)
+          .order('name');
+        if (hospErr) throw hospErr;
+
+        const hospitals = (hospData || []) as HospitalRow[];
+        const bySystem: Record<string, HospitalRow[]> = {};
+        names.forEach((sys) => {
+          bySystem[sys] = hospitals.filter((h) => h.hospital_system === sys);
+        });
         setHospitalsBySystem(bySystem);
+
+        const refs = hospitals.flatMap((h) => [h.id, h.facility_id]).filter(Boolean) as string[];
+        const refToHospitalId = await mapSiteRefsToHospitalRowIds(refs);
+        const canonicalHospitalIds = [...new Set([...refToHospitalId.values()])];
+
+        const [activityMap, gapPlansMap, readinessMap, prsReadinessMap, checklistRowsRes] = await Promise.all([
+          batchGetHospitalDataForKey<unknown[]>(canonicalHospitalIds, 'activities'),
+          batchGetHospitalDataForKey<unknown[]>(canonicalHospitalIds, 'gapPlans'),
+          batchGetHospitalDataForKey<unknown[]>(canonicalHospitalIds, 'readinessScores'),
+          batchGetHospitalDataForKey<unknown[]>(canonicalHospitalIds, 'prsReadinessScores'),
+          canonicalHospitalIds.length > 0
+            ? supabase
+                .from('site_checklist_progress')
+                .select('hospital_id, completed')
+                .in('hospital_id', canonicalHospitalIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+        if (checklistRowsRes.error) throw checklistRowsRes.error;
+
+        const checklistStats = new Map<string, { total: number; completed: number }>();
+        (checklistRowsRes.data || []).forEach((row: { hospital_id: string; completed: boolean }) => {
+          const prev = checklistStats.get(row.hospital_id) || { total: 0, completed: 0 };
+          prev.total += 1;
+          if (row.completed) prev.completed += 1;
+          checklistStats.set(row.hospital_id, prev);
+        });
+
+        const nextMetrics: Record<string, HospitalMetric> = {};
+        hospitals.forEach((h) => {
+          const canonicalId = refToHospitalId.get(h.id) || (h.facility_id ? refToHospitalId.get(h.facility_id) : undefined);
+          const activities = canonicalId ? activityMap.get(canonicalId) : null;
+          const gapPlans = canonicalId ? gapPlansMap.get(canonicalId) : null;
+          const prsReadiness = canonicalId ? prsReadinessMap.get(canonicalId) : null;
+          const readiness = canonicalId ? readinessMap.get(canonicalId) : null;
+          const scores = Array.isArray(prsReadiness) ? prsReadiness : readiness;
+          const stats = canonicalId ? checklistStats.get(canonicalId) : undefined;
+          const checklistProgress = stats && stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+          const activityList = Array.isArray(activities) ? activities : [];
+          const lastActivity = activityList.length
+            ? activityList
+                .map((a: any) => (a?.date ? String(a.date) : null))
+                .filter(Boolean)
+                .sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime())[0] || null
+            : null;
+          nextMetrics[h.id] = {
+            activityCount: activityList.length,
+            gapPlanCount: Array.isArray(gapPlans) ? gapPlans.length : 0,
+            readinessCount: Array.isArray(scores) ? scores.length : 0,
+            checklistProgress,
+            lastActivity,
+          };
+        });
+        setMetricsByHospital(nextMetrics);
       } catch (e: any) {
         setError(e?.message || 'Failed to load assignments');
       } finally {
@@ -74,7 +153,14 @@ const HiringGroupSnapshotPage: React.FC = () => {
       }
     };
     load();
-  }, [currentUser?.id, retryCount]);
+  }, [hiringGroupUserId, retryCount]);
+
+  const totalHospitals = Object.values(hospitalsBySystem).reduce((sum, list) => sum + list.length, 0);
+  const totalActivities = Object.values(metricsByHospital).reduce((sum, m) => sum + m.activityCount, 0);
+  const totalGapPlans = Object.values(metricsByHospital).reduce((sum, m) => sum + m.gapPlanCount, 0);
+  const avgChecklist = totalHospitals
+    ? Math.round(Object.values(metricsByHospital).reduce((sum, m) => sum + m.checklistProgress, 0) / totalHospitals)
+    : 0;
 
   if (loading) {
     return (
@@ -117,8 +203,15 @@ const HiringGroupSnapshotPage: React.FC = () => {
         Snapshot – Hiring Group
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Read-only view of hospital systems and their sites to track progress. You can only view snapshots for the systems you are assigned to.
+        Read-only, hospital-based view of your assigned systems. Metrics below are loaded from hospital continuity data and checklist progress.
       </Typography>
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <Chip size="small" label={`${systemNames.length} system(s)`} />
+        <Chip size="small" label={`${totalHospitals} hospital(s)`} />
+        <Chip size="small" label={`${totalActivities} activities`} />
+        <Chip size="small" label={`${totalGapPlans} gap plans`} />
+        <Chip size="small" label={`${avgChecklist}% avg checklist`} />
+      </Box>
 
       <Grid container spacing={2}>
         {systemNames.map((sysName) => {
@@ -151,7 +244,21 @@ const HiringGroupSnapshotPage: React.FC = () => {
                           <ListItem key={h.id}>
                             <ListItemText
                               primary={h.name || 'Unnamed'}
-                              secondary={[h.city, h.state].filter(Boolean).join(', ') || (h.facility_id ? `Facility ID: ${h.facility_id}` : undefined)}
+                              secondary={
+                                [
+                                  [h.city, h.state].filter(Boolean).join(', '),
+                                  `Activities: ${metricsByHospital[h.id]?.activityCount ?? 0}`,
+                                  `Gap plans: ${metricsByHospital[h.id]?.gapPlanCount ?? 0}`,
+                                  `Readiness: ${metricsByHospital[h.id]?.readinessCount ?? 0}`,
+                                  `Checklist: ${metricsByHospital[h.id]?.checklistProgress ?? 0}%`,
+                                  metricsByHospital[h.id]?.lastActivity
+                                    ? `Last activity: ${new Date(metricsByHospital[h.id].lastActivity as string).toLocaleDateString()}`
+                                    : undefined,
+                                  h.facility_id ? `Facility ID: ${h.facility_id}` : undefined,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' • ')
+                              }
                             />
                           </ListItem>
                         ))
@@ -166,7 +273,7 @@ const HiringGroupSnapshotPage: React.FC = () => {
       </Grid>
 
       <Alert severity="info" sx={{ mt: 3 }}>
-        This view shows the hospital systems and sites you have access to. Use this list to track which systems and hospitals you work with.
+        Metrics are hospital-scoped (not user-scoped) to align with PECC continuity across staff turnover.
       </Alert>
     </Container>
   );
