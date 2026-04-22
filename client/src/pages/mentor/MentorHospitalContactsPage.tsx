@@ -51,7 +51,8 @@ import {
   Search as SearchIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  PersonAdd as PersonAddIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -215,6 +216,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   const [addCity, setAddCity] = useState('');
   const [addHospitalId, setAddHospitalId] = useState('');
   const [addIsWorkingWith, setAddIsWorkingWith] = useState(true);
+  const [addContactAfterHospitalSave, setAddContactAfterHospitalSave] = useState(false);
   const [showAllHospitals, setShowAllHospitals] = useState(false); // Filter toggle
 
   // Hospital table filter/sort
@@ -436,6 +438,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     setAddCity('');
     setAddHospitalId('');
     setAddIsWorkingWith(true);
+    setAddContactAfterHospitalSave(false);
     setHospitalForm({
       name: '',
       address: '',
@@ -448,6 +451,24 @@ const MentorHospitalContactsPage: React.FC = () => {
       isWorkingWith: true
     });
     setHospitalDialogOpen(true);
+  };
+
+  const openAddContactForHospital = (hospital: Hospital) => {
+    setSelectedHospital(hospital);
+    setEditingContact(null);
+    setContactForm({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      contactStatus: 'ED Employee (general contact)',
+      roleAtHospital: '',
+      isPrimaryContact: false,
+      isActivelyEngaged: false,
+      isWorkingWithMentor: true,
+      notes: ''
+    });
+    setContactDialogOpen(true);
   };
 
   const handleEditHospital = (hospital: Hospital) => {
@@ -544,6 +565,9 @@ const MentorHospitalContactsPage: React.FC = () => {
     setHospitalDialogOpen(false);
     setSelectedHospital(hospitalData);
     linkHospitalToCRM(hospitalData);
+    if (addContactAfterHospitalSave) {
+      openAddContactForHospital(hospitalData);
+    }
     setSnackbar({ open: true, message: 'Hospital added successfully', severity: 'success' });
   };
 
@@ -1183,6 +1207,9 @@ const MentorHospitalContactsPage: React.FC = () => {
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Box sx={{ display: 'flex', gap: 1 }}>
+                          <IconButton size="small" onClick={() => openAddContactForHospital(hospital)} aria-label="Add contact">
+                            <PersonAddIcon fontSize="small" />
+                          </IconButton>
                           <IconButton size="small" onClick={() => handleEditHospital(hospital)} aria-label="Edit hospital">
                             <EditIcon fontSize="small" />
                           </IconButton>
@@ -1620,7 +1647,7 @@ const MentorHospitalContactsPage: React.FC = () => {
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
                 <Typography variant="body2" color="text.secondary">
-                  Choose a hospital from the CRM list. Pick state, then city, then hospital.
+                  Search and select a hospital from the CRM. You can still narrow by state/city if needed.
                 </Typography>
               </Grid>
               {crmLoading ? (
@@ -1632,6 +1659,46 @@ const MentorHospitalContactsPage: React.FC = () => {
                 </Grid>
               ) : (
                 <>
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      options={crmHospitals}
+                      value={selectedCrmHospital}
+                      onChange={(_, newValue) => {
+                        if (!newValue) {
+                          setAddState('');
+                          setAddCity('');
+                          setAddHospitalId('');
+                          return;
+                        }
+                        const nextState = String(newValue.state ?? '').trim();
+                        const nextCity = String(newValue.city ?? '').trim();
+                        setAddState(nextState);
+                        setAddCity(nextCity);
+                        setAddHospitalId(String(newValue.facility_id ?? newValue.id ?? ''));
+                      }}
+                      getOptionLabel={(option) =>
+                        `${normalizeHospitalOrOrgName(option.name)}${option.city ? ` - ${option.city}` : ''}${option.state ? `, ${option.state}` : ''}`
+                      }
+                      filterOptions={(options, state) => {
+                        const term = state.inputValue.trim().toLowerCase();
+                        if (!term) return options.slice(0, 100);
+                        return options
+                          .filter((h) => {
+                            const label = `${h.name} ${h.city ?? ''} ${h.state ?? ''}`.toLowerCase();
+                            return label.includes(term);
+                          })
+                          .slice(0, 100);
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Hospital"
+                          placeholder="Type hospital name, city, or state"
+                        />
+                      )}
+                      fullWidth
+                    />
+                  </Grid>
                   <Grid item xs={12}>
                     <Autocomplete
                       options={addStates}
@@ -1693,6 +1760,16 @@ const MentorHospitalContactsPage: React.FC = () => {
                       <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
                         Select whether you are actively working with this hospital or just keeping it as a contact reference.
                       </Typography>
+                      <FormControlLabel
+                        sx={{ mt: 1 }}
+                        control={
+                          <Checkbox
+                            checked={addContactAfterHospitalSave}
+                            onChange={(e) => setAddContactAfterHospitalSave(e.target.checked)}
+                          />
+                        }
+                        label="Open Add Contact immediately after saving"
+                      />
                     </Grid>
                   )}
                 </>
