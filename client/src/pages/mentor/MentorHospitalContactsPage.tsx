@@ -216,8 +216,6 @@ const MentorHospitalContactsPage: React.FC = () => {
   // CRM hospitals for Add Hospital (state → city → hospital)
   const [crmHospitals, setCrmHospitals] = useState<CrmHospitalRow[]>([]);
   const [crmLoading, setCrmLoading] = useState(false);
-  const [addState, setAddState] = useState('');
-  const [addCity, setAddCity] = useState('');
   const [addHospitalId, setAddHospitalId] = useState('');
   const [addIsWorkingWith, setAddIsWorkingWith] = useState(true);
   const [showAllHospitals, setShowAllHospitals] = useState(false); // Filter toggle
@@ -400,35 +398,6 @@ const MentorHospitalContactsPage: React.FC = () => {
     if (dataUserId) await setUserData(dataUserId, 'mentorContacts', newContacts);
   };
 
-  // CRM state → city → hospital options for Add Hospital
-  const addStates = useMemo(() => {
-    const s = new Set<string>();
-    crmHospitals.forEach((h) => {
-      const v = (h.state ?? '').trim();
-      if (v) s.add(v);
-    });
-    return Array.from(s).sort();
-  }, [crmHospitals]);
-
-  const addCities = useMemo(() => {
-    if (!addState) return [];
-    const s = new Set<string>();
-    crmHospitals.forEach((h) => {
-      if ((h.state ?? '').trim() !== addState) return;
-      const v = (h.city ?? '').trim();
-      if (v) s.add(v);
-    });
-    return Array.from(s).sort();
-  }, [crmHospitals, addState]);
-
-  const addHospitalOptions = useMemo(() => {
-    return crmHospitals.filter((h) => {
-      const matchesState = !addState || (h.state ?? '').trim() === addState;
-      const matchesCity = !addCity || (h.city ?? '').trim() === addCity;
-      return matchesState && matchesCity;
-    });
-  }, [crmHospitals, addState, addCity]);
-
   const selectedCrmHospital = useMemo(() => {
     if (!addHospitalId) return null;
     const id = addHospitalId;
@@ -440,12 +409,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     const preselectedHospital = opts?.preselectedHospital ?? null;
     const includeContact = opts?.includeContact === true;
     const preselectedId = preselectedHospital?.id ?? '';
-    const crmMatch = preselectedId
-      ? crmHospitals.find((h) => String(h.facility_id ?? h.id) === preselectedId || h.id === preselectedId) ?? null
-      : null;
     setEditingHospital(null);
-    setAddState(String(crmMatch?.state ?? '').trim());
-    setAddCity(String(crmMatch?.city ?? '').trim());
     setAddHospitalId(preselectedId);
     setAddIsWorkingWith(preselectedHospital?.isWorkingWith ?? true);
     setAddIncludeContact(includeContact);
@@ -1060,17 +1024,12 @@ const MentorHospitalContactsPage: React.FC = () => {
       </Alert>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Typography variant="h4">Hospital Contacts</Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Button variant="outlined" startIcon={<PersonAddIcon />} onClick={handleAddContact}>
-            Add Contact
-          </Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddHospital}>
-            Add Hospital
-          </Button>
-        </Box>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddContact}>
+          Add Hospital or Contact
+        </Button>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Manage your hospital list and PECC contacts. Both buttons open one unified popup where you can add a hospital, a contact, or both together.
+        Manage your hospital list and PECC contacts from one popup flow.
       </Typography>
 
       {/* List View - Table */}
@@ -1583,7 +1542,7 @@ const MentorHospitalContactsPage: React.FC = () => {
 
       {/* Unified Add/Edit Hospital Dialog */}
       <Dialog open={hospitalDialogOpen} onClose={() => setHospitalDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingHospital ? 'Edit Hospital' : 'Add Hospital and Contact'}</DialogTitle>
+        <DialogTitle>{editingHospital ? 'Edit Hospital' : 'Add Hospital or Contact'}</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
             <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital details or notes.
@@ -1682,17 +1641,13 @@ const MentorHospitalContactsPage: React.FC = () => {
                 <>
                   <Grid item xs={12}>
                     <Autocomplete
-                      options={addHospitalOptions}
+                      options={crmHospitals}
                       value={selectedCrmHospital}
                       onChange={(_, newValue) => {
                         if (!newValue) {
                           setAddHospitalId('');
                           return;
                         }
-                        const nextState = String(newValue.state ?? '').trim();
-                        const nextCity = String(newValue.city ?? '').trim();
-                        setAddState(nextState);
-                        setAddCity(nextCity);
                         setAddHospitalId(String(newValue.facility_id ?? newValue.id ?? ''));
                       }}
                       getOptionLabel={(option) =>
@@ -1708,7 +1663,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                           })
                           .slice(0, 100);
                       }}
-                      noOptionsText="No hospitals match the current state/city filters"
+                      noOptionsText="No hospitals found"
                       renderInput={(params) => (
                         <TextField
                           {...params}
@@ -1717,36 +1672,6 @@ const MentorHospitalContactsPage: React.FC = () => {
                         />
                       )}
                       fullWidth
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Autocomplete
-                      options={addStates}
-                      value={addState || null}
-                      onChange={(_, newValue) => {
-                        setAddState(newValue || '');
-                        setAddCity('');
-                        setAddHospitalId('');
-                      }}
-                      renderInput={(params) => (
-                        <TextField {...params} label="State" placeholder="Select or type to search" />
-                      )}
-                      fullWidth
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Autocomplete
-                      options={addCities}
-                      value={addCity || null}
-                      onChange={(_, newValue) => {
-                        setAddCity(newValue || '');
-                        setAddHospitalId('');
-                      }}
-                      renderInput={(params) => (
-                        <TextField {...params} label="City" placeholder="Select or type to search" disabled={!addState} />
-                      )}
-                      fullWidth
-                      disabled={!addState}
                     />
                   </Grid>
                   {addHospitalId && (
