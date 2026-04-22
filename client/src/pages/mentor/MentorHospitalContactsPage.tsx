@@ -172,6 +172,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [editingHospital, setEditingHospital] = useState<Hospital | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [contactHospitalId, setContactHospitalId] = useState('');
   
   // Snackbar
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
@@ -419,10 +420,11 @@ const MentorHospitalContactsPage: React.FC = () => {
   }, [crmHospitals, addState]);
 
   const addHospitalOptions = useMemo(() => {
-    if (!addState || !addCity) return [];
-    return crmHospitals.filter(
-      (h) => (h.state ?? '').trim() === addState && (h.city ?? '').trim() === addCity
-    );
+    return crmHospitals.filter((h) => {
+      const matchesState = !addState || (h.state ?? '').trim() === addState;
+      const matchesCity = !addCity || (h.city ?? '').trim() === addCity;
+      return matchesState && matchesCity;
+    });
   }, [crmHospitals, addState, addCity]);
 
   const selectedCrmHospital = useMemo(() => {
@@ -456,6 +458,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   const openAddContactForHospital = (hospital: Hospital) => {
     setSelectedHospital(hospital);
     setEditingContact(null);
+    setContactHospitalId(hospital.id);
     setContactForm({
       firstName: '',
       lastName: '',
@@ -756,11 +759,12 @@ const MentorHospitalContactsPage: React.FC = () => {
 
   // Contact handlers
   const handleAddContact = () => {
-    if (!selectedHospital) {
-      setSnackbar({ open: true, message: 'Please select a hospital first', severity: 'error' });
+    if (hospitals.length === 0) {
+      setSnackbar({ open: true, message: 'Add a hospital first, then add contacts', severity: 'error' });
       return;
     }
     setEditingContact(null);
+    setContactHospitalId(selectedHospital?.id ?? hospitals[0].id);
     setContactForm({
       firstName: '',
       lastName: '',
@@ -778,6 +782,7 @@ const MentorHospitalContactsPage: React.FC = () => {
 
   const handleEditContact = (contact: Contact) => {
     setEditingContact(contact);
+    setContactHospitalId(contact.hospitalId);
     setContactForm({
       firstName: contact.firstName,
       lastName: contact.lastName,
@@ -809,9 +814,15 @@ const MentorHospitalContactsPage: React.FC = () => {
       return;
     }
 
+    const targetHospitalId = editingContact?.hospitalId || contactHospitalId;
+    if (!targetHospitalId) {
+      setSnackbar({ open: true, message: 'Please select a hospital for this contact', severity: 'error' });
+      return;
+    }
+
     const contactData: Contact = {
       id: editingContact?.id || `contact_${Date.now()}`,
-      hospitalId: editingContact?.hospitalId || selectedHospital!.id,
+      hospitalId: targetHospitalId,
       ...contactForm,
       isWorkingWithMentor: contactForm.isWorkingWithMentor !== false
     };
@@ -825,6 +836,8 @@ const MentorHospitalContactsPage: React.FC = () => {
 
     saveContacts(newContacts);
     setContactDialogOpen(false);
+    const contactHospital = hospitals.find((h) => h.id === targetHospitalId);
+    if (contactHospital) setSelectedHospital(contactHospital);
     setSnackbar({ open: true, message: `Contact ${editingContact ? 'updated' : 'added'} successfully`, severity: 'success' });
   };
 
@@ -1044,12 +1057,17 @@ const MentorHospitalContactsPage: React.FC = () => {
       </Alert>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Typography variant="h4">Hospital Contacts</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddHospital}>
-          Add Hospital
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button variant="outlined" startIcon={<PersonAddIcon />} onClick={handleAddContact} disabled={hospitals.length === 0}>
+            Add Contact
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddHospital}>
+            Add Hospital
+          </Button>
+        </Box>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Manage your hospital list and PECC contacts. Add hospitals from the CRM list below; they will appear in Activities, Site Milestones, and the Support Tool.
+        Manage your hospital list and PECC contacts. Add a hospital from CRM, then add contacts directly from the top button or each hospital row.
       </Typography>
 
       {/* List View - Table */}
@@ -1647,7 +1665,7 @@ const MentorHospitalContactsPage: React.FC = () => {
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
                 <Typography variant="body2" color="text.secondary">
-                  Search and select a hospital from the CRM. You can still narrow by state/city if needed.
+                  Select a hospital from CRM once. Use state/city only if you want to narrow the list first.
                 </Typography>
               </Grid>
               {crmLoading ? (
@@ -1661,12 +1679,10 @@ const MentorHospitalContactsPage: React.FC = () => {
                 <>
                   <Grid item xs={12}>
                     <Autocomplete
-                      options={crmHospitals}
+                      options={addHospitalOptions}
                       value={selectedCrmHospital}
                       onChange={(_, newValue) => {
                         if (!newValue) {
-                          setAddState('');
-                          setAddCity('');
                           setAddHospitalId('');
                           return;
                         }
@@ -1689,6 +1705,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                           })
                           .slice(0, 100);
                       }}
+                      noOptionsText="No hospitals match the current state/city filters"
                       renderInput={(params) => (
                         <TextField
                           {...params}
@@ -1729,36 +1746,21 @@ const MentorHospitalContactsPage: React.FC = () => {
                       disabled={!addState}
                     />
                   </Grid>
-                  <Grid item xs={12}>
-                    <Autocomplete
-                      options={addHospitalOptions}
-                      value={addHospitalOptions.find(h => String(h.facility_id ?? h.id ?? '') === addHospitalId) || null}
-                      onChange={(_, newValue) => {
-                        setAddHospitalId(newValue ? String(newValue.facility_id ?? newValue.id ?? '') : '');
-                      }}
-                      getOptionLabel={(option) => normalizeHospitalOrOrgName(option.name) || 'Unknown'}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Hospital" placeholder="Select or type to search" disabled={!addCity} />
-                      )}
-                      fullWidth
-                      disabled={!addCity}
-                    />
-                  </Grid>
                   {addHospitalId && (
                     <Grid item xs={12}>
                       <FormControl fullWidth>
-                        <InputLabel>Hospital Type</InputLabel>
+                        <InputLabel>Mentor Relationship</InputLabel>
                         <Select
                           value={addIsWorkingWith ? 'working' : 'contact'}
                           onChange={(e) => setAddIsWorkingWith(e.target.value === 'working')}
-                          label="Hospital Type"
+                          label="Mentor Relationship"
                         >
-                          <MenuItem value="working">I am actively working with this hospital</MenuItem>
-                          <MenuItem value="contact">Just a contact/reference (not actively working with)</MenuItem>
+                          <MenuItem value="working">Actively working with this hospital</MenuItem>
+                          <MenuItem value="contact">Contact only (not currently working with)</MenuItem>
                         </Select>
                       </FormControl>
                       <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
-                        Select whether you are actively working with this hospital or just keeping it as a contact reference.
+                        Choose whether this is in your active mentorship roster or only kept as a contact reference.
                       </Typography>
                       <FormControlLabel
                         sx={{ mt: 1 }}
@@ -1780,18 +1782,18 @@ const MentorHospitalContactsPage: React.FC = () => {
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Hospital Type</InputLabel>
+                  <InputLabel>Mentor Relationship</InputLabel>
                   <Select
                     value={hospitalForm.isWorkingWith ? 'working' : 'contact'}
                     onChange={(e) => setHospitalForm(prev => ({ ...prev, isWorkingWith: e.target.value === 'working' }))}
-                    label="Hospital Type"
+                    label="Mentor Relationship"
                   >
-                    <MenuItem value="working">I am actively working with this hospital</MenuItem>
-                    <MenuItem value="contact">Just a contact/reference (not actively working with)</MenuItem>
+                    <MenuItem value="working">Actively working with this hospital</MenuItem>
+                    <MenuItem value="contact">Contact only (not currently working with)</MenuItem>
                   </Select>
                 </FormControl>
                 <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
-                  Select whether you are actively working with this hospital or just keeping it as a contact reference.
+                  Choose whether this is in your active mentorship roster or only kept as a contact reference.
                 </Typography>
               </Grid>
             </Grid>
@@ -1813,6 +1815,28 @@ const MentorHospitalContactsPage: React.FC = () => {
             <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
           </Alert>
           <Grid container spacing={2} sx={{ mt: 1 }}>
+            {!editingContact && (
+              <Grid item xs={12}>
+                <FormControl fullWidth required>
+                  <InputLabel>Hospital</InputLabel>
+                  <Select
+                    value={contactHospitalId}
+                    label="Hospital"
+                    onChange={(e) => setContactHospitalId(e.target.value)}
+                  >
+                    {hospitals.map((h) => (
+                      <MenuItem key={h.id} value={h.id}>
+                        {normalizeHospitalOrOrgName(h.name)}
+                        {h.city || h.state ? ` (${[h.city, h.state].filter(Boolean).join(', ')})` : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Pick the hospital this contact belongs to.
+                </Typography>
+              </Grid>
+            )}
             <Grid item xs={6}>
               <TextField
                 label="First Name"
