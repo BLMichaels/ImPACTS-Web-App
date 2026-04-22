@@ -132,6 +132,19 @@ const CONTACT_STATUSES = [
   'Already a PECC'
 ];
 
+const EMPTY_CONTACT_FORM = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  contactStatus: 'ED Employee (general contact)',
+  roleAtHospital: '',
+  isPrimaryContact: false,
+  isActivelyEngaged: false,
+  isWorkingWithMentor: true,
+  notes: ''
+};
+
 const MentorHospitalContactsPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { userProfile, effectiveUserId } = useUserProfile();
@@ -173,6 +186,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   const [editingHospital, setEditingHospital] = useState<Hospital | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [contactHospitalId, setContactHospitalId] = useState('');
+  const [addIncludeContact, setAddIncludeContact] = useState(false);
   
   // Snackbar
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
@@ -190,18 +204,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     isWorkingWith: true // Default to "working with"
   });
   
-  const [contactForm, setContactForm] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    contactStatus: 'ED Employee (general contact)',
-    roleAtHospital: '',
-    isPrimaryContact: false,
-    isActivelyEngaged: false,
-    isWorkingWithMentor: true,
-    notes: ''
-  });
+  const [contactForm, setContactForm] = useState(EMPTY_CONTACT_FORM);
   
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteCohortIds, setInviteCohortIds] = useState<string[]>([]);
@@ -217,7 +220,6 @@ const MentorHospitalContactsPage: React.FC = () => {
   const [addCity, setAddCity] = useState('');
   const [addHospitalId, setAddHospitalId] = useState('');
   const [addIsWorkingWith, setAddIsWorkingWith] = useState(true);
-  const [addContactAfterHospitalSave, setAddContactAfterHospitalSave] = useState(false);
   const [showAllHospitals, setShowAllHospitals] = useState(false); // Filter toggle
 
   // Hospital table filter/sort
@@ -434,44 +436,31 @@ const MentorHospitalContactsPage: React.FC = () => {
   }, [crmHospitals, addHospitalId]);
 
   // Hospital handlers
-  const handleAddHospital = () => {
+  const openUnifiedAddDialog = (opts?: { preselectedHospital?: Hospital | null; includeContact?: boolean }) => {
+    const preselectedHospital = opts?.preselectedHospital ?? null;
+    const includeContact = opts?.includeContact === true;
+    const preselectedId = preselectedHospital?.id ?? '';
+    const crmMatch = preselectedId
+      ? crmHospitals.find((h) => String(h.facility_id ?? h.id) === preselectedId || h.id === preselectedId) ?? null
+      : null;
     setEditingHospital(null);
-    setAddState('');
-    setAddCity('');
-    setAddHospitalId('');
-    setAddIsWorkingWith(true);
-    setAddContactAfterHospitalSave(false);
-    setHospitalForm({
-      name: '',
-      address: '',
-      city: '',
-      state: '',
-      phone: '',
-      traumaLevel: 'Non-Designated',
-      edSize: '',
-      notes: '',
-      isWorkingWith: true
-    });
+    setAddState(String(crmMatch?.state ?? '').trim());
+    setAddCity(String(crmMatch?.city ?? '').trim());
+    setAddHospitalId(preselectedId);
+    setAddIsWorkingWith(preselectedHospital?.isWorkingWith ?? true);
+    setAddIncludeContact(includeContact);
+    setContactHospitalId(preselectedId);
+    setContactForm(EMPTY_CONTACT_FORM);
     setHospitalDialogOpen(true);
+  };
+
+  const handleAddHospital = () => {
+    openUnifiedAddDialog({ includeContact: false });
   };
 
   const openAddContactForHospital = (hospital: Hospital) => {
     setSelectedHospital(hospital);
-    setEditingContact(null);
-    setContactHospitalId(hospital.id);
-    setContactForm({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      contactStatus: 'ED Employee (general contact)',
-      roleAtHospital: '',
-      isPrimaryContact: false,
-      isActivelyEngaged: false,
-      isWorkingWithMentor: true,
-      notes: ''
-    });
-    setContactDialogOpen(true);
+    openUnifiedAddDialog({ preselectedHospital: hospital, includeContact: true });
   };
 
   const handleEditHospital = (hospital: Hospital) => {
@@ -539,16 +528,29 @@ const MentorHospitalContactsPage: React.FC = () => {
       return;
     }
 
-    // Add flow: must select hospital from CRM (state → city → hospital)
+    // Unified add flow: select a CRM hospital, then optionally add contact details.
     const crmRow = selectedCrmHospital;
     if (!addHospitalId || !crmRow) {
-      setSnackbar({ open: true, message: 'Please select a state, city, and hospital from the list', severity: 'error' });
+      setSnackbar({ open: true, message: 'Please select a hospital from the CRM list', severity: 'error' });
       return;
     }
     const id = String(crmRow.facility_id ?? crmRow.id ?? '');
-    if (hospitals.some(h => h.id === id)) {
-      setSnackbar({ open: true, message: 'That hospital is already in your list', severity: 'error' });
-      return;
+    const existingHospital = hospitals.find((h) => h.id === id) ?? null;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const contactEmail = contactForm.email.trim();
+    if (addIncludeContact) {
+      if (!contactForm.firstName.trim() || !contactForm.lastName.trim()) {
+        setSnackbar({ open: true, message: 'Contact first and last name are required', severity: 'error' });
+        return;
+      }
+      if (!contactEmail) {
+        setSnackbar({ open: true, message: 'Contact email is required', severity: 'error' });
+        return;
+      }
+      if (!emailRegex.test(contactEmail)) {
+        setSnackbar({ open: true, message: 'Please enter a valid contact email address', severity: 'error' });
+        return;
+      }
     }
     const hospitalData: Hospital = {
       id,
@@ -563,15 +565,34 @@ const MentorHospitalContactsPage: React.FC = () => {
       notesLog: [],
       isWorkingWith: addIsWorkingWith
     };
-    const newHospitals = [...hospitals, hospitalData];
-    saveHospitals(newHospitals);
-    setHospitalDialogOpen(false);
-    setSelectedHospital(hospitalData);
-    linkHospitalToCRM(hospitalData);
-    if (addContactAfterHospitalSave) {
-      openAddContactForHospital(hospitalData);
+    let targetHospital = hospitalData;
+    let hospitalActionLabel = 'Hospital added';
+    if (existingHospital) {
+      targetHospital = { ...existingHospital, isWorkingWith: addIsWorkingWith };
+      const updatedHospitals = hospitals.map((h) => (h.id === existingHospital.id ? targetHospital : h));
+      saveHospitals(updatedHospitals);
+      hospitalActionLabel = existingHospital.isWorkingWith !== addIsWorkingWith ? 'Hospital relationship updated' : 'Using existing hospital';
+    } else {
+      const newHospitals = [...hospitals, hospitalData];
+      saveHospitals(newHospitals);
     }
-    setSnackbar({ open: true, message: 'Hospital added successfully', severity: 'success' });
+
+    if (addIncludeContact) {
+      const newContact: Contact = {
+        id: `contact_${Date.now()}`,
+        hospitalId: targetHospital.id,
+        ...contactForm,
+        email: contactEmail,
+        isWorkingWithMentor: contactForm.isWorkingWithMentor !== false
+      };
+      saveContacts([...contacts, newContact]);
+      hospitalActionLabel = existingHospital ? 'Hospital and contact saved' : 'Hospital added and contact saved';
+    }
+
+    setHospitalDialogOpen(false);
+    setSelectedHospital(targetHospital);
+    linkHospitalToCRM(targetHospital);
+    setSnackbar({ open: true, message: `${hospitalActionLabel} successfully`, severity: 'success' });
   };
 
   const handleHospitalRowClick = (hospital: Hospital) => {
@@ -759,25 +780,7 @@ const MentorHospitalContactsPage: React.FC = () => {
 
   // Contact handlers
   const handleAddContact = () => {
-    if (hospitals.length === 0) {
-      setSnackbar({ open: true, message: 'Add a hospital first, then add contacts', severity: 'error' });
-      return;
-    }
-    setEditingContact(null);
-    setContactHospitalId(selectedHospital?.id ?? hospitals[0].id);
-    setContactForm({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      contactStatus: 'ED Employee (general contact)',
-      roleAtHospital: '',
-      isPrimaryContact: false,
-      isActivelyEngaged: false,
-      isWorkingWithMentor: true,
-      notes: ''
-    });
-    setContactDialogOpen(true);
+    openUnifiedAddDialog({ preselectedHospital: selectedHospital, includeContact: true });
   };
 
   const handleEditContact = (contact: Contact) => {
@@ -1058,7 +1061,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Typography variant="h4">Hospital Contacts</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Button variant="outlined" startIcon={<PersonAddIcon />} onClick={handleAddContact} disabled={hospitals.length === 0}>
+          <Button variant="outlined" startIcon={<PersonAddIcon />} onClick={handleAddContact}>
             Add Contact
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddHospital}>
@@ -1067,7 +1070,7 @@ const MentorHospitalContactsPage: React.FC = () => {
         </Box>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Manage your hospital list and PECC contacts. Add a hospital from CRM, then add contacts directly from the top button or each hospital row.
+        Manage your hospital list and PECC contacts. Both buttons open one unified popup where you can add a hospital, a contact, or both together.
       </Typography>
 
       {/* List View - Table */}
@@ -1578,9 +1581,9 @@ const MentorHospitalContactsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Hospital Dialog */}
+      {/* Unified Add/Edit Hospital Dialog */}
       <Dialog open={hospitalDialogOpen} onClose={() => setHospitalDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingHospital ? 'Edit Hospital' : 'Add Hospital'}</DialogTitle>
+        <DialogTitle>{editingHospital ? 'Edit Hospital' : 'Add Hospital and Contact'}</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
             <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital details or notes.
@@ -1665,7 +1668,7 @@ const MentorHospitalContactsPage: React.FC = () => {
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
                 <Typography variant="body2" color="text.secondary">
-                  Select a hospital from CRM once. Use state/city only if you want to narrow the list first.
+                  Use this one popup to add a hospital, add a contact, or do both at once.
                 </Typography>
               </Grid>
               {crmLoading ? (
@@ -1762,17 +1765,81 @@ const MentorHospitalContactsPage: React.FC = () => {
                       <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
                         Choose whether this is in your active mentorship roster or only kept as a contact reference.
                       </Typography>
+                    </Grid>
+                  )}
+                  {addHospitalId && (
+                    <Grid item xs={12}>
+                      <Divider sx={{ my: 1 }} />
                       <FormControlLabel
-                        sx={{ mt: 1 }}
                         control={
                           <Checkbox
-                            checked={addContactAfterHospitalSave}
-                            onChange={(e) => setAddContactAfterHospitalSave(e.target.checked)}
+                            checked={addIncludeContact}
+                            onChange={(e) => setAddIncludeContact(e.target.checked)}
                           />
                         }
-                        label="Open Add Contact immediately after saving"
+                        label="Add a contact in this same popup"
                       />
                     </Grid>
+                  )}
+                  {addHospitalId && addIncludeContact && (
+                    <>
+                      <Grid item xs={6}>
+                        <TextField
+                          label="Contact First Name"
+                          value={contactForm.firstName}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, firstName: e.target.value }))}
+                          fullWidth
+                          required
+                        />
+                      </Grid>
+                      <Grid item xs={6}>
+                        <TextField
+                          label="Contact Last Name"
+                          value={contactForm.lastName}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, lastName: e.target.value }))}
+                          fullWidth
+                          required
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          label="Contact Email"
+                          type="email"
+                          value={contactForm.email}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, email: e.target.value }))}
+                          fullWidth
+                          required
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          label="Contact Phone"
+                          value={contactForm.phone}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
+                          fullWidth
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          label="Role at Hospital"
+                          value={contactForm.roleAtHospital}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, roleAtHospital: e.target.value }))}
+                          fullWidth
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={contactForm.isWorkingWithMentor !== false}
+                              onChange={(e) => setContactForm(prev => ({ ...prev, isWorkingWithMentor: e.target.checked }))}
+                              color="primary"
+                            />
+                          }
+                          label="Working with me (actively working with this mentor)"
+                        />
+                      </Grid>
+                    </>
                   )}
                 </>
               )}
@@ -1817,21 +1884,24 @@ const MentorHospitalContactsPage: React.FC = () => {
           <Grid container spacing={2} sx={{ mt: 1 }}>
             {!editingContact && (
               <Grid item xs={12}>
-                <FormControl fullWidth required>
-                  <InputLabel>Hospital</InputLabel>
-                  <Select
-                    value={contactHospitalId}
-                    label="Hospital"
-                    onChange={(e) => setContactHospitalId(e.target.value)}
-                  >
-                    {hospitals.map((h) => (
-                      <MenuItem key={h.id} value={h.id}>
-                        {normalizeHospitalOrOrgName(h.name)}
-                        {h.city || h.state ? ` (${[h.city, h.state].filter(Boolean).join(', ')})` : ''}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  options={hospitals}
+                  value={hospitals.find((h) => h.id === contactHospitalId) ?? null}
+                  onChange={(_, newValue) => setContactHospitalId(newValue?.id ?? '')}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  getOptionLabel={(option) =>
+                    `${normalizeHospitalOrOrgName(option.name)}${option.city || option.state ? ` (${[option.city, option.state].filter(Boolean).join(', ')})` : ''}`
+                  }
+                  noOptionsText="No hospitals found"
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Hospital *"
+                      placeholder="Search by hospital, city, or state"
+                      required
+                    />
+                  )}
+                />
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                   Pick the hospital this contact belongs to.
                 </Typography>
