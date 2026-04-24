@@ -23,7 +23,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  InputAdornment
+  InputAdornment,
+  Stack
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -865,6 +866,35 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                         {groupName}
                       </Typography>
                       <Chip size="small" sx={{ ml: 1 }} label={`${enabledCount}/${filteredPerms.length} enabled`} />
+                      <Stack direction="row" spacing={1} sx={{ ml: 'auto', mr: 1 }}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            filteredPerms.forEach((perm) => {
+                              setPermissionStates((prev) => ({ ...prev, [perm]: true }));
+                              void handleSaveUserPermission(perm, true);
+                            });
+                          }}
+                        >
+                          Enable all
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="inherit"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            filteredPerms.forEach((perm) => {
+                              setPermissionStates((prev) => ({ ...prev, [perm]: false }));
+                              void handleSaveUserPermission(perm, false);
+                            });
+                          }}
+                        >
+                          Disable all
+                        </Button>
+                      </Stack>
                     </AccordionSummary>
                     <AccordionDetails>
                       <Grid container spacing={1}>

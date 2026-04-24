@@ -19,7 +19,9 @@ import {
   AccordionDetails,
   TextField,
   InputAdornment,
-  Chip
+  Chip,
+  Stack,
+  Button
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, Search as SearchIcon } from '@mui/icons-material';
 import { supabase } from '../../supabase';
@@ -280,6 +282,35 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="caption" sx={{ fontWeight: 600 }}>{groupName}</Typography>
                 <Chip size="small" sx={{ ml: 1 }} label={`${enabledCount}/${filteredPerms.length} enabled`} />
+                <Stack direction="row" spacing={1} sx={{ ml: 'auto', mr: 1 }}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      filteredPerms.forEach((perm) => {
+                        setPermissionStates((prev) => ({ ...prev, [perm]: true }));
+                        void handleSavePermission(perm, true);
+                      });
+                    }}
+                  >
+                    Enable all
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    color="inherit"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      filteredPerms.forEach((perm) => {
+                        setPermissionStates((prev) => ({ ...prev, [perm]: false }));
+                        void handleSavePermission(perm, false);
+                      });
+                    }}
+                  >
+                    Disable all
+                  </Button>
+                </Stack>
               </AccordionSummary>
               <AccordionDetails>
                 <Grid container spacing={0.5}>
