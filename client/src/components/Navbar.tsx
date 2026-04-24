@@ -164,11 +164,14 @@ const Navbar: React.FC = () => {
           { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
         ];
         const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
-        // Once profile is loaded, empty visibleTabs means all PECC tabs are hidden by permissions.
-        // During early profile hydration, keep default tabs visible to avoid a blank nav flash.
+        // During profile hydration and any unexpected empty tab visibility state,
+        // keep core PECC tabs visible instead of leaving only Cohorts in nav.
         let filteredItems = profileLoading
           ? peccItems
           : peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''));
+        if (!profileLoading && filteredItems.length === 0) {
+          filteredItems = peccItems;
+        }
         // Cohorts is always available (not site-specific)
         filteredItems.push({ path: '/cohorts', label: 'Cohorts', icon: <CohortsIcon /> });
         return filteredItems;
