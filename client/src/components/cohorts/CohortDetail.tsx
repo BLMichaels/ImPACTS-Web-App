@@ -46,6 +46,7 @@ interface CohortDetailProps {
   canManage: boolean;
   canAnnounce: boolean;
   canInvite: boolean;
+  canManageResources?: boolean;
 }
 
 const CohortDetail: React.FC<CohortDetailProps> = ({
@@ -54,8 +55,10 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   onEdit,
   canManage,
   canAnnounce,
-  canInvite
+  canInvite,
+  canManageResources
 }) => {
+  const resourcesCanManage = canManageResources ?? canManage;
   const { userProfile, userRole } = useUserProfile();
   const isPECC = userRole === UserRole.PECC;
   const isMentor = userRole === UserRole.MENTOR;
@@ -429,7 +432,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
           <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <ResourcesIcon fontSize="small" /> Cohort Resources &amp; Education
           </Typography>
-          <CohortResourcesSection cohortId={cohort.id} canManage={canManage} loading={loading} />
+          <CohortResourcesSection cohortId={cohort.id} canManage={resourcesCanManage} loading={loading} />
           <Divider sx={{ my: 4 }} />
           <ScormPackagesSection title="Cohort learning modules" placement="cohort" cohortId={cohort.id} />
         </Box>
@@ -488,7 +491,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
               <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <ResourcesIcon fontSize="small" /> Cohort Resources &amp; Education
               </Typography>
-              <CohortResourcesSection cohortId={cohort.id} canManage={canManage} loading={loading} />
+              <CohortResourcesSection cohortId={cohort.id} canManage={resourcesCanManage} loading={loading} />
             </Box>
           ) : (tabValue === 1 && showMembersTab) ? (
             <MemberList
@@ -597,7 +600,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
           <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <ResourcesIcon fontSize="small" /> Cohort Resources &amp; Education
           </Typography>
-          <CohortResourcesSection cohortId={cohort.id} canManage={canManage} loading={loading} />
+          <CohortResourcesSection cohortId={cohort.id} canManage={resourcesCanManage} loading={loading} />
           <Divider sx={{ my: 4 }} />
           <ScormPackagesSection title="Cohort learning modules" placement="cohort" cohortId={cohort.id} />
         </>

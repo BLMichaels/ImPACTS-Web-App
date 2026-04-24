@@ -314,6 +314,7 @@ const ManagerCohortsPage: React.FC = () => {
           canManage={isCohortManager}
           canAnnounce={canPostAnnouncements}
           canInvite={isCohortManager}
+          canManageResources={true}
         />
 
         {/* Edit Dialog */}
