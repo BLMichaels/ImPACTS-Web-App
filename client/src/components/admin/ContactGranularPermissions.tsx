@@ -13,8 +13,15 @@ import {
   CircularProgress,
   Snackbar,
   Alert,
-  Divider
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  TextField,
+  InputAdornment,
+  Chip
 } from '@mui/material';
+import { ExpandMore as ExpandMoreIcon, Search as SearchIcon } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { PERMISSIONS, PECC_TAB_KEYS, UserPermission, ViewTab } from '../../types/database';
@@ -65,6 +72,7 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
   const [viewTabs, setViewTabs] = useState<ViewTab[]>([]);
   const [permissionStates, setPermissionStates] = useState<Record<string, boolean>>({});
   const [tabVisibilityStates, setTabVisibilityStates] = useState<Record<string, boolean>>({});
+  const [permissionFilter, setPermissionFilter] = useState('');
   const [snack, setSnack] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
   const role = normalizeUserRole(userRole as UserRole) as UserRole;
@@ -235,12 +243,47 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
       </Typography>
 
       <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Permission overrides</Typography>
-      <Grid container spacing={1} sx={{ mb: 2 }}>
-        {Object.entries(PERMISSION_GROUPS).map(([groupName, perms]) => (
-          <Grid item xs={12} key={groupName}>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{groupName}</Typography>
-            <Grid container spacing={0.5}>
-              {perms.map(perm => {
+      <TextField
+        size="small"
+        fullWidth
+        value={permissionFilter}
+        onChange={(e) => setPermissionFilter(e.target.value)}
+        placeholder="Filter permissions..."
+        sx={{ mb: 1.5, maxWidth: 420 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" color="action" />
+            </InputAdornment>
+          )
+        }}
+      />
+      <Box sx={{ mb: 2 }}>
+        {Object.entries(PERMISSION_GROUPS).map(([groupName, perms]) => {
+          const filteredPerms = perms.filter((perm) =>
+            !permissionFilter.trim() ||
+            formatPermissionLabel(perm).toLowerCase().includes(permissionFilter.trim().toLowerCase())
+          );
+          if (filteredPerms.length === 0) return null;
+          const enabledCount = filteredPerms.filter((perm) => {
+            const existing = userPermissions.find((p) => p.permission_key === perm);
+            const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, perm);
+            const isEnabled = hasLocalOverride
+              ? permissionStates[perm]
+              : existing
+                ? existing.is_enabled
+                : (isAdmin ? true : defaultPerms.includes(perm));
+            return isEnabled;
+          }).length;
+          return (
+            <Accordion key={groupName} disableGutters>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>{groupName}</Typography>
+                <Chip size="small" sx={{ ml: 1 }} label={`${enabledCount}/${filteredPerms.length} enabled`} />
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={0.5}>
+              {filteredPerms.map(perm => {
                 const existing = userPermissions.find(p => p.permission_key === perm);
                 const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, perm);
                 const isEnabled = hasLocalOverride
@@ -266,10 +309,12 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
                   </Grid>
                 );
               })}
-            </Grid>
-          </Grid>
-        ))}
-      </Grid>
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+          );
+        })}
+      </Box>
 
       <Divider sx={{ my: 2 }} />
 

@@ -19,11 +19,17 @@ import {
   Alert,
   CircularProgress,
   Snackbar,
-  IconButton
+  IconButton,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  InputAdornment
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  ExpandMore as ExpandMoreIcon,
+  Search as SearchIcon
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { crmContactTypeToListRole } from '../../utils/crmLabels';
@@ -84,6 +90,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   // Permission states (for editing)
   const [permissionStates, setPermissionStates] = useState<Record<string, boolean>>({});
   const [tabVisibilityStates, setTabVisibilityStates] = useState<Record<string, boolean>>({});
+  const [userPermissionFilter, setUserPermissionFilter] = useState('');
   const [snack, setSnack] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
   
   // Common tabs for cohorts/programs (tab_key -> display label)
@@ -820,12 +827,48 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                 </Alert>
               )}
               <Typography variant="subtitle1" gutterBottom>Permission overrides (fine-grained feature toggles)</Typography>
-              <Grid container spacing={2}>
-                {Object.entries(PERMISSION_GROUPS).map(([groupName, perms]) => (
-                  <Grid item xs={12} key={groupName}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>{groupName}</Typography>
-                    <Grid container spacing={1}>
-                      {perms.map(perm => {
+              <TextField
+                size="small"
+                fullWidth
+                value={userPermissionFilter}
+                onChange={(e) => setUserPermissionFilter(e.target.value)}
+                placeholder="Filter permissions by name..."
+                sx={{ mb: 2, maxWidth: 520 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  )
+                }}
+              />
+              {Object.entries(PERMISSION_GROUPS).map(([groupName, perms]) => {
+                const filteredPerms = perms.filter((perm) =>
+                  !userPermissionFilter.trim() ||
+                  formatPermissionLabel(perm).toLowerCase().includes(userPermissionFilter.trim().toLowerCase())
+                );
+                if (filteredPerms.length === 0) return null;
+                const enabledCount = filteredPerms.filter((perm) => {
+                  const existing = userPermissions.find((p) => p.permission_key === perm);
+                  const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, perm);
+                  const isEnabled = hasLocalOverride
+                    ? permissionStates[perm]
+                    : existing
+                      ? existing.is_enabled
+                      : (isAdmin ? true : selectedUserDefaultPerms.includes(perm));
+                  return isEnabled;
+                }).length;
+                return (
+                  <Accordion key={groupName} defaultExpanded={enabledCount > 0}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        {groupName}
+                      </Typography>
+                      <Chip size="small" sx={{ ml: 1 }} label={`${enabledCount}/${filteredPerms.length} enabled`} />
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Grid container spacing={1}>
+                      {filteredPerms.map(perm => {
                         const existing = userPermissions.find(p => p.permission_key === perm);
                         const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, perm);
                         const isEnabled = hasLocalOverride
@@ -859,10 +902,21 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                           </Grid>
                         );
                       })}
-                    </Grid>
-                  </Grid>
-                ))}
-              </Grid>
+                      </Grid>
+                    </AccordionDetails>
+                  </Accordion>
+                );
+              })}
+              {Object.values(PERMISSION_GROUPS).every((perms) =>
+                perms.every((perm) =>
+                  userPermissionFilter.trim() &&
+                  !formatPermissionLabel(perm).toLowerCase().includes(userPermissionFilter.trim().toLowerCase())
+                )
+              ) && userPermissionFilter.trim() && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  No permissions match this search.
+                </Alert>
+              )}
               {!isPendingUser(selectedUserId) && (
                 <>
                   <Typography variant="subtitle1" gutterBottom sx={{ mt: 3 }}>Primary program (navbar logo)</Typography>
