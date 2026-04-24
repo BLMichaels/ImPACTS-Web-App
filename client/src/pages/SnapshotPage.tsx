@@ -1075,9 +1075,20 @@ const SnapshotPage = () => {
             </Button>
           </Box>
         )}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Box
+          sx={{
+            mb: 4,
+            display: 'grid',
+            gap: 2,
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              md: 'repeat(5, minmax(0, 1fr))'
+            }
+          }}
+        >
           {prsSectionVisible && (
-            <Grid item xs={12} sm={6} md={3}>
+            <Box>
               <Card sx={metricCardSx}>
                 <CardContent sx={{ textAlign: 'center', p: 3 }}>
                   <Box sx={{ 
@@ -1104,10 +1115,10 @@ const SnapshotPage = () => {
                   )}
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           )}
           
-          <Grid item xs={12} sm={6} md={3}>
+          <Box>
             <Card sx={metricCardSx}>
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
                 <Box sx={{ 
@@ -1138,9 +1149,9 @@ const SnapshotPage = () => {
                 )}
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
           
-          <Grid item xs={12} sm={6} md={3}>
+          <Box>
             <Card sx={metricCardSx}>
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
                 <Box sx={{ 
@@ -1165,9 +1176,9 @@ const SnapshotPage = () => {
                 )}
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
           
-          <Grid item xs={12} sm={6} md={3}>
+          <Box>
             <Card sx={metricCardSx}>
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
                 <Box sx={{ 
@@ -1192,9 +1203,9 @@ const SnapshotPage = () => {
                 )}
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
 
-          <Grid item xs={12} sm={6} md={3}>
+          <Box>
             <Card sx={metricCardSx}>
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
                 <Box sx={{ 
@@ -1219,8 +1230,8 @@ const SnapshotPage = () => {
                 )}
               </CardContent>
             </Card>
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
 
       {/* Progress Overview: Checklist (overall + by stage in one card) and Gap Plans */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
