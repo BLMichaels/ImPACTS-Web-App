@@ -1377,7 +1377,7 @@ const SnapshotPage = () => {
                   <Typography variant="h6" gutterBottom>
                     Simulations by Type
                   </Typography>
-                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
+                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', justifyContent: 'center', gap: 2, px: 2 }}>
                     {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
                       <>
                         {Array.from(new Set(activities
@@ -1394,10 +1394,19 @@ const SnapshotPage = () => {
                             const barHeight = (percentage / 100) * maxHeight;
                             
                             return (
-                              <Box key={simType} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <Box
+                                key={simType}
+                                sx={{
+                                  flex: '1 1 140px',
+                                  maxWidth: 180,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center'
+                                }}
+                              >
                                 <Box
                                   sx={{
-                                    width: '100%',
+                                    width: '75%',
                                     height: barHeight,
                                     bgcolor: 'primary.main',
                                     borderRadius: '4px 4px 0 0',
@@ -1449,7 +1458,7 @@ const SnapshotPage = () => {
                   <Typography variant="h6" gutterBottom>
                     Simulation Participants
                   </Typography>
-                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', gap: 2, px: 2 }}>
+                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', justifyContent: 'center', gap: 2, px: 2 }}>
                     {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
                       <>
                         {Array.from(new Set(activities
@@ -1479,10 +1488,19 @@ const SnapshotPage = () => {
                             const barHeight = maxParticipants > 0 ? (totalParticipants / maxParticipants) * maxHeight : 0;
                             
                             return (
-                              <Box key={simType} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <Box
+                                key={simType}
+                                sx={{
+                                  flex: '1 1 140px',
+                                  maxWidth: 180,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center'
+                                }}
+                              >
                                 <Box
                                   sx={{
-                                    width: '100%',
+                                    width: '75%',
                                     height: barHeight,
                                     bgcolor: 'secondary.main',
                                     borderRadius: '4px 4px 0 0',
