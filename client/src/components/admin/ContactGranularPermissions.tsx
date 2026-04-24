@@ -20,6 +20,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { PERMISSIONS, PECC_TAB_KEYS, UserPermission, ViewTab } from '../../types/database';
 import { DEFAULT_ROLE_PERMISSIONS } from '../../types/database';
 import { UserRole, normalizeUserRole } from '../../types/database';
+import { formatPermissionLabel } from '../../utils/permissionsUi';
 
 const PERMISSION_GROUPS: Record<string, string[]> = {
   'Support Tool & Views': [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_AGGREGATED_DATA, PERMISSIONS.VIEW_SNAPSHOT, PERMISSIONS.EXPORT_DATA],
@@ -62,6 +63,8 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
   const [loading, setLoading] = useState(true);
   const [userPermissions, setUserPermissions] = useState<UserPermission[]>([]);
   const [viewTabs, setViewTabs] = useState<ViewTab[]>([]);
+  const [permissionStates, setPermissionStates] = useState<Record<string, boolean>>({});
+  const [tabVisibilityStates, setTabVisibilityStates] = useState<Record<string, boolean>>({});
   const [snack, setSnack] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
   const role = normalizeUserRole(userRole as UserRole) as UserRole;
@@ -108,6 +111,12 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
           granted_at: t.granted_at ?? new Date().toISOString(),
           updated_at: t.updated_at ?? new Date().toISOString()
         })) as ViewTab[]);
+        const permStates: Record<string, boolean> = {};
+        (permsRes.data || []).forEach((p: { permission_key: string; is_enabled: boolean }) => { permStates[p.permission_key] = p.is_enabled; });
+        setPermissionStates(permStates);
+        const tabStates: Record<string, boolean> = {};
+        (tabsRes.data || []).forEach((t: { tab_key: string; is_visible: boolean }) => { tabStates[t.tab_key] = t.is_visible; });
+        setTabVisibilityStates(tabStates);
       } else {
         const [permsRes, tabsRes] = await Promise.all([
           supabase.from('user_permissions').select('*').eq('user_id', userId),
@@ -122,6 +131,12 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
         }
         setUserPermissions((permsRes.data || []) as UserPermission[]);
         setViewTabs((tabsRes.data || []) as ViewTab[]);
+        const permStates: Record<string, boolean> = {};
+        (permsRes.data || []).forEach((p: { permission_key: string; is_enabled: boolean }) => { permStates[p.permission_key] = p.is_enabled; });
+        setPermissionStates(permStates);
+        const tabStates: Record<string, boolean> = {};
+        (tabsRes.data || []).forEach((t: { tab_key: string; is_visible: boolean }) => { tabStates[t.tab_key] = t.is_visible; });
+        setTabVisibilityStates(tabStates);
       }
     } catch (e) {
       console.error('ContactGranularPermissions load error:', e);
@@ -227,7 +242,12 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
             <Grid container spacing={0.5}>
               {perms.map(perm => {
                 const existing = userPermissions.find(p => p.permission_key === perm);
-                const isEnabled = existing ? existing.is_enabled : (isAdmin ? true : defaultPerms.includes(perm));
+                const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, perm);
+                const isEnabled = hasLocalOverride
+                  ? permissionStates[perm]
+                  : existing
+                    ? existing.is_enabled
+                    : (isAdmin ? true : defaultPerms.includes(perm));
                 return (
                   <Grid item xs={12} sm={6} md={4} key={perm}>
                     <FormControlLabel
@@ -235,10 +255,13 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
                         <Switch
                           size="small"
                           checked={isEnabled}
-                          onChange={(e) => handleSavePermission(perm, e.target.checked)}
+                          onChange={(e) => {
+                            setPermissionStates((prev) => ({ ...prev, [perm]: e.target.checked }));
+                            void handleSavePermission(perm, e.target.checked);
+                          }}
                         />
                       }
-                      label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      label={formatPermissionLabel(perm)}
                     />
                   </Grid>
                 );
@@ -254,7 +277,8 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
       <Grid container spacing={1}>
         {PECC_TAB_KEYS.map(tabKey => {
           const tabRow = viewTabs.find(t => t.tab_key === tabKey);
-          const isVisible = tabRow ? tabRow.is_visible : true;
+          const hasLocalOverride = Object.prototype.hasOwnProperty.call(tabVisibilityStates, tabKey);
+          const isVisible = hasLocalOverride ? tabVisibilityStates[tabKey] : (tabRow ? tabRow.is_visible : true);
           return (
             <Grid item xs={12} sm={6} md={4} key={tabKey}>
               <FormControlLabel
@@ -262,7 +286,10 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
                   <Switch
                     size="small"
                     checked={isVisible}
-                    onChange={(e) => handleSaveTabVisibility(tabKey, e.target.checked)}
+                    onChange={(e) => {
+                      setTabVisibilityStates((prev) => ({ ...prev, [tabKey]: e.target.checked }));
+                      void handleSaveTabVisibility(tabKey, e.target.checked);
+                    }}
                   />
                 }
                 label={TAB_LABELS[tabKey] || tabKey}

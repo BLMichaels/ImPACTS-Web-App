@@ -28,7 +28,8 @@ import {
 import { supabase } from '../../supabase';
 import { crmContactTypeToListRole } from '../../utils/crmLabels';
 import { useUserProfile } from '../../context/UserProfileContext';
-import { UserRole, normalizeUserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User } from '../../types/database';
+import { UserRole, normalizeUserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User, DEFAULT_ROLE_PERMISSIONS } from '../../types/database';
+import { formatPermissionLabel } from '../../utils/permissionsUi';
 
 const PENDING_USER_PREFIX = 'pending:';
 
@@ -810,6 +811,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           {selectedUserId && (() => {
             const selectedUser = users.find(u => u.id === selectedUserId);
             const isAdmin = selectedUser ? isEffectivelyAdmin(selectedUser) : false;
+            const selectedUserDefaultPerms = selectedUser ? (DEFAULT_ROLE_PERMISSIONS[selectedUser.role] || []) : [];
             return (
             <Box>
               {isAdmin && (
@@ -825,7 +827,12 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                     <Grid container spacing={1}>
                       {perms.map(perm => {
                         const existing = userPermissions.find(p => p.permission_key === perm);
-                        const isEnabled = existing ? existing.is_enabled : (isAdmin ? true : (permissionStates[perm] ?? false));
+                        const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, perm);
+                        const isEnabled = hasLocalOverride
+                          ? permissionStates[perm]
+                          : existing
+                            ? existing.is_enabled
+                            : (isAdmin ? true : selectedUserDefaultPerms.includes(perm));
                         return (
                           <Grid item xs={12} sm={6} md={4} key={perm}>
                             <FormControlLabel
@@ -834,11 +841,11 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                                   checked={isEnabled}
                                   onChange={(e) => {
                                     setPermissionStates(prev => ({ ...prev, [perm]: e.target.checked }));
-                                    handleSaveUserPermission(perm, e.target.checked);
+                                    void handleSaveUserPermission(perm, e.target.checked);
                                   }}
                                 />
                               }
-                              label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                              label={formatPermissionLabel(perm)}
                             />
                             {existing && (
                               <IconButton
@@ -950,14 +957,20 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               </FormControl>
               {selectedCohortUserId && (
                 <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Overrides for {getUserDisplayName(users.find(u => u.id === selectedCohortUserId)!)}</Typography>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                    Overrides for {(() => {
+                      const selected = users.find(u => u.id === selectedCohortUserId);
+                      return selected ? getUserDisplayName(selected) : 'selected user';
+                    })()}
+                  </Typography>
                   <Grid container spacing={1}>
                     {Object.values(PERMISSIONS).map(perm => {
                       const existing = cohortPermissions.find(
                         p => p.cohort_id === selectedCohortId && p.user_id === selectedCohortUserId && p.permission_key === perm
                       );
                       const key = `user_${selectedCohortUserId}_${perm}`;
-                      const isEnabled = existing ? existing.is_enabled : (permissionStates[key] ?? true);
+                      const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, key);
+                      const isEnabled = hasLocalOverride ? permissionStates[key] : (existing ? existing.is_enabled : true);
                       return (
                         <Grid item xs={12} sm={6} md={4} key={perm}>
                           <FormControlLabel
@@ -966,11 +979,11 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                                 checked={isEnabled}
                                 onChange={(e) => {
                                   setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
-                                  handleSaveCohortPermission(perm, e.target.checked, selectedCohortUserId, undefined);
+                                  void handleSaveCohortPermission(perm, e.target.checked, selectedCohortUserId, undefined);
                                 }}
                               />
                             }
-                            label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                            label={formatPermissionLabel(perm)}
                           />
                         </Grid>
                       );
@@ -988,7 +1001,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                       const existing = cohortPermissions.find(
                         p => p.cohort_id === selectedCohortId && p.role === role && p.permission_key === perm
                       );
-                      const isEnabled = existing ? existing.is_enabled : (permissionStates[key] ?? true);
+                      const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, key);
+                      const isEnabled = hasLocalOverride ? permissionStates[key] : (existing ? existing.is_enabled : true);
                       
                       return (
                         <FormControlLabel
@@ -998,11 +1012,11 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                               checked={isEnabled}
                               onChange={(e) => {
                                 setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
-                                handleSaveCohortPermission(perm, e.target.checked, undefined, role);
+                                void handleSaveCohortPermission(perm, e.target.checked, undefined, role);
                               }}
                             />
                           }
-                          label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          label={formatPermissionLabel(perm)}
                           sx={{ display: 'block', mb: 0.5 }}
                         />
                       );
@@ -1070,14 +1084,20 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               </FormControl>
               {selectedProgramUserId && (
                 <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Overrides for {getUserDisplayName(users.find(u => u.id === selectedProgramUserId)!)}</Typography>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                    Overrides for {(() => {
+                      const selected = users.find(u => u.id === selectedProgramUserId);
+                      return selected ? getUserDisplayName(selected) : 'selected user';
+                    })()}
+                  </Typography>
                   <Grid container spacing={1}>
                     {Object.values(PERMISSIONS).map(perm => {
                       const existing = programPermissions.find(
                         p => p.program_id === selectedProgramId && p.user_id === selectedProgramUserId && p.permission_key === perm
                       );
                       const key = `puser_${selectedProgramUserId}_${perm}`;
-                      const isEnabled = existing ? existing.is_enabled : (permissionStates[key] ?? true);
+                      const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, key);
+                      const isEnabled = hasLocalOverride ? permissionStates[key] : (existing ? existing.is_enabled : true);
                       return (
                         <Grid item xs={12} sm={6} md={4} key={perm}>
                           <FormControlLabel
@@ -1086,11 +1106,11 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                                 checked={isEnabled}
                                 onChange={(e) => {
                                   setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
-                                  handleSaveProgramPermission(perm, e.target.checked, selectedProgramUserId, undefined);
+                                  void handleSaveProgramPermission(perm, e.target.checked, selectedProgramUserId, undefined);
                                 }}
                               />
                             }
-                            label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                            label={formatPermissionLabel(perm)}
                           />
                         </Grid>
                       );
@@ -1108,7 +1128,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                       const existing = programPermissions.find(
                         p => p.program_id === selectedProgramId && p.role === role && p.permission_key === perm
                       );
-                      const isEnabled = existing ? existing.is_enabled : (permissionStates[key] ?? true);
+                      const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, key);
+                      const isEnabled = hasLocalOverride ? permissionStates[key] : (existing ? existing.is_enabled : true);
                       
                       return (
                         <FormControlLabel
@@ -1118,11 +1139,11 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                               checked={isEnabled}
                               onChange={(e) => {
                                 setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
-                                handleSaveProgramPermission(perm, e.target.checked, undefined, role);
+                                void handleSaveProgramPermission(perm, e.target.checked, undefined, role);
                               }}
                             />
                           }
-                          label={perm.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          label={formatPermissionLabel(perm)}
                           sx={{ display: 'block', mb: 0.5 }}
                         />
                       );
@@ -1221,7 +1242,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               <Grid container spacing={1}>
                 {PECC_TAB_KEYS.map(tab => {
                   const existing = viewTabs.find(t => t.tab_key === tab);
-                  const isVisible = existing ? existing.is_visible : (tabVisibilityStates[tab] ?? true);
+                  const hasLocalOverride = Object.prototype.hasOwnProperty.call(tabVisibilityStates, tab);
+                  const isVisible = hasLocalOverride ? tabVisibilityStates[tab] : (existing ? existing.is_visible : true);
                   return (
                     <Grid item xs={12} sm={6} md={4} key={tab}>
                       <FormControlLabel
@@ -1230,7 +1252,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                             checked={isVisible}
                             onChange={(e) => {
                               setTabVisibilityStates(prev => ({ ...prev, [tab]: e.target.checked }));
-                              handleSaveTabVisibility(tab, e.target.checked, 'user');
+                                void handleSaveTabVisibility(tab, e.target.checked, 'user');
                             }}
                           />
                         }
@@ -1245,7 +1267,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               <Grid container spacing={1}>
                 {TOOL_SECTION_TABS.map(({ key, label }) => {
                   const existing = viewTabs.find(t => t.tab_key === key);
-                  const isVisible = existing ? existing.is_visible : (tabVisibilityStates[key] ?? true);
+                  const hasLocalOverride = Object.prototype.hasOwnProperty.call(tabVisibilityStates, key);
+                  const isVisible = hasLocalOverride ? tabVisibilityStates[key] : (existing ? existing.is_visible : true);
                   return (
                     <Grid item xs={12} sm={6} md={4} key={key}>
                       <FormControlLabel
@@ -1254,7 +1277,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                             checked={isVisible}
                             onChange={(e) => {
                               setTabVisibilityStates(prev => ({ ...prev, [key]: e.target.checked }));
-                              handleSaveTabVisibility(key, e.target.checked, 'user');
+                                void handleSaveTabVisibility(key, e.target.checked, 'user');
                             }}
                           />
                         }
@@ -1278,7 +1301,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               <Grid container spacing={2}>
                 {COHORT_PROGRAM_TABS.map(({ key, label }) => {
                   const existing = viewTabs.find(t => t.tab_key === key);
-                  const isVisible = existing ? existing.is_visible : (tabVisibilityStates[key] ?? true);
+                  const hasLocalOverride = Object.prototype.hasOwnProperty.call(tabVisibilityStates, key);
+                  const isVisible = hasLocalOverride ? tabVisibilityStates[key] : (existing ? existing.is_visible : true);
                   const scope = selectedCohortId ? 'cohort' : 'program';
                   return (
                     <Grid item xs={12} sm={6} md={4} key={key}>
@@ -1288,7 +1312,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                             checked={isVisible}
                             onChange={(e) => {
                               setTabVisibilityStates(prev => ({ ...prev, [key]: e.target.checked }));
-                              handleSaveTabVisibility(key, e.target.checked, scope);
+                              void handleSaveTabVisibility(key, e.target.checked, scope);
                             }}
                           />
                         }
