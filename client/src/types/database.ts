@@ -598,7 +598,7 @@ export interface CohortDiscussionTopic {
   title: string;
   content: string | null;
   draft_content?: string | null;
-  attachments?: Array<{ name: string; url: string; type: string; size?: number }>;
+  attachments?: Array<{ name: string; url?: string; bucket?: string; path?: string; type: string; size?: number }>;
   created_by: string | null;
   is_locked: boolean;
   is_pinned: boolean;
@@ -627,7 +627,7 @@ export interface CohortDiscussionReply {
   topic_id: string;
   content: string;
   draft_content?: string | null;
-  attachments?: Array<{ name: string; url: string; type: string; size?: number }>;
+  attachments?: Array<{ name: string; url?: string; bucket?: string; path?: string; type: string; size?: number }>;
   created_by: string | null;
   edited_at: string | null;
   created_at: string;

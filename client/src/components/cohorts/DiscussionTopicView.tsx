@@ -33,6 +33,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import RichTextEditor, { sanitizeHtml, stripHtmlToText } from './RichTextEditor';
 
 const COHORT_ATTACHMENT_BUCKETS = ['cohort-discussion-attachments', 'cohort-attachments'] as const;
+const SIGNED_URL_TTL_SECONDS = 60 * 15;
 
 interface DiscussionTopicViewProps {
   topic: CohortDiscussionTopic;
@@ -57,7 +58,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   const [replies, setReplies] = useState<CohortDiscussionReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyHtml, setReplyHtml] = useState('');
-  const [replyAttachments, setReplyAttachments] = useState<Array<{ name: string; url: string; type: string; size?: number }>>([]);
+  const [replyAttachments, setReplyAttachments] = useState<Array<{ name: string; url?: string; bucket?: string; path?: string; type: string; size?: number }>>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; reply: CohortDiscussionReply } | null>(null);
@@ -84,8 +85,8 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
 
   const authorName = topic.author ? getUserDisplayName(topic.author as any) : 'Unknown';
 
-  const uploadFiles = async (files: File[]): Promise<Array<{ name: string; url: string; type: string; size?: number }>> => {
-    const results: Array<{ name: string; url: string; type: string; size?: number }> = [];
+  const uploadFiles = async (files: File[]): Promise<Array<{ name: string; url?: string; bucket?: string; path?: string; type: string; size?: number }>> => {
+    const results: Array<{ name: string; url?: string; bucket?: string; path?: string; type: string; size?: number }> = [];
     let lastUploadError: Error | null = null;
 
     for (const file of files) {
@@ -98,8 +99,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
           lastUploadError = error;
           continue;
         }
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-        results.push({ name: file.name, url: urlData.publicUrl, type: file.type, size: file.size });
+        results.push({ name: file.name, bucket, path, type: file.type, size: file.size });
         fileUploaded = true;
         break;
       }
@@ -125,6 +125,18 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
       setUploading(false);
     }
   };
+
+  const getAttachmentUrl = useCallback(async (attachment: { url?: string; bucket?: string; path?: string }) => {
+    if (attachment.url) return attachment.url;
+    if (!attachment.bucket || !attachment.path) return '';
+
+    const { data, error } = await supabase
+      .storage
+      .from(attachment.bucket)
+      .createSignedUrl(attachment.path, SIGNED_URL_TTL_SECONDS);
+    if (error || !data?.signedUrl) return '';
+    return data.signedUrl;
+  }, []);
 
   const handleSubmitReply = async () => {
     const trimmed = sanitizeHtml(replyHtml).trim();
@@ -349,11 +361,18 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
                           <Typography
                             key={i}
                             component="a"
-                            href={att.url}
+                            href={att.url || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
                             variant="caption"
                             sx={{ color: 'primary.main', textDecoration: 'underline', mr: 1 }}
+                            onClick={async (e) => {
+                              if (att.url) return;
+                              e.preventDefault();
+                              const signedUrl = await getAttachmentUrl(att);
+                              if (!signedUrl) return;
+                              window.open(signedUrl, '_blank', 'noopener,noreferrer');
+                            }}
                           >
                             {att.name}
                           </Typography>

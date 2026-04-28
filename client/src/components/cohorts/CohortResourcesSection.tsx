@@ -39,6 +39,7 @@ interface CohortResourcesSectionProps {
 
 const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/gi;
 const COHORT_ATTACHMENT_BUCKETS = ['cohort-discussion-attachments', 'cohort-attachments'] as const;
+const SIGNED_URL_TTL_SECONDS = 60 * 15;
 
 const linkifyResourceHtml = (html: string): string => {
   const safeHtml = sanitizeHtml(html);
@@ -108,6 +109,7 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; resource: CohortResource } | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [resolvedResourceHtml, setResolvedResourceHtml] = useState<Record<string, string>>({});
 
   const loadResources = useCallback(async () => {
     if (!cohortId) return;
@@ -128,6 +130,49 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
   useEffect(() => {
     loadResources();
   }, [loadResources]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveSignedUrls = async () => {
+      const entries = await Promise.all(resources.map(async (resource) => {
+        const html = linkifyResourceHtml(resource.content || '');
+        if (!html) return [resource.id, ''] as const;
+
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const anchors = Array.from(doc.querySelectorAll('a'));
+
+        await Promise.all(anchors.map(async (anchor) => {
+          const dataBucket = anchor.getAttribute('data-storage-bucket');
+          const dataPath = anchor.getAttribute('data-storage-path');
+          const storageHref = anchor.getAttribute('href') || '';
+          const storageMatch = storageHref.match(/^storage:\/\/([^/]+)\/(.+)$/i);
+          const bucket = dataBucket || storageMatch?.[1];
+          const path = dataPath || storageMatch?.[2];
+          if (!bucket || !path) return;
+
+          const { data, error: signedError } = await supabase.storage.from(bucket).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+          if (signedError || !data?.signedUrl) return;
+
+          anchor.setAttribute('href', data.signedUrl);
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noopener noreferrer');
+        }));
+
+        return [resource.id, doc.body.innerHTML.trim()] as const;
+      }));
+
+      if (!cancelled) {
+        setResolvedResourceHtml(Object.fromEntries(entries));
+      }
+    };
+
+    resolveSignedUrls();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resources]);
 
   const handleOpenDialog = (resource?: CohortResource) => {
     if (resource) {
@@ -152,8 +197,8 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
     setError(null);
   };
 
-  const uploadResourceFiles = async (files: File[]): Promise<Array<{ name: string; url: string }>> => {
-    const uploaded: Array<{ name: string; url: string }> = [];
+  const uploadResourceFiles = async (files: File[]): Promise<Array<{ name: string; bucket: string; path: string }>> => {
+    const uploaded: Array<{ name: string; bucket: string; path: string }> = [];
     let lastUploadError: Error | null = null;
 
     for (const file of files) {
@@ -168,8 +213,7 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
           continue;
         }
 
-        const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-        uploaded.push({ name: file.name, url: data.publicUrl });
+        uploaded.push({ name: file.name, bucket, path });
         fileUploaded = true;
         break;
       }
@@ -201,7 +245,7 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
         return;
       }
       const linksHtml = uploaded
-        .map((file) => `<div><a href="${file.url}" target="_blank" rel="noopener noreferrer">${file.name}</a></div>`)
+        .map((file) => `<div><a href="storage://${file.bucket}/${file.path}" data-storage-bucket="${file.bucket}" data-storage-path="${file.path}" target="_blank" rel="noopener noreferrer">${file.name}</a></div>`)
         .join('');
       setContent((prev) => `${prev}${prev ? '<br />' : ''}${linksHtml}`);
     } catch (err: any) {
@@ -345,7 +389,7 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
                       component="div"
                       variant="body1"
                       sx={{ whiteSpace: 'pre-wrap', '& a': { color: 'primary.main' } }}
-                      dangerouslySetInnerHTML={{ __html: linkifyResourceHtml(resource.content) }}
+                      dangerouslySetInnerHTML={{ __html: resolvedResourceHtml[resource.id] ?? linkifyResourceHtml(resource.content) }}
                     />
                   ) : null}
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>

@@ -13,7 +13,9 @@ import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 
 const ALLOWED_TAGS = ['b', 'i', 'em', 'strong', 'a', 'br', 'p', 'span', 'ul', 'ol', 'li'];
-const ALLOWED_ATTRS: Record<string, string[]> = { a: ['href', 'target', 'rel'] };
+const ALLOWED_ATTRS: Record<string, string[]> = {
+  a: ['href', 'target', 'rel', 'data-storage-bucket', 'data-storage-path']
+};
 
 export function sanitizeHtml(html: string): string {
   if (!html || typeof html !== 'string') return '';

@@ -1,10 +1,14 @@
 -- Fix missing Storage bucket for cohort discussion/resource file uploads
 -- Safe to run multiple times.
 
--- 1) Create the expected bucket (public so links open/download directly)
+-- 1) Create the expected bucket (private; links served via signed URLs)
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('cohort-discussion-attachments', 'cohort-discussion-attachments', true)
+VALUES ('cohort-discussion-attachments', 'cohort-discussion-attachments', false)
 ON CONFLICT (id) DO NOTHING;
+
+UPDATE storage.buckets
+SET public = false
+WHERE id = 'cohort-discussion-attachments';
 
 -- 2) Ensure authenticated users can upload attachments
 DROP POLICY IF EXISTS "cohort attachments upload authenticated" ON storage.objects;
@@ -16,11 +20,13 @@ WITH CHECK (
   bucket_id = 'cohort-discussion-attachments'
 );
 
--- 3) Ensure anyone can read attachments (bucket is public; policy keeps access explicit)
+-- 3) Allow authenticated users to read objects so signed URL generation can work
 DROP POLICY IF EXISTS "cohort attachments read public" ON storage.objects;
-CREATE POLICY "cohort attachments read public"
+DROP POLICY IF EXISTS "cohort attachments read authenticated" ON storage.objects;
+CREATE POLICY "cohort attachments read authenticated"
 ON storage.objects
 FOR SELECT
+TO authenticated
 USING (
   bucket_id = 'cohort-discussion-attachments'
 );
