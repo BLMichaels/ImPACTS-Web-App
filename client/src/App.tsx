@@ -18,6 +18,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFoundPage from './pages/NotFoundPage';
 import AccountPage from './pages/AccountPage';
+import LandingPage from './pages/LandingPage';
 
 // PECC Pages
 import DashboardPage from './pages/DashboardPage';
@@ -223,7 +224,8 @@ function App() {
                 <Box component="main" id="main-content" sx={{ flex: 1 }}>
                 <Routes>
                   {/* Public Routes */}
-                  <Route path="/" element={<RoleBasedRedirect />} />
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/app" element={<RoleBasedRedirect />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/invite/:code" element={<InvitationPage />} />
