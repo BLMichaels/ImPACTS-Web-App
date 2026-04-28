@@ -38,6 +38,7 @@ interface CohortResourcesSectionProps {
 }
 
 const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/gi;
+const COHORT_ATTACHMENT_BUCKETS = ['cohort-discussion-attachments', 'cohort-attachments'] as const;
 
 const linkifyResourceHtml = (html: string): string => {
   const safeHtml = sanitizeHtml(html);
@@ -152,19 +153,36 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
   };
 
   const uploadResourceFiles = async (files: File[]): Promise<Array<{ name: string; url: string }>> => {
-    const bucket = 'cohort-attachments';
     const uploaded: Array<{ name: string; url: string }> = [];
+    let lastUploadError: Error | null = null;
+
     for (const file of files) {
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
       const path = `${cohortId}/resources/${Date.now()}-${sanitizedName}`;
-      const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, { upsert: false });
-      if (uploadError) {
-        console.warn('Resource upload failed:', uploadError);
-        continue;
+      let fileUploaded = false;
+
+      for (const bucket of COHORT_ATTACHMENT_BUCKETS) {
+        const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, { upsert: false });
+        if (uploadError) {
+          lastUploadError = uploadError;
+          continue;
+        }
+
+        const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+        uploaded.push({ name: file.name, url: data.publicUrl });
+        fileUploaded = true;
+        break;
       }
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      uploaded.push({ name: file.name, url: data.publicUrl });
+
+      if (!fileUploaded) {
+        console.warn('Resource upload failed for all buckets:', lastUploadError);
+      }
     }
+
+    if (uploaded.length === 0 && lastUploadError) {
+      throw lastUploadError;
+    }
+
     return uploaded;
   };
 
@@ -186,6 +204,12 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
         .map((file) => `<div><a href="${file.url}" target="_blank" rel="noopener noreferrer">${file.name}</a></div>`)
         .join('');
       setContent((prev) => `${prev}${prev ? '<br />' : ''}${linksHtml}`);
+    } catch (err: any) {
+      if (err?.message?.toLowerCase().includes('bucket not found')) {
+        setError('Upload failed: storage bucket is missing. Expected "cohort-discussion-attachments".');
+      } else {
+        setError('Upload failed. Please try again.');
+      }
     } finally {
       setUploading(false);
     }

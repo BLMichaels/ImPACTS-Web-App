@@ -32,6 +32,8 @@ import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
 import RichTextEditor, { sanitizeHtml, stripHtmlToText } from './RichTextEditor';
 
+const COHORT_ATTACHMENT_BUCKETS = ['cohort-discussion-attachments', 'cohort-attachments'] as const;
+
 interface DiscussionTopicViewProps {
   topic: CohortDiscussionTopic;
   cohortId: string;
@@ -83,18 +85,34 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   const authorName = topic.author ? getUserDisplayName(topic.author as any) : 'Unknown';
 
   const uploadFiles = async (files: File[]): Promise<Array<{ name: string; url: string; type: string; size?: number }>> => {
-    const bucket = 'cohort-attachments';
     const results: Array<{ name: string; url: string; type: string; size?: number }> = [];
+    let lastUploadError: Error | null = null;
+
     for (const file of files) {
       const path = `${cohortId}/${topic.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: false });
-      if (error) {
-        console.warn('Upload failed:', error);
-        continue;
+      let fileUploaded = false;
+
+      for (const bucket of COHORT_ATTACHMENT_BUCKETS) {
+        const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: false });
+        if (error) {
+          lastUploadError = error;
+          continue;
+        }
+        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+        results.push({ name: file.name, url: urlData.publicUrl, type: file.type, size: file.size });
+        fileUploaded = true;
+        break;
       }
-      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-      results.push({ name: file.name, url: urlData.publicUrl, type: file.type, size: file.size });
+
+      if (!fileUploaded) {
+        console.warn('Upload failed for all buckets:', lastUploadError);
+      }
     }
+
+    if (results.length === 0 && lastUploadError) {
+      throw lastUploadError;
+    }
+
     return results;
   };
 
