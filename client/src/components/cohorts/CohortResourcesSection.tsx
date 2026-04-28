@@ -37,6 +37,58 @@ interface CohortResourcesSectionProps {
   loading?: boolean;
 }
 
+const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/gi;
+
+const linkifyResourceHtml = (html: string): string => {
+  const safeHtml = sanitizeHtml(html);
+  if (!safeHtml) return '';
+
+  const doc = new DOMParser().parseFromString(safeHtml, 'text/html');
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    if (node.parentElement?.tagName.toLowerCase() !== 'a' && /https?:\/\/[^\s<>"']+/i.test(node.textContent || '')) {
+      textNodes.push(node);
+    }
+  }
+
+  textNodes.forEach((textNode) => {
+    const originalText = textNode.textContent || '';
+    const frag = doc.createDocumentFragment();
+    let lastIndex = 0;
+    const matches = originalText.matchAll(URL_PATTERN);
+
+    for (const match of matches) {
+      const fullUrl = match[0];
+      const start = match.index ?? 0;
+      const end = start + fullUrl.length;
+
+      if (start > lastIndex) {
+        frag.appendChild(doc.createTextNode(originalText.slice(lastIndex, start)));
+      }
+
+      const link = doc.createElement('a');
+      link.href = fullUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = fullUrl;
+      frag.appendChild(link);
+
+      lastIndex = end;
+    }
+
+    if (lastIndex < originalText.length) {
+      frag.appendChild(doc.createTextNode(originalText.slice(lastIndex)));
+    }
+
+    textNode.replaceWith(frag);
+  });
+
+  return doc.body.innerHTML.trim();
+};
+
 const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
   cohortId,
   canManage,
@@ -227,7 +279,7 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
                       component="div"
                       variant="body1"
                       sx={{ whiteSpace: 'pre-wrap', '& a': { color: 'primary.main' } }}
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(resource.content) }}
+                      dangerouslySetInnerHTML={{ __html: linkifyResourceHtml(resource.content) }}
                     />
                   ) : null}
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
