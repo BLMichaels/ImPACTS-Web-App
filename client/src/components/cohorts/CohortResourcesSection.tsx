@@ -102,6 +102,7 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; resource: CohortResource } | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -146,7 +147,48 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
     setEditingResource(null);
     setTitle('');
     setContent('');
+    setUploading(false);
     setError(null);
+  };
+
+  const uploadResourceFiles = async (files: File[]): Promise<Array<{ name: string; url: string }>> => {
+    const bucket = 'cohort-attachments';
+    const uploaded: Array<{ name: string; url: string }> = [];
+    for (const file of files) {
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const path = `${cohortId}/resources/${Date.now()}-${sanitizedName}`;
+      const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, { upsert: false });
+      if (uploadError) {
+        console.warn('Resource upload failed:', uploadError);
+        continue;
+      }
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      uploaded.push({ name: file.name, url: data.publicUrl });
+    }
+    return uploaded;
+  };
+
+  const handleAttachResourceFiles = async (files: File[]) => {
+    const allowedFiles = files.filter((file) => file.type === 'application/pdf' || file.type.startsWith('image/'));
+    if (allowedFiles.length !== files.length) {
+      setError('Only PDF and image files are allowed.');
+    }
+    if (allowedFiles.length === 0) return;
+
+    setUploading(true);
+    try {
+      const uploaded = await uploadResourceFiles(allowedFiles);
+      if (uploaded.length === 0) {
+        setError('Upload failed. Please try again.');
+        return;
+      }
+      const linksHtml = uploaded
+        .map((file) => `<div><a href="${file.url}" target="_blank" rel="noopener noreferrer">${file.name}</a></div>`)
+        .join('');
+      setContent((prev) => `${prev}${prev ? '<br />' : ''}${linksHtml}`);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -331,12 +373,18 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
             onChange={setContent}
             placeholder="Links, instructions, or description..."
             minRows={4}
+            disabled={saving || uploading}
+            onAttach={handleAttachResourceFiles}
+            attachAccept="application/pdf,image/*"
           />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            Attach PDFs or images to add clickable download links.
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained" disabled={saving || !title.trim()}>
-            {saving ? <CircularProgress size={24} /> : editingResource ? 'Save' : 'Add'}
+          <Button onClick={handleCloseDialog} disabled={saving || uploading}>Cancel</Button>
+          <Button onClick={handleSave} variant="contained" disabled={saving || uploading || !title.trim()}>
+            {saving || uploading ? <CircularProgress size={24} /> : editingResource ? 'Save' : 'Add'}
           </Button>
         </DialogActions>
       </Dialog>

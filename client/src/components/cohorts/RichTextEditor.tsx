@@ -60,6 +60,7 @@ interface RichTextEditorProps {
   minRows?: number;
   disabled?: boolean;
   onAttach?: (files: File[]) => void;
+  attachAccept?: string;
   attachments?: Array<{ name: string; url: string; type: string; size?: number }>;
   onRemoveAttachment?: (index: number) => void;
 }
@@ -155,6 +156,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   minRows = 3,
   disabled,
   onAttach,
+  attachAccept,
   attachments = [],
   onRemoveAttachment
 }) => {
@@ -227,7 +229,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           <Tooltip title="Attach file">
             <IconButton component="label" disabled={disabled} aria-label="Attach file">
               <AttachFileIcon fontSize="small" />
-              <input type="file" hidden multiple onChange={handleFileChange} />
+              <input type="file" hidden multiple accept={attachAccept} onChange={handleFileChange} />
             </IconButton>
           </Tooltip>
         )}
