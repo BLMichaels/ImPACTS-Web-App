@@ -106,6 +106,7 @@ const AdminTeamTab: React.FC = () => {
     assignedHospitalSystems: [] as string[]
   });
   const [profileSaving, setProfileSaving] = useState(false);
+  const [sendingPasswordReset, setSendingPasswordReset] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     firstName: '',
@@ -635,14 +636,17 @@ const AdminTeamTab: React.FC = () => {
         <MenuItem onClick={async () => {
           if (!selectedUser?.email) return;
           setAnchorEl(null);
+          setSendingPasswordReset(true);
           try {
             await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined);
             setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
           } catch (err) {
             setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
+          } finally {
+            setSendingPasswordReset(false);
           }
         }}>
-          Reset Password
+          Send password reset email
         </MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)} sx={{ color: 'error.main' }}>Delete User</MenuItem>
       </Menu>
@@ -813,6 +817,24 @@ const AdminTeamTab: React.FC = () => {
                 </List>
                 <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)}>Edit user</Button>
+                  <Button
+                    variant="outlined"
+                    disabled={sendingPasswordReset || !selectedUser.email}
+                    onClick={async () => {
+                      if (!selectedUser.email) return;
+                      setSendingPasswordReset(true);
+                      try {
+                        await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined);
+                        setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
+                      } catch (err) {
+                        setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
+                      } finally {
+                        setSendingPasswordReset(false);
+                      }
+                    }}
+                  >
+                    {sendingPasswordReset ? 'Sending…' : 'Send reset email'}
+                  </Button>
                   <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
                     const result = await enterViewAsUser(selectedUser.id);
                     if (result.ok && result.dashboardPath) { setProfileDrawerOpen(false); navigate(result.dashboardPath); }
