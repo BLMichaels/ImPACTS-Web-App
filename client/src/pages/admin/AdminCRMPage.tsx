@@ -727,12 +727,23 @@ const AdminCRMPage: React.FC = () => {
         {
           const { data: usersData, error: usersError } = await supabase
             .from('users')
-            .select('id, email, first_name, last_name, phone, role, is_active, created_at');
+            .select('id, email, first_name, last_name, phone, role, is_active, created_at, hospital_facility_id, manager_id');
           if (usersError) {
             console.warn('CRM: could not load users for contacts:', usersError.message, usersError.code);
             setUsersLoadError(usersError.message || 'Could not load team members');
           } else setUsersLoadError(null);
-          const userRows = (usersData ?? []) as { id: string; email: string; first_name?: string; last_name?: string; phone?: string; role: string; is_active: boolean; created_at: string }[];
+          const userRows = (usersData ?? []) as {
+            id: string;
+            email: string;
+            first_name?: string;
+            last_name?: string;
+            phone?: string;
+            role: string;
+            is_active: boolean;
+            created_at: string;
+            hospital_facility_id?: string | null;
+            manager_id?: string | null;
+          }[];
           const roleToContactType: Record<string, ContactType> = {
             admin: 'staff',
             manager: 'manager',
@@ -741,6 +752,58 @@ const AdminCRMPage: React.FC = () => {
             hospital_system: 'system',
             hiring_group: 'hiring_group',
           };
+          const hospitalContacts = list.filter((c) => c.type === 'hospital');
+          const hospitalByRef = new Map<string, Contact>();
+          for (const h of hospitalContacts) {
+            if (h.hospitalId) hospitalByRef.set(h.hospitalId, h);
+            if (h.facilityId) hospitalByRef.set(h.facilityId, h);
+            hospitalByRef.set(h.id, h);
+          }
+          const mentorIds = userRows
+            .filter((u) => normalizeUserRole(u.role) === 'mentor')
+            .map((u) => u.id);
+          const mentorHospitalIdsByMentor = new Map<string, string[]>();
+          if (mentorIds.length > 0) {
+            const { data: mentorAssignments } = await supabase
+              .from('mentor_hospital_assignments')
+              .select('mentor_id, hospital_id')
+              .in('mentor_id', mentorIds)
+              .eq('is_active', true);
+            for (const row of (mentorAssignments ?? []) as { mentor_id: string; hospital_id: string }[]) {
+              const arr = mentorHospitalIdsByMentor.get(row.mentor_id) ?? [];
+              if (!arr.includes(row.hospital_id)) arr.push(row.hospital_id);
+              mentorHospitalIdsByMentor.set(row.mentor_id, arr);
+            }
+          }
+          const userHospitalMeta = new Map<string, { linkedHospitalIds: string[]; facilityId: string; organization: string }>();
+          for (const u of userRows) {
+            const normalizedRole = normalizeUserRole(u.role);
+            let linkedHospitalIds: string[] = [];
+            if (normalizedRole === 'pecc') {
+              const ref = (u.hospital_facility_id ?? '').trim();
+              if (ref) {
+                const h = hospitalByRef.get(ref);
+                if (h?.hospitalId) linkedHospitalIds = [h.hospitalId];
+              }
+            } else if (normalizedRole === 'mentor') {
+              linkedHospitalIds = mentorHospitalIdsByMentor.get(u.id) ?? [];
+            } else if (normalizedRole === 'manager') {
+              const managerMentorIds = userRows
+                .filter((x) => normalizeUserRole(x.role) === 'mentor' && x.manager_id === u.id)
+                .map((x) => x.id);
+              linkedHospitalIds = [...new Set(managerMentorIds.flatMap((mentorId) => mentorHospitalIdsByMentor.get(mentorId) ?? []))];
+            }
+            const primaryHospital = linkedHospitalIds
+              .map((hid) => hospitalByRef.get(hid))
+              .find(Boolean);
+            if (linkedHospitalIds.length > 0 || primaryHospital) {
+              userHospitalMeta.set(u.id, {
+                linkedHospitalIds,
+                facilityId: primaryHospital?.facilityId ?? '',
+                organization: primaryHospital?.organization ?? ''
+              });
+            }
+          }
           for (const u of userRows) {
             const role = normalizeUserRole(u.role);
             const roleKey = role as string;
@@ -749,19 +812,22 @@ const AdminCRMPage: React.FC = () => {
             if (list.some(c => c.email === u.email && c.crmCreated)) continue;
             const type = roleToContactType[roleKey];
             const displayName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || '—';
+            const hospitalMeta = userHospitalMeta.get(u.id);
             list.push({
               id: u.id,
               type: type,
               name: displayName,
               firstName: u.first_name ?? '',
               lastName: u.last_name ?? '',
-              organization: '',
+              organization: hospitalMeta?.organization ?? '',
               email: u.email ?? '',
               phone: u.phone ?? '',
               status: u.is_active ? 'Active' : 'Inactive',
               region: '',
               createdAt: u.created_at ? u.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
               notes: '',
+              facilityId: hospitalMeta?.facilityId || undefined,
+              linkedHospitalIds: hospitalMeta?.linkedHospitalIds ?? [],
               user_id: u.id,  // Mark as user-sourced
               crmCreated: false
             });
@@ -776,6 +842,7 @@ const AdminCRMPage: React.FC = () => {
             if (user) {
               const role = normalizeUserRole(user.role);
               const type = roleToContactType[role as string];
+              const hospitalMeta = userHospitalMeta.get(user.id);
               if (type) {
                 const userFirst = (user.first_name != null && String(user.first_name).trim() !== '') ? String(user.first_name).trim() : '';
                 const userLast = (user.last_name != null && String(user.last_name).trim() !== '') ? String(user.last_name).trim() : '';
@@ -788,7 +855,10 @@ const AdminCRMPage: React.FC = () => {
                   user_id: user.id,
                   name: displayName,
                   firstName: firstName || undefined,
-                  lastName: lastName || undefined
+                  lastName: lastName || undefined,
+                  organization: hospitalMeta?.organization ?? c.organization ?? '',
+                  facilityId: hospitalMeta?.facilityId || c.facilityId,
+                  linkedHospitalIds: hospitalMeta?.linkedHospitalIds ?? c.linkedHospitalIds
                 };
               }
             }
