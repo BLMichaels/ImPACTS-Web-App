@@ -63,7 +63,7 @@ interface RichTextEditorProps {
   disabled?: boolean;
   onAttach?: (files: File[]) => void;
   attachAccept?: string;
-  attachments?: Array<{ name: string; url: string; type: string; size?: number }>;
+  attachments?: Array<{ name: string; url?: string; bucket?: string; path?: string; type: string; size?: number }>;
   onRemoveAttachment?: (index: number) => void;
 }
 
