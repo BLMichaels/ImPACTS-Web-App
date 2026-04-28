@@ -62,6 +62,8 @@ interface ContactGranularPermissionsProps {
   isAdmin?: boolean;
 }
 
+type PermissionPresetKey = 'role-default' | 'pecc-standard' | 'mentor-standard' | 'manager-standard' | 'read-only';
+
 export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProps> = ({
   userId,
   contactName,
@@ -75,6 +77,8 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
   const [permissionStates, setPermissionStates] = useState<Record<string, boolean>>({});
   const [tabVisibilityStates, setTabVisibilityStates] = useState<Record<string, boolean>>({});
   const [permissionFilter, setPermissionFilter] = useState('');
+  const [showChangedOnly, setShowChangedOnly] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<PermissionPresetKey>('role-default');
   const [snack, setSnack] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
   const role = normalizeUserRole(userRole as UserRole) as UserRole;
@@ -226,6 +230,37 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
     }
   };
 
+  const savePermissionSilent = async (permissionKey: string, enabled: boolean): Promise<boolean> => {
+    if (isPending && email) {
+      const { error } = await supabase.from('pending_user_permissions').upsert({
+        email: email.trim().toLowerCase(),
+        permission_key: permissionKey,
+        is_enabled: enabled,
+        granted_by: userProfile?.id,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'email,permission_key' });
+      return !error;
+    }
+    const { error } = await supabase.from('user_permissions').upsert({
+      user_id: userId,
+      permission_key: permissionKey,
+      is_enabled: enabled,
+      granted_by: userProfile?.id,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id,permission_key' });
+    return !error;
+  };
+
+  const getPresetPermissions = (preset: PermissionPresetKey): Set<string> => {
+    const allPerms = Object.values(PERMISSIONS);
+    if (isAdmin) return new Set(allPerms);
+    if (preset === 'role-default') return new Set(defaultPerms);
+    if (preset === 'pecc-standard') return new Set(DEFAULT_ROLE_PERMISSIONS[UserRole.PECC] || []);
+    if (preset === 'mentor-standard') return new Set(DEFAULT_ROLE_PERMISSIONS[UserRole.MENTOR] || []);
+    if (preset === 'manager-standard') return new Set(DEFAULT_ROLE_PERMISSIONS[UserRole.MANAGER] || []);
+    return new Set(allPerms.filter((p) => p.startsWith('view_') || p === PERMISSIONS.EXPORT_DATA));
+  };
+
   if (loading) {
     return (
       <Box sx={{ py: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -245,6 +280,48 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
       </Typography>
 
       <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Permission overrides</Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, alignItems: 'center', mb: 1 }}>
+        <TextField
+          select
+          size="small"
+          label="Preset"
+          value={selectedPreset}
+          onChange={(e) => setSelectedPreset(e.target.value as PermissionPresetKey)}
+          sx={{ minWidth: 180 }}
+        >
+          <option value="role-default">Role default</option>
+          <option value="pecc-standard">PECC standard</option>
+          <option value="mentor-standard">Mentor standard</option>
+          <option value="manager-standard">Manager standard</option>
+          <option value="read-only">Read-only baseline</option>
+        </TextField>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={async () => {
+            const target = getPresetPermissions(selectedPreset);
+            const allPerms = Object.values(PERMISSIONS);
+            const nextStates = allPerms.reduce((acc, perm) => {
+              acc[perm] = target.has(perm);
+              return acc;
+            }, {} as Record<string, boolean>);
+            setPermissionStates((prev) => ({ ...prev, ...nextStates }));
+            const results = await Promise.all(allPerms.map((perm) => savePermissionSilent(perm, target.has(perm))));
+            if (results.every(Boolean)) {
+              setSnack({ message: 'Preset applied.', severity: 'success' });
+              await loadPermissions();
+            } else {
+              setSnack({ message: 'Preset partially applied. Please review toggles.', severity: 'error' });
+            }
+          }}
+        >
+          Apply preset
+        </Button>
+        <FormControlLabel
+          control={<Switch size="small" checked={showChangedOnly} onChange={(e) => setShowChangedOnly(e.target.checked)} />}
+          label="Show changed only"
+        />
+      </Box>
       <TextField
         size="small"
         fullWidth
@@ -263,8 +340,19 @@ export const ContactGranularPermissions: React.FC<ContactGranularPermissionsProp
       <Box sx={{ mb: 2 }}>
         {Object.entries(PERMISSION_GROUPS).map(([groupName, perms]) => {
           const filteredPerms = perms.filter((perm) =>
-            !permissionFilter.trim() ||
-            formatPermissionLabel(perm).toLowerCase().includes(permissionFilter.trim().toLowerCase())
+            (!permissionFilter.trim() ||
+              formatPermissionLabel(perm).toLowerCase().includes(permissionFilter.trim().toLowerCase())) &&
+            (!showChangedOnly || (() => {
+              const existing = userPermissions.find((p) => p.permission_key === perm);
+              const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, perm);
+              const effective = hasLocalOverride
+                ? permissionStates[perm]
+                : existing
+                  ? existing.is_enabled
+                  : (isAdmin ? true : defaultPerms.includes(perm));
+              const baseline = isAdmin ? true : defaultPerms.includes(perm);
+              return effective !== baseline;
+            })())
           );
           if (filteredPerms.length === 0) return null;
           const enabledCount = filteredPerms.filter((perm) => {

@@ -57,6 +57,8 @@ const TOOL_SECTION_TABS = [
   { key: 'snapshot_prs_section', label: 'Pediatric Readiness Scores (on Snapshot / Tool page)' }
 ];
 
+type PermissionPresetKey = 'role-default' | 'pecc-standard' | 'mentor-standard' | 'manager-standard' | 'read-only';
+
 interface GranularPermissionsManagerProps {
   mode: 'admin' | 'manager';  // Admin can manage all, Manager can only manage their team
   initialSelectedUserId?: string;  // When opening from CRM "Manage permissions", pre-select this user
@@ -92,6 +94,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   const [permissionStates, setPermissionStates] = useState<Record<string, boolean>>({});
   const [tabVisibilityStates, setTabVisibilityStates] = useState<Record<string, boolean>>({});
   const [userPermissionFilter, setUserPermissionFilter] = useState('');
+  const [showChangedOnly, setShowChangedOnly] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<PermissionPresetKey>('role-default');
   const [snack, setSnack] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
   
   // Common tabs for cohorts/programs (tab_key -> display label)
@@ -608,6 +612,46 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     }
   };
 
+  const saveUserPermissionSilent = async (permissionKey: string, enabled: boolean): Promise<boolean> => {
+    if (!selectedUserId) return false;
+    const pending = isPendingUser(selectedUserId);
+    const email = getEmailFromPendingId(selectedUserId);
+
+    if (pending && email) {
+      const { error } = await supabase
+        .from('pending_user_permissions')
+        .upsert({
+          email: email.trim().toLowerCase(),
+          permission_key: permissionKey,
+          is_enabled: enabled,
+          granted_by: userProfile?.id,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'email,permission_key' });
+      return !error;
+    }
+
+    const { error } = await supabase
+      .from('user_permissions')
+      .upsert({
+        user_id: selectedUserId,
+        permission_key: permissionKey,
+        is_enabled: enabled,
+        granted_by: userProfile?.id,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id,permission_key' });
+    return !error;
+  };
+
+  const getPresetPermissions = (preset: PermissionPresetKey, selectedRole: UserRole, userIsAdmin: boolean): Set<string> => {
+    const allPerms = Object.values(PERMISSIONS);
+    if (userIsAdmin) return new Set(allPerms);
+    if (preset === 'role-default') return new Set(DEFAULT_ROLE_PERMISSIONS[selectedRole] || []);
+    if (preset === 'pecc-standard') return new Set(DEFAULT_ROLE_PERMISSIONS[UserRole.PECC] || []);
+    if (preset === 'mentor-standard') return new Set(DEFAULT_ROLE_PERMISSIONS[UserRole.MENTOR] || []);
+    if (preset === 'manager-standard') return new Set(DEFAULT_ROLE_PERMISSIONS[UserRole.MANAGER] || []);
+    return new Set(allPerms.filter((p) => p.startsWith('view_') || p === PERMISSIONS.EXPORT_DATA));
+  };
+
   const handleSavePrimaryProgram = async (programId: string | null) => {
     if (!selectedUserId || isPendingUser(selectedUserId)) return;
     const { error } = await supabase
@@ -820,6 +864,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
             const selectedUser = users.find(u => u.id === selectedUserId);
             const isAdmin = selectedUser ? isEffectivelyAdmin(selectedUser) : false;
             const selectedUserDefaultPerms = selectedUser ? (DEFAULT_ROLE_PERMISSIONS[selectedUser.role] || []) : [];
+            const selectedUserRole = selectedUser?.role ?? UserRole.PECC;
             return (
             <Box>
               {isAdmin && (
@@ -828,6 +873,48 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                 </Alert>
               )}
               <Typography variant="subtitle1" gutterBottom>Permission overrides (fine-grained feature toggles)</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center', mb: 1.5 }}>
+                <FormControl size="small" sx={{ minWidth: 220 }}>
+                  <InputLabel>Apply preset</InputLabel>
+                  <Select
+                    value={selectedPreset}
+                    label="Apply preset"
+                    onChange={(e) => setSelectedPreset(e.target.value as PermissionPresetKey)}
+                  >
+                    <MenuItem value="role-default">Role default ({selectedUserRole})</MenuItem>
+                    <MenuItem value="pecc-standard">PECC standard</MenuItem>
+                    <MenuItem value="mentor-standard">Mentor standard</MenuItem>
+                    <MenuItem value="manager-standard">Manager standard</MenuItem>
+                    <MenuItem value="read-only">Read-only baseline</MenuItem>
+                  </Select>
+                </FormControl>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={async () => {
+                    const target = getPresetPermissions(selectedPreset, selectedUserRole, isAdmin);
+                    const allPerms = Object.values(PERMISSIONS);
+                    const nextStates = allPerms.reduce((acc, perm) => {
+                      acc[perm] = target.has(perm);
+                      return acc;
+                    }, {} as Record<string, boolean>);
+                    setPermissionStates((prev) => ({ ...prev, ...nextStates }));
+                    const results = await Promise.all(allPerms.map((perm) => saveUserPermissionSilent(perm, target.has(perm))));
+                    if (results.every(Boolean)) {
+                      setSnack({ message: 'Preset applied.', severity: 'success' });
+                      await loadPermissions();
+                    } else {
+                      setSnack({ message: 'Preset partially applied. Please review toggles.', severity: 'error' });
+                    }
+                  }}
+                >
+                  Apply preset
+                </Button>
+                <FormControlLabel
+                  control={<Switch size="small" checked={showChangedOnly} onChange={(e) => setShowChangedOnly(e.target.checked)} />}
+                  label="Show changed only"
+                />
+              </Box>
               <TextField
                 size="small"
                 fullWidth
@@ -845,8 +932,19 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
               />
               {Object.entries(PERMISSION_GROUPS).map(([groupName, perms]) => {
                 const filteredPerms = perms.filter((perm) =>
-                  !userPermissionFilter.trim() ||
-                  formatPermissionLabel(perm).toLowerCase().includes(userPermissionFilter.trim().toLowerCase())
+                  (!userPermissionFilter.trim() ||
+                    formatPermissionLabel(perm).toLowerCase().includes(userPermissionFilter.trim().toLowerCase())) &&
+                  (!showChangedOnly || (() => {
+                    const existing = userPermissions.find((p) => p.permission_key === perm);
+                    const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, perm);
+                    const effective = hasLocalOverride
+                      ? permissionStates[perm]
+                      : existing
+                        ? existing.is_enabled
+                        : (isAdmin ? true : selectedUserDefaultPerms.includes(perm));
+                    const baseline = isAdmin ? true : selectedUserDefaultPerms.includes(perm);
+                    return effective !== baseline;
+                  })())
                 );
                 if (filteredPerms.length === 0) return null;
                 const enabledCount = filteredPerms.filter((perm) => {
