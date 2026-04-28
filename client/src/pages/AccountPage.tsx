@@ -111,8 +111,22 @@ const AccountPage = () => {
   const getLastName = () => userProfile?.lastName || userProfile?.last_name || '';
   const getTier = () => userProfile?.tier || userProfile?.role || 'PECC';
   const getDepartment = () => userProfile?.department || '';
+  const viewedRole = ((userProfile?.role ?? userProfile?.tier ?? '') as string).toLowerCase();
+  const settingsRole: UserRole = isViewingAsUser
+    ? (viewedRole === UserRole.ADMIN
+        ? UserRole.ADMIN
+        : viewedRole === UserRole.MANAGER
+          ? UserRole.MANAGER
+          : viewedRole === UserRole.MENTOR
+            ? UserRole.MENTOR
+            : viewedRole === UserRole.HOSPITAL_SYSTEM
+              ? UserRole.HOSPITAL_SYSTEM
+              : viewedRole === UserRole.HIRING_GROUP
+                ? UserRole.HIRING_GROUP
+                : UserRole.PECC)
+    : actualRole;
   const profileHospitalId = (userProfile as { hospital_facility_id?: string | null })?.hospital_facility_id ?? null;
-  const canEditHospitalInfo = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER;
+  const canEditHospitalInfo = settingsRole === UserRole.ADMIN || settingsRole === UserRole.MANAGER;
 
   const [hospitalInfo, setHospitalInfo] = useState<HospitalInfo>({
     name: '',
@@ -705,7 +719,7 @@ const AccountPage = () => {
           </Grid>
 
           {/* Admin View As Section - Only for Admins */}
-          {actualRole === UserRole.ADMIN && (
+          {!isViewingAsUser && actualRole === UserRole.ADMIN && (
             <Grid item xs={12}>
               <Card sx={{ border: isViewingAs ? '2px solid' : 'none', borderColor: 'warning.main' }}>
                 <CardContent>
@@ -813,7 +827,7 @@ const AccountPage = () => {
           )}
 
           {/* Tier Display for Non-Admins */}
-          {actualRole !== UserRole.ADMIN && (
+          {settingsRole !== UserRole.ADMIN && (
             <Grid item xs={12}>
               <Card>
                 <CardContent>
