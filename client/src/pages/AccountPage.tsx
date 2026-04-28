@@ -818,6 +818,30 @@ const AccountPage = () => {
                   <Alert severity="info" sx={{ mb: 1 }}>
                     You are viewing the app as <strong>{viewAsUserProfile.first_name} {viewAsUserProfile.last_name}</strong>. Use the &quot;Exit&quot; button in the bar above to return to your account. To view as a different user, open them in <strong>CRM</strong> and click &quot;View as this user&quot; in their contact detail.
                   </Alert>
+                  {actualRole === UserRole.ADMIN && settingsRole === UserRole.MENTOR && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+                      <Button
+                        variant={viewAsRole === UserRole.PECC ? 'contained' : 'outlined'}
+                        color="primary"
+                        onClick={() => {
+                          setViewAsRole(UserRole.PECC);
+                          navigate('/dashboard');
+                        }}
+                      >
+                        View this mentor as PECC
+                      </Button>
+                      <Button
+                        variant={viewAsRole == null ? 'contained' : 'outlined'}
+                        color="inherit"
+                        onClick={() => {
+                          setViewAsRole(null);
+                          navigate('/mentor/dashboard');
+                        }}
+                      >
+                        Back to mentor view
+                      </Button>
+                    </Box>
+                  )}
                   <Button variant="outlined" color="primary" onClick={() => { clearViewAsUser(); setAlert({ type: 'success', message: 'Stopped viewing as another user.' }); }}>
                     Exit View As User
                   </Button>
@@ -857,7 +881,7 @@ const AccountPage = () => {
                     )}
                     {getTier() === 'mentor' && (
                       <Typography variant="body2" sx={{ mt: 1 }}>
-                        Access to Mentor Support Tool (PST), Activities, Hospital Contacts, Site Milestones, and Wages/Expenses.
+                        Access to Mentor workflows and assigned hospital support tools.
                       </Typography>
                     )}
                     {getTier() === 'manager' && (
