@@ -69,6 +69,9 @@ interface UserProfileContextType {
   primaryProgramLogoUrl: string | null;
   /** Program id used for navbar logo + dashboard branding (resolved primary or membership). */
   navbarBrandProgramId: string | null;
+  mentorWorkMode: 'mentor' | 'pecc';
+  canToggleMentorWorkMode: boolean;
+  setMentorWorkMode: (mode: 'mentor' | 'pecc') => void;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -101,6 +104,16 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [navbarBrandProgramId, setNavbarBrandProgramId] = useState<string | null>(null);
   const [permissionOverrides, setPermissionOverrides] = useState<Record<string, boolean>>({});
   const [viewAsPermissionOverrides, setViewAsPermissionOverrides] = useState<Record<string, boolean>>({});
+  const [mentorWorkMode, setMentorWorkModeState] = useState<'mentor' | 'pecc'>(() => {
+    try {
+      const saved = localStorage.getItem('impacts_mentor_work_mode');
+      return saved === 'pecc' ? 'pecc' : 'mentor';
+    } catch {
+      return 'mentor';
+    }
+  });
+  const [mentorPeccSiteId, setMentorPeccSiteId] = useState<string | null>(null);
+  const [mentorPeccVisibleTabs, setMentorPeccVisibleTabs] = useState<string[]>([...PECC_TAB_KEYS]);
   // Guard against out-of-order async updates when rapidly switching "view as" users.
   const latestViewAsUserIdRef = useRef<string | null>(null);
   const logoFetchSeqRef = useRef(0);
@@ -132,7 +145,18 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     setPermissionOverrides({});
     setSiteId(null);
     setVisibleTabs([...PECC_TAB_KEYS]);
+    setMentorPeccSiteId(null);
+    setMentorPeccVisibleTabs([...PECC_TAB_KEYS]);
   }, [currentUser]);
+
+  const setMentorWorkMode = useCallback((mode: 'mentor' | 'pecc') => {
+    setMentorWorkModeState(mode);
+    try {
+      localStorage.setItem('impacts_mentor_work_mode', mode);
+    } catch {
+      // Ignore localStorage failures
+    }
+  }, []);
 
   // Fetch user profile from Supabase
   const fetchUserProfile = useCallback(async () => {
@@ -145,6 +169,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       setVisibleTabs([]);
       setPrimaryProgramLogoUrl(null);
       setNavbarBrandProgramId(null);
+      setMentorPeccSiteId(null);
+      setMentorPeccVisibleTabs([...PECC_TAB_KEYS]);
       setIsLoading(false);
       return;
     }
@@ -240,51 +266,51 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           setPermissionOverrides({});
         }
 
-        // PECC: resolve site and visible tabs. Granular Permissions (view_tabs by user_id) is source of truth.
+        // Resolve PECC-style site and visible tabs. Granular Permissions (view_tabs by user_id) is source of truth.
         // Only PECC_TAB_KEYS are used for nav; other keys (e.g. snapshot_prs_section) do not affect visibleTabs. Empty array = all tabs hidden.
         let sid: string | null = null;
+        sid = prof.hospital_facility_id ?? null;
+        if (!sid) {
+          const { data: memberRow, error: memErr } = await supabase
+            .from('site_members')
+            .select('site_id')
+            .eq('user_id', currentUser.id)
+            .limit(1)
+            .maybeSingle();
+          if (!memErr && memberRow && typeof (memberRow as { site_id?: string }).site_id === 'string') {
+            sid = (memberRow as { site_id: string }).site_id;
+          }
+        }
+        const { data: userTabRows } = await supabase
+          .from('view_tabs')
+          .select('tab_key, is_visible')
+          .eq('user_id', currentUser.id);
+        let resolvedTabs: string[] = [...PECC_TAB_KEYS];
+        if (userTabRows && userTabRows.length > 0) {
+          const byKey = (userTabRows as { tab_key: string; is_visible: boolean }[]).reduce((acc, r) => {
+            acc[r.tab_key] = r.is_visible;
+            return acc;
+          }, {} as Record<string, boolean>);
+          resolvedTabs = PECC_TAB_KEYS.filter(tab => (byKey[tab] ?? true));
+        } else if (sid) {
+          const { data: tabRows, error: tabErr } = await supabase
+            .from('site_tab_visibility')
+            .select('tab_key, visible')
+            .eq('site_id', sid);
+          if (!tabErr && tabRows && tabRows.length > 0) {
+            resolvedTabs = (tabRows as { tab_key: string; visible: boolean }[])
+              .filter(r => r.visible).map(r => r.tab_key);
+          }
+        }
         if (normalizedRole === UserRole.PECC) {
-          sid = prof.hospital_facility_id ?? null;
-          if (!sid) {
-            const { data: memberRow, error: memErr } = await supabase
-              .from('site_members')
-              .select('site_id')
-              .eq('user_id', currentUser.id)
-              .limit(1)
-              .maybeSingle();
-            if (!memErr && memberRow && typeof (memberRow as { site_id?: string }).site_id === 'string') {
-              sid = (memberRow as { site_id: string }).site_id;
-            }
-          }
           setSiteId(sid);
-          const { data: userTabRows } = await supabase
-            .from('view_tabs')
-            .select('tab_key, is_visible')
-            .eq('user_id', currentUser.id);
-          if (userTabRows && userTabRows.length > 0) {
-            const byKey = (userTabRows as { tab_key: string; is_visible: boolean }[]).reduce((acc, r) => {
-              acc[r.tab_key] = r.is_visible;
-              return acc;
-            }, {} as Record<string, boolean>);
-            setVisibleTabs(PECC_TAB_KEYS.filter(tab => (byKey[tab] ?? true)));
-          } else if (sid) {
-            const { data: tabRows, error: tabErr } = await supabase
-              .from('site_tab_visibility')
-              .select('tab_key, visible')
-              .eq('site_id', sid);
-            if (!tabErr && tabRows && tabRows.length > 0) {
-              setVisibleTabs((tabRows as { tab_key: string; visible: boolean }[])
-                .filter(r => r.visible).map(r => r.tab_key));
-            } else {
-              setVisibleTabs([...PECC_TAB_KEYS]);
-            }
-          } else {
-            setVisibleTabs([...PECC_TAB_KEYS]);
-          }
+          setVisibleTabs(resolvedTabs);
         } else {
           setSiteId(null);
           setVisibleTabs([]);
         }
+        setMentorPeccSiteId(sid);
+        setMentorPeccVisibleTabs(resolvedTabs);
 
         // Load from user_data: gap plan reminders (Account page), wages_enabled (mentors, admin-controlled)
         const [gapPlanReminders, wagesEnabled] = await Promise.all([
@@ -580,17 +606,28 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   }, [effectiveLogoUserId, effectivePrimaryProgramId, viewAsUserId, viewAsUserProfile, userProfile?.primary_program_id]);
 
   const hasAdminAccess = userProfile?.role === UserRole.ADMIN || userProfile?.is_admin === true;
+  const canToggleMentorWorkMode = Boolean(
+    !viewAsUserId &&
+    !viewAsRole &&
+    userProfile?.role === UserRole.MENTOR &&
+    (mentorPeccSiteId || (userProfile as UserProfile & { has_hospital_assignments?: boolean })?.has_hospital_assignments)
+  );
   const canViewAsUser = hasAdminAccess || userProfile?.role === UserRole.MANAGER || userProfile?.role === UserRole.MENTOR;
   // When viewing as another user: if Admin View-As is active, use that role; otherwise show Admin if they have is_admin, else their normalized role.
+  const mentorEffectiveRole = canToggleMentorWorkMode && mentorWorkMode === 'pecc' ? UserRole.PECC : (userProfile?.role || UserRole.PECC);
   const effectiveRole = viewAsUserId && viewAsUserProfile
     ? (viewAsRole && hasAdminAccess
         ? viewAsRole
         : (viewAsUserProfile.is_admin === true ? UserRole.ADMIN : viewAsUserProfile.role))
     : (viewAsRole && hasAdminAccess)
       ? viewAsRole
-      : (hasAdminAccess ? UserRole.ADMIN : (userProfile?.role || UserRole.PECC));
-  const effectiveSiteId = viewAsUserId ? viewAsSiteId : siteId;
-  const effectiveVisibleTabs = viewAsUserId ? viewAsVisibleTabs : visibleTabs;
+      : (hasAdminAccess ? UserRole.ADMIN : mentorEffectiveRole);
+  const effectiveSiteId = viewAsUserId
+    ? viewAsSiteId
+    : (effectiveRole === UserRole.PECC ? (userProfile?.role === UserRole.PECC ? siteId : mentorPeccSiteId) : siteId);
+  const effectiveVisibleTabs = viewAsUserId
+    ? viewAsVisibleTabs
+    : (effectiveRole === UserRole.PECC ? (userProfile?.role === UserRole.PECC ? visibleTabs : mentorPeccVisibleTabs) : visibleTabs);
   const effectiveUserId = viewAsUserId ?? (currentUser?.uid ?? (currentUser as { id?: string })?.id) ?? undefined;
   const isViewingAsUser = viewAsUserId != null && canViewAsUser;
 
@@ -617,7 +654,10 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     siteId: effectiveSiteId,
     visibleTabs: effectiveVisibleTabs,
     primaryProgramLogoUrl,
-    navbarBrandProgramId
+    navbarBrandProgramId,
+    mentorWorkMode,
+    canToggleMentorWorkMode,
+    setMentorWorkMode
   };
 
   return (

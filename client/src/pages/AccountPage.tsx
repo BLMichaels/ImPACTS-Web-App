@@ -98,7 +98,10 @@ const AccountPage = () => {
     isViewingAs,
     viewAsUserProfile,
     clearViewAsUser,
-    isViewingAsUser
+    isViewingAsUser,
+    mentorWorkMode,
+    canToggleMentorWorkMode,
+    setMentorWorkMode
   } = useUserProfile();
   const navigate = useNavigate();
 
@@ -849,6 +852,37 @@ const AccountPage = () => {
                       </Typography>
                     )}
                   </Alert>
+                  {canToggleMentorWorkMode && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                        Work mode
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                        Switch between Mentor and PECC modes. PECC mode uses the same hospital continuity data model, so your updates stay with the hospital for handoff continuity.
+                      </Typography>
+                      <FormControl fullWidth size="small" sx={{ maxWidth: 320 }}>
+                        <InputLabel>Active mode</InputLabel>
+                        <Select
+                          value={mentorWorkMode}
+                          label="Active mode"
+                          onChange={(e) => {
+                            const next = e.target.value as 'mentor' | 'pecc';
+                            setMentorWorkMode(next);
+                            setAlert({
+                              type: 'success',
+                              message: next === 'pecc'
+                                ? 'Switched to PECC mode. Navigate to Support Tool to continue hospital-level work.'
+                                : 'Switched to Mentor mode.'
+                            });
+                            setTimeout(() => setAlert(null), 3500);
+                          }}
+                        >
+                          <MenuItem value="mentor">Mentor</MenuItem>
+                          <MenuItem value="pecc">PECC</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  )}
                 </CardContent>
               </Card>
             </Grid>

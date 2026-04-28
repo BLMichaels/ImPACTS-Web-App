@@ -54,7 +54,7 @@ interface NavItem {
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser, isLoading: profileLoading } = useUserProfile();
+  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser, isLoading: profileLoading, mentorWorkMode, canToggleMentorWorkMode, setMentorWorkMode } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const { trackLinkClick } = useUsageAnalytics();
@@ -100,6 +100,15 @@ const Navbar: React.FC = () => {
     trackLinkClick(path, item?.label ?? path, 'navbar');
     navigate(path);
     setMobileMenuOpen(false);
+  };
+
+  const handleToggleMentorWorkMode = () => {
+    if (!canToggleMentorWorkMode) return;
+    const nextMode = mentorWorkMode === 'mentor' ? 'pecc' : 'mentor';
+    setMentorWorkMode(nextMode);
+    const nextPath = nextMode === 'pecc' ? '/dashboard' : '/mentor/dashboard';
+    trackLinkClick(nextPath, `Switch to ${nextMode.toUpperCase()} mode`, 'navbar-role-chip');
+    navigate(nextPath);
   };
 
   // Navigation items based on user role
@@ -216,8 +225,10 @@ const Navbar: React.FC = () => {
             ImPACTS
           </Typography>
           <Chip 
-label={getRoleLabel(userRole)}
+label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleLabel(userRole)}
             size="small"
+            onClick={canToggleMentorWorkMode ? handleToggleMentorWorkMode : undefined}
+            clickable={canToggleMentorWorkMode}
             sx={{ bgcolor: getRoleColorHex(userRole), color: 'white' }}
           />
         </Box>
@@ -471,13 +482,16 @@ label={getRoleLabel(userRole)}
           }}>
             {/* Role Badge */}
             <Chip 
-              label={getRoleLabel(userRole)} 
+              label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleLabel(userRole)} 
               size="small"
+              onClick={canToggleMentorWorkMode ? handleToggleMentorWorkMode : undefined}
+              clickable={canToggleMentorWorkMode}
               sx={{ 
                 bgcolor: getRoleColorHex(userRole), 
                 color: 'white',
                 fontWeight: 'bold',
-                fontSize: '0.7rem'
+                fontSize: '0.7rem',
+                ...(canToggleMentorWorkMode ? { cursor: 'pointer' } : {})
               }}
             />
 
