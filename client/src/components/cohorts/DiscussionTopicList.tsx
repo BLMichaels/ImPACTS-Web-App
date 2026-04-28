@@ -123,6 +123,9 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
 
   const handleMenuClose = () => setMenuAnchor(null);
 
+  const canDeleteTopic = (topic: CohortDiscussionTopic): boolean =>
+    canManage || (topic.created_by === currentUser?.id && (topic.reply_count ?? 0) === 0);
+
   const handleTogglePin = async () => {
     const t = menuAnchor?.topic;
     if (!t || !onTopicUpdated) return;
@@ -140,7 +143,7 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
   };
 
   const handleDeleteClick = () => {
-    if (menuAnchor?.topic) {
+    if (menuAnchor?.topic && canDeleteTopic(menuAnchor.topic)) {
       setDeletingId(menuAnchor.topic.id);
       setDeleteConfirmOpen(true);
     }
@@ -151,6 +154,19 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
     if (!deletingId) return;
     setDeleteError(null);
     try {
+      const selectedTopic = topics.find((t) => t.id === deletingId);
+      if (!selectedTopic) throw new Error('Topic not found.');
+      if (!canDeleteTopic(selectedTopic)) {
+        throw new Error('You can only delete your own topic when it has no replies.');
+      }
+      const { count: replyCount, error: countErr } = await supabase
+        .from('cohort_discussion_replies')
+        .select('id', { count: 'exact', head: true })
+        .eq('topic_id', deletingId);
+      if (countErr) throw countErr;
+      if ((replyCount ?? 0) > 0) {
+        throw new Error('This topic already has replies and cannot be deleted.');
+      }
       const { error: err } = await supabase
         .from('cohort_discussion_topics')
         .delete()
@@ -229,7 +245,7 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
                     {topic.last_reply_at && ` • Last reply ${format(new Date(topic.last_reply_at), 'MMM d')}`}
                   </Typography>
                 </Box>
-                {canManage && (
+                {(canManage || canDeleteTopic(topic)) && (
                   <IconButton size="small" onClick={(e) => handleMenuOpen(e, topic)} aria-label={`Actions for ${topic.title}`}>
                     <MoreIcon />
                   </IconButton>
@@ -247,10 +263,12 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
             <ListItemText>{menuAnchor?.topic?.is_pinned ? 'Unpin' : 'Pin'}</ListItemText>
           </MenuItem>
         )}
-        <MenuItem onClick={handleDeleteClick} sx={{ color: 'error.main' }}>
-          <ListItemIcon><DeleteIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Delete</ListItemText>
-        </MenuItem>
+        {menuAnchor?.topic && canDeleteTopic(menuAnchor.topic) && (
+          <MenuItem onClick={handleDeleteClick} sx={{ color: 'error.main' }}>
+            <ListItemIcon><DeleteIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Delete</ListItemText>
+          </MenuItem>
+        )}
       </Menu>
 
       <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>

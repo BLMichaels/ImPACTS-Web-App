@@ -175,6 +175,17 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
     try {
       // Check if deleting the topic itself or a reply
       if (deletingId === topic.id) {
+        if (!canDeleteTopic) {
+          throw new Error('You can only delete your own topic when it has no replies.');
+        }
+        const { count: replyCount, error: countErr } = await supabase
+          .from('cohort_discussion_replies')
+          .select('id', { count: 'exact', head: true })
+          .eq('topic_id', topic.id);
+        if (countErr) throw countErr;
+        if ((replyCount ?? 0) > 0) {
+          throw new Error('This topic already has replies and cannot be deleted.');
+        }
         // Delete the entire topic (cascades to replies)
         const { error } = await supabase
           .from('cohort_discussion_topics')
@@ -226,6 +237,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
     // Can delete own replies or if canModerate (admins/managers)
     return reply.created_by === userProfile?.id || canModerate;
   };
+  const canDeleteTopic = canModerate || (topic.created_by === userProfile?.id && (topic.reply_count ?? 0) === 0);
 
   return (
     <Box>
@@ -262,7 +274,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
               );
             })()}
           </Box>
-          {canModerate && (
+          {canDeleteTopic && (
             <IconButton 
               size="small" 
               onClick={(e) => {
