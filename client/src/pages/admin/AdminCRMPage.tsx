@@ -200,13 +200,14 @@ function getLinkedSystemIdForHospital(hospitalContact: Contact, allContacts: Con
 /** Tab index for Team (user management) - when selected, show AdminTeamTab instead of contacts. */
 const TEAM_TAB_INDEX = 8;
 
-const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs' | 'linkedTo'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
+const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs' | 'linkedTo' | 'assignedHospitals'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
   { id: 'lastName', label: 'Last Name', sortable: true, defaultVisible: true },
   { id: 'name', label: 'Name', sortable: true, defaultVisible: false },
   { id: 'type', label: 'Type', sortable: true, defaultVisible: true },
   { id: 'facilityId', label: 'Facility ID', sortable: true, defaultVisible: true },
   { id: 'organization', label: 'Organization', sortable: true, defaultVisible: true },
+  { id: 'assignedHospitals', label: 'Assigned Hospitals', sortable: false, defaultVisible: true },
   { id: 'hospitalSystem', label: 'Hospital System', sortable: true, defaultVisible: false },
   { id: 'programs', label: 'Program(s)', sortable: false, defaultVisible: true },
   { id: 'linkedTo', label: 'Linked To', sortable: false, defaultVisible: true },
@@ -226,6 +227,7 @@ const EXPORT_COLUMNS: { id: string; label: string }[] = [
   { id: 'type', label: 'Type' },
   { id: 'facilityId', label: 'Facility ID' },
   { id: 'organization', label: 'Organization' },
+  { id: 'assignedHospitals', label: 'Assigned Hospitals' },
   { id: 'hospitalSystem', label: 'Hospital System' },
   { id: 'programs', label: 'Program(s)' },
   { id: 'email', label: 'Email' },
@@ -1674,6 +1676,22 @@ const AdminCRMPage: React.FC = () => {
       case 'type': return <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[contact.type], color: 'white' }} />;
       case 'facilityId': return contact.facilityId ?? '—';
       case 'organization': return contact.organization || '—';
+      case 'assignedHospitals': {
+        if (!isPersonType(contact.type)) return '—';
+        const names = [...new Set(
+          (contact.linkedHospitalIds ?? [])
+            .map((id) => contacts.find((c) => c.type === 'hospital' && (c.hospitalId === id || c.id === id))?.name)
+            .filter(Boolean) as string[]
+        )];
+        if (names.length === 0) return '—';
+        return (
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+            {names.map((name) => (
+              <Chip key={name} label={name} size="small" variant="outlined" />
+            ))}
+          </Box>
+        );
+      }
       case 'hospitalSystem': return contact.hospitalSystem ?? '—';
       case 'programs': return (contact.programs ?? []).length ? (contact.programs ?? []).join(', ') : '—';
       case 'linkedTo': {
