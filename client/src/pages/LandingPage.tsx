@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Avatar,
   Box,
   Button,
   Card,
@@ -108,29 +107,18 @@ const LandingPage: React.FC = () => {
       />
 
       <Container maxWidth="xl" sx={{ py: { xs: 5, md: 9 }, position: 'relative', zIndex: 1 }}>
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-          sx={{ mb: { xs: 5, md: 8 } }}
-        >
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Avatar src="/impacts-logo.png" alt="ImPACTS logo" sx={{ width: 38, height: 38 }} />
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: 0.3 }}>
-              ImPACTS PECC Support Tool
-            </Typography>
-          </Stack>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: { xs: 4, md: 7 } }}>
           <Button variant="outlined" onClick={() => navigate('/login')}>
             Sign in
           </Button>
-        </Stack>
+        </Box>
 
         <Grid container spacing={{ xs: 5, md: 6 }} alignItems="center" sx={{ mb: { xs: 7, md: 10 } }}>
           <Grid item xs={12} md={6}>
             <Stack spacing={2.5}>
               <Stack direction="row" spacing={1} flexWrap="wrap">
-                <Chip label="Hospital continuity first" color="primary" variant="outlined" />
-                <Chip label="PECC + Mentor + Manager aligned" variant="outlined" />
+                <Chip label="Pediatric emergency readiness platform" color="primary" variant="outlined" />
+                <Chip label="Designed for teams across roles" variant="outlined" />
               </Stack>
               <Typography
                 variant="h1"
@@ -142,15 +130,15 @@ const LandingPage: React.FC = () => {
                   maxWidth: 760
                 }}
               >
-                A modern command center for pediatric emergency readiness
+                A modern workspace for pediatric emergency readiness improvement
               </Typography>
               <Typography
                 variant="h6"
                 color="text.secondary"
                 sx={{ maxWidth: 660, fontWeight: 400, lineHeight: 1.5, fontSize: { xs: '1rem', md: '1.15rem' } }}
               >
-                Bring milestones, simulation, activities, and cross-role coordination into one clean workflow so
-                hospitals can sustain progress through staffing changes and leadership transitions.
+                Bring milestones, simulation, activities, and collaboration into one shared workflow that supports
+                PECCs, mentors, managers, hospital leaders, and partner teams working toward safer pediatric care.
               </Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 1 }}>
                 <Button size="large" variant="contained" onClick={() => navigate('/login')} sx={{ px: 3.5 }}>
@@ -163,15 +151,15 @@ const LandingPage: React.FC = () => {
               <Stack direction="row" spacing={2} flexWrap="wrap" sx={{ pt: 1 }}>
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <AutoGraphIcon fontSize="small" color="primary" />
-                  <Typography variant="body2" color="text.secondary">Actionable readiness insights</Typography>
+                  <Typography variant="body2" color="text.secondary">Progress tracking and insight visibility</Typography>
                 </Stack>
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <PeopleAltIcon fontSize="small" color="primary" />
-                  <Typography variant="body2" color="text.secondary">Role-based collaboration</Typography>
+                  <Typography variant="body2" color="text.secondary">Cross-role collaboration</Typography>
                 </Stack>
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <LocalHospitalIcon fontSize="small" color="primary" />
-                  <Typography variant="body2" color="text.secondary">Hospital-owned continuity data</Typography>
+                  <Typography variant="body2" color="text.secondary">Hospital-centered continuity support</Typography>
                 </Stack>
               </Stack>
             </Stack>
@@ -202,15 +190,15 @@ const LandingPage: React.FC = () => {
               >
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    Readiness overview
+                    Program overview
                   </Typography>
                   <Chip label="Live" size="small" color="success" variant="outlined" />
                 </Stack>
                 <Grid container spacing={1.2} sx={{ mb: 1.5 }}>
                   {[
-                    { label: 'Hospitals', value: '5,400+' },
-                    { label: 'PECCs', value: 'Growing' },
-                    { label: 'Cohorts', value: 'Active' }
+                    { label: 'Milestones', value: 'Tracked' },
+                    { label: 'Simulation', value: 'Documented' },
+                    { label: 'Activities', value: 'Coordinated' }
                   ].map((m) => (
                     <Grid item xs={4} key={m.label}>
                       <Card
@@ -260,7 +248,7 @@ const LandingPage: React.FC = () => {
               mx: { md: 'auto' }
             }}
           >
-            Minimal interface, high clarity, and stronger execution at every hospital
+            Clear structure, shared context, and practical coordination for real-world implementation
           </Typography>
         </Stack>
 
@@ -311,10 +299,10 @@ const LandingPage: React.FC = () => {
           }}
         >
           <Typography variant="h5" sx={{ fontWeight: 760, mb: 1 }}>
-            Ready to streamline PECC implementation and continuity?
+            Ready to align your team around pediatric emergency readiness goals?
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 760, mx: { md: 'auto' }, mb: 2 }}>
-            Sign in to continue your program work or request access for your team.
+            Sign in to continue your work or request access to bring your team into the platform.
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent={{ md: 'center' }}>
             <Button variant="contained" onClick={() => navigate('/login')}>Sign in</Button>
