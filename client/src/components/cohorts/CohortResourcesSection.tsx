@@ -40,6 +40,7 @@ interface CohortResourcesSectionProps {
 const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/gi;
 const COHORT_ATTACHMENT_BUCKETS = ['cohort-discussion-attachments', 'cohort-attachments'] as const;
 const SIGNED_URL_TTL_SECONDS = 60 * 15;
+const SUPABASE_PUBLIC_OBJECT_URL_PATTERN = /\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/i;
 
 const linkifyResourceHtml = (html: string): string => {
   const safeHtml = sanitizeHtml(html);
@@ -147,8 +148,9 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
           const dataPath = anchor.getAttribute('data-storage-path');
           const storageHref = anchor.getAttribute('href') || '';
           const storageMatch = storageHref.match(/^storage:\/\/([^/]+)\/(.+)$/i);
-          const bucket = dataBucket || storageMatch?.[1];
-          const path = dataPath || storageMatch?.[2];
+          const legacyPublicMatch = storageHref.match(SUPABASE_PUBLIC_OBJECT_URL_PATTERN);
+          const bucket = dataBucket || storageMatch?.[1] || legacyPublicMatch?.[1];
+          const path = dataPath || storageMatch?.[2] || legacyPublicMatch?.[2];
           if (!bucket || !path) return;
 
           const { data, error: signedError } = await supabase.storage.from(bucket).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
