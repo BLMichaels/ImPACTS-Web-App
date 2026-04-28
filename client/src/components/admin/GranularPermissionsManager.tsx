@@ -54,7 +54,7 @@ const PERMISSION_GROUPS: Record<string, string[]> = {
 };
 
 const TOOL_SECTION_TABS = [
-  { key: 'snapshot_prs_section', label: 'Pediatric Readiness Scores (on Snapshot / Tool page)' }
+  { key: 'snapshot_prs_section', label: 'View Pediatric Readiness Scores' }
 ];
 
 type PermissionPresetKey = 'role-default' | 'pecc-standard' | 'mentor-standard' | 'manager-standard' | 'read-only';
@@ -107,7 +107,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
     { key: 'milestones', label: 'Milestones' },
     { key: 'wages', label: 'Wages & Expenses' },
     { key: 'learning', label: 'Learning modules (SCORM)' },
-    { key: 'snapshot_prs_section', label: 'Pediatric Readiness Scores (PECC Support Tool & Snapshot)' }
+    { key: 'snapshot_prs_section', label: 'View Pediatric Readiness Scores' }
   ];
 
   const getUserDisplayName = (u: User): string => {

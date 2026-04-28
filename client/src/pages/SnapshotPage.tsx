@@ -50,7 +50,6 @@ import {
   isSimulationGapCompleted
 } from '../utils/snapshotGapStatus';
 import { parseActivityDate } from '../utils/snapshotActivityDate';
-import PrsSectionHiddenNotice from '../components/PrsSectionHiddenNotice';
 
 const metricCardSx = {
   height: '100%',
@@ -83,7 +82,7 @@ const SnapshotPage = () => {
     message: string;
     severity: 'success' | 'error';
   }>({ open: false, message: '', severity: 'success' });
-  const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
+  const [prsSectionVisible] = usePrsSectionVisible();
   const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
   const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
@@ -1009,9 +1008,6 @@ const SnapshotPage = () => {
             </Box>
           </Paper>
 
-          {!prsSectionVisible && (
-            <PrsSectionHiddenNotice onShow={() => setPrsSectionVisible(true)} />
-          )}
           {/* Quick Stats Banner - Only show if PRS section is visible */}
           {prsSectionVisible && readinessScores.length > 0 && (
             <Alert 
@@ -1068,13 +1064,6 @@ const SnapshotPage = () => {
             High-level numbers from your saved data. PRS cards appear when that section is enabled.
           </Typography>
         </Box>
-        {prsSectionVisible && (
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-            <Button size="small" variant="outlined" onClick={() => setPrsSectionVisible(false)}>
-              Hide Pediatric Readiness Scores
-            </Button>
-          </Box>
-        )}
         <Box
           sx={{
             mb: 4,

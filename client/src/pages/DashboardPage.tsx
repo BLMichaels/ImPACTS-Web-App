@@ -32,7 +32,6 @@ import {
   writeContinuityData,
 } from '../utils/userData';
 import { usePrsSectionVisible } from '../hooks/usePermissions';
-import PrsSectionHiddenNotice from '../components/PrsSectionHiddenNotice';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -84,7 +83,7 @@ interface ReadinessScore {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
-    const [prsSectionVisible, setPrsSectionVisible] = usePrsSectionVisible();
+    const [prsSectionVisible] = usePrsSectionVisible();
     /** Same subject as Snapshot and PRS visibility (view-as aware). */
     const uid = effectiveUserId;
 
@@ -409,28 +408,20 @@ interface ReadinessScore {
       </Grid>
 
       {/* Pediatric Readiness Score Section - same source as Snapshot + Granular Permissions (view_tabs) */}
-      {!prsSectionVisible && (
-        <PrsSectionHiddenNotice onShow={() => setPrsSectionVisible(true)} />
-      )}
       {prsSectionVisible && (
         <Box sx={{ mb: 6 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h4" color="primary">
               Pediatric Readiness Scores
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button size="small" variant="outlined" onClick={() => setPrsSectionVisible(false)}>
-                Hide section
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={handleAddReadinessScore}
-                sx={{ fontSize: '0.875rem' }}
-              >
-                Add Score
-              </Button>
-            </Box>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleAddReadinessScore}
+              sx={{ fontSize: '0.875rem' }}
+            >
+              Add Score
+            </Button>
           </Box>
           <Card>
             <CardContent>
