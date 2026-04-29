@@ -23,6 +23,8 @@ export const useTabVisibility = (tabKey: string, cohortId?: string, programId?: 
           .select('is_visible')
           .eq('user_id', userProfile.id)
           .eq('tab_key', tabKey)
+          .is('cohort_id', null)
+          .is('program_id', null)
           .maybeSingle();
         
         if (userTab) {
@@ -180,6 +182,8 @@ export const usePrsSectionVisible = (): [boolean, (visible: boolean) => Promise<
           .select('is_visible')
           .eq('user_id', subjectId)
           .eq('tab_key', PRS_SECTION_TAB_KEY)
+          .is('cohort_id', null)
+          .is('program_id', null)
           .maybeSingle();
         if (cancelled) return;
         if (userTab != null) {

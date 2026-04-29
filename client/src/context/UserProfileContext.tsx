@@ -284,7 +284,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         const { data: userTabRows } = await supabase
           .from('view_tabs')
           .select('tab_key, is_visible')
-          .eq('user_id', currentUser.id);
+          .eq('user_id', currentUser.id)
+          .is('cohort_id', null)
+          .is('program_id', null);
         let resolvedTabs: string[] = [...PECC_TAB_KEYS];
         if (userTabRows && userTabRows.length > 0) {
           const byKey = (userTabRows as { tab_key: string; is_visible: boolean }[]).reduce((acc, r) => {
@@ -421,7 +423,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         const { data: userTabRows, error: viewTabsError } = await supabase
           .from('view_tabs')
           .select('tab_key, is_visible')
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .is('cohort_id', null)
+          .is('program_id', null);
         if (!viewTabsError && userTabRows && userTabRows.length > 0) {
           const byKey = (userTabRows as { tab_key: string; is_visible: boolean }[]).reduce((acc, r) => {
             acc[r.tab_key] = r.is_visible;

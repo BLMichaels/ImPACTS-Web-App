@@ -485,6 +485,8 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           .eq('user_id', selectedUserId);
         if (isTableMissingError(permError)) {
           setSnack({ message: 'Permission tables missing. Run CREATE_USER_PERMISSIONS_TABLE.sql in Supabase SQL Editor.', severity: 'error' });
+        } else if (permError) {
+          setSnack({ message: `Failed to load user permission overrides: ${permError.message}`, severity: 'error' });
         }
         if (data) {
           setUserPermissions(data);
@@ -492,10 +494,15 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           data.forEach(p => { states[p.permission_key] = p.is_enabled; });
           setPermissionStates(states);
         }
-        const { data: userTabsData } = await supabase
+        const { data: userTabsData, error: userTabsError } = await supabase
           .from('view_tabs')
           .select('*')
-          .eq('user_id', selectedUserId);
+          .eq('user_id', selectedUserId)
+          .is('cohort_id', null)
+          .is('program_id', null);
+        if (userTabsError) {
+          setSnack({ message: `Failed to load tab visibility: ${userTabsError.message}`, severity: 'error' });
+        }
         setViewTabs(userTabsData || []);
         const tabStates: Record<string, boolean> = {};
         (userTabsData || []).forEach(t => { tabStates[t.tab_key] = t.is_visible; });
@@ -771,7 +778,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         await refreshProfile();
       }
     } else {
-      setSnack({ message: 'Failed to save tab visibility.', severity: 'error' });
+      setSnack({ message: `Failed to save tab visibility: ${error.message || 'Unknown error'}`, severity: 'error' });
     }
   };
   
