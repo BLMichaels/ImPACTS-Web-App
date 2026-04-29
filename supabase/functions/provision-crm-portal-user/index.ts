@@ -88,6 +88,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     role?: string;
     first_name?: string;
     last_name?: string;
+    starting_password?: string;
   };
   try {
     body = await req.json();
@@ -97,8 +98,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const emailRaw = typeof body.email === 'string' ? body.email.trim() : '';
   const roleRaw = typeof body.role === 'string' ? body.role.trim().toLowerCase() : '';
+  const startingPassword = typeof body.starting_password === 'string' ? body.starting_password.trim() : '';
   if (!emailRaw || !roleRaw || !ALLOWED_ROLES.has(roleRaw)) {
     return json({ error: 'email and role (pecc | manager | mentor) are required' }, 400);
+  }
+  if (startingPassword && startingPassword.length < 8) {
+    return json({ error: 'starting_password must be at least 8 characters' }, 400);
   }
 
   const emailNorm = emailRaw.toLowerCase();
@@ -125,6 +130,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email: emailNorm,
+    ...(startingPassword ? { password: startingPassword } : {}),
     email_confirm: true,
     user_metadata: {
       first_name: body.first_name?.trim() ?? '',

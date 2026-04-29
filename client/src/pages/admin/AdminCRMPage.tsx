@@ -512,6 +512,7 @@ const AdminCRMPage: React.FC = () => {
     facilityId: '',
     is_admin: false
   });
+  const [startingPassword, setStartingPassword] = useState('');
 
   const canGrantPlatformAdminAccess = userProfile?.role === UserRole.ADMIN;
   const editingOwnStaffContact = Boolean(
@@ -520,6 +521,15 @@ const AdminCRMPage: React.FC = () => {
     currentUser?.id &&
     editingContact.user_id === currentUser.id
   );
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      setStartingPassword('');
+      return;
+    }
+    // Always start blank for safety; admins can set per-user as needed.
+    setStartingPassword('');
+  }, [dialogOpen, editingContact?.id]);
 
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldsDialogOpen, setCustomFieldsDialogOpen] = useState(false);
@@ -1874,6 +1884,15 @@ const AdminCRMPage: React.FC = () => {
       setSaveError('First name or last name is required for person contacts.');
       return;
     }
+    const portalContactTypes: ContactType[] = ['pecc', 'manager', 'mentor'];
+    if (
+      startingPassword.trim() &&
+      portalContactTypes.includes(formData.type as ContactType) &&
+      startingPassword.trim().length < 8
+    ) {
+      setSaveError('Starting password must be at least 8 characters.');
+      return;
+    }
     const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
     const effectiveStaffIsAdmin =
       formData.type !== 'staff'
@@ -2315,7 +2334,6 @@ const AdminCRMPage: React.FC = () => {
 
     // Pre-provision auth + public.users for PECC / Manager / Mentor CRM contacts so admins can "View as user"
     // and pre-load activities, gap plans, checklists, etc. before sending an invitation.
-    const portalContactTypes: ContactType[] = ['pecc', 'manager', 'mentor'];
     if (
       formData.type !== 'hospital' &&
       isPersonType(formData.type) &&
@@ -2331,7 +2349,8 @@ const AdminCRMPage: React.FC = () => {
             email: emailTrim,
             role: r,
             first_name: formData.firstName,
-            last_name: formData.lastName
+            last_name: formData.lastName,
+            starting_password: startingPassword.trim() || undefined
           });
           if ('error' in pr) {
             console.warn('CRM portal provision:', pr.error);
@@ -5368,6 +5387,19 @@ const AdminCRMPage: React.FC = () => {
             <Grid item xs={6}>
               <TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth size="small" />
             </Grid>
+            {isPersonType(formData.type) && ['pecc', 'manager', 'mentor'].includes(formData.type) && !editingContact?.user_id && (
+              <Grid item xs={12}>
+                <TextField
+                  label="Starting password (optional)"
+                  type="text"
+                  value={startingPassword}
+                  onChange={(e) => setStartingPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                  helperText="If provided, this will be set as the initial login password when the portal account is created."
+                />
+              </Grid>
+            )}
             <Grid item xs={6}>
               <Autocomplete
                 freeSolo

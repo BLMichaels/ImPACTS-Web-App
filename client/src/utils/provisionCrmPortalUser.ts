@@ -15,6 +15,7 @@ export async function provisionCrmPortalUser(params: {
   role: ProvisionCrmPortalRole;
   first_name?: string;
   last_name?: string;
+  starting_password?: string;
 }): Promise<ProvisionCrmPortalResult> {
   const { data, error } = await supabase.functions.invoke('provision-crm-portal-user', {
     body: {
@@ -22,6 +23,7 @@ export async function provisionCrmPortalUser(params: {
       role: params.role,
       first_name: params.first_name?.trim() ?? '',
       last_name: params.last_name?.trim() ?? '',
+      starting_password: params.starting_password?.trim() || undefined,
     },
   });
 
