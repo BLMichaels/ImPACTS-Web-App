@@ -31,7 +31,8 @@ import {
   resolveHospitalUuid,
   writeContinuityData,
 } from '../utils/userData';
-import { usePrsSectionVisible } from '../hooks/usePermissions';
+import { usePermission, usePrsSectionVisible } from '../hooks/usePermissions';
+import { PERMISSIONS } from '../types/database';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
@@ -84,6 +85,8 @@ interface ReadinessScore {
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
     const [prsSectionVisible] = usePrsSectionVisible();
+    const canViewPrs = usePermission(PERMISSIONS.VIEW_PRS);
+    const showPrsSection = prsSectionVisible && canViewPrs;
     /** Same subject as Snapshot and PRS visibility (view-as aware). */
     const uid = effectiveUserId;
 
@@ -147,7 +150,7 @@ interface ReadinessScore {
   // Load readiness scores only when PRS section is visible (granular permission)
   useEffect(() => {
     if (!uid) return;
-    if (!prsSectionVisible) {
+    if (!showPrsSection) {
       setReadinessScores([]);
       return;
     }
@@ -161,7 +164,7 @@ interface ReadinessScore {
       }
     })();
     return () => { mounted = false; };
-  }, [uid, prsSectionVisible, effectiveHospitalId]);
+  }, [uid, showPrsSection, effectiveHospitalId]);
 
   const saveReadinessScores = async (scores: ReadinessScore[]) => {
     setReadinessScores(scores);
@@ -408,7 +411,7 @@ interface ReadinessScore {
       </Grid>
 
       {/* Pediatric Readiness Score Section - same source as Snapshot + Granular Permissions (view_tabs) */}
-      {prsSectionVisible && (
+      {showPrsSection && (
         <Box sx={{ mb: 6 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h4" color="primary">
