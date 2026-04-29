@@ -18,6 +18,10 @@ Apply scripts in the **Supabase SQL editor** for production. Track what you ran 
   1. `HOSPITAL_DATA_TABLE.sql`  
   2. `HOSPITAL_DATA_RLS_POLICIES.sql`  
   3. `HOSPITAL_DATA_BACKFILL.sql`  
+  4. `PECC_REPLACEMENT_WORKFLOW.sql`  
+  5. `PECC_ACTIVITIES_CONTINUITY_ALIGNMENT.sql`  
+  6. `SITE_VISIBILITY_HOSPITAL_DEFAULTS.sql`  
+  7. `USER_DATA_PECC_KEYS_DEPRECATION.sql`  
 - Other root `*.sql` files: match name to feature; avoid applying duplicates.
 
 ## Edge functions
@@ -47,5 +51,6 @@ supabase functions deploy provision-crm-portal-user
 After `HOSPITAL_DATA_BACKFILL.sql` has been applied and verified, set on the **impacts** Vercel project (Production):
 
 - `REACT_APP_DISABLE_LEGACY_USER_MIRROR=true` — stops dual-writing and legacy `user_data` reads for continuity keys (redeploy required). Rollup views (staff PECC report, manager mentors, admin snapshot) also skip batched `user_data` reads for those keys and rely on `hospital_data` when a site row exists.
+- In Supabase, set `app_settings.disable_legacy_user_data_pecc_keys=true` (or run an update in SQL Editor) to enforce post-cutover write guardrails on deprecated PECC keys in `user_data`.
 
 Optional in the browser: `localStorage` key `impacts_disable_legacy_user_mirror` (`true` / `false`) overrides for testing without a redeploy.
