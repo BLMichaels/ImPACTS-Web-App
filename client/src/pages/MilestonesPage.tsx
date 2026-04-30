@@ -496,8 +496,8 @@ const MilestonesPage = () => {
 
   // Build merged stages (program before + default + program after) and apply progress
   useEffect(() => {
-    const defaultStages = defaultStagesRef.current ?? stages;
-    if (programChecklists.length === 0) return;
+    const defaultStages = defaultStagesRef.current;
+    if (!defaultStages) return;
 
     const toMilestoneStage = (
       checklist: ProgramChecklistLoaded,
@@ -587,23 +587,23 @@ const MilestonesPage = () => {
       }
     })();
     function applyStages(parsedStages: MilestoneStage[]) {
-      const hasRichContent = parsedStages.some((stage: MilestoneStage) =>
-        stage.tasks.some((task: MilestoneTask) => task.links && task.links.length > 0)
+      // Always treat stored milestones as progress only. This prevents deleted
+      // program checklist structures from lingering after checklist changes.
+      const completedByTaskId: Record<string, boolean> = {};
+      parsedStages.forEach((stage) => {
+        stage.tasks.forEach((task) => {
+          completedByTaskId[task.id] = Boolean(task.completed);
+        });
+      });
+      setStages((prev) =>
+        prev.map((stage) => ({
+          ...stage,
+          tasks: stage.tasks.map((task) => ({
+            ...task,
+            completed: completedByTaskId[task.id] ?? task.completed
+          }))
+        }))
       );
-      if (hasRichContent) setStages(parsedStages);
-      else setStages(prev => prev.map((defaultStage, stageIndex) => {
-        const savedStage = parsedStages[stageIndex];
-        if (savedStage) {
-          return {
-            ...defaultStage,
-            tasks: defaultStage.tasks.map((defaultTask, taskIndex) => {
-              const savedTask = savedStage.tasks[taskIndex];
-              return savedTask ? { ...defaultTask, completed: savedTask.completed } : defaultTask;
-            })
-          };
-        }
-        return defaultStage;
-      }));
     }
     return () => { mounted = false; };
   }, [milestonesUserId, hospitalId]);
