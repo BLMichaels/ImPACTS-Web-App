@@ -135,6 +135,5 @@ export function buildReportDetailHref(scope: StaffReportScopeNav, h: ReportRowLi
     return `/mentor/hospitals?hospital=${encodeURIComponent(h.hospitalId!)}&contact=${encodeURIComponent(h.hospitalContactId!)}`;
   }
   if (has(h.hospitalId)) return `/mentor/hospitals?hospital=${encodeURIComponent(h.hospitalId!)}`;
-  if (has(h.userId)) return `/mentor/hospitals?user=${encodeURIComponent(h.userId!)}`;
   return null;
 }
