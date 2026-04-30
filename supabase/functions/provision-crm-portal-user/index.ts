@@ -115,6 +115,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
 
   if (existingRow?.id) {
+    if (startingPassword) {
+      const { error: pwdErr } = await admin.auth.admin.updateUserById(existingRow.id, {
+        password: startingPassword,
+        email_confirm: true,
+      });
+      if (pwdErr) {
+        return json({ error: pwdErr.message ?? 'Failed to set starting password' }, 400);
+      }
+    }
+
     await admin
       .from('users')
       .update({
@@ -152,6 +162,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('email', emailNorm)
         .maybeSingle();
       if (again?.id) {
+        if (startingPassword) {
+          const { error: pwdErr } = await admin.auth.admin.updateUserById(again.id, {
+            password: startingPassword,
+            email_confirm: true,
+          });
+          if (pwdErr) {
+            return json({ error: pwdErr.message ?? 'Failed to set starting password' }, 400);
+          }
+        }
+
         await admin
           .from('users')
           .update({
