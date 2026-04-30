@@ -3092,32 +3092,77 @@ const AdminCRMPage: React.FC = () => {
 
   const handleDeleteContact = async (id: string) => {
     const contact = contacts.find(c => c.id === id);
-    // Delete from crm_organizations if it's a CRM-created contact (not user-sourced)
-    if (contact?.crmCreated && contact.type !== 'hospital') {
-      await supabase.from('crm_organizations').delete().eq('id', id);
+    if (!contact) {
+      setDeleteConfirmOpen(false);
+      setDeleteTarget(null);
+      return;
     }
+
+    // Platform users are sourced from `users`; deleting only CRM metadata would reappear on refresh.
+    if (contact.user_id) {
+      setLoadError('This person has a platform account and cannot be deleted from CRM here. Manage account status in Team.');
+      setDeleteConfirmOpen(false);
+      setDeleteTarget(null);
+      setDeleteConfirmTyped('');
+      return;
+    }
+
+    // Delete from crm_organizations only for CRM-created, non-hospital records without linked platform users.
+    if (contact.crmCreated && contact.type !== 'hospital') {
+      const { error } = await supabase.from('crm_organizations').delete().eq('id', id);
+      if (error) {
+        setLoadError(`Delete failed: ${error.message}`);
+        return;
+      }
+    }
+
     setContacts(prev => prev.filter(c => c.id !== id));
     setDeleteConfirmOpen(false);
     setDeleteTarget(null);
+    setDeleteConfirmTyped('');
     if (detailContact?.id === id) { setPanelOpen(false); setFullScreenOpen(false); setDetailContact(null); }
     setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
   };
 
   const handleBulkDelete = async () => {
     if (!deleteTarget?.bulk) return;
+    let blockedLinkedUsers = 0;
+    const deletableIds: string[] = [];
+
     for (const id of deleteTarget.bulk) {
       const contact = contacts.find(c => c.id === id);
-      // Delete from crm_organizations if it's a CRM-created contact (not user-sourced)
-      if (contact?.crmCreated && contact.type !== 'hospital') {
-        await supabase.from('crm_organizations').delete().eq('id', id);
+      if (!contact) continue;
+
+      if (contact.user_id) {
+        blockedLinkedUsers += 1;
+        continue;
       }
+
+      if (contact.crmCreated && contact.type !== 'hospital') {
+        const { error } = await supabase.from('crm_organizations').delete().eq('id', id);
+        if (error) {
+          setLoadError(`Delete failed: ${error.message}`);
+          continue;
+        }
+      }
+      deletableIds.push(id);
     }
-    setContacts(prev => prev.filter(c => !deleteTarget.bulk!.has(c.id)));
+
+    const deletedSet = new Set(deletableIds);
+    setContacts(prev => prev.filter(c => !deletedSet.has(c.id)));
     setDeleteConfirmOpen(false);
     setDeleteTarget(null);
     setDeleteConfirmTyped('');
-    setSelectedIds(new Set());
-    if (detailContact && deleteTarget.bulk.has(detailContact.id)) { setPanelOpen(false); setFullScreenOpen(false); setDetailContact(null); }
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      deletableIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    if (detailContact && deletedSet.has(detailContact.id)) { setPanelOpen(false); setFullScreenOpen(false); setDetailContact(null); }
+
+    if (blockedLinkedUsers > 0) {
+      setLoadError(`${blockedLinkedUsers} linked platform user${blockedLinkedUsers > 1 ? 's were' : ' was'} not deleted. Manage in Team.`);
+    }
   };
 
   const handleBulkStatusChange = async (status: string) => {
