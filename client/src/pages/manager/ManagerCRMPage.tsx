@@ -57,7 +57,6 @@ import {
   Notes as NotesIcon
 } from '@mui/icons-material';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
@@ -155,7 +154,6 @@ interface TabVisibilitySettings {
 }
 
 const ManagerCRMPage: React.FC = () => {
-  const { resetPasswordForEmail } = useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
@@ -177,7 +175,6 @@ const ManagerCRMPage: React.FC = () => {
     is_active: boolean | null;
   } | null>(null);
   const [userPreviewError, setUserPreviewError] = useState<string | null>(null);
-  const [sendingPasswordReset, setSendingPasswordReset] = useState(false);
 
   useEffect(() => {
     const s = location.state as { returnTo?: string } | null;
@@ -204,23 +201,6 @@ const ManagerCRMPage: React.FC = () => {
     setUserPreviewError(null);
     navigateBackIfReport();
   }, [navigateBackIfReport]);
-
-  const handleSendPasswordReset = useCallback(async (email: string) => {
-    if (!email) return;
-    setSendingPasswordReset(true);
-    try {
-      await resetPasswordForEmail(email, typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined);
-      setSnackbar({ open: true, message: `Password reset email sent to ${email}`, severity: 'success' });
-    } catch (err) {
-      setSnackbar({
-        open: true,
-        message: err instanceof Error ? err.message : 'Failed to send password reset email',
-        severity: 'error'
-      });
-    } finally {
-      setSendingPasswordReset(false);
-    }
-  }, [resetPasswordForEmail]);
 
   const [activeTab, setActiveTab] = useState(0);
   const [hospitals, setHospitals] = useState<HospitalData[]>([]);
@@ -1547,14 +1527,6 @@ const ManagerCRMPage: React.FC = () => {
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
                 Opened from a report. Full CRM editing is available to administrators.
               </Typography>
-              <Button
-                variant="outlined"
-                sx={{ mt: 2 }}
-                onClick={() => { void handleSendPasswordReset(userPreviewUser.email); }}
-                disabled={sendingPasswordReset || !userPreviewUser.email}
-              >
-                {sendingPasswordReset ? 'Sending reset email…' : 'Send password reset email'}
-              </Button>
             </Paper>
           ) : null}
           <Button fullWidth variant="outlined" sx={{ mt: 2 }} onClick={closeUserPreviewDrawer}>

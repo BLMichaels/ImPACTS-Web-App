@@ -81,6 +81,7 @@ const AdminTeamTab: React.FC = () => {
   const { userProfile, enterViewAsUser } = useUserProfile();
   /** Only primary-role platform admins may grant `is_admin`. Staff with only `is_admin` (e.g. manager + admin flag) cannot promote others. */
   const canGrantPlatformAdminAccess = userProfile?.role === UserRole.ADMIN;
+  const canSendPasswordReset = userProfile?.role === UserRole.ADMIN;
   const [users, setUsers] = useState<User[]>([]);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' }>({ open: false, message: '' });
   const [searchQuery, setSearchQuery] = useState('');
@@ -633,6 +634,7 @@ const AdminTeamTab: React.FC = () => {
         {selectedUser?.status === 'pending' && (
           <MenuItem onClick={() => setAnchorEl(null)}><SendIcon sx={{ mr: 1, fontSize: 18 }} /> Resend Invite</MenuItem>
         )}
+        {canSendPasswordReset && (
         <MenuItem onClick={async () => {
           if (!selectedUser?.email) return;
           setAnchorEl(null);
@@ -648,6 +650,7 @@ const AdminTeamTab: React.FC = () => {
         }}>
           Send password reset email
         </MenuItem>
+        )}
         <MenuItem onClick={() => setAnchorEl(null)} sx={{ color: 'error.main' }}>Delete User</MenuItem>
       </Menu>
 
@@ -817,24 +820,26 @@ const AdminTeamTab: React.FC = () => {
                 </List>
                 <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)}>Edit user</Button>
-                  <Button
-                    variant="outlined"
-                    disabled={sendingPasswordReset || !selectedUser.email}
-                    onClick={async () => {
-                      if (!selectedUser.email) return;
-                      setSendingPasswordReset(true);
-                      try {
-                        await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined);
-                        setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
-                      } catch (err) {
-                        setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
-                      } finally {
-                        setSendingPasswordReset(false);
-                      }
-                    }}
-                  >
-                    {sendingPasswordReset ? 'Sending…' : 'Send reset email'}
-                  </Button>
+                  {canSendPasswordReset && (
+                    <Button
+                      variant="outlined"
+                      disabled={sendingPasswordReset || !selectedUser.email}
+                      onClick={async () => {
+                        if (!selectedUser.email) return;
+                        setSendingPasswordReset(true);
+                        try {
+                          await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined);
+                          setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
+                        } catch (err) {
+                          setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
+                        } finally {
+                          setSendingPasswordReset(false);
+                        }
+                      }}
+                    >
+                      {sendingPasswordReset ? 'Sending…' : 'Send reset email'}
+                    </Button>
+                  )}
                   <Button variant="contained" color="primary" startIcon={<VisibilityIcon />} onClick={async () => {
                     const result = await enterViewAsUser(selectedUser.id);
                     if (result.ok && result.dashboardPath) { setProfileDrawerOpen(false); navigate(result.dashboardPath); }
