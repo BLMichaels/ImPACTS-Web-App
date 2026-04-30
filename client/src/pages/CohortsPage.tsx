@@ -18,6 +18,7 @@ import { Cohort, CohortWithStats, UserRole } from '../types/database';
 import { useUserProfile } from '../context/UserProfileContext';
 import { supabase } from '../supabase';
 import { CohortCard, CohortDetail } from '../components/cohorts';
+import { getUserData } from '../utils/userData';
 
 const CohortsPage: React.FC = () => {
   const { userProfile, userRole } = useUserProfile();
@@ -34,6 +35,10 @@ const CohortsPage: React.FC = () => {
     setError(null);
 
     try {
+      const today = new Date().toISOString().slice(0, 10);
+      const resourcesReadMap =
+        (await getUserData<Record<string, string>>(userProfile.id, 'cohort_resources_last_read')) || {};
+
       // Get cohorts the user is a member of
       const { data: memberships, error: memberError } = await supabase
         .from('cohort_members')
@@ -83,6 +88,12 @@ const CohortsPage: React.FC = () => {
             .select('*', { count: 'exact', head: true })
             .eq('cohort_id', cohort.id);
 
+          // Resources count
+          const { count: resourceCount } = await supabase
+            .from('cohort_resources')
+            .select('*', { count: 'exact', head: true })
+            .eq('cohort_id', cohort.id);
+
           // Get read status for unread counts
           const { data: readStatus } = await supabase
             .from('cohort_read_status')
@@ -98,10 +109,16 @@ const CohortsPage: React.FC = () => {
               .from('cohort_announcements')
               .select('*', { count: 'exact', head: true })
               .eq('cohort_id', cohort.id)
+              .or(`visible_until.is.null,visible_until.gte.${today}`)
               .gt('created_at', readStatus.last_read_announcements);
             unreadAnnouncements = count || 0;
           } else {
-            unreadAnnouncements = announcementCount || 0;
+            const { count } = await supabase
+              .from('cohort_announcements')
+              .select('*', { count: 'exact', head: true })
+              .eq('cohort_id', cohort.id)
+              .or(`visible_until.is.null,visible_until.gte.${today}`);
+            unreadAnnouncements = count || 0;
           }
 
           // Get unread discussions
@@ -115,6 +132,20 @@ const CohortsPage: React.FC = () => {
             unreadDiscussions = count || 0;
           } else {
             unreadDiscussions = topicCount || 0;
+          }
+
+          // Get unread resources
+          let unreadResources = 0;
+          const lastReadResources = resourcesReadMap?.[cohort.id] || null;
+          if (lastReadResources) {
+            const { count } = await supabase
+              .from('cohort_resources')
+              .select('*', { count: 'exact', head: true })
+              .eq('cohort_id', cohort.id)
+              .gt('created_at', lastReadResources);
+            unreadResources = count || 0;
+          } else {
+            unreadResources = resourceCount || 0;
           }
 
           // Get last activity
@@ -134,9 +165,18 @@ const CohortsPage: React.FC = () => {
             .limit(1)
             .maybeSingle();
 
+          const { data: lastResource } = await supabase
+            .from('cohort_resources')
+            .select('created_at')
+            .eq('cohort_id', cohort.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
           const lastActivityDates = [
             lastAnnouncement?.created_at,
-            lastTopic?.last_reply_at || lastTopic?.created_at
+            lastTopic?.last_reply_at || lastTopic?.created_at,
+            lastResource?.created_at
           ].filter(Boolean) as string[];
 
           const lastActivityAt = lastActivityDates.length > 0
@@ -148,8 +188,10 @@ const CohortsPage: React.FC = () => {
             member_count: memberCount || 0,
             announcement_count: announcementCount || 0,
             topic_count: topicCount || 0,
+            resource_count: resourceCount || 0,
             unread_announcements: unreadAnnouncements,
             unread_discussions: unreadDiscussions,
+            unread_resources: unreadResources,
             last_activity_at: lastActivityAt
           };
         })

@@ -235,7 +235,7 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
         
         <List>
           {navigationItems.map((item) => {
-            const isCohorts = item.path === '/cohorts' || item.path === '/mentor/cohorts';
+            const isCohorts = item.path === '/cohorts' || item.path === '/mentor/cohorts' || item.path === '/manager/cohorts';
             const icon = isCohorts && cohortNotifications > 0 ? (
               <Badge badgeContent={cohortNotifications} color="error" max={99}>
                 {item.icon}
@@ -437,7 +437,7 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
             justifyContent: 'center'
           }}>
             {navigationItems.map((item) => {
-              const isCohorts = item.path === '/cohorts' || item.path === '/mentor/cohorts';
+              const isCohorts = item.path === '/cohorts' || item.path === '/mentor/cohorts' || item.path === '/manager/cohorts';
               const icon = isCohorts && cohortNotifications > 0 ? (
                 <Badge badgeContent={cohortNotifications} color="error" max={99}>
                   {item.icon}

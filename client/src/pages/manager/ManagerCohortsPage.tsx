@@ -26,6 +26,7 @@ import { Cohort, CohortWithStats } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { CohortCard, CohortDetail, PendingInvitationsPanel } from '../../components/cohorts';
+import { getUserData } from '../../utils/userData';
 
 const ManagerCohortsPage: React.FC = () => {
   const { userProfile } = useUserProfile();
@@ -54,6 +55,10 @@ const ManagerCohortsPage: React.FC = () => {
     setError(null);
 
     try {
+      const today = new Date().toISOString().slice(0, 10);
+      const resourcesReadMap =
+        (await getUserData<Record<string, string>>(userProfile.id, 'cohort_resources_last_read')) || {};
+
       // Get cohorts the manager manages
       const { data: managedCohorts, error: managerError } = await supabase
         .from('cohort_managers')
@@ -115,9 +120,72 @@ const ManagerCohortsPage: React.FC = () => {
             .select('*', { count: 'exact', head: true })
             .eq('cohort_id', cohort.id);
 
+          const { count: resourceCount } = await supabase
+            .from('cohort_resources')
+            .select('*', { count: 'exact', head: true })
+            .eq('cohort_id', cohort.id);
+
+          const { data: readStatus } = await supabase
+            .from('cohort_read_status')
+            .select('last_read_announcements,last_read_discussions')
+            .eq('cohort_id', cohort.id)
+            .eq('user_id', userProfile.id)
+            .maybeSingle();
+
+          let unreadAnnouncements = 0;
+          if (readStatus?.last_read_announcements) {
+            const { count } = await supabase
+              .from('cohort_announcements')
+              .select('*', { count: 'exact', head: true })
+              .eq('cohort_id', cohort.id)
+              .or(`visible_until.is.null,visible_until.gte.${today}`)
+              .gt('created_at', readStatus.last_read_announcements);
+            unreadAnnouncements = count || 0;
+          } else {
+            const { count } = await supabase
+              .from('cohort_announcements')
+              .select('*', { count: 'exact', head: true })
+              .eq('cohort_id', cohort.id)
+              .or(`visible_until.is.null,visible_until.gte.${today}`);
+            unreadAnnouncements = count || 0;
+          }
+
+          let unreadDiscussions = 0;
+          if (readStatus?.last_read_discussions) {
+            const { count } = await supabase
+              .from('cohort_discussion_topics')
+              .select('*', { count: 'exact', head: true })
+              .eq('cohort_id', cohort.id)
+              .or(`created_at.gt.${readStatus.last_read_discussions},last_reply_at.gt.${readStatus.last_read_discussions}`);
+            unreadDiscussions = count || 0;
+          } else {
+            unreadDiscussions = topicCount || 0;
+          }
+
+          let unreadResources = 0;
+          const lastReadResources = resourcesReadMap?.[cohort.id] || null;
+          if (lastReadResources) {
+            const { count } = await supabase
+              .from('cohort_resources')
+              .select('*', { count: 'exact', head: true })
+              .eq('cohort_id', cohort.id)
+              .gt('created_at', lastReadResources);
+            unreadResources = count || 0;
+          } else {
+            unreadResources = resourceCount || 0;
+          }
+
           // Get last activity
           const { data: lastAnnouncement } = await supabase
             .from('cohort_announcements')
+            .select('created_at')
+            .eq('cohort_id', cohort.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const { data: lastResource } = await supabase
+            .from('cohort_resources')
             .select('created_at')
             .eq('cohort_id', cohort.id)
             .order('created_at', { ascending: false })
@@ -134,7 +202,8 @@ const ManagerCohortsPage: React.FC = () => {
 
           const lastActivityDates = [
             lastAnnouncement?.created_at,
-            lastTopic?.last_reply_at || lastTopic?.created_at
+            lastTopic?.last_reply_at || lastTopic?.created_at,
+            lastResource?.created_at
           ].filter(Boolean) as string[];
 
           const lastActivityAt = lastActivityDates.length > 0
@@ -146,6 +215,10 @@ const ManagerCohortsPage: React.FC = () => {
             member_count: memberCount || 0,
             announcement_count: announcementCount || 0,
             topic_count: topicCount || 0,
+            resource_count: resourceCount || 0,
+            unread_announcements: unreadAnnouncements,
+            unread_discussions: unreadDiscussions,
+            unread_resources: unreadResources,
             last_activity_at: lastActivityAt,
             is_manager: isManager
           };

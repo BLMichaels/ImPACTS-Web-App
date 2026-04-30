@@ -135,9 +135,22 @@ const AdminCohortsPage: React.FC = () => {
             .select('*', { count: 'exact', head: true })
             .eq('cohort_id', cohort.id);
 
+          const { count: resourceCount } = await supabase
+            .from('cohort_resources')
+            .select('*', { count: 'exact', head: true })
+            .eq('cohort_id', cohort.id);
+
           // Get last activity
           const { data: lastAnnouncement } = await supabase
             .from('cohort_announcements')
+            .select('created_at')
+            .eq('cohort_id', cohort.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const { data: lastResource } = await supabase
+            .from('cohort_resources')
             .select('created_at')
             .eq('cohort_id', cohort.id)
             .order('created_at', { ascending: false })
@@ -154,7 +167,8 @@ const AdminCohortsPage: React.FC = () => {
 
           const lastActivityDates = [
             lastAnnouncement?.created_at,
-            lastTopic?.last_reply_at || lastTopic?.created_at
+            lastTopic?.last_reply_at || lastTopic?.created_at,
+            lastResource?.created_at
           ].filter(Boolean) as string[];
 
           const lastActivityAt = lastActivityDates.length > 0
@@ -166,6 +180,7 @@ const AdminCohortsPage: React.FC = () => {
             member_count: memberCount || 0,
             announcement_count: announcementCount || 0,
             topic_count: topicCount || 0,
+            resource_count: resourceCount || 0,
             last_activity_at: lastActivityAt,
             is_manager: true // Admins have full access
           };

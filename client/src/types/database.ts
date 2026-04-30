@@ -684,8 +684,10 @@ export interface CohortWithStats extends Cohort {
   member_count: number;
   announcement_count: number;
   topic_count: number;
+  resource_count?: number;
   unread_announcements?: number;
   unread_discussions?: number;
+  unread_resources?: number;
   last_activity_at?: string;
   is_manager?: boolean;  // Whether current user manages this cohort
 }

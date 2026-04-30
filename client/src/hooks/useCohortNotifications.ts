@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { useUserProfile } from '../context/UserProfileContext';
+import { getUserData } from '../utils/userData';
 
 export const useCohortNotifications = () => {
   const { userProfile } = useUserProfile();
@@ -14,6 +15,10 @@ export const useCohortNotifications = () => {
 
     const loadUnreadCount = async () => {
       try {
+        const today = new Date().toISOString().slice(0, 10);
+        const resourcesReadMap =
+          (await getUserData<Record<string, string>>(userProfile.id, 'cohort_resources_last_read')) || {};
+
         // Get all cohorts user is a member of
         const { data: memberships } = await supabase
           .from('cohort_members')
@@ -46,13 +51,15 @@ export const useCohortNotifications = () => {
               .from('cohort_announcements')
               .select('*', { count: 'exact', head: true })
               .eq('cohort_id', cohortId)
+              .or(`visible_until.is.null,visible_until.gte.${today}`)
               .gt('created_at', readStatus.last_read_announcements);
             unreadAnns = count || 0;
           } else {
             const { count } = await supabase
               .from('cohort_announcements')
               .select('*', { count: 'exact', head: true })
-              .eq('cohort_id', cohortId);
+              .eq('cohort_id', cohortId)
+              .or(`visible_until.is.null,visible_until.gte.${today}`);
             unreadAnns = count || 0;
           }
 
@@ -76,7 +83,25 @@ export const useCohortNotifications = () => {
             unreadDiscs = count || 0;
           }
 
-          totalUnread += unreadAnns + unreadDiscs;
+          // Count unread resources
+          let unreadResources = 0;
+          const lastReadResources = resourcesReadMap?.[cohortId] || null;
+          if (lastReadResources) {
+            const { count } = await supabase
+              .from('cohort_resources')
+              .select('*', { count: 'exact', head: true })
+              .eq('cohort_id', cohortId)
+              .gt('created_at', lastReadResources);
+            unreadResources = count || 0;
+          } else {
+            const { count } = await supabase
+              .from('cohort_resources')
+              .select('*', { count: 'exact', head: true })
+              .eq('cohort_id', cohortId);
+            unreadResources = count || 0;
+          }
+
+          totalUnread += unreadAnns + unreadDiscs + unreadResources;
         }
 
         setUnreadCount(totalUnread);

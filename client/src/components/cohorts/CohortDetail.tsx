@@ -38,6 +38,7 @@ import MemberList from './MemberList';
 import CohortResourcesSection from './CohortResourcesSection';
 import ScormPackagesSection from '../ScormPackagesSection';
 import CohortSnapshotTab from './CohortSnapshotTab';
+import { getUserData, setUserData } from '../../utils/userData';
 
 interface CohortDetailProps {
   cohort: Cohort;
@@ -79,6 +80,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   const [loading, setLoading] = useState(true);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadDiscussions, setUnreadDiscussions] = useState(0);
+  const [unreadResources, setUnreadResources] = useState(0);
 
   const visibleTabs = useMemo(() => [
     showAnnouncementsTab ? 'announcements' : null,
@@ -92,6 +94,52 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
     const today = new Date().toISOString().slice(0, 10);
     return announcements.filter(a => !a.visible_until || a.visible_until >= today);
   }, [announcements]);
+
+  const markAnnouncementsAsRead = useCallback(async () => {
+    if (!userProfile?.id || unreadAnnouncements === 0) return;
+    try {
+      await supabase
+        .from('cohort_read_status')
+        .upsert({
+          user_id: userProfile.id,
+          cohort_id: cohort.id,
+          last_read_announcements: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id,cohort_id' });
+      setUnreadAnnouncements(0);
+    } catch (error) {
+      console.error('Error updating announcement read status:', error);
+    }
+  }, [cohort.id, unreadAnnouncements, userProfile?.id]);
+
+  const markDiscussionsAsRead = useCallback(async () => {
+    if (!userProfile?.id || unreadDiscussions === 0) return;
+    try {
+      await supabase
+        .from('cohort_read_status')
+        .upsert({
+          user_id: userProfile.id,
+          cohort_id: cohort.id,
+          last_read_discussions: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id,cohort_id' });
+      setUnreadDiscussions(0);
+    } catch (error) {
+      console.error('Error updating discussion read status:', error);
+    }
+  }, [cohort.id, unreadDiscussions, userProfile?.id]);
+
+  const markResourcesAsRead = useCallback(async () => {
+    if (!userProfile?.id) return;
+    try {
+      const map = (await getUserData<Record<string, string>>(userProfile.id, 'cohort_resources_last_read')) || {};
+      map[cohort.id] = new Date().toISOString();
+      await setUserData(userProfile.id, 'cohort_resources_last_read', map);
+      setUnreadResources(0);
+    } catch (error) {
+      console.error('Error updating resource read status:', error);
+    }
+  }, [cohort.id, userProfile?.id]);
 
   // Load cohort data
   const loadData = useCallback(async () => {
@@ -191,6 +239,8 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
 
       // Load read status
       if (userProfile?.id) {
+        const resourcesReadMap =
+          (await getUserData<Record<string, string>>(userProfile.id, 'cohort_resources_last_read')) || {};
         const { data: readStatus } = await supabase
           .from('cohort_read_status')
           .select('*')
@@ -202,7 +252,8 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
           // Count unread announcements
           const unreadAnns = (announcementsData || []).filter(
             a => !readStatus.last_read_announcements || 
-                 new Date(a.created_at) > new Date(readStatus.last_read_announcements)
+                 (new Date(a.created_at) > new Date(readStatus.last_read_announcements) &&
+                  (!a.visible_until || a.visible_until >= new Date().toISOString().slice(0, 10)))
           ).length;
           setUnreadAnnouncements(unreadAnns);
 
@@ -216,8 +267,26 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
           ).length;
           setUnreadDiscussions(unreadDiscs);
         } else {
-          setUnreadAnnouncements(announcementsData?.length || 0);
+          setUnreadAnnouncements((announcementsData || []).filter(
+            a => !a.visible_until || a.visible_until >= new Date().toISOString().slice(0, 10)
+          ).length);
           setUnreadDiscussions(topicsData?.length || 0);
+        }
+
+        const { count: resourceCount } = await supabase
+          .from('cohort_resources')
+          .select('*', { count: 'exact', head: true })
+          .eq('cohort_id', cohort.id);
+        const lastReadResources = resourcesReadMap?.[cohort.id] || null;
+        if (lastReadResources) {
+          const { count } = await supabase
+            .from('cohort_resources')
+            .select('*', { count: 'exact', head: true })
+            .eq('cohort_id', cohort.id)
+            .gt('created_at', lastReadResources);
+          setUnreadResources(count || 0);
+        } else {
+          setUnreadResources(resourceCount || 0);
         }
       }
 
@@ -235,40 +304,28 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
     loadData();
   }, [loadData]);
 
-  // Mark announcements as read when viewing that tab; refetch members when switching to Members tab for live list
+  // Mark notifications as read when viewing their section.
   const handleTabChange = async (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
-    if (visibleTabs[newValue] === 'members') loadData();
-
     if (!userProfile?.id) return;
 
-    try {
-      if (newValue === 0 && unreadAnnouncements > 0) {
-        // Mark announcements as read
-        await supabase
-          .from('cohort_read_status')
-          .upsert({
-            user_id: userProfile.id,
-            cohort_id: cohort.id,
-            last_read_announcements: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'user_id,cohort_id' });
-        setUnreadAnnouncements(0);
-      } else if (newValue === 1 && unreadDiscussions > 0) {
-        // Mark discussions as read
-        await supabase
-          .from('cohort_read_status')
-          .upsert({
-            user_id: userProfile.id,
-            cohort_id: cohort.id,
-            last_read_discussions: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'user_id,cohort_id' });
-        setUnreadDiscussions(0);
+    if (useManagerStackedTabs) {
+      if (newValue === 0) {
+        await markAnnouncementsAsRead();
+        await markDiscussionsAsRead();
+        await markResourcesAsRead();
+      } else {
+        // Members/Snapshot tab
+        if (showMembersTab && newValue === 1) loadData();
       }
-    } catch (error) {
-      console.error('Error updating read status:', error);
+      return;
     }
+
+    const activeTab = visibleTabs[newValue];
+    if (activeTab === 'members') loadData();
+    if (activeTab === 'announcements') await markAnnouncementsAsRead();
+    if (activeTab === 'discussions') await markDiscussionsAsRead();
+    if (activeTab === 'snapshot') await markResourcesAsRead();
   };
 
   const handleAnnouncementCreated = (announcement: CohortAnnouncement) => {
@@ -302,22 +359,31 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   };
 
   const handleMarkDiscussionAsRead = async () => {
-    if (!userProfile?.id || unreadDiscussions === 0) return;
-    
-    try {
-      await supabase
-        .from('cohort_read_status')
-        .upsert({
-          user_id: userProfile.id,
-          cohort_id: cohort.id,
-          last_read_discussions: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id,cohort_id' });
-      setUnreadDiscussions(0);
-    } catch (error) {
-      console.error('Error marking discussion as read:', error);
-    }
+    await markDiscussionsAsRead();
   };
+
+  useEffect(() => {
+    if (!userProfile?.id || loading) return;
+    void markResourcesAsRead();
+    if (useStackedLayout) {
+      void markAnnouncementsAsRead();
+      void markDiscussionsAsRead();
+      return;
+    }
+    if (useManagerStackedTabs && tabValue === 0) {
+      void markAnnouncementsAsRead();
+      void markDiscussionsAsRead();
+    }
+  }, [
+    loading,
+    tabValue,
+    useStackedLayout,
+    useManagerStackedTabs,
+    userProfile?.id,
+    markAnnouncementsAsRead,
+    markDiscussionsAsRead,
+    markResourcesAsRead
+  ]);
 
   const handleMemberAdded = (member: CohortMember) => {
     setMembers(prev => [member, ...prev]);
@@ -443,7 +509,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             <Tabs value={tabValue} onChange={handleTabChange}>
               <Tab
                 icon={
-                  <Badge badgeContent={(unreadAnnouncements || 0) + (unreadDiscussions || 0)} color="error" max={99}>
+                  <Badge badgeContent={(unreadAnnouncements || 0) + (unreadDiscussions || 0) + (unreadResources || 0)} color="error" max={99}>
                     <AnnouncementIcon />
                   </Badge>
                 }

@@ -13,7 +13,8 @@ import {
   Group as GroupIcon,
   Campaign as AnnouncementIcon,
   Forum as DiscussionIcon,
-  Schedule as ScheduleIcon
+  Schedule as ScheduleIcon,
+  MenuBook as ResourcesIcon
 } from '@mui/icons-material';
 import { CohortWithStats } from '../../types/database';
 import { formatDistanceToNow } from 'date-fns';
@@ -24,7 +25,10 @@ interface CohortCardProps {
 }
 
 const CohortCard: React.FC<CohortCardProps> = ({ cohort, onClick }) => {
-  const hasUnread = (cohort.unread_announcements ?? 0) > 0 || (cohort.unread_discussions ?? 0) > 0;
+  const hasUnread =
+    (cohort.unread_announcements ?? 0) > 0 ||
+    (cohort.unread_discussions ?? 0) > 0 ||
+    (cohort.unread_resources ?? 0) > 0;
   
   const getLastActivityText = () => {
     if (!cohort.last_activity_at) return 'No activity yet';
@@ -133,6 +137,19 @@ const CohortCard: React.FC<CohortCardProps> = ({ cohort, onClick }) => {
                 <DiscussionIcon fontSize="small" color="action" />
                 <Typography variant="body2" color="text.secondary">
                   {cohort.topic_count}
+                </Typography>
+              </Box>
+            </Badge>
+
+            <Badge
+              badgeContent={cohort.unread_resources || 0}
+              color="error"
+              max={99}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <ResourcesIcon fontSize="small" color="action" />
+                <Typography variant="body2" color="text.secondary">
+                  {cohort.resource_count || 0}
                 </Typography>
               </Box>
             </Badge>
