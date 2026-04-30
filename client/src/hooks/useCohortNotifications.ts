@@ -15,7 +15,6 @@ export const useCohortNotifications = () => {
 
     const loadUnreadCount = async () => {
       try {
-        const today = new Date().toISOString().slice(0, 10);
         const resourcesReadMap =
           (await getUserData<Record<string, string>>(userProfile.id, 'cohort_resources_last_read')) || {};
 
@@ -48,9 +47,9 @@ export const useCohortNotifications = () => {
           let unreadAnns = 0;
           const { data: announcementRows } = await supabase
             .from('cohort_announcements')
-            .select('created_at, visible_until')
+            .select('created_at')
             .eq('cohort_id', cohortId);
-          const activeAnnouncements = (announcementRows || []).filter((row) => !row.visible_until || row.visible_until >= today);
+          const activeAnnouncements = announcementRows || [];
           if (readStatus?.last_read_announcements) {
             unreadAnns = activeAnnouncements.filter(
               (row) => new Date(row.created_at) > new Date(readStatus.last_read_announcements)

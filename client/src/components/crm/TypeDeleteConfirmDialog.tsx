@@ -49,6 +49,7 @@ export const TypeDeleteConfirmDialog: React.FC<TypeDeleteConfirmDialogProps> = (
       open={open}
       onClose={onClose}
       aria-labelledby="type-delete-confirm-title"
+      disableRestoreFocus
     >
       <DialogTitle id="type-delete-confirm-title">{title}</DialogTitle>
       <DialogContent>
