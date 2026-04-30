@@ -24,11 +24,27 @@ import { getUserData, setUserData, migrateFromLocalStorage, writeContinuityData 
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml, stripHtmlToText } from '../components/cohorts/RichTextEditor';
 
+type ChecklistEntryType = 'task' | 'banner' | 'footnote' | 'subnote' | 'divider';
+const DEFAULT_STAGE_PALETTE: Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string> = {
+  stage1: '#2196F3',
+  stage2: '#4CAF50',
+  stage3: '#FF9800',
+  stage4: '#9C27B0'
+};
+
+function decodeEntry(text: string): { type: ChecklistEntryType; content: string } {
+  const m = String(text || '').match(/^\[\[ENTRY:(task|banner|footnote|subnote|divider)\]\]/i);
+  if (!m) return { type: 'task', content: text || '' };
+  const type = m[1].toLowerCase() as ChecklistEntryType;
+  return { type, content: String(text || '').slice(m[0].length) };
+}
+
 interface MilestoneTask {
   id: string;
   text: string;
   completed: boolean;
   links?: { text: string; url: string; }[];
+  entry_type?: ChecklistEntryType;
 }
 
 interface MilestoneStage {
@@ -39,6 +55,8 @@ interface MilestoneStage {
   goal: string;
   tasks: MilestoneTask[];
   color_hex?: string | null;
+  program_checklist_name?: string | null;
+  program_checklist_first_stage?: boolean;
 }
 
 // Program checklist types for merge
@@ -70,6 +88,7 @@ const MilestonesPage = () => {
   const defaultStagesRef = useRef<MilestoneStage[] | null>(null);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
   const [programChecklists, setProgramChecklists] = useState<ProgramChecklistLoaded[]>([]);
+  const [stagePalette, setStagePalette] = useState(DEFAULT_STAGE_PALETTE);
 
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
@@ -459,28 +478,51 @@ const MilestonesPage = () => {
     return () => { mounted = false; };
   }, [resolvedProgramId]);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'milestone_stage_palette').maybeSingle();
+      const saved = (data?.value ?? null) as Record<string, unknown> | null;
+      if (!mounted || !saved || typeof saved !== 'object') return;
+      setStagePalette({
+        stage1: typeof saved.stage1 === 'string' ? saved.stage1 : DEFAULT_STAGE_PALETTE.stage1,
+        stage2: typeof saved.stage2 === 'string' ? saved.stage2 : DEFAULT_STAGE_PALETTE.stage2,
+        stage3: typeof saved.stage3 === 'string' ? saved.stage3 : DEFAULT_STAGE_PALETTE.stage3,
+        stage4: typeof saved.stage4 === 'string' ? saved.stage4 : DEFAULT_STAGE_PALETTE.stage4
+      });
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   // Build merged stages (program before + default + program after) and apply progress
   useEffect(() => {
     const defaultStages = defaultStagesRef.current ?? stages;
     if (programChecklists.length === 0) return;
 
-    const toMilestoneStage = (checklist: ProgramChecklistLoaded, stage: ProgramChecklistLoaded['stages'][0]): MilestoneStage => ({
+    const toMilestoneStage = (
+      checklist: ProgramChecklistLoaded,
+      stage: ProgramChecklistLoaded['stages'][0],
+      stageIndex: number
+    ): MilestoneStage => ({
       id: stage.id,
       title: stage.title,
       subtitle: stage.subtitle || '',
       objectives: Array.isArray(stage.objectives) ? stage.objectives : [],
       goal: stage.goal || '',
       color_hex: stage.color_hex || null,
+      program_checklist_name: checklist.name,
+      program_checklist_first_stage: stageIndex === 0,
       tasks: (stage.tasks || []).map((t: { task_id_suffix: string; text_content: string; links?: Array<{ text: string; url: string }> }) => ({
         id: `program:${checklist.id}:${stage.id}.${t.task_id_suffix}`,
-        text: t.text_content,
+        text: decodeEntry(t.text_content).content,
+        entry_type: decodeEntry(t.text_content).type,
         completed: false,
         links: t.links || []
       }))
     });
 
-    const before = programChecklists.filter((c) => c.show_before_default).flatMap((c) => c.stages.map((s) => toMilestoneStage(c, s)));
-    const after = programChecklists.filter((c) => !c.show_before_default).flatMap((c) => c.stages.map((s) => toMilestoneStage(c, s)));
+    const before = programChecklists.filter((c) => c.show_before_default).flatMap((c) => c.stages.map((s, i) => toMilestoneStage(c, s, i)));
+    const after = programChecklists.filter((c) => !c.show_before_default).flatMap((c) => c.stages.map((s, i) => toMilestoneStage(c, s, i)));
     const merged: MilestoneStage[] = [...before, ...defaultStages, ...after];
 
     setStages(merged);
@@ -607,8 +649,9 @@ const MilestonesPage = () => {
   };
 
   const getStageProgress = (stage: MilestoneStage) => {
-    const completedTasks = stage.tasks.filter(task => task.completed).length;
-    const totalTasks = stage.tasks.length;
+    const taskRows = stage.tasks.filter((task) => (task.entry_type || 'task') === 'task');
+    const completedTasks = taskRows.filter(task => task.completed).length;
+    const totalTasks = taskRows.length || 1;
     const percentage = Math.round((completedTasks / totalTasks) * 100);
     return { completedTasks, totalTasks, percentage };
   };
@@ -656,16 +699,25 @@ const MilestonesPage = () => {
         const getStageColor = (s: MilestoneStage) => {
           if (s.color_hex) return s.color_hex;
           switch (s.id) {
-            case 'stage1': return '#2196F3';
-            case 'stage2': return '#4CAF50';
-            case 'stage3': return '#FF9800';
-            case 'stage4': return '#9C27B0';
-            default: return '#2196F3';
+            case 'stage1': return stagePalette.stage1;
+            case 'stage2': return stagePalette.stage2;
+            case 'stage3': return stagePalette.stage3;
+            case 'stage4': return stagePalette.stage4;
+            default: return stagePalette.stage1;
           }
         };
         
         return (
-          <Accordion key={stage.id} sx={{ mb: 2, boxShadow: 2 }}>
+          <Box key={stage.id}>
+            {stage.program_checklist_first_stage && stage.program_checklist_name && (
+              <Box sx={{ mt: 2.5, mb: 1.25 }}>
+                <Divider sx={{ mb: 1 }} />
+                <Typography variant="h5" color="primary" sx={{ fontWeight: 700 }}>
+                  {stage.program_checklist_name} Checklist
+                </Typography>
+              </Box>
+            )}
+          <Accordion sx={{ mb: 2, boxShadow: 2 }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               sx={{
@@ -739,102 +791,127 @@ const MilestonesPage = () => {
               </Typography>
               
               <Box sx={{ mt: 2 }}>
-                {stage.tasks.map((task) => (
-                  <FormControlLabel
-                    key={task.id}
-                    control={
-                      <Checkbox
-                        checked={task.completed}
-                        onChange={() => handleTaskToggle(stage.id, task.id)}
-                      />
-                    }
-                    label={
-                      <Typography
-                        variant="body1"
-                        component="span"
+                {stage.tasks.map((task) => {
+                  const entryType = task.entry_type || 'task';
+                  if (entryType !== 'task') {
+                    return (
+                      <Box
+                        key={task.id}
                         sx={{
-                          textDecoration: task.completed ? 'line-through' : 'none',
-                          color: task.completed ? 'text.secondary' : 'text.primary',
-                          fontWeight: 500,
-                          whiteSpace: 'pre-line'
+                          my: 1.25,
+                          px: 1.25,
+                          py: entryType === 'divider' ? 0.75 : 1,
+                          borderLeft: entryType === 'subnote' ? '3px solid' : undefined,
+                          borderColor: entryType === 'subnote' ? 'warning.main' : undefined,
+                          bgcolor:
+                            entryType === 'banner'
+                              ? 'info.light'
+                              : entryType === 'footnote'
+                                ? 'grey.100'
+                                : 'transparent'
                         }}
                       >
-                        {task.text && task.text.includes('<') ? (
-                          <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }} />
-                        ) : task.links && task.links.length > 0 ? (
-                          (() => {
-                            let result = task.text;
-                            const elements: React.ReactNode[] = [];
-                            let lastIndex = 0;
-                            
-                            task.links.forEach((link, index) => {
-                              const linkIndex = result.indexOf(link.text, lastIndex);
-                              if (linkIndex !== -1) {
-                                // Add text before the link
-                                if (linkIndex > lastIndex) {
-                                  elements.push(result.slice(lastIndex, linkIndex));
-                                }
-                                
-                                // Add the clickable link
-                                elements.push(
-                                  <Box
-                                    key={index}
-                                    component="a"
-                                    href={link.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    sx={{
-                                      color: 'primary.main',
-                                      textDecoration: 'underline',
-                                      cursor: 'pointer',
-                                      '&:hover': {
-                                        textDecoration: 'underline',
-                                        opacity: 0.8
-                                      }
-                                    }}
-                                  >
-                                    {link.text}
-                                  </Box>
-                                );
-                                
-                                lastIndex = linkIndex + link.text.length;
-                              }
-                            });
-                            
-                            // Add remaining text after the last link
-                            if (lastIndex < result.length) {
-                              elements.push(result.slice(lastIndex));
-                            }
-                            
-                            return elements.length > 0 ? elements : result;
-                          })()
-                        ) : (
-                          task.text
-                        )}
-                      </Typography>
-                    }
-                    sx={{ 
-                      display: 'flex',
-                      margin: 0,
-                      mb: 0.5,
-                      width: '100%',
-                      alignItems: 'center',
-                      '& .MuiFormControlLabel-label': {
-                        marginLeft: 1,
-                        flex: 1,
-                        display: 'flex',
-                        alignItems: 'center'
-                      },
-                      '& .MuiCheckbox-root': {
-                        alignSelf: 'flex-start',
-                        marginTop: '2px'
+                        {entryType === 'divider' && <Divider sx={{ mb: 1 }} />}
+                        <Box
+                          sx={{
+                            '& p': { my: 0.25 },
+                            '& ul, & ol': { my: 0.25, pl: 2.5 }
+                          }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }}
+                        />
+                      </Box>
+                    );
+                  }
+                  return (
+                    <FormControlLabel
+                      key={task.id}
+                      control={
+                        <Checkbox
+                          checked={task.completed}
+                          onChange={() => handleTaskToggle(stage.id, task.id)}
+                        />
                       }
-                    }}
-                  />
-                ))}
+                      label={
+                        <Typography
+                          variant="body1"
+                          component="span"
+                          sx={{
+                            textDecoration: task.completed ? 'line-through' : 'none',
+                            color: task.completed ? 'text.secondary' : 'text.primary',
+                            fontWeight: 500,
+                            whiteSpace: 'pre-line',
+                            '& p': { my: 0.25 },
+                            '& ul, & ol': { my: 0.25, pl: 2.5 }
+                          }}
+                        >
+                          {task.text && task.text.includes('<') ? (
+                            <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }} />
+                          ) : task.links && task.links.length > 0 ? (
+                            (() => {
+                              let result = task.text;
+                              const elements: React.ReactNode[] = [];
+                              let lastIndex = 0;
+                              
+                              task.links.forEach((link, index) => {
+                                const linkIndex = result.indexOf(link.text, lastIndex);
+                                if (linkIndex !== -1) {
+                                  if (linkIndex > lastIndex) {
+                                    elements.push(result.slice(lastIndex, linkIndex));
+                                  }
+                                  elements.push(
+                                    <Box
+                                      key={index}
+                                      component="a"
+                                      href={link.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      sx={{
+                                        color: 'primary.main',
+                                        textDecoration: 'underline',
+                                        cursor: 'pointer',
+                                        '&:hover': { textDecoration: 'underline', opacity: 0.8 }
+                                      }}
+                                    >
+                                      {link.text}
+                                    </Box>
+                                  );
+                                  lastIndex = linkIndex + link.text.length;
+                                }
+                              });
+                              if (lastIndex < result.length) {
+                                elements.push(result.slice(lastIndex));
+                              }
+                              return elements.length > 0 ? elements : result;
+                            })()
+                          ) : (
+                            task.text
+                          )}
+                        </Typography>
+                      }
+                      sx={{ 
+                        display: 'flex',
+                        margin: 0,
+                        mb: 0.5,
+                        width: '100%',
+                        alignItems: 'center',
+                        '& .MuiFormControlLabel-label': {
+                          marginLeft: 1,
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center'
+                        },
+                        '& .MuiCheckbox-root': {
+                          alignSelf: 'flex-start',
+                          marginTop: '2px'
+                        }
+                      }}
+                    />
+                  );
+                })}
               </Box>
             </AccordionDetails>
           </Accordion>
+          </Box>
         );
       })}
     </Container>

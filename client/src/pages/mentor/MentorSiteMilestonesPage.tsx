@@ -350,8 +350,30 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const [editingStage, setEditingStage] = useState<{ hospitalId: string; stageId: string } | null>(null);
   const [completionDate, setCompletionDate] = useState<Date | null>(null);
   const [hiddenHospitals, setHiddenHospitals] = useState<Set<string>>(new Set());
+  const [stagePalette, setStagePalette] = useState<Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string>>({
+    stage1: '#2196F3',
+    stage2: '#4CAF50',
+    stage3: '#FF9800',
+    stage4: '#9C27B0'
+  });
 
   const uid = effectiveUserId ?? currentUser?.id;
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'milestone_stage_palette').maybeSingle();
+      const saved = (data?.value ?? null) as Record<string, unknown> | null;
+      if (!mounted || !saved || typeof saved !== 'object') return;
+      setStagePalette({
+        stage1: typeof saved.stage1 === 'string' ? saved.stage1 : '#2196F3',
+        stage2: typeof saved.stage2 === 'string' ? saved.stage2 : '#4CAF50',
+        stage3: typeof saved.stage3 === 'string' ? saved.stage3 : '#FF9800',
+        stage4: typeof saved.stage4 === 'string' ? saved.stage4 : '#9C27B0'
+      });
+    })();
+    return () => { mounted = false; };
+  }, []);
   // Load hospitals: mentor_hospital_assignments + mentorHospitals (user_data); hidden/order from user_data
   useEffect(() => {
     if (!uid) return;
@@ -826,15 +848,15 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const getStageColor = (stageId: string) => {
     switch (stageId) {
       case 'stage1':
-        return '#2196F3'; // Blue
+        return stagePalette.stage1;
       case 'stage2':
-        return '#4CAF50'; // Green
+        return stagePalette.stage2;
       case 'stage3':
-        return '#FF9800'; // Orange
+        return stagePalette.stage3;
       case 'stage4':
-        return '#9C27B0'; // Purple
+        return stagePalette.stage4;
       default:
-        return '#2196F3';
+        return stagePalette.stage1;
     }
   };
 

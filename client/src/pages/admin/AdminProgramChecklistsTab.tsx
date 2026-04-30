@@ -37,6 +37,38 @@ import { supabase } from '../../supabase';
 import type { ProgramChecklist, ProgramChecklistStage, ProgramChecklistTask, ProgramChecklistTaskLink } from '../../types/database';
 import RichTextEditor, { sanitizeHtml, stripHtmlToText } from '../../components/cohorts/RichTextEditor';
 
+type ChecklistEntryType = 'task' | 'banner' | 'footnote' | 'subnote' | 'divider';
+const ENTRY_PREFIX = '[[ENTRY:';
+const DEFAULT_STAGE_PALETTE: Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string> = {
+  stage1: '#2196F3',
+  stage2: '#4CAF50',
+  stage3: '#FF9800',
+  stage4: '#9C27B0'
+};
+
+function decodeEntry(text: string): { type: ChecklistEntryType; content: string } {
+  const m = String(text || '').match(/^\[\[ENTRY:(task|banner|footnote|subnote|divider)\]\]/i);
+  if (!m) return { type: 'task', content: text || '' };
+  const type = m[1].toLowerCase() as ChecklistEntryType;
+  return {
+    type,
+    content: String(text || '').slice(m[0].length)
+  };
+}
+
+function encodeEntry(type: ChecklistEntryType, content: string): string {
+  if (type === 'task') return content;
+  return `${ENTRY_PREFIX}${type}]]${content}`;
+}
+
+function normalizeChecklistHtml(html: string): string {
+  // Prevent accidental multi-empty-line growth after save cycles.
+  return sanitizeHtml(html)
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/(<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>){2,}/gi, '<p><br></p>');
+}
+
 export default function AdminProgramChecklistsTab() {
   const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
   const [checklists, setChecklists] = useState<(ProgramChecklist & { stages?: ProgramChecklistStage[] })[]>([]);
@@ -55,8 +87,10 @@ export default function AdminProgramChecklistsTab() {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ProgramChecklistTask | null>(null);
   const [taskStageId, setTaskStageId] = useState('');
-  const [taskForm, setTaskForm] = useState({ text_content: '', task_id_suffix: '', links: [] as ProgramChecklistTaskLink[] });
+  const [taskForm, setTaskForm] = useState({ text_content: '', task_id_suffix: '', links: [] as ProgramChecklistTaskLink[], entry_type: 'task' as ChecklistEntryType });
   const [stageChecklistId, setStageChecklistId] = useState<string | null>(null);
+  const [stagePalette, setStagePalette] = useState(DEFAULT_STAGE_PALETTE);
+  const [paletteSaving, setPaletteSaving] = useState(false);
 
   const loadPrograms = useCallback(async () => {
     const { data, error: err } = await supabase.from('programs').select('id, name').eq('is_active', true).order('name');
@@ -94,12 +128,25 @@ export default function AdminProgramChecklistsTab() {
     setChecklists(withStages);
   }, []);
 
+  const loadStagePalette = useCallback(async () => {
+    const { data } = await supabase.from('app_settings').select('value').eq('key', 'milestone_stage_palette').maybeSingle();
+    const saved = (data?.value ?? null) as Record<string, unknown> | null;
+    if (!saved || typeof saved !== 'object') return;
+    setStagePalette({
+      stage1: typeof saved.stage1 === 'string' ? saved.stage1 : DEFAULT_STAGE_PALETTE.stage1,
+      stage2: typeof saved.stage2 === 'string' ? saved.stage2 : DEFAULT_STAGE_PALETTE.stage2,
+      stage3: typeof saved.stage3 === 'string' ? saved.stage3 : DEFAULT_STAGE_PALETTE.stage3,
+      stage4: typeof saved.stage4 === 'string' ? saved.stage4 : DEFAULT_STAGE_PALETTE.stage4
+    });
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         await loadPrograms();
         await loadChecklists();
+        await loadStagePalette();
       } catch (e: any) {
         if (mounted) setError(e?.message || 'Failed to load');
       } finally {
@@ -107,7 +154,7 @@ export default function AdminProgramChecklistsTab() {
       }
     })();
     return () => { mounted = false; };
-  }, [loadPrograms, loadChecklists]);
+  }, [loadPrograms, loadChecklists, loadStagePalette]);
 
   const openAddChecklist = () => {
     setEditingChecklist(null);
@@ -261,26 +308,29 @@ export default function AdminProgramChecklistsTab() {
   const openAddTask = (stageId: string, checklistId: string) => {
     setEditingTask(null);
     setTaskStageId(stageId);
-    setTaskForm({ text_content: '', task_id_suffix: '1', links: [] });
+    setTaskForm({ text_content: '', task_id_suffix: '1', links: [], entry_type: 'task' });
     setExpandedChecklistId(checklistId);
     setTaskDialogOpen(true);
   };
 
   const openEditTask = (t: ProgramChecklistTask, checklistId: string) => {
+    const decoded = decodeEntry(t.text_content || '');
     setEditingTask(t);
     setTaskStageId(t.stage_id);
     setTaskForm({
-      text_content: t.text_content,
+      text_content: decoded.content,
       task_id_suffix: t.task_id_suffix,
-      links: t.links && Array.isArray(t.links) ? t.links : []
+      links: t.links && Array.isArray(t.links) ? t.links : [],
+      entry_type: decoded.type
     });
     setExpandedChecklistId(checklistId);
     setTaskDialogOpen(true);
   };
 
   const handleSaveTask = async () => {
-    const textTrim = sanitizeHtml(taskForm.text_content).trim();
+    const textTrim = normalizeChecklistHtml(taskForm.text_content).trim();
     if (!stripHtmlToText(textTrim).trim() || !taskStageId) return;
+    const encodedText = encodeEntry(taskForm.entry_type, textTrim);
     setSaving(true);
     setError(null);
     try {
@@ -288,7 +338,7 @@ export default function AdminProgramChecklistsTab() {
         const { error: e } = await supabase
           .from('program_checklist_tasks')
           .update({
-            text_content: textTrim,
+            text_content: encodedText,
             task_id_suffix: taskForm.task_id_suffix.trim() || '1',
             links: [],
             updated_at: new Date().toISOString()
@@ -301,7 +351,7 @@ export default function AdminProgramChecklistsTab() {
           stage_id: taskStageId,
           sort_order: (tasks?.length ?? 0),
           task_id_suffix: taskForm.task_id_suffix.trim() || '1',
-          text_content: textTrim,
+          text_content: encodedText,
           links: []
         });
         if (e) throw e;
@@ -312,6 +362,26 @@ export default function AdminProgramChecklistsTab() {
       setError(e?.message || 'Save failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSavePalette = async () => {
+    setPaletteSaving(true);
+    setError(null);
+    try {
+      const { error: e } = await supabase.from('app_settings').upsert(
+        {
+          key: 'milestone_stage_palette',
+          value: stagePalette as any,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'key' }
+      );
+      if (e) throw e;
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save stage palette');
+    } finally {
+      setPaletteSaving(false);
     }
   };
 
@@ -330,6 +400,26 @@ export default function AdminProgramChecklistsTab() {
       <Typography color="textSecondary" sx={{ mb: 2 }}>
         Create checklists per program for PECCs. Each checklist can appear before or after the default checklist. PECC primary program determines which program checklist they see.
       </Typography>
+      <Box sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Default Stage Accordion Palette</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          These colors control Stage 1-4 accordion headers in the PECC checklist pages.
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(120px, 1fr))', gap: 1 }}>
+          {(['stage1', 'stage2', 'stage3', 'stage4'] as const).map((k) => (
+            <TextField
+              key={k}
+              label={k.toUpperCase()}
+              size="small"
+              value={stagePalette[k]}
+              onChange={(e) => setStagePalette((prev) => ({ ...prev, [k]: e.target.value }))}
+            />
+          ))}
+        </Box>
+        <Button sx={{ mt: 1.5 }} size="small" variant="outlined" onClick={handleSavePalette} disabled={paletteSaving}>
+          {paletteSaving ? 'Saving…' : 'Save stage palette'}
+        </Button>
+      </Box>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
       <Button variant="contained" startIcon={<AddIcon />} onClick={openAddChecklist} sx={{ mb: 2 }} aria-label="Add program checklist">
         Add checklist
@@ -382,7 +472,7 @@ export default function AdminProgramChecklistsTab() {
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                   <Typography variant="subtitle1" fontWeight={600}>{stage.title}</Typography>
                   <Box>
-                    <Button size="small" startIcon={<AddIcon />} onClick={() => openAddTask(stage.id, c.id)}>Add step</Button>
+                    <Button size="small" startIcon={<AddIcon />} onClick={() => openAddTask(stage.id, c.id)}>Add item</Button>
                     <IconButton size="small" onClick={() => openEditStage(stage)}><EditIcon /></IconButton>
                     <IconButton size="small" color="error" onClick={() => handleDeleteStage(stage.id)}><DeleteIcon /></IconButton>
                   </Box>
@@ -393,7 +483,16 @@ export default function AdminProgramChecklistsTab() {
                     if (!tasks?.length) return <Typography variant="body2" color="text.secondary">No steps yet</Typography>;
                     return tasks.map((t) => (
                       <li key={t.id}>
-                        <Typography variant="body2">{stripHtmlToText(t.text_content).trim().slice(0, 80)}{stripHtmlToText(t.text_content).trim().length > 80 ? '…' : ''}</Typography>
+                        {(() => {
+                          const decoded = decodeEntry(t.text_content || '');
+                          const plain = stripHtmlToText(decoded.content).trim();
+                          return (
+                            <Typography variant="body2">
+                              {decoded.type !== 'task' ? `[${decoded.type.toUpperCase()}] ` : ''}
+                              {plain.slice(0, 80)}{plain.length > 80 ? '…' : ''}
+                            </Typography>
+                          );
+                        })()}
                         <IconButton size="small" onClick={() => openEditTask(t, c.id)}><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => handleDeleteTask(t.id)}><DeleteIcon fontSize="small" /></IconButton>
                       </li>
@@ -451,14 +550,28 @@ export default function AdminProgramChecklistsTab() {
       </Dialog>
 
       <Dialog open={taskDialogOpen} onClose={() => setTaskDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingTask ? 'Edit step' : 'New step'}</DialogTitle>
+        <DialogTitle>{editingTask ? 'Edit checklist item' : 'New checklist item'}</DialogTitle>
         <DialogContent>
+          <FormControl fullWidth margin="dense" sx={{ mb: 1 }}>
+            <InputLabel>Item type</InputLabel>
+            <Select
+              value={taskForm.entry_type}
+              label="Item type"
+              onChange={(e) => setTaskForm((f) => ({ ...f, entry_type: e.target.value as ChecklistEntryType }))}
+            >
+              <MenuItem value="task">Checklist item (checkbox)</MenuItem>
+              <MenuItem value="banner">Banner text block</MenuItem>
+              <MenuItem value="subnote">Subnote text block</MenuItem>
+              <MenuItem value="footnote">Footnote text block</MenuItem>
+              <MenuItem value="divider">Divider text block</MenuItem>
+            </Select>
+          </FormControl>
           <TextField fullWidth label="Step ID (e.g. 1)" value={taskForm.task_id_suffix} onChange={(e) => setTaskForm((f) => ({ ...f, task_id_suffix: e.target.value }))} margin="dense" sx={{ mb: 1 }} />
-          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Step text *</Typography>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Content *</Typography>
           <RichTextEditor
             value={taskForm.text_content}
             onChange={(html) => setTaskForm((f) => ({ ...f, text_content: html }))}
-            placeholder="Enter step content…"
+            placeholder="Enter content…"
             minRows={3}
           />
         </DialogContent>
