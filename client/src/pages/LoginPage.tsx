@@ -34,7 +34,8 @@ const LoginPage = () => {
       await login(email, password);
       navigate('/', { replace: true });
     } catch (err) {
-      setError('Failed to log in. Please check your credentials.');
+      const details = err instanceof Error ? err.message : '';
+      setError(details ? `Failed to log in: ${details}` : 'Failed to log in. Please check your credentials.');
     } finally {
       setLoading(false);
     }

@@ -2344,7 +2344,8 @@ const AdminCRMPage: React.FC = () => {
       if (r === 'pecc' || r === 'manager' || r === 'mentor') {
         const emailTrim = formData.email.trim();
         const { data: existingRow } = await supabase.from('users').select('id').eq('email', emailTrim).maybeSingle();
-        if (!existingRow?.id) {
+        const shouldProvision = !existingRow?.id || Boolean(startingPassword.trim());
+        if (shouldProvision) {
           const pr = await provisionCrmPortalUser({
             email: emailTrim,
             role: r,
@@ -5387,16 +5388,16 @@ const AdminCRMPage: React.FC = () => {
             <Grid item xs={6}>
               <TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth size="small" />
             </Grid>
-            {isPersonType(formData.type) && ['pecc', 'manager', 'mentor'].includes(formData.type) && !editingContact?.user_id && (
+            {isPersonType(formData.type) && ['pecc', 'manager', 'mentor'].includes(formData.type) && (
               <Grid item xs={12}>
                 <TextField
                   label="Starting password (optional)"
-                  type="text"
+                  type="password"
                   value={startingPassword}
                   onChange={(e) => setStartingPassword(e.target.value)}
                   fullWidth
                   size="small"
-                  helperText="If provided, this will be set as the initial login password when the portal account is created."
+                  helperText="If provided, this sets login password now (creates account if needed, or resets password if account already exists)."
                 />
               </Grid>
             )}
