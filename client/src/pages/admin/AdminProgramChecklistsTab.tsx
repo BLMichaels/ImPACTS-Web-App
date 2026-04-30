@@ -69,6 +69,30 @@ function normalizeChecklistHtml(html: string): string {
     .replace(/(<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>){2,}/gi, '<p><br></p>');
 }
 
+function isValidHexColor(value: string): boolean {
+  return /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(String(value || '').trim());
+}
+
+function ColorSwatch({ color, label }: { color: string; label: string }) {
+  const valid = isValidHexColor(color);
+  return (
+    <Box
+      title={`${label}: ${valid ? color : 'Invalid hex'}`}
+      aria-label={`${label} preview`}
+      sx={{
+        width: 26,
+        height: 26,
+        borderRadius: '6px',
+        border: '1px solid',
+        borderColor: valid ? 'divider' : 'error.main',
+        bgcolor: valid ? color : 'grey.100',
+        backgroundImage: valid ? 'none' : 'linear-gradient(45deg, transparent 42%, #ef5350 42%, #ef5350 58%, transparent 58%)',
+        flexShrink: 0
+      }}
+    />
+  );
+}
+
 export default function AdminProgramChecklistsTab() {
   const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
   const [checklists, setChecklists] = useState<(ProgramChecklist & { stages?: ProgramChecklistStage[] })[]>([]);
@@ -405,15 +429,18 @@ export default function AdminProgramChecklistsTab() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           These colors control Stage 1-4 accordion headers in the PECC checklist pages.
         </Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(120px, 1fr))', gap: 1 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(180px, 1fr))', gap: 1 }}>
           {(['stage1', 'stage2', 'stage3', 'stage4'] as const).map((k) => (
-            <TextField
-              key={k}
-              label={k.toUpperCase()}
-              size="small"
-              value={stagePalette[k]}
-              onChange={(e) => setStagePalette((prev) => ({ ...prev, [k]: e.target.value }))}
-            />
+            <Box key={k} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TextField
+                label={k.toUpperCase()}
+                size="small"
+                value={stagePalette[k]}
+                onChange={(e) => setStagePalette((prev) => ({ ...prev, [k]: e.target.value }))}
+                sx={{ flex: 1 }}
+              />
+              <ColorSwatch color={stagePalette[k]} label={k.toUpperCase()} />
+            </Box>
           ))}
         </Box>
         <Button sx={{ mt: 1.5 }} size="small" variant="outlined" onClick={handleSavePalette} disabled={paletteSaving}>
@@ -539,7 +566,17 @@ export default function AdminProgramChecklistsTab() {
         <DialogContent>
           <TextField fullWidth label="Stage title" value={stageForm.title} onChange={(e) => setStageForm((f) => ({ ...f, title: e.target.value }))} margin="dense" required />
           <TextField fullWidth label="Subtitle" value={stageForm.subtitle} onChange={(e) => setStageForm((f) => ({ ...f, subtitle: e.target.value }))} margin="dense" />
-          <TextField fullWidth label="Color (hex)" value={stageForm.color_hex} onChange={(e) => setStageForm((f) => ({ ...f, color_hex: e.target.value }))} margin="dense" placeholder="#2196F3" />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TextField
+              fullWidth
+              label="Color (hex)"
+              value={stageForm.color_hex}
+              onChange={(e) => setStageForm((f) => ({ ...f, color_hex: e.target.value }))}
+              margin="dense"
+              placeholder="#2196F3"
+            />
+            <ColorSwatch color={stageForm.color_hex} label="Stage color" />
+          </Box>
           <TextField fullWidth label="Goal" value={stageForm.goal} onChange={(e) => setStageForm((f) => ({ ...f, goal: e.target.value }))} margin="dense" multiline />
           <TextField fullWidth label="Objectives (one per line)" value={stageForm.objectives} onChange={(e) => setStageForm((f) => ({ ...f, objectives: e.target.value }))} margin="dense" multiline rows={3} />
         </DialogContent>
