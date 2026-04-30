@@ -104,9 +104,17 @@ export async function mapSiteRefsToHospitalRowIds(refs: string[]): Promise<Map<s
   const map = new Map<string, string>();
   const unique = [...new Set(refs.map((r) => String(r || '').trim()).filter(Boolean))];
   if (!unique.length) return map;
+  const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
   for (let i = 0; i < unique.length; i += SITE_REF_MAP_CHUNK) {
     const part = unique.slice(i, i + SITE_REF_MAP_CHUNK);
-    const orParts = part.flatMap((ref) => [`id.eq.${ref}`, `facility_id.eq.${ref}`]);
+    // hospitals.id is UUID while facility_id is text; avoid UUID cast errors by only
+    // using id.eq for UUID-like refs and always allowing facility_id.eq refs.
+    const uuidRefs = part.filter((ref) => isUuid(ref));
+    const orParts = [
+      ...uuidRefs.map((ref) => `id.eq.${ref}`),
+      ...part.map((ref) => `facility_id.eq.${ref}`),
+    ];
     if (!orParts.length) continue;
     const { data, error } = await supabase.from('hospitals').select('id, facility_id').or(orParts.join(','));
     if (error) {

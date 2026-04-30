@@ -82,6 +82,28 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         : [UserRole.PECC, UserRole.MENTOR],
     [actualRole]
   );
+
+  const normalizeText = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
+  const resolvePrefillIds = (
+    rawValues: string[],
+    options: Array<{ id: string; name: string }>
+  ): string[] => {
+    if (!Array.isArray(rawValues) || rawValues.length === 0) return [];
+    const byName = new Map(options.map((o) => [normalizeText(o.name), o.id]));
+    const validIds = new Set(options.map((o) => o.id));
+    const out: string[] = [];
+    rawValues.forEach((raw) => {
+      const value = String(raw ?? '').trim();
+      if (!value) return;
+      if (validIds.has(value)) {
+        out.push(value);
+        return;
+      }
+      const match = byName.get(normalizeText(value));
+      if (match) out.push(match);
+    });
+    return [...new Set(out)];
+  };
   
   useEffect(() => {
     if (open) {
@@ -286,6 +308,19 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setPrograms([]);
     }
   };
+
+  useEffect(() => {
+    if (!open) return;
+    // CRM prefill can be IDs or names; normalize to valid option IDs only.
+    setProgramIds(resolvePrefillIds(initialProgramIds, programs));
+    setCohortIds(resolvePrefillIds(initialCohortIds, cohorts));
+    setHospitalId((prev) => {
+      const candidate = String(initialHospitalId ?? '').trim();
+      if (!candidate) return null;
+      return hospitals.some((h) => h.id === candidate) ? candidate : null;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only reconcile prefilled values against loaded options
+  }, [open, programs, cohorts, hospitals, initialProgramIds, initialCohortIds, initialHospitalId]);
   
   const handleSend = async () => {
     if (!email.trim()) {
@@ -335,12 +370,21 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         email: email.trim(),
         role,
         invitedBy: userProfile.id,
-        hospitalId: hospitalId || null,
+        hospitalId: (hospitalId && hospitals.some((h) => h.id === hospitalId)) ? hospitalId : null,
         mentorId: role === UserRole.PECC ? mentorUserId : null,
         managerId: role === UserRole.MENTOR ? managerUserId : null,
         managerIdForPECC: role === UserRole.PECC ? managerForPeccUserId : null,
-        cohortIds: role === UserRole.PECC && cohortIds.length > 0 ? cohortIds : undefined,
-        programIds: programIds.length > 0 ? programIds : undefined,
+        cohortIds:
+          role === UserRole.PECC
+            ? (() => {
+                const valid = cohortIds.filter((id) => cohorts.some((c) => c.id === id));
+                return valid.length > 0 ? valid : undefined;
+              })()
+            : undefined,
+        programIds: (() => {
+          const valid = programIds.filter((id) => programs.some((p) => p.id === id));
+          return valid.length > 0 ? valid : undefined;
+        })(),
         customMessage: customMessage.trim() || undefined
       });
       
@@ -371,15 +415,8 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
     }
   };
   
-  // Prevent root from getting aria-hidden so the focused button is not hidden from assistive tech
-  useEffect(() => {
-    if (!open) return;
-    const root = document.getElementById('root');
-    if (root) root.removeAttribute('aria-hidden');
-  }, [open]);
-
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth disableRestoreFocus>
       <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
         <Box>
           Send Account Invitation

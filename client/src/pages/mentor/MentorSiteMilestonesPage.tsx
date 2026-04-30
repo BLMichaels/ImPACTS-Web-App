@@ -492,14 +492,18 @@ const MentorSiteMilestonesPage: React.FC = () => {
         ];
         const peccId = peccUserIds.length > 0 ? peccUserIds[0] : undefined;
 
-        const progressHospitalOr =
-          hospital.facilityId !== hospital.id
-            ? `hospital_id.eq.${hospital.id},hospital_id.eq.${hospital.facilityId}`
-            : `hospital_id.eq.${hospital.id}`;
-        const { data: progressRows } = await supabase
-          .from('site_checklist_progress')
-          .select('task_id, completed, completed_at')
-          .or(progressHospitalOr);
+        const progressHospitalUuid =
+          hospitalRefToRowId.get(hospital.id) ||
+          (hospital.facilityId ? hospitalRefToRowId.get(hospital.facilityId) : undefined) ||
+          null;
+        let progressRows: Array<{ task_id: string; completed: boolean; completed_at: string | null }> = [];
+        if (progressHospitalUuid) {
+          const { data } = await supabase
+            .from('site_checklist_progress')
+            .select('task_id, completed, completed_at')
+            .eq('hospital_id', progressHospitalUuid);
+          progressRows = (data || []) as Array<{ task_id: string; completed: boolean; completed_at: string | null }>;
+        }
 
         const completedByTask: Record<string, { completed: boolean; completed_at: string | null }> = {};
         (progressRows || []).forEach((r: { task_id: string; completed: boolean; completed_at: string | null }) => {
