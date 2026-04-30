@@ -22,6 +22,7 @@ import {
 import { Refresh as RefreshIcon, ContentCopy as CopyIcon } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { createAndSendInvitation } from '../../utils/invitations';
+import { provisionCrmPortalUser } from '../../utils/provisionCrmPortalUser';
 import { UserRole, normalizeUserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
@@ -74,6 +75,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   const [programs, setPrograms] = useState<Array<{ id: string; name: string }>>([]);
   const [programIds, setProgramIds] = useState<string[]>([]);
   const [customMessage, setCustomMessage] = useState('');
+  const [startingPassword, setStartingPassword] = useState('');
+  const [createdUserId, setCreatedUserId] = useState<string | null>(null);
+  const [accountCreatedDirectly, setAccountCreatedDirectly] = useState(false);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const roleOptions = useMemo(
     () =>
@@ -122,6 +126,9 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       setCohortIds(Array.isArray(initialCohortIds) ? [...initialCohortIds] : []);
       setProgramIds(Array.isArray(initialProgramIds) ? [...initialProgramIds] : []);
       setCustomMessage('');
+      setStartingPassword('');
+      setCreatedUserId(null);
+      setAccountCreatedDirectly(false);
       setMentors([]);
       setManagers([]);
       setHospitals([]);
@@ -365,6 +372,82 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       const managerUserId = selectedManager && !selectedManager.id.startsWith('crm:') ? selectedManager.id : null;
       const managerForPeccUserId =
         selectedManagerForPecc && !selectedManagerForPecc.id.startsWith('crm:') ? selectedManagerForPecc.id : null;
+      const validProgramIds = programIds.filter((id) => programs.some((p) => p.id === id));
+      const validCohortIds = cohortIds.filter((id) => cohorts.some((c) => c.id === id));
+
+      // If a starting password is provided, create the account directly so users
+      // can sign in immediately without completing invitation setup questions.
+      if (startingPassword.trim()) {
+        if (!['pecc', 'mentor', 'manager'].includes(role)) {
+          throw new Error('Starting password can only be used for PECC, Mentor, or Manager accounts.');
+        }
+        if (startingPassword.trim().length < 8) {
+          throw new Error('Starting password must be at least 8 characters.');
+        }
+
+        const parsedName = contactName.includes(',')
+          ? contactName.split(',').map((s) => s.trim())
+          : contactName.split(' ').map((s) => s.trim());
+        const last = contactName.includes(',') ? (parsedName[0] || '') : (parsedName.slice(1).join(' ') || '');
+        const first = contactName.includes(',') ? (parsedName[1] || '') : (parsedName[0] || '');
+
+        const provision = await provisionCrmPortalUser({
+          email: email.trim(),
+          role: role as 'pecc' | 'mentor' | 'manager',
+          first_name: first,
+          last_name: last,
+          starting_password: startingPassword.trim()
+        });
+        if ('error' in provision) throw new Error(provision.error);
+
+        const userId = provision.user_id;
+        setCreatedUserId(userId);
+        setAccountCreatedDirectly(true);
+        setInvitationEmailSent(false);
+
+        if (contactId && !contactId.startsWith('invitation:')) {
+          const { error: updateCrmError } = await supabase
+            .from('crm_organizations')
+            .update({ user_id: userId, updated_at: new Date().toISOString() })
+            .eq('id', contactId);
+          if (updateCrmError) {
+            console.warn('CRM user link update failed:', updateCrmError.message);
+          }
+        }
+
+        if (validProgramIds.length > 0) {
+          for (const programId of validProgramIds) {
+            const { error: upErr } = await supabase.from('program_members').upsert(
+              {
+                program_id: programId,
+                user_id: userId,
+                added_by: userProfile.id,
+                status: 'active'
+              },
+              { onConflict: 'program_id,user_id' }
+            );
+            if (upErr) console.warn('Program membership sync failed:', upErr.message);
+          }
+        }
+
+        if (role === UserRole.PECC && validCohortIds.length > 0) {
+          for (const cohortId of validCohortIds) {
+            const { error: upErr } = await supabase.from('cohort_members').upsert(
+              {
+                cohort_id: cohortId,
+                user_id: userId,
+                added_by: userProfile.id,
+                status: 'active'
+              },
+              { onConflict: 'cohort_id,user_id' }
+            );
+            if (upErr) console.warn('Cohort membership sync failed:', upErr.message);
+          }
+        }
+
+        setSuccess(true);
+        return;
+      }
 
       const { code, emailSent, emailError } = await createAndSendInvitation({
         email: email.trim(),
@@ -377,12 +460,12 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         cohortIds:
           role === UserRole.PECC
             ? (() => {
-                const valid = cohortIds.filter((id) => cohorts.some((c) => c.id === id));
+                const valid = validCohortIds;
                 return valid.length > 0 ? valid : undefined;
               })()
             : undefined,
         programIds: (() => {
-          const valid = programIds.filter((id) => programs.some((p) => p.id === id));
+          const valid = validProgramIds;
           return valid.length > 0 ? valid : undefined;
         })(),
         customMessage: customMessage.trim() || undefined
@@ -444,47 +527,61 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
       <DialogContent>
         {success ? (
           <Box sx={{ mb: 2 }}>
-            {!invitationEmailSent && (
+            {!accountCreatedDirectly && !invitationEmailSent && (
               <Alert severity="warning" sx={{ mb: 2 }}>
                 The invitation was created but the email could not be sent automatically. Please copy the link below and send it to the invitee yourself (e.g. by email or message).
               </Alert>
             )}
             <Alert severity="success" sx={{ mb: 2 }}>
-              Invitation created. Code: <strong>{invitationCode}</strong>
-              {invitationEmailSent && (
+              {accountCreatedDirectly ? (
+                <>
+                  Account created with starting password.
+                  {createdUserId ? <> User ID: <strong>{createdUserId}</strong></> : null}
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    This user can sign in now with their email and the starting password you set (no setup-question flow).
+                  </Typography>
+                </>
+              ) : (
+                <>Invitation created. Code: <strong>{invitationCode}</strong></>
+              )}
+              {!accountCreatedDirectly && invitationEmailSent && (
                 <Typography variant="body2" sx={{ mt: 1 }}>
                   An email with the registration link has been sent to the invitee.
                 </Typography>
               )}
             </Alert>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Registration link (copy and share if needed):</Typography>
-            <TextField
-              fullWidth
-              size="small"
-              value={typeof window !== 'undefined' ? `${window.location.origin}/invite/${invitationCode}` : `/invite/${invitationCode}`}
-              InputProps={{
-                readOnly: true,
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <Tooltip title="Copy link">
-                      <IconButton
-                        onClick={() => {
-                          const url =
-                            typeof window !== 'undefined'
-                              ? `${window.location.origin}/invite/${invitationCode}`
-                              : `/invite/${invitationCode}`;
-                          navigator.clipboard.writeText(url).then(() => {}, () => {});
-                        }}
-                        size="small"
-                        aria-label="Copy invitation link"
-                      >
-                        <CopyIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </InputAdornment>
-                )
-              }}
-            />
+            {!accountCreatedDirectly && (
+              <>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Registration link (copy and share if needed):</Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  value={typeof window !== 'undefined' ? `${window.location.origin}/invite/${invitationCode}` : `/invite/${invitationCode}`}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip title="Copy link">
+                          <IconButton
+                            onClick={() => {
+                              const url =
+                                typeof window !== 'undefined'
+                                  ? `${window.location.origin}/invite/${invitationCode}`
+                                  : `/invite/${invitationCode}`;
+                              navigator.clipboard.writeText(url).then(() => {}, () => {});
+                            }}
+                            size="small"
+                            aria-label="Copy invitation link"
+                          >
+                            <CopyIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    )
+                  }}
+                />
+              </>
+            )}
           </Box>
         ) : (
           <>
@@ -633,6 +730,18 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                 disabled={loading}
               />
             )}
+            {(role === UserRole.PECC || role === UserRole.MENTOR || role === UserRole.MANAGER) && (
+              <TextField
+                label="Starting password (optional)"
+                type="password"
+                value={startingPassword}
+                onChange={(e) => setStartingPassword(e.target.value)}
+                fullWidth
+                disabled={loading}
+                helperText="If set, this creates the account immediately and skips invitation setup questions. Minimum 8 characters."
+                sx={{ mb: 2 }}
+              />
+            )}
           </>
         )}
       </DialogContent>
@@ -647,7 +756,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
             disabled={loading || !email.trim()}
             startIcon={loading ? <CircularProgress size={20} /> : undefined}
           >
-            {loading ? 'Sending...' : 'Send Invitation'}
+            {loading ? 'Saving...' : (startingPassword.trim() ? 'Create Account' : 'Send Invitation')}
           </Button>
         )}
       </DialogActions>
