@@ -133,21 +133,19 @@ const ManagerCohortsPage: React.FC = () => {
             .maybeSingle();
 
           let unreadAnnouncements = 0;
+          const { data: announcementRows } = await supabase
+            .from('cohort_announcements')
+            .select('created_at, visible_until')
+            .eq('cohort_id', cohort.id);
+          const activeAnnouncements = (announcementRows || []).filter(
+            (row) => !row.visible_until || row.visible_until >= today
+          );
           if (readStatus?.last_read_announcements) {
-            const { count } = await supabase
-              .from('cohort_announcements')
-              .select('*', { count: 'exact', head: true })
-              .eq('cohort_id', cohort.id)
-              .or(`visible_until.is.null,visible_until.gte.${today}`)
-              .gt('created_at', readStatus.last_read_announcements);
-            unreadAnnouncements = count || 0;
+            unreadAnnouncements = activeAnnouncements.filter(
+              (row) => new Date(row.created_at) > new Date(readStatus.last_read_announcements)
+            ).length;
           } else {
-            const { count } = await supabase
-              .from('cohort_announcements')
-              .select('*', { count: 'exact', head: true })
-              .eq('cohort_id', cohort.id)
-              .or(`visible_until.is.null,visible_until.gte.${today}`);
-            unreadAnnouncements = count || 0;
+            unreadAnnouncements = activeAnnouncements.length;
           }
 
           let unreadDiscussions = 0;

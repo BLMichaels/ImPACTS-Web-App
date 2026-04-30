@@ -44,23 +44,19 @@ export const useCohortNotifications = () => {
             .eq('user_id', userProfile.id)
             .maybeSingle();
 
-          // Count unread announcements
+          // Count unread announcements (filter active window in JS to avoid noisy PostgREST HEAD/or parser edge-cases).
           let unreadAnns = 0;
+          const { data: announcementRows } = await supabase
+            .from('cohort_announcements')
+            .select('created_at, visible_until')
+            .eq('cohort_id', cohortId);
+          const activeAnnouncements = (announcementRows || []).filter((row) => !row.visible_until || row.visible_until >= today);
           if (readStatus?.last_read_announcements) {
-            const { count } = await supabase
-              .from('cohort_announcements')
-              .select('*', { count: 'exact', head: true })
-              .eq('cohort_id', cohortId)
-              .or(`visible_until.is.null,visible_until.gte.${today}`)
-              .gt('created_at', readStatus.last_read_announcements);
-            unreadAnns = count || 0;
+            unreadAnns = activeAnnouncements.filter(
+              (row) => new Date(row.created_at) > new Date(readStatus.last_read_announcements)
+            ).length;
           } else {
-            const { count } = await supabase
-              .from('cohort_announcements')
-              .select('*', { count: 'exact', head: true })
-              .eq('cohort_id', cohortId)
-              .or(`visible_until.is.null,visible_until.gte.${today}`);
-            unreadAnns = count || 0;
+            unreadAnns = activeAnnouncements.length;
           }
 
           // Count unread discussions
