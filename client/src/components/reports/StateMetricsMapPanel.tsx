@@ -105,6 +105,7 @@ const STATE_CODE_TO_NAME: Record<string, string> = {
   SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
   VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
 };
+const ALL_STATE_CODES = Object.keys(STATE_CODE_TO_NAME).sort();
 
 const METRIC_OPTIONS: Array<{ key: MetricKey; label: string; format?: (value: number) => string }> = [
   { key: 'hospitals', label: '# Hospitals' },
@@ -210,25 +211,25 @@ const StateMetricsMapPanel: React.FC = () => {
       const byState = new Map<string, StateMetrics>();
       const prsLatestByState = new Map<string, number[]>();
       const prsImprovementByState = new Map<string, number[]>();
+      // Seed every US state so all map clicks resolve to a detail panel, even with zero rows.
+      ALL_STATE_CODES.forEach((stateCode) => {
+        byState.set(stateCode, {
+          code: stateCode,
+          name: STATE_CODE_TO_NAME[stateCode] || stateCode,
+          hospitals: 0,
+          activeHospitals: 0,
+          peccs: 0,
+          activePeccs: 0,
+          simulations: 0,
+          simulationParticipants: 0,
+          completedGaps: 0,
+          avgPrs: 0,
+          prsImprovement: 0,
+          hospitalsList: [],
+        });
+      });
       for (const hospital of validHospitals) {
         const stateCode = hospital.stateCode as string;
-        if (!byState.has(stateCode)) {
-          byState.set(stateCode, {
-            code: stateCode,
-            name: STATE_CODE_TO_NAME[stateCode] || stateCode,
-            hospitals: 0,
-            activeHospitals: 0,
-            peccs: 0,
-            activePeccs: 0,
-            simulations: 0,
-            simulationParticipants: 0,
-            completedGaps: 0,
-            avgPrs: 0,
-            prsImprovement: 0,
-            hospitalsList: [],
-          });
-        }
-
         const state = byState.get(stateCode)!;
         const sessions = Array.isArray(simulationMap.get(hospital.id)) ? simulationMap.get(hospital.id)! : [];
         const simulationParticipants = sessions.reduce((sum, s) => {
@@ -346,6 +347,7 @@ const StateMetricsMapPanel: React.FC = () => {
 
   const hoveredMetrics = hoveredState ? metricsByCode.get(hoveredState) || null : null;
   const selectedMetrics = selectedState ? metricsByCode.get(selectedState) || null : null;
+  const summaryMetrics = hoveredMetrics || selectedMetrics;
 
   const resetZoom = () => {
     setSelectedState(null);
@@ -469,25 +471,30 @@ const StateMetricsMapPanel: React.FC = () => {
               <Grid item xs={12} md={5}>
                 <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Hover summary
+                    Hover / selected summary
                   </Typography>
-                  {hoveredMetrics ? (
+                  {summaryMetrics ? (
                     <>
-                      <Typography variant="h6" fontWeight={700}>{hoveredMetrics.name}</Typography>
+                      <Typography variant="h6" fontWeight={700}>{summaryMetrics.name}</Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                        {selectedMetric.label}: {selectedMetric.format ? selectedMetric.format(getMetricValue(hoveredMetrics)) : Math.round(getMetricValue(hoveredMetrics))}
+                        {selectedMetric.label}: {selectedMetric.format ? selectedMetric.format(getMetricValue(summaryMetrics)) : Math.round(getMetricValue(summaryMetrics))}
                       </Typography>
-                      <Typography variant="body2">Hospitals: {hoveredMetrics.hospitals} ({hoveredMetrics.activeHospitals} active)</Typography>
-                      <Typography variant="body2">PECCs: {hoveredMetrics.peccs} ({hoveredMetrics.activePeccs} active)</Typography>
-                      <Typography variant="body2">Sims: {hoveredMetrics.simulations}</Typography>
-                      <Typography variant="body2">Sim participants: {hoveredMetrics.simulationParticipants}</Typography>
-                      <Typography variant="body2">Gaps completed: {hoveredMetrics.completedGaps}</Typography>
-                      <Typography variant="body2">Avg PRS: {hoveredMetrics.avgPrs.toFixed(1)}</Typography>
-                      <Typography variant="body2">Avg PRS improvement: {hoveredMetrics.prsImprovement >= 0 ? '+' : ''}{hoveredMetrics.prsImprovement.toFixed(1)}</Typography>
+                      <Typography variant="body2">Hospitals: {summaryMetrics.hospitals} ({summaryMetrics.activeHospitals} active)</Typography>
+                      <Typography variant="body2">PECCs: {summaryMetrics.peccs} ({summaryMetrics.activePeccs} active)</Typography>
+                      <Typography variant="body2">Sims: {summaryMetrics.simulations}</Typography>
+                      <Typography variant="body2">Sim participants: {summaryMetrics.simulationParticipants}</Typography>
+                      <Typography variant="body2">Gaps completed: {summaryMetrics.completedGaps}</Typography>
+                      <Typography variant="body2">Avg PRS: {summaryMetrics.avgPrs.toFixed(1)}</Typography>
+                      <Typography variant="body2">Avg PRS improvement: {summaryMetrics.prsImprovement >= 0 ? '+' : ''}{summaryMetrics.prsImprovement.toFixed(1)}</Typography>
+                      {selectedMetrics && !hoveredMetrics && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                          Pinned from clicked state.
+                        </Typography>
+                      )}
                     </>
                   ) : (
                     <Typography variant="body2" color="text.secondary">
-                      Move your pointer over a state to preview metrics.
+                      Move your pointer over a state or click one to pin details.
                     </Typography>
                   )}
                 </Paper>
@@ -550,45 +557,51 @@ const StateMetricsMapPanel: React.FC = () => {
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                   Hospital-level breakdown
                 </Typography>
-                <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 360 }}>
-                  <Table size="small" stickyHeader>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Hospital</TableCell>
-                        <TableCell align="right">PECCs</TableCell>
-                        <TableCell align="right">Active PECCs</TableCell>
-                        <TableCell align="right">Sims</TableCell>
-                        <TableCell align="right">Participants</TableCell>
-                        <TableCell align="right">Gaps Completed</TableCell>
-                        <TableCell align="right">Latest PRS</TableCell>
-                        <TableCell align="right">PRS Delta</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {selectedMetrics.hospitalsList.map((h) => (
-                        <TableRow key={h.id}>
-                          <TableCell>
-                            {h.name}
-                            {!h.isActive ? (
-                              <Typography component="span" variant="caption" color="warning.main" sx={{ ml: 1 }}>
-                                (inactive)
-                              </Typography>
-                            ) : null}
-                          </TableCell>
-                          <TableCell align="right">{h.peccs}</TableCell>
-                          <TableCell align="right">{h.activePeccs}</TableCell>
-                          <TableCell align="right">{h.simulations}</TableCell>
-                          <TableCell align="right">{h.simulationParticipants}</TableCell>
-                          <TableCell align="right">{h.completedGaps}</TableCell>
-                          <TableCell align="right">{h.latestPrs == null ? '-' : h.latestPrs.toFixed(1)}</TableCell>
-                          <TableCell align="right">
-                            {h.prsImprovement == null ? '-' : `${h.prsImprovement >= 0 ? '+' : ''}${h.prsImprovement.toFixed(1)}`}
-                          </TableCell>
+                {selectedMetrics.hospitalsList.length === 0 ? (
+                  <Alert severity="info">
+                    No hospitals are currently mapped to {selectedMetrics.name}.
+                  </Alert>
+                ) : (
+                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 360 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Hospital</TableCell>
+                          <TableCell align="right">PECCs</TableCell>
+                          <TableCell align="right">Active PECCs</TableCell>
+                          <TableCell align="right">Sims</TableCell>
+                          <TableCell align="right">Participants</TableCell>
+                          <TableCell align="right">Gaps Completed</TableCell>
+                          <TableCell align="right">Latest PRS</TableCell>
+                          <TableCell align="right">PRS Delta</TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                      </TableHead>
+                      <TableBody>
+                        {selectedMetrics.hospitalsList.map((h) => (
+                          <TableRow key={h.id}>
+                            <TableCell>
+                              {h.name}
+                              {!h.isActive ? (
+                                <Typography component="span" variant="caption" color="warning.main" sx={{ ml: 1 }}>
+                                  (inactive)
+                                </Typography>
+                              ) : null}
+                            </TableCell>
+                            <TableCell align="right">{h.peccs}</TableCell>
+                            <TableCell align="right">{h.activePeccs}</TableCell>
+                            <TableCell align="right">{h.simulations}</TableCell>
+                            <TableCell align="right">{h.simulationParticipants}</TableCell>
+                            <TableCell align="right">{h.completedGaps}</TableCell>
+                            <TableCell align="right">{h.latestPrs == null ? '-' : h.latestPrs.toFixed(1)}</TableCell>
+                            <TableCell align="right">
+                              {h.prsImprovement == null ? '-' : `${h.prsImprovement >= 0 ? '+' : ''}${h.prsImprovement.toFixed(1)}`}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
               </Paper>
             )}
           </>
