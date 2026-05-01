@@ -56,6 +56,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import StaffPeccReportBuilder from '../../components/reports/StaffPeccReportBuilder';
+import StateMetricsMapPanel from '../../components/reports/StateMetricsMapPanel';
 import {
   ProgramBreakdownGroupedBar,
   CohortBreakdownGroupedBar,
@@ -749,7 +750,10 @@ export default function AdminSnapshotPage() {
       </Tabs>
 
       {activeTab === 0 && currentUser?.id && (
-        <StaffPeccReportBuilder scope="admin" actorUserId={currentUser.id} />
+        <>
+          <StateMetricsMapPanel />
+          <StaffPeccReportBuilder scope="admin" actorUserId={currentUser.id} />
+        </>
       )}
 
       {activeTab === 1 && (
