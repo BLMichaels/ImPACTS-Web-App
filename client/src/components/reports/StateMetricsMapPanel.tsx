@@ -43,6 +43,7 @@ type MetricKey =
 
 interface HospitalRow {
   id: string;
+  canonicalHospitalId?: string;
   name: string;
   stateCode: string;
   isActive: boolean;
@@ -81,6 +82,14 @@ interface GapPlanLike {
 interface ReadinessScoreLike {
   score?: number;
   date?: string;
+}
+
+interface CrmHospitalRowLike {
+  id: string;
+  name: string | null;
+  state: string | null;
+  status: string | null;
+  linked_hospital_ids?: string[] | null;
 }
 
 const FIPS_TO_STATE: Record<string, string> = {
@@ -161,6 +170,11 @@ const StateMetricsMapPanel: React.FC = () => {
         .from('hospitals')
         .select('id, facility_id, name, state, is_active');
       if (hospitalsError) throw hospitalsError;
+      const { data: crmHospitalRows, error: crmHospitalsError } = await supabase
+        .from('crm_organizations')
+        .select('id, name, state, status, linked_hospital_ids')
+        .eq('contact_type', 'hospital');
+      if (crmHospitalsError) throw crmHospitalsError;
 
       const hospitals = (hospitalRows || []) as Array<{
         id: string;
@@ -172,12 +186,45 @@ const StateMetricsMapPanel: React.FC = () => {
       const validHospitals = hospitals
         .map((h) => ({
           id: h.id,
-          facility_id: h.facility_id ? String(h.facility_id) : null,
           name: String(h.name ?? 'Unnamed Hospital'),
           stateCode: normalizeStateCode(h.state),
           isActive: h.is_active === true,
         }))
         .filter((h) => Boolean(h.stateCode));
+
+      // Merge CRM-created hospital contacts so map totals match CRM list,
+      // while avoiding double-counting hospitals already represented by hospitals.id.
+      const byUniqueHospitalKey = new Map<string, { id: string; canonicalHospitalId?: string; name: string; stateCode: string; isActive: boolean }>();
+      validHospitals.forEach((h) => {
+        byUniqueHospitalKey.set(`h:${h.id}`, {
+          id: h.id,
+          canonicalHospitalId: h.id,
+          name: h.name,
+          stateCode: h.stateCode as string,
+          isActive: h.isActive,
+        });
+      });
+      (crmHospitalRows || []).forEach((row) => {
+        const r = row as CrmHospitalRowLike;
+        const stateCode = normalizeStateCode(r.state);
+        if (!stateCode) return;
+        const linkedIds = Array.isArray(r.linked_hospital_ids)
+          ? r.linked_hospital_ids.map((x) => String(x)).filter(Boolean)
+          : [];
+        const canonicalHospitalId = linkedIds.find((id) => validHospitals.some((h) => h.id === id));
+        const key = canonicalHospitalId ? `h:${canonicalHospitalId}` : `crm:${String(r.id)}`;
+        const isActive = String(r.status ?? 'Active').trim().toLowerCase() !== 'inactive';
+        if (!byUniqueHospitalKey.has(key)) {
+          byUniqueHospitalKey.set(key, {
+            id: String(r.id),
+            canonicalHospitalId,
+            name: String(r.name ?? 'Unnamed Hospital'),
+            stateCode,
+            isActive,
+          });
+        }
+      });
+      const mergedHospitals = Array.from(byUniqueHospitalKey.values());
 
       const hospitalIds = validHospitals.map((h) => h.id);
       const [simulationMap, gapPlansMap, readinessMap, peccRowsRes] = await Promise.all([
@@ -228,19 +275,20 @@ const StateMetricsMapPanel: React.FC = () => {
           hospitalsList: [],
         });
       });
-      for (const hospital of validHospitals) {
-        const stateCode = hospital.stateCode as string;
+      for (const hospital of mergedHospitals) {
+        const stateCode = hospital.stateCode;
         const state = byState.get(stateCode)!;
-        const sessions = Array.isArray(simulationMap.get(hospital.id)) ? simulationMap.get(hospital.id)! : [];
+        const canonicalId = hospital.canonicalHospitalId;
+        const sessions = canonicalId && Array.isArray(simulationMap.get(canonicalId)) ? simulationMap.get(canonicalId)! : [];
         const simulationParticipants = sessions.reduce((sum, s) => {
           const participants = Array.isArray(s.participants) ? s.participants.length : 0;
           return sum + participants;
         }, 0);
-        const gapPlans = Array.isArray(gapPlansMap.get(hospital.id)) ? gapPlansMap.get(hospital.id)! : [];
+        const gapPlans = canonicalId && Array.isArray(gapPlansMap.get(canonicalId)) ? gapPlansMap.get(canonicalId)! : [];
         const completedGaps = gapPlans.filter((g) => String(g.status ?? '').trim().toLowerCase() === 'completed').length;
-        const readinessScores = Array.isArray(readinessMap.get(hospital.id)) ? readinessMap.get(hospital.id)! : [];
+        const readinessScores = canonicalId && Array.isArray(readinessMap.get(canonicalId)) ? readinessMap.get(canonicalId)! : [];
         const { latest, improvement } = calcLatestAndImprovement(readinessScores);
-        const peccCounts = peccByHospital.get(hospital.id) || { total: 0, active: 0 };
+        const peccCounts = canonicalId ? (peccByHospital.get(canonicalId) || { total: 0, active: 0 }) : { total: 0, active: 0 };
 
         state.hospitals += 1;
         if (hospital.isActive) state.activeHospitals += 1;
@@ -251,6 +299,7 @@ const StateMetricsMapPanel: React.FC = () => {
         state.completedGaps += completedGaps;
         state.hospitalsList.push({
           id: hospital.id,
+          canonicalHospitalId: canonicalId,
           name: hospital.name,
           stateCode,
           isActive: hospital.isActive,
