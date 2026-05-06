@@ -91,6 +91,13 @@ interface CrmHospitalRowLike {
   status: string | null;
   linked_hospital_ids?: string[] | null;
 }
+
+interface CrmPeccRowLike {
+  id: string;
+  email: string | null;
+  status: string | null;
+  linked_hospital_ids?: string[] | null;
+}
 const PAGE_SIZE = 1000;
 
 async function fetchAllRows<T>(
@@ -184,7 +191,7 @@ const StateMetricsMapPanel: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [hospitalRows, crmHospitalRows, peccRows] = await Promise.all([
+      const [hospitalRows, crmHospitalRows, peccRows, crmPeccRows] = await Promise.all([
         fetchAllRows<{
           id: string;
           facility_id: string | null;
@@ -209,6 +216,13 @@ const StateMetricsMapPanel: React.FC = () => {
             .from('users')
             .select('id, hospital_facility_id, is_active')
             .eq('role', 'pecc')
+            .range(from, to)
+        ),
+        fetchAllRows<CrmPeccRowLike>(async (from, to) =>
+          await supabase
+            .from('crm_organizations')
+            .select('id, email, status, linked_hospital_ids')
+            .eq('contact_type', 'pecc')
             .range(from, to)
         ),
       ]);
@@ -265,16 +279,33 @@ const StateMetricsMapPanel: React.FC = () => {
       const hospitalById = new Map(validHospitals.map((h) => [h.id, h]));
       const siteRefs = peccRows.map((r) => String(r.hospital_facility_id ?? '').trim()).filter(Boolean);
       const refMap = await mapSiteRefsToHospitalRowIds(siteRefs);
-      const peccByHospital = new Map<string, { total: number; active: number }>();
+      const peccByHospital = new Map<string, { all: Set<string>; active: Set<string> }>();
       peccRows.forEach((row) => {
         const ref = String(row.hospital_facility_id ?? '').trim();
         if (!ref) return;
         const hospitalId = refMap.get(ref) || (hospitalById.has(ref) ? ref : null);
         if (!hospitalId || !hospitalById.has(hospitalId)) return;
-        const current = peccByHospital.get(hospitalId) || { total: 0, active: 0 };
-        current.total += 1;
-        if (row.is_active === true) current.active += 1;
+        const emailKey = `user:${row.id}`;
+        const current = peccByHospital.get(hospitalId) || { all: new Set<string>(), active: new Set<string>() };
+        current.all.add(emailKey);
+        if (row.is_active === true) current.active.add(emailKey);
         peccByHospital.set(hospitalId, current);
+      });
+      crmPeccRows.forEach((row) => {
+        if (String(row.status ?? '').trim().toLowerCase() === 'inactive') return;
+        const links = Array.isArray(row.linked_hospital_ids)
+          ? row.linked_hospital_ids.map((x) => String(x).trim()).filter(Boolean)
+          : [];
+        if (!links.length) return;
+        const dedupeKey = `crm:${String(row.email || '').trim().toLowerCase() || row.id}`;
+        links.forEach((link) => {
+          const hospitalId = refMap.get(link) || (hospitalById.has(link) ? link : null);
+          if (!hospitalId || !hospitalById.has(hospitalId)) return;
+          const current = peccByHospital.get(hospitalId) || { all: new Set<string>(), active: new Set<string>() };
+          current.all.add(dedupeKey);
+          current.active.add(dedupeKey);
+          peccByHospital.set(hospitalId, current);
+        });
       });
 
       const byState = new Map<string, StateMetrics>();
@@ -310,7 +341,10 @@ const StateMetricsMapPanel: React.FC = () => {
         const completedGaps = gapPlans.filter((g) => String(g.status ?? '').trim().toLowerCase() === 'completed').length;
         const readinessScores = canonicalId && Array.isArray(readinessMap.get(canonicalId)) ? readinessMap.get(canonicalId)! : [];
         const { latest, improvement } = calcLatestAndImprovement(readinessScores);
-        const peccCounts = canonicalId ? (peccByHospital.get(canonicalId) || { total: 0, active: 0 }) : { total: 0, active: 0 };
+        const peccCountsSets = canonicalId
+          ? (peccByHospital.get(canonicalId) || { all: new Set<string>(), active: new Set<string>() })
+          : { all: new Set<string>(), active: new Set<string>() };
+        const peccCounts = { total: peccCountsSets.all.size, active: peccCountsSets.active.size };
 
         state.hospitals += 1;
         if (hospital.isActive) state.activeHospitals += 1;

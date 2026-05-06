@@ -65,7 +65,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
-import { shouldMirrorLegacyUserData } from '../../utils/userData';
+import { mapSiteRefsToHospitalRowIds, shouldMirrorLegacyUserData } from '../../utils/userData';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { getCrmContactTypeLabel } from '../../utils/crmLabels';
 import {
@@ -3497,9 +3497,83 @@ type StaffReportUserRow = {
 const STAFF_USER_SELECT =
   'id, first_name, last_name, email, phone, role, last_login, manager_id, mentor_id, hospital_facility_id, created_at, is_admin';
 
+type CrmPeopleRow = {
+  id: string;
+  contact_type: string | null;
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  state: string | null;
+  status: string | null;
+  linked_hospital_ids: string[] | null;
+};
+
+function normalizeEmailKey(value: string | null | undefined): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function resolveCrmContactTypesForRoles(roles: string[]): string[] {
+  const out = new Set<string>();
+  roles.forEach((role) => {
+    if (role === 'manager') out.add('manager');
+    else if (role === 'mentor') out.add('mentor');
+    else if (role === 'pecc') out.add('pecc');
+    else if (role === 'hospital_system') out.add('system');
+    else if (role === 'hiring_group') out.add('hiring_group');
+  });
+  return [...out];
+}
+
+function toCrmPeopleReportRows(
+  rows: CrmPeopleRow[],
+  hospitalStateById: Map<string, string>,
+  skipEmailKeys: Set<string>
+): ReportDataRow[] {
+  const seenFallbackKeys = new Set<string>();
+  const out: ReportDataRow[] = [];
+  rows.forEach((row) => {
+    const email = String(row.email || '').trim();
+    const emailKey = normalizeEmailKey(email);
+    if (emailKey && skipEmailKeys.has(emailKey)) return;
+    const linked = Array.isArray(row.linked_hospital_ids) ? row.linked_hospital_ids.filter(Boolean) : [];
+    const linkedHospitalId = linked[0] || '';
+    const stateFromLinked = linkedHospitalId ? hospitalStateById.get(linkedHospitalId) || '' : '';
+    const state = String(row.state || stateFromLinked || '').trim().toUpperCase();
+    const name =
+      [String(row.first_name || '').trim(), String(row.last_name || '').trim()].filter(Boolean).join(' ').trim() ||
+      String(row.name || '').trim() ||
+      '(No name)';
+    const role = String(row.contact_type || '').trim();
+    const fallbackKey = `${name.toLowerCase()}|${role}|${linkedHospitalId}`;
+    if (!emailKey && seenFallbackKeys.has(fallbackKey)) return;
+    if (!emailKey) seenFallbackKeys.add(fallbackKey);
+    out.push({
+      id: `crm-person:${row.id}`,
+      cells: {
+        name,
+        email,
+        userRole: role,
+        platformAdminAccess: '',
+        userPhone: String(row.phone || ''),
+        lastLogin: '',
+        userCreatedAt: '',
+        managerName: '',
+        mentorName: '',
+        hospitalName: '',
+        state,
+      },
+      linkHints: { crmContactId: row.id, hospitalId: linkedHospitalId || undefined },
+    });
+    if (emailKey) skipEmailKeys.add(emailKey);
+  });
+  return out;
+}
+
 async function enrichStaffUsersToReportRows(urows: StaffReportUserRow[]): Promise<ReportDataRow[]> {
   const userRefIds = [...new Set(urows.flatMap((u) => [u.manager_id, u.mentor_id].filter(Boolean)))] as string[];
-  const hospitalIds = [...new Set(urows.map((u) => u.hospital_facility_id).filter(Boolean))] as string[];
+  const hospitalRefs = [...new Set(urows.map((u) => u.hospital_facility_id).filter(Boolean))] as string[];
 
   const nameById = new Map<string, string>();
   for (const uidPart of chunk(userRefIds, 80)) {
@@ -3509,14 +3583,28 @@ async function enrichStaffUsersToReportRows(urows: StaffReportUserRow[]): Promis
     });
   }
 
-  const hospById = new Map<string, { name: string; state?: string }>();
-  for (const hidPart of chunk(hospitalIds, 80)) {
-    const { data: refHosp } = await supabase.from('hospitals').select('id, name, state').in('id', hidPart);
-    (refHosp || []).forEach((h: { id: string; name: string; state?: string }) => hospById.set(h.id, h));
+  const hospById = new Map<string, { name: string; state?: string; facility_id?: string }>();
+  const refToHospitalId = hospitalRefs.length
+    ? await mapSiteRefsToHospitalRowIds(hospitalRefs)
+    : new Map<string, string>();
+  const canonicalHospitalIds = [
+    ...new Set(
+      hospitalRefs
+        .map((ref) => refToHospitalId.get(ref) || ref)
+        .filter(Boolean)
+    ),
+  ];
+  for (const hidPart of chunk(canonicalHospitalIds, 80)) {
+    const { data: refHosp } = await supabase.from('hospitals').select('id, facility_id, name, state').in('id', hidPart);
+    (refHosp || []).forEach((h: { id: string; facility_id?: string; name: string; state?: string }) => {
+      hospById.set(h.id, h);
+      if (h.facility_id) hospById.set(String(h.facility_id), h);
+    });
   }
 
   return urows.map((u) => {
-    const h = u.hospital_facility_id ? hospById.get(u.hospital_facility_id) : null;
+    const canonicalId = u.hospital_facility_id ? (refToHospitalId.get(u.hospital_facility_id) || u.hospital_facility_id) : null;
+    const h = canonicalId ? hospById.get(canonicalId) || null : null;
     return {
       id: u.id,
       cells: {
@@ -3653,7 +3741,53 @@ async function loadPlatformUsersByRoles(params: {
     urows = urows.filter((u) => !u.is_admin);
   }
 
-  setRows(await enrichStaffUsersToReportRows(urows));
+  const userRows = await enrichStaffUsersToReportRows(urows);
+  const crmContactTypes = resolveCrmContactTypesForRoles(roles);
+  if (!crmContactTypes.length) {
+    setRows(userRows);
+    return;
+  }
+
+  let crmRows = await fetchAllRowsOrEmpty<CrmPeopleRow>((from, to) =>
+    supabase
+      .from('crm_organizations')
+      .select('id, contact_type, name, first_name, last_name, email, phone, state, status, linked_hospital_ids')
+      .in('contact_type', crmContactTypes)
+      .range(from, to)
+  );
+
+  crmRows = crmRows.filter((row) => String(row.status || '').trim().toLowerCase() !== 'inactive');
+
+  if (!(scope === 'admin' || hospitalScope === null)) {
+    const scopeSet = new Set(hospitalScope || []);
+    crmRows = crmRows.filter((row) => {
+      const links = Array.isArray(row.linked_hospital_ids) ? row.linked_hospital_ids.filter(Boolean) : [];
+      if (!links.length) return false;
+      return links.some((hid) => scopeSet.has(hid));
+    });
+  }
+
+  const linkedHospitalIds = [
+    ...new Set(
+      crmRows.flatMap((row) => (Array.isArray(row.linked_hospital_ids) ? row.linked_hospital_ids.filter(Boolean) : []))
+    ),
+  ];
+  const hospitalStateById = new Map<string, string>();
+  for (const hidPart of chunk(linkedHospitalIds, 80)) {
+    const { data } = await supabase.from('hospitals').select('id, state').in('id', hidPart);
+    (data || []).forEach((h: { id: string; state: string | null }) => {
+      hospitalStateById.set(h.id, String(h.state || '').trim().toUpperCase());
+    });
+  }
+
+  const skipEmailKeys = new Set(
+    userRows.map((row) => normalizeEmailKey(row.cells.email)).filter(Boolean)
+  );
+  const crmReportRows = toCrmPeopleReportRows(crmRows, hospitalStateById, skipEmailKeys);
+  const merged = [...userRows, ...crmReportRows].sort((a, b) =>
+    String(a.cells.name || '').localeCompare(String(b.cells.name || ''), undefined, { sensitivity: 'base' })
+  );
+  setRows(merged);
 }
 
 export default StaffPeccReportBuilder;

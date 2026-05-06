@@ -264,6 +264,7 @@ export default function AdminSnapshotPage() {
           managersRes,
           mentorsRes,
           peccsRes,
+          crmPeopleRes,
           assignmentsRes,
           contactsRes,
           hospitalsRes,
@@ -277,9 +278,13 @@ export default function AdminSnapshotPage() {
           programMembersRes,
           cohortMembersRes
         ] = await Promise.all([
-          supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'manager').eq('is_active', true),
-          supabase.from('users').select('id').eq('role', 'mentor').eq('is_active', true),
-          supabase.from('users').select('id, hospital_facility_id').eq('role', 'pecc').eq('is_active', true),
+          supabase.from('users').select('id, email').eq('role', 'manager').eq('is_active', true),
+          supabase.from('users').select('id, email').eq('role', 'mentor').eq('is_active', true),
+          supabase.from('users').select('id, email, hospital_facility_id').eq('role', 'pecc').eq('is_active', true),
+          supabase
+            .from('crm_organizations')
+            .select('id, email, contact_type, status')
+            .in('contact_type', ['manager', 'mentor', 'pecc']),
           supabase.from('mentor_hospital_assignments').select('hospital_id, mentor_id').eq('is_active', true),
           supabase.from('hospital_contacts').select('id', { count: 'exact', head: true }),
           supabase.from('hospitals').select('id', { count: 'exact', head: true }).eq('is_active', true),
@@ -305,9 +310,52 @@ export default function AdminSnapshotPage() {
           console.warn('Admin snapshot: pecc_activities', peccActivitiesRes.error);
         }
 
-        const managers = managersRes.count ?? 0;
-        const mentors = (mentorsRes.data || []).length;
-        const peccs = (peccsRes.data || []).length;
+        const managerUsers = (managersRes.data || []) as { id: string; email: string | null }[];
+        const mentorUsers = (mentorsRes.data || []) as { id: string; email: string | null }[];
+        const peccUsers = (peccsRes.data || []) as { id: string; email: string | null; hospital_facility_id: string }[];
+        const crmPeopleRows = (crmPeopleRes.data || []) as {
+          id: string;
+          email: string | null;
+          contact_type: string | null;
+          status: string | null;
+        }[];
+        const activeCrmPeople = crmPeopleRows.filter(
+          (row) => String(row.status ?? '').trim().toLowerCase() !== 'inactive'
+        );
+        const makeEmailSet = (rows: Array<{ email: string | null }>) =>
+          new Set(
+            rows
+              .map((row) => String(row.email || '').trim().toLowerCase())
+              .filter(Boolean)
+          );
+        const managerEmailSet = makeEmailSet(managerUsers);
+        const mentorEmailSet = makeEmailSet(mentorUsers);
+        const peccEmailSet = makeEmailSet(peccUsers);
+        const crmManagers = activeCrmPeople.filter((row) => row.contact_type === 'manager');
+        const crmMentors = activeCrmPeople.filter((row) => row.contact_type === 'mentor');
+        const crmPeccs = activeCrmPeople.filter((row) => row.contact_type === 'pecc');
+        const countMergedPeople = (
+          userRows: Array<{ id: string; email: string | null }>,
+          crmRows: Array<{ id: string; email: string | null }>,
+          existingEmailSet: Set<string>
+        ) => {
+          const seen = new Set(existingEmailSet);
+          let count = userRows.length;
+          crmRows.forEach((row) => {
+            const emailKey = String(row.email || '').trim().toLowerCase();
+            if (emailKey) {
+              if (seen.has(emailKey)) return;
+              seen.add(emailKey);
+              count += 1;
+              return;
+            }
+            count += 1;
+          });
+          return count;
+        };
+        const managers = countMergedPeople(managerUsers, crmManagers, managerEmailSet);
+        const mentors = countMergedPeople(mentorUsers, crmMentors, mentorEmailSet);
+        const peccs = countMergedPeople(peccUsers, crmPeccs, peccEmailSet);
         const contacts = contactsRes.error ? 0 : (contactsRes.count ?? 0);
         const assignmentsData = (assignmentsRes.data || []) as { hospital_id: string; mentor_id: string }[];
         const hospitalIds = [...new Set(assignmentsData.map((a) => a.hospital_id).filter(Boolean))];
@@ -331,7 +379,7 @@ export default function AdminSnapshotPage() {
           hours: number;
           date: string;
         }[];
-        const peccList = (peccsRes.data || []) as { id: string; hospital_facility_id: string }[];
+        const peccList = peccUsers.map((p) => ({ id: p.id, hospital_facility_id: p.hospital_facility_id }));
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         const peccActMap = shouldMirrorLegacyUserData()
@@ -393,7 +441,7 @@ export default function AdminSnapshotPage() {
           peccProgressByPecc[p.id] = pct;
         }
         const avgPeccProgress = progressCount > 0 ? Math.round(progressSum / progressCount) : 0;
-        const mentorIds = ((mentorsRes.data || []) as { id: string }[]).map((m) => m.id);
+        const mentorIds = mentorUsers.map((m) => m.id);
         const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
         let mentorHoursThisMonth = 0;
         let mentorActivitiesThisMonth = 0;
