@@ -91,6 +91,24 @@ interface CrmHospitalRowLike {
   status: string | null;
   linked_hospital_ids?: string[] | null;
 }
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(
+  fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  while (true) {
+    const to = from + PAGE_SIZE - 1;
+    const { data, error } = await fetchPage(from, to);
+    if (error) throw error;
+    const rows = data || [];
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
+}
 
 const FIPS_TO_STATE: Record<string, string> = {
   '01': 'AL', '02': 'AK', '04': 'AZ', '05': 'AR', '06': 'CA', '08': 'CO', '09': 'CT', '10': 'DE',
@@ -166,24 +184,36 @@ const StateMetricsMapPanel: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const { data: hospitalRows, error: hospitalsError } = await supabase
-        .from('hospitals')
-        .select('id, facility_id, name, state, is_active');
-      if (hospitalsError) throw hospitalsError;
-      const { data: crmHospitalRows, error: crmHospitalsError } = await supabase
-        .from('crm_organizations')
-        .select('id, name, state, status, linked_hospital_ids')
-        .eq('contact_type', 'hospital');
-      if (crmHospitalsError) throw crmHospitalsError;
+      const [hospitalRows, crmHospitalRows, peccRows] = await Promise.all([
+        fetchAllRows<{
+          id: string;
+          facility_id: string | null;
+          name: string | null;
+          state: string | null;
+          is_active: boolean | null;
+        }>(async (from, to) =>
+          await supabase
+            .from('hospitals')
+            .select('id, facility_id, name, state, is_active')
+            .range(from, to)
+        ),
+        fetchAllRows<CrmHospitalRowLike>(async (from, to) =>
+          await supabase
+            .from('crm_organizations')
+            .select('id, name, state, status, linked_hospital_ids')
+            .eq('contact_type', 'hospital')
+            .range(from, to)
+        ),
+        fetchAllRows<{ id: string; hospital_facility_id: string | null; is_active: boolean | null }>(async (from, to) =>
+          await supabase
+            .from('users')
+            .select('id, hospital_facility_id, is_active')
+            .eq('role', 'pecc')
+            .range(from, to)
+        ),
+      ]);
 
-      const hospitals = (hospitalRows || []) as Array<{
-        id: string;
-        facility_id: string | null;
-        name: string | null;
-        state: string | null;
-        is_active: boolean | null;
-      }>;
-      const validHospitals = hospitals
+      const validHospitals = hospitalRows
         .map((h) => ({
           id: h.id,
           name: String(h.name ?? 'Unnamed Hospital'),
@@ -204,8 +234,7 @@ const StateMetricsMapPanel: React.FC = () => {
           isActive: h.isActive,
         });
       });
-      (crmHospitalRows || []).forEach((row) => {
-        const r = row as CrmHospitalRowLike;
+      crmHospitalRows.forEach((r) => {
         const stateCode = normalizeStateCode(r.state);
         if (!stateCode) return;
         const linkedIds = Array.isArray(r.linked_hospital_ids)
@@ -227,20 +256,13 @@ const StateMetricsMapPanel: React.FC = () => {
       const mergedHospitals = Array.from(byUniqueHospitalKey.values());
 
       const hospitalIds = validHospitals.map((h) => h.id);
-      const [simulationMap, gapPlansMap, readinessMap, peccRowsRes] = await Promise.all([
+      const [simulationMap, gapPlansMap, readinessMap] = await Promise.all([
         batchGetHospitalDataForKey<SimulationSessionLike[]>(hospitalIds, 'simulation_sessions'),
         batchGetHospitalDataForKey<GapPlanLike[]>(hospitalIds, 'gapPlans'),
         batchGetHospitalDataForKey<ReadinessScoreLike[]>(hospitalIds, 'readinessScores'),
-        supabase.from('users').select('id, hospital_facility_id, is_active').eq('role', 'pecc'),
       ]);
-      if (peccRowsRes.error) throw peccRowsRes.error;
 
       const hospitalById = new Map(validHospitals.map((h) => [h.id, h]));
-      const peccRows = (peccRowsRes.data || []) as Array<{
-        id: string;
-        hospital_facility_id: string | null;
-        is_active: boolean | null;
-      }>;
       const siteRefs = peccRows.map((r) => String(r.hospital_facility_id ?? '').trim()).filter(Boolean);
       const refMap = await mapSiteRefsToHospitalRowIds(siteRefs);
       const peccByHospital = new Map<string, { total: number; active: number }>();
