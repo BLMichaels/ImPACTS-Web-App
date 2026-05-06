@@ -33,6 +33,9 @@ import { batchGetHospitalDataForKey, mapSiteRefsToHospitalRowIds } from '../../u
 type MetricKey =
   | 'hospitals'
   | 'peccs'
+  | 'mentors'
+  | 'managers'
+  | 'staff'
   | 'activeHospitals'
   | 'activePeccs'
   | 'simulations'
@@ -62,6 +65,9 @@ interface StateMetrics {
   hospitals: number;
   activeHospitals: number;
   peccs: number;
+  mentors: number;
+  managers: number;
+  staff: number;
   activePeccs: number;
   simulations: number;
   simulationParticipants: number;
@@ -96,6 +102,31 @@ interface CrmPeccRowLike {
   id: string;
   email: string | null;
   status: string | null;
+  linked_hospital_ids?: string[] | null;
+}
+
+interface UserRoleRowLike {
+  id: string;
+  email: string | null;
+  role: string | null;
+  is_admin: boolean | null;
+  is_active: boolean | null;
+  hospital_facility_id: string | null;
+  manager_id: string | null;
+}
+
+interface MentorAssignmentLike {
+  mentor_id: string;
+  hospital_id: string;
+  is_active: boolean | null;
+}
+
+interface CrmPeopleRoleRowLike {
+  id: string;
+  email: string | null;
+  contact_type: string | null;
+  status: string | null;
+  state: string | null;
   linked_hospital_ids?: string[] | null;
 }
 const PAGE_SIZE = 1000;
@@ -143,6 +174,9 @@ const ALL_STATE_CODES = Object.keys(STATE_CODE_TO_NAME).sort();
 
 const METRIC_OPTIONS: Array<{ key: MetricKey; label: string; format?: (value: number) => string }> = [
   { key: 'hospitals', label: '# Hospitals' },
+  { key: 'mentors', label: '# Mentors' },
+  { key: 'managers', label: '# Managers' },
+  { key: 'staff', label: '# Staff' },
   { key: 'activeHospitals', label: '# Active Hospitals' },
   { key: 'peccs', label: '# PECCs' },
   { key: 'activePeccs', label: '# Active PECCs' },
@@ -191,7 +225,7 @@ const StateMetricsMapPanel: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [hospitalRows, crmHospitalRows, peccRows, crmPeccRows] = await Promise.all([
+      const [hospitalRows, crmHospitalRows, peccRows, crmPeccRows, userRoleRows, mentorAssignmentsRows, crmPeopleRoleRows] = await Promise.all([
         fetchAllRows<{
           id: string;
           facility_id: string | null;
@@ -223,6 +257,28 @@ const StateMetricsMapPanel: React.FC = () => {
             .from('crm_organizations')
             .select('id, email, status, linked_hospital_ids')
             .eq('contact_type', 'pecc')
+            .range(from, to)
+        ),
+        fetchAllRows<UserRoleRowLike>(async (from, to) =>
+          await supabase
+            .from('users')
+            .select('id, email, role, is_admin, is_active, hospital_facility_id, manager_id')
+            .eq('is_active', true)
+            .in('role', ['manager', 'mentor', 'admin'])
+            .range(from, to)
+        ),
+        fetchAllRows<MentorAssignmentLike>(async (from, to) =>
+          await supabase
+            .from('mentor_hospital_assignments')
+            .select('mentor_id, hospital_id, is_active')
+            .eq('is_active', true)
+            .range(from, to)
+        ),
+        fetchAllRows<CrmPeopleRoleRowLike>(async (from, to) =>
+          await supabase
+            .from('crm_organizations')
+            .select('id, email, contact_type, status, state, linked_hospital_ids')
+            .in('contact_type', ['manager', 'mentor', 'staff'])
             .range(from, to)
         ),
       ]);
@@ -277,7 +333,24 @@ const StateMetricsMapPanel: React.FC = () => {
       ]);
 
       const hospitalById = new Map(validHospitals.map((h) => [h.id, h]));
-      const siteRefs = peccRows.map((r) => String(r.hospital_facility_id ?? '').trim()).filter(Boolean);
+      const userHospitalRefs = [
+        ...new Set(
+          peccRows.map((r) => String(r.hospital_facility_id ?? '').trim()).filter(Boolean)
+            .concat(
+              userRoleRows
+                .map((u) => String(u.hospital_facility_id ?? '').trim())
+                .filter(Boolean)
+            )
+            .concat(
+              crmPeopleRoleRows.flatMap((r) =>
+                Array.isArray(r.linked_hospital_ids)
+                  ? r.linked_hospital_ids.map((x) => String(x).trim()).filter(Boolean)
+                  : []
+              )
+            )
+        ),
+      ];
+      const siteRefs = userHospitalRefs;
       const refMap = await mapSiteRefsToHospitalRowIds(siteRefs);
       const peccByHospital = new Map<string, { all: Set<string>; active: Set<string> }>();
       peccRows.forEach((row) => {
@@ -308,6 +381,80 @@ const StateMetricsMapPanel: React.FC = () => {
         });
       });
 
+      const mentorsByState = new Map<string, Set<string>>();
+      const managersByState = new Map<string, Set<string>>();
+      const staffByState = new Map<string, Set<string>>();
+
+      const pushRoleKey = (map: Map<string, Set<string>>, stateCode: string | null, key: string) => {
+        if (!stateCode || !key) return;
+        const set = map.get(stateCode) || new Set<string>();
+        set.add(key);
+        map.set(stateCode, set);
+      };
+
+      const mentorStateById = new Map<string, Set<string>>();
+      mentorAssignmentsRows.forEach((assignment) => {
+        if (!assignment.mentor_id || !assignment.hospital_id) return;
+        const h = hospitalById.get(assignment.hospital_id);
+        const stateCode = h?.stateCode || null;
+        if (!stateCode) return;
+        const set = mentorStateById.get(assignment.mentor_id) || new Set<string>();
+        set.add(stateCode);
+        mentorStateById.set(assignment.mentor_id, set);
+      });
+
+      userRoleRows.forEach((user) => {
+        const role = String(user.role ?? '').trim().toLowerCase();
+        const roleKey = String(user.email ?? '').trim().toLowerCase() || `user:${user.id}`;
+        const states = new Set<string>();
+        const directRef = String(user.hospital_facility_id ?? '').trim();
+        if (directRef) {
+          const hid = refMap.get(directRef) || (hospitalById.has(directRef) ? directRef : null);
+          const stateCode = hid ? hospitalById.get(hid)?.stateCode || null : null;
+          if (stateCode) states.add(stateCode);
+        }
+        if (role === 'mentor') {
+          const assignedStates = mentorStateById.get(user.id);
+          if (assignedStates) assignedStates.forEach((s) => states.add(s));
+        }
+        if (role === 'manager') {
+          userRoleRows.forEach((maybeMentor) => {
+            if (String(maybeMentor.role ?? '').trim().toLowerCase() !== 'mentor') return;
+            if (String(maybeMentor.manager_id ?? '') !== user.id) return;
+            const mentorStates = mentorStateById.get(maybeMentor.id);
+            if (mentorStates) mentorStates.forEach((s) => states.add(s));
+          });
+        }
+        states.forEach((stateCode) => {
+          if (role === 'mentor') pushRoleKey(mentorsByState, stateCode, roleKey);
+          else if (role === 'manager') pushRoleKey(managersByState, stateCode, roleKey);
+          else if (role === 'admin' || user.is_admin === true) pushRoleKey(staffByState, stateCode, roleKey);
+        });
+      });
+
+      crmPeopleRoleRows
+        .filter((row) => String(row.status ?? '').trim().toLowerCase() !== 'inactive')
+        .forEach((row) => {
+          const role = String(row.contact_type ?? '').trim().toLowerCase();
+          const key = String(row.email ?? '').trim().toLowerCase() || `crm:${row.id}`;
+          const states = new Set<string>();
+          const explicitState = normalizeStateCode(row.state);
+          if (explicitState) states.add(explicitState);
+          const links = Array.isArray(row.linked_hospital_ids)
+            ? row.linked_hospital_ids.map((x) => String(x).trim()).filter(Boolean)
+            : [];
+          links.forEach((link) => {
+            const hid = refMap.get(link) || (hospitalById.has(link) ? link : null);
+            const stateCode = hid ? hospitalById.get(hid)?.stateCode || null : null;
+            if (stateCode) states.add(stateCode);
+          });
+          states.forEach((stateCode) => {
+            if (role === 'mentor') pushRoleKey(mentorsByState, stateCode, key);
+            else if (role === 'manager') pushRoleKey(managersByState, stateCode, key);
+            else if (role === 'staff') pushRoleKey(staffByState, stateCode, key);
+          });
+        });
+
       const byState = new Map<string, StateMetrics>();
       const prsLatestByState = new Map<string, number[]>();
       const prsImprovementByState = new Map<string, number[]>();
@@ -319,6 +466,9 @@ const StateMetricsMapPanel: React.FC = () => {
           hospitals: 0,
           activeHospitals: 0,
           peccs: 0,
+          mentors: 0,
+          managers: 0,
+          staff: 0,
           activePeccs: 0,
           simulations: 0,
           simulationParticipants: 0,
@@ -390,6 +540,9 @@ const StateMetricsMapPanel: React.FC = () => {
           : 0;
         return {
           ...state,
+          mentors: (mentorsByState.get(state.code) || new Set()).size,
+          managers: (managersByState.get(state.code) || new Set()).size,
+          staff: (staffByState.get(state.code) || new Set()).size,
           avgPrs,
           prsImprovement: avgImprovement,
           hospitalsList: [...state.hospitalsList].sort((a, b) => a.name.localeCompare(b.name)),
@@ -421,6 +574,9 @@ const StateMetricsMapPanel: React.FC = () => {
   const getMetricValue = useCallback((row: StateMetrics): number => {
     switch (metricKey) {
       case 'hospitals': return row.hospitals;
+      case 'mentors': return row.mentors;
+      case 'managers': return row.managers;
+      case 'staff': return row.staff;
       case 'activeHospitals': return row.activeHospitals;
       case 'peccs': return row.peccs;
       case 'activePeccs': return row.activePeccs;
@@ -585,6 +741,9 @@ const StateMetricsMapPanel: React.FC = () => {
                         {selectedMetric.label}: {selectedMetric.format ? selectedMetric.format(getMetricValue(summaryMetrics)) : Math.round(getMetricValue(summaryMetrics))}
                       </Typography>
                       <Typography variant="body2">Hospitals: {summaryMetrics.hospitals} ({summaryMetrics.activeHospitals} active)</Typography>
+                      <Typography variant="body2">Mentors: {summaryMetrics.mentors}</Typography>
+                      <Typography variant="body2">Managers: {summaryMetrics.managers}</Typography>
+                      <Typography variant="body2">Staff: {summaryMetrics.staff}</Typography>
                       <Typography variant="body2">PECCs: {summaryMetrics.peccs} ({summaryMetrics.activePeccs} active)</Typography>
                       <Typography variant="body2">Sims: {summaryMetrics.simulations}</Typography>
                       <Typography variant="body2">Sim participants: {summaryMetrics.simulationParticipants}</Typography>
@@ -640,6 +799,9 @@ const StateMetricsMapPanel: React.FC = () => {
                   {[
                     { label: '# Hospitals', value: selectedMetrics.hospitals },
                     { label: '# Active Hospitals', value: selectedMetrics.activeHospitals },
+                    { label: '# Mentors', value: selectedMetrics.mentors },
+                    { label: '# Managers', value: selectedMetrics.managers },
+                    { label: '# Staff', value: selectedMetrics.staff },
                     { label: '# PECCs', value: selectedMetrics.peccs },
                     { label: '# Active PECCs', value: selectedMetrics.activePeccs },
                     { label: '# Simulations', value: selectedMetrics.simulations },
