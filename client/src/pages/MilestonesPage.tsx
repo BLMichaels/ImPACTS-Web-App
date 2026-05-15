@@ -32,11 +32,16 @@ const DEFAULT_STAGE_PALETTE: Record<'stage1' | 'stage2' | 'stage3' | 'stage4', s
   stage4: '#9C27B0'
 };
 
-function decodeEntry(text: string): { type: ChecklistEntryType; content: string } {
-  const m = String(text || '').match(/^\[\[ENTRY:(task|banner|footnote|subnote|divider)\]\]/i);
+function isValidHexColor(value: string): boolean {
+  return /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(String(value || '').trim());
+}
+
+function decodeEntry(text: string): { type: ChecklistEntryType; content: string; color_hex?: string } {
+  const m = String(text || '').match(/^\[\[ENTRY:(task|banner|footnote|subnote|divider)(?:;color=(#[0-9a-fA-F]{3,6}))?\]\]/i);
   if (!m) return { type: 'task', content: text || '' };
   const type = m[1].toLowerCase() as ChecklistEntryType;
-  return { type, content: String(text || '').slice(m[0].length) };
+  const colorHex = m[2] && isValidHexColor(m[2]) ? m[2] : undefined;
+  return { type, content: String(text || '').slice(m[0].length), color_hex: colorHex };
 }
 
 interface MilestoneTask {
@@ -45,6 +50,7 @@ interface MilestoneTask {
   completed: boolean;
   links?: { text: string; url: string; }[];
   entry_type?: ChecklistEntryType;
+  entry_color?: string;
 }
 
 interface MilestoneStage {
@@ -522,13 +528,17 @@ const MilestonesPage = () => {
       color_hex: stage.color_hex || null,
       program_checklist_name: checklist.name,
       program_checklist_first_stage: stageIndex === 0,
-      tasks: (stage.tasks || []).map((t: { task_id_suffix: string; text_content: string; links?: Array<{ text: string; url: string }> }) => ({
-        id: `program:${checklist.id}:${stage.id}.${t.task_id_suffix}`,
-        text: decodeEntry(t.text_content).content,
-        entry_type: decodeEntry(t.text_content).type,
-        completed: false,
-        links: t.links || []
-      }))
+                tasks: (stage.tasks || []).map((t: { task_id_suffix: string; text_content: string; links?: Array<{ text: string; url: string }> }) => {
+                  const decoded = decodeEntry(t.text_content);
+                  return {
+                    id: `program:${checklist.id}:${stage.id}.${t.task_id_suffix}`,
+                    text: decoded.content,
+                    entry_type: decoded.type,
+                    entry_color: decoded.color_hex,
+                    completed: false,
+                    links: t.links || []
+                  };
+                })
     });
 
     const before = programChecklists.filter((c) => c.show_before_default).flatMap((c) => c.stages.map((s, i) => toMilestoneStage(c, s, i)));
@@ -810,6 +820,8 @@ const MilestonesPage = () => {
                 {stage.tasks.map((task) => {
                   const entryType = task.entry_type || 'task';
                   if (entryType !== 'task') {
+                    const accentColor = task.entry_color && isValidHexColor(task.entry_color) ? task.entry_color : getStageColor(stage);
+                    const accentBackground = `${accentColor}1A`;
                     return (
                       <Box
                         key={task.id}
@@ -818,13 +830,15 @@ const MilestonesPage = () => {
                           px: 1.25,
                           py: entryType === 'divider' ? 0.75 : 1,
                           borderLeft: entryType === 'subnote' ? '3px solid' : undefined,
-                          borderColor: entryType === 'subnote' ? 'warning.main' : undefined,
+                          borderColor: entryType === 'subnote' ? accentColor : undefined,
                           bgcolor:
                             entryType === 'banner'
-                              ? 'info.light'
+                              ? accentBackground
                               : entryType === 'footnote'
                                 ? 'grey.100'
-                                : 'transparent'
+                                : entryType === 'subnote'
+                                  ? accentBackground
+                                  : 'transparent'
                         }}
                       >
                         {entryType === 'divider' && <Divider sx={{ mb: 1 }} />}

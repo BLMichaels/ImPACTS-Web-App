@@ -188,19 +188,23 @@ const DEFAULT_MILESTONE_TEMPLATE_STAGES: DefaultTemplateStage[] = [
   }
 ];
 
-function decodeEntry(text: string): { type: ChecklistEntryType; content: string } {
-  const m = String(text || '').match(/^\[\[ENTRY:(task|banner|footnote|subnote|divider)\]\]/i);
+function decodeEntry(text: string): { type: ChecklistEntryType; content: string; color_hex?: string } {
+  const m = String(text || '').match(/^\[\[ENTRY:(task|banner|footnote|subnote|divider)(?:;color=(#[0-9a-fA-F]{3,6}))?\]\]/i);
   if (!m) return { type: 'task', content: text || '' };
   const type = m[1].toLowerCase() as ChecklistEntryType;
+  const colorHex = m[2] && isValidHexColor(m[2]) ? m[2] : undefined;
   return {
     type,
-    content: String(text || '').slice(m[0].length)
+    content: String(text || '').slice(m[0].length),
+    color_hex: colorHex
   };
 }
 
-function encodeEntry(type: ChecklistEntryType, content: string): string {
+function encodeEntry(type: ChecklistEntryType, content: string, colorHex?: string): string {
   if (type === 'task') return content;
-  return `${ENTRY_PREFIX}${type}]]${content}`;
+  const includeColor = (type === 'banner' || type === 'subnote') && colorHex && isValidHexColor(colorHex);
+  const colorPart = includeColor ? `;color=${colorHex}` : '';
+  return `${ENTRY_PREFIX}${type}${colorPart}]]${content}`;
 }
 
 function normalizeChecklistHtml(html: string): string {
@@ -253,7 +257,13 @@ export default function AdminProgramChecklistsTab() {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ProgramChecklistTask | null>(null);
   const [taskStageId, setTaskStageId] = useState('');
-  const [taskForm, setTaskForm] = useState({ text_content: '', task_id_suffix: '', links: [] as ProgramChecklistTaskLink[], entry_type: 'task' as ChecklistEntryType });
+  const [taskForm, setTaskForm] = useState({
+    text_content: '',
+    task_id_suffix: '',
+    links: [] as ProgramChecklistTaskLink[],
+    entry_type: 'task' as ChecklistEntryType,
+    color_hex: ''
+  });
   const [stageChecklistId, setStageChecklistId] = useState<string | null>(null);
   const [stagePalette, setStagePalette] = useState(DEFAULT_STAGE_PALETTE);
   const [checklistVisibility, setChecklistVisibility] = useState<Record<string, boolean>>({});
@@ -523,6 +533,13 @@ export default function AdminProgramChecklistsTab() {
     }
   };
 
+  const getStageDefaultColor = (stageId: string): string => {
+    const parentChecklist = checklists.find((c) => c.stages?.some((s) => s.id === stageId));
+    const stage = parentChecklist?.stages?.find((s) => s.id === stageId);
+    const color = stage?.color_hex || '';
+    return isValidHexColor(color) ? color : '#2196F3';
+  };
+
   const handleSaveStage = async () => {
     const checklistId = stageChecklistId || (editingStage && (checklists.find((c) => c.stages?.some((s) => s.id === editingStage.id))?.id));
     if (!checklistId) return;
@@ -569,7 +586,13 @@ export default function AdminProgramChecklistsTab() {
   const openAddTask = (stageId: string, checklistId: string) => {
     setEditingTask(null);
     setTaskStageId(stageId);
-    setTaskForm({ text_content: '', task_id_suffix: '1', links: [], entry_type: 'task' });
+    setTaskForm({
+      text_content: '',
+      task_id_suffix: '1',
+      links: [],
+      entry_type: 'task',
+      color_hex: getStageDefaultColor(stageId)
+    });
     setExpandedChecklistId(checklistId);
     setTaskDialogOpen(true);
   };
@@ -582,7 +605,8 @@ export default function AdminProgramChecklistsTab() {
       text_content: decoded.content,
       task_id_suffix: t.task_id_suffix,
       links: t.links && Array.isArray(t.links) ? t.links : [],
-      entry_type: decoded.type
+      entry_type: decoded.type,
+      color_hex: decoded.color_hex || getStageDefaultColor(t.stage_id)
     });
     setExpandedChecklistId(checklistId);
     setTaskDialogOpen(true);
@@ -591,7 +615,7 @@ export default function AdminProgramChecklistsTab() {
   const handleSaveTask = async () => {
     const textTrim = normalizeChecklistHtml(taskForm.text_content).trim();
     if (!stripHtmlToText(textTrim).trim() || !taskStageId) return;
-    const encodedText = encodeEntry(taskForm.entry_type, textTrim);
+    const encodedText = encodeEntry(taskForm.entry_type, textTrim, taskForm.color_hex);
     setSaving(true);
     setError(null);
     try {
@@ -936,7 +960,15 @@ export default function AdminProgramChecklistsTab() {
             <Select
               value={taskForm.entry_type}
               label="Item type"
-              onChange={(e) => setTaskForm((f) => ({ ...f, entry_type: e.target.value as ChecklistEntryType }))}
+              onChange={(e) =>
+                setTaskForm((f) => {
+                  const nextType = e.target.value as ChecklistEntryType;
+                  if ((nextType === 'banner' || nextType === 'subnote') && !isValidHexColor(f.color_hex)) {
+                    return { ...f, entry_type: nextType, color_hex: getStageDefaultColor(taskStageId) };
+                  }
+                  return { ...f, entry_type: nextType };
+                })
+              }
             >
               <MenuItem value="task">Checklist item (checkbox)</MenuItem>
               <MenuItem value="banner">Banner text block</MenuItem>
@@ -945,6 +977,19 @@ export default function AdminProgramChecklistsTab() {
               <MenuItem value="divider">Divider text block</MenuItem>
             </Select>
           </FormControl>
+          {(taskForm.entry_type === 'banner' || taskForm.entry_type === 'subnote') && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <TextField
+                fullWidth
+                label={`${taskForm.entry_type === 'banner' ? 'Banner' : 'Subnote'} color (hex)`}
+                value={taskForm.color_hex}
+                onChange={(e) => setTaskForm((f) => ({ ...f, color_hex: e.target.value }))}
+                margin="dense"
+                placeholder={getStageDefaultColor(taskStageId)}
+              />
+              <ColorSwatch color={taskForm.color_hex || getStageDefaultColor(taskStageId)} label="Item color" />
+            </Box>
+          )}
           <TextField fullWidth label="Step ID (e.g. 1)" value={taskForm.task_id_suffix} onChange={(e) => setTaskForm((f) => ({ ...f, task_id_suffix: e.target.value }))} margin="dense" sx={{ mb: 1 }} />
           <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Content *</Typography>
           <RichTextEditor
