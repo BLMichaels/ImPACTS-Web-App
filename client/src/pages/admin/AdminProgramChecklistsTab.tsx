@@ -46,6 +46,146 @@ const DEFAULT_STAGE_PALETTE: Record<'stage1' | 'stage2' | 'stage3' | 'stage4', s
   stage4: '#9C27B0'
 };
 
+type DefaultTemplateStage = {
+  id: 'stage1' | 'stage2' | 'stage3' | 'stage4';
+  title: string;
+  subtitle: string;
+  objectives: string[];
+  goal: string;
+  tasks: Array<{ text: string; links?: ProgramChecklistTaskLink[] }>;
+};
+
+const DEFAULT_MILESTONE_TEMPLATE_STAGES: DefaultTemplateStage[] = [
+  {
+    id: 'stage1',
+    title: 'Stage 1: Establish',
+    subtitle: 'Build core knowledge, connect with PRISM, and prepare for simulation.',
+    objectives: [
+      'Develop foundational knowledge of Pediatric Readiness and the PECC Role',
+      'Establish connection with PRISM mentor and peer PECCs',
+      'Begin exploring simulation resources'
+    ],
+    goal: ' Build a strong foundation of knowledge, tools, and peer support',
+    tasks: [
+      { text: 'Review the role responsibilities for Nurse PECC or Physician PECC', links: [
+        { text: 'Nurse PECC', url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/readiness-toolkit-checklist/pecc/role-of-the-nursing-pecc-in-the-ed/' },
+        { text: 'Physician PECC', url: 'https://emscimprovement.center/domains/pediatric-readiness-project/readiness-toolkit/readiness-toolkit-checklist/pecc/md-pecc/' }
+      ] },
+      { text: 'Complete the Emergency Medical Services for Children (EMSC) PECC Modules', links: [
+        { text: 'PECC Modules', url: 'https://emscimprovement.center/domains/pecc/pecc-module-ed/' }
+      ] },
+      { text: 'Contact your emergency department (ED) nursing leadership and/or physician partners with the following email template', links: [
+        { text: 'email template', url: 'https://docs.google.com/document/d/14QcAO6S8llniLOKo-NoIuwDpYgo63GCN/edit' }
+      ] },
+      { text: 'Share Pediatric Readiness resources with ED leadership:\n• Joint Policy Statement\n• How Pediatric Readiness Saves Lives\n• The National Pediatric Readiness Project Assessment\n• Importance of a PECC', links: [
+        { text: 'Joint Policy Statement', url: 'https://publications.aap.org/pediatrics/article/142/5/e20182459/38608/Pediatric-Readiness-in-the-Emergency-Department' },
+        { text: 'How Pediatric Readiness Saves Lives', url: 'https://emscimprovement.center/domains/pediatric-readiness-project/' },
+        { text: 'The National Pediatric Readiness Project Assessment', url: 'https://www.pedsready.org/' },
+        { text: 'Importance of a PECC', url: 'https://emscimprovement.center/domains/pecc/' }
+      ] },
+      { text: 'Meet your PRISM mentor (virtual or in-person) and schedule monthly check-ins' },
+      { text: 'Join the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', links: [
+        { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
+      ] },
+      { text: 'Review the National Pediatric Readiness Project assessment with your PRISM' },
+      { text: 'Work with your PRISM to attend an in-person PECC training event' },
+      { text: 'Review SimBox How-To Video and Simulation/Education Guide', links: [
+        { text: 'How-To Video', url: 'https://www.emergencysimbox.com/how-to-use' },
+        { text: 'Simulation/Education Guide', url: 'https://www.emergencysimbox.com/respiratory-distress' }
+      ] },
+      { text: 'Plan your in-person simulation with your PRISM by selecting a simulation case, assigning roles, and setting up technology to run during Stage 2', links: [
+        { text: 'simulation case', url: 'https://www.emergencysimbox.com/' }
+      ] },
+      { text: 'Communicate to leadership your progress' }
+    ]
+  },
+  {
+    id: 'stage2',
+    title: 'Stage 2: Implement',
+    subtitle: 'Apply knowledge, complete assessments, and facilitate first simulation.',
+    objectives: [
+      'Complete Stage 1 objectives',
+      'Complete the National Pediatric Readiness Assessment with PRISM',
+      'Identify readiness gaps with PRISM',
+      'Facilitate simulation in the ED with PRISM'
+    ],
+    goal: ' Apply skills in real settings and begin leading improvement efforts',
+    tasks: [
+      { text: 'Complete Stage 1 objectives' },
+      { text: 'After completing Stage 1 objectives, re-evaluate your available time commitment to Pediatric Readiness' },
+      { text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', links: [
+        { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
+      ] },
+      { text: 'Complete your National Pediatric Readiness Project assessment and review score with your PRISM' },
+      { text: 'Review, prioritize, and address one ongoing gap utilizing resources from ImPACTS with your PRISM' },
+      { text: 'Create a SMART aim goal to address the prioritized gap with support from your PRISM' },
+      { text: 'Schedule your first simulation with an ED team with support from your PRISM' },
+      { text: 'Run and complete your first simulation with support from your PRISM' },
+      { text: 'Complete the associated Facilitator Checklist with that scenario', links: [
+        { text: 'Facilitator Checklist', url: 'https://yalesurvey.ca1.qualtrics.com/jfe/form/SV_2i2AQF9Lq5ixm6i' }
+      ] },
+      { text: 'Ask all participants to complete the Participant Survey to access the simulation report', links: [
+        { text: 'Participant Survey', url: 'https://yalesurvey.ca1.qualtrics.com/jfe/form/SV_3vXMUgYvIPFWKUK' }
+      ] },
+      { text: 'Communicate to leadership your progress' }
+    ]
+  },
+  {
+    id: 'stage3',
+    title: 'Stage 3: Lead',
+    subtitle: 'Take independent leadership in gaps and simulations.',
+    objectives: [
+      'Complete Stage 2 objectives',
+      'Independently address Pediatric Readiness gaps',
+      'Lead simulation activities with virtual PRISM support'
+    ],
+    goal: ' Take ownership of simulation, action planning, and peer learning',
+    tasks: [
+      { text: 'Complete Stage 2 objectives' },
+      { text: 'After completing Stage 2 objectives, re-evaluate your available time commitment to Pediatric Readiness' },
+      { text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', links: [
+        { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
+      ] },
+      { text: 'Continue addressing prioritized gaps from Stage 2 with virtual support and consultation from your PRISM' },
+      { text: 'Review the "Gap Analysis" tab on your PECC Support Tool with your PRISM' },
+      { text: 'Begin logging activities in your PECC Support Tool' },
+      { text: 'Independently create a SMART aim goal to address ongoing gaps, with consultation and feedback from your PRISM' },
+      { text: 'Schedule and facilitate quarterly simulations with an ED team with virtual support from your PRISM', links: [
+        { text: 'simulations', url: 'https://www.emergencysimbox.com/' }
+      ] },
+      { text: 'Communicate to leadership your progress' }
+    ]
+  },
+  {
+    id: 'stage4',
+    title: 'Stage 4: Sustain',
+    subtitle: 'Maintain improvements and serve as a champion.',
+    objectives: [
+      'Complete Stage 3 objectives',
+      'Engage senior leadership and other ED departments in Pediatric Readiness improvements',
+      'Continue simulation, tracking, and peer leadership'
+    ],
+    goal: ' Sustain improvements and serve as a Pediatric Readiness champion within the ED and broader network',
+    tasks: [
+      { text: 'Complete Stage 3 objectives' },
+      { text: 'After completing Stage 3 objectives, re-evaluate your available time commitment to Pediatric Readiness' },
+      { text: 'Continue engagement with the ImPACTS Community of Practice and attend or watch the monthly virtual meetings', links: [
+        { text: 'monthly virtual meetings', url: 'https://docs.google.com/spreadsheets/d/1_LFNGpLBj67rx8lOTl5xQFxBUw7gh-JnRzJA1L53R40/edit?gid=0#gid=0' }
+      ] },
+      { text: 'Review and update the status of the current "Gap Analysis" on your PECC Support Tool' },
+      { text: 'Log monthly activities on your PECC Support Tool' },
+      { text: 'Present your PECC Support Tool snapshots to ED and hospital leadership' },
+      { text: 'Each year, complete the National Pediatric Readiness Project assessment, address new or ongoing gaps utilizing resources from ImPACTS, and create a SMART aim goal to tackle the next identified gap', links: [
+        { text: 'National Pediatric Readiness Project assessment', url: 'https://www.pedsready.org/' }
+      ] },
+      { text: 'Facilitate, independently, ongoing quarterly simulations in the ED', links: [
+        { text: 'simulations', url: 'https://www.emergencysimbox.com/' }
+      ] },
+      { text: 'Fill out the ImPACTS Program Evaluation Survey to share your feedback and indicate interest in becoming a PRISM' }
+    ]
+  }
+];
+
 function decodeEntry(text: string): { type: ChecklistEntryType; content: string } {
   const m = String(text || '').match(/^\[\[ENTRY:(task|banner|footnote|subnote|divider)\]\]/i);
   if (!m) return { type: 'task', content: text || '' };
@@ -115,11 +255,15 @@ export default function AdminProgramChecklistsTab() {
   const [stageChecklistId, setStageChecklistId] = useState<string | null>(null);
   const [stagePalette, setStagePalette] = useState(DEFAULT_STAGE_PALETTE);
   const [paletteSaving, setPaletteSaving] = useState(false);
+  const [templateProgramId, setTemplateProgramId] = useState('');
+  const [templateSeeding, setTemplateSeeding] = useState(false);
 
   const loadPrograms = useCallback(async () => {
     const { data, error: err } = await supabase.from('programs').select('id, name').eq('is_active', true).order('name');
     if (err) throw err;
-    setPrograms(data || []);
+    const rows = data || [];
+    setPrograms(rows);
+    setTemplateProgramId((prev) => prev || rows[0]?.id || '');
   }, []);
 
   const loadChecklists = useCallback(async () => {
@@ -409,6 +553,79 @@ export default function AdminProgramChecklistsTab() {
     }
   };
 
+  const handleSeedDefaultTemplate = async () => {
+    if (!templateProgramId) return;
+    const programName = programs.find((p) => p.id === templateProgramId)?.name || 'selected program';
+    if (!window.confirm(`Create a new editable default 4-stage checklist for ${programName}?`)) return;
+    setTemplateSeeding(true);
+    setError(null);
+    try {
+      const existing = checklists.find((c) => c.program_id === templateProgramId && c.name.toLowerCase() === 'default 4-stage checklist');
+      if (existing) throw new Error('A "Default 4-Stage Checklist" already exists for this program.');
+
+      const currentForProgram = checklists.filter((c) => c.program_id === templateProgramId).length;
+      const { data: insertedChecklist, error: checklistErr } = await supabase
+        .from('program_checklists')
+        .insert({
+          program_id: templateProgramId,
+          name: 'Default 4-Stage Checklist',
+          show_before_default: false,
+          sort_order: currentForProgram
+        })
+        .select('id')
+        .single();
+      if (checklistErr || !insertedChecklist?.id) throw checklistErr || new Error('Failed to create checklist');
+
+      const stagePayload = DEFAULT_MILESTONE_TEMPLATE_STAGES.map((stage, idx) => ({
+        checklist_id: insertedChecklist.id,
+        sort_order: idx,
+        title: stage.title,
+        subtitle: stage.subtitle,
+        color_hex: stagePalette[stage.id],
+        objectives: stage.objectives,
+        goal: stage.goal
+      }));
+      const { data: insertedStages, error: stageErr } = await supabase
+        .from('program_checklist_stages')
+        .insert(stagePayload)
+        .select('id, title');
+      if (stageErr || !insertedStages?.length) throw stageErr || new Error('Failed to create stages');
+
+      const stageIdByTitle = new Map(insertedStages.map((s: { id: string; title: string }) => [s.title, s.id]));
+      const taskPayload: Array<{
+        stage_id: string;
+        sort_order: number;
+        task_id_suffix: string;
+        text_content: string;
+        links: ProgramChecklistTaskLink[];
+      }> = [];
+      DEFAULT_MILESTONE_TEMPLATE_STAGES.forEach((stageTemplate) => {
+        const stageId = stageIdByTitle.get(stageTemplate.title);
+        if (!stageId) return;
+        stageTemplate.tasks.forEach((task, taskIndex) => {
+          taskPayload.push({
+            stage_id: stageId,
+            sort_order: taskIndex,
+            task_id_suffix: String(taskIndex + 1),
+            text_content: task.text,
+            links: task.links || []
+          });
+        });
+      });
+      if (taskPayload.length) {
+        const { error: taskErr } = await supabase.from('program_checklist_tasks').insert(taskPayload);
+        if (taskErr) throw taskErr;
+      }
+
+      await loadChecklists();
+      setExpandedChecklistId(insertedChecklist.id);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to seed default template');
+    } finally {
+      setTemplateSeeding(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
@@ -451,6 +668,27 @@ export default function AdminProgramChecklistsTab() {
       <Button variant="contained" startIcon={<AddIcon />} onClick={openAddChecklist} sx={{ mb: 2 }} aria-label="Add program checklist">
         Add checklist
       </Button>
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
+        <FormControl size="small" sx={{ minWidth: 260 }}>
+          <InputLabel>Program for default template</InputLabel>
+          <Select
+            value={templateProgramId}
+            label="Program for default template"
+            onChange={(e) => setTemplateProgramId(e.target.value)}
+          >
+            {programs.map((p) => (
+              <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Button
+          variant="outlined"
+          onClick={handleSeedDefaultTemplate}
+          disabled={templateSeeding || !templateProgramId}
+        >
+          {templateSeeding ? 'Creating template…' : 'Load default 4-stage template'}
+        </Button>
+      </Box>
 
       <TableContainer component={Paper} sx={{ mb: 2 }}>
         <Table size="small">
