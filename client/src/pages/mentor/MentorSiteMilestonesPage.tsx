@@ -473,6 +473,16 @@ const MentorSiteMilestonesPage: React.FC = () => {
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIdsForData, 'activities'),
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIdsForData, 'readinessScores'),
       ]);
+      const { data: visibilitySettings } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'program_checklist_enabled_overrides')
+        .maybeSingle();
+      const visibilityRaw = (visibilitySettings?.value ?? null) as Record<string, unknown> | null;
+      const isChecklistEnabled = (checklistId: string) => {
+        if (!visibilityRaw || typeof visibilityRaw !== 'object') return true;
+        return visibilityRaw[checklistId] !== false;
+      };
 
       for (const hospital of hospitals) {
         const { data: peccUsers } = await supabase
@@ -520,8 +530,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
           }
           if (primaryProgramId) {
             const { data: list } = await supabase.from('program_checklists').select('*').eq('program_id', primaryProgramId).order('sort_order');
-            if (list?.length) {
-              const withStages = await Promise.all(list.map(async (c: any) => {
+            const enabledList = (list || []).filter((c: { id: string }) => isChecklistEnabled(c.id));
+            if (enabledList.length) {
+              const withStages = await Promise.all(enabledList.map(async (c: any) => {
                 const { data: stages } = await supabase.from('program_checklist_stages').select('*').eq('checklist_id', c.id).order('sort_order');
                 const stagesWithTasks = await Promise.all((stages || []).map(async (s: any) => {
                   const { data: tasks } = await supabase.from('program_checklist_tasks').select('*').eq('stage_id', s.id).order('sort_order');

@@ -33,6 +33,8 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { supabase } from '../../supabase';
 import type { ProgramChecklist, ProgramChecklistStage, ProgramChecklistTask, ProgramChecklistTaskLink } from '../../types/database';
 import RichTextEditor, { sanitizeHtml, stripHtmlToText } from '../../components/cohorts/RichTextEditor';
@@ -254,16 +256,14 @@ export default function AdminProgramChecklistsTab() {
   const [taskForm, setTaskForm] = useState({ text_content: '', task_id_suffix: '', links: [] as ProgramChecklistTaskLink[], entry_type: 'task' as ChecklistEntryType });
   const [stageChecklistId, setStageChecklistId] = useState<string | null>(null);
   const [stagePalette, setStagePalette] = useState(DEFAULT_STAGE_PALETTE);
+  const [checklistVisibility, setChecklistVisibility] = useState<Record<string, boolean>>({});
   const [paletteSaving, setPaletteSaving] = useState(false);
-  const [templateProgramId, setTemplateProgramId] = useState('');
   const [templateSeeding, setTemplateSeeding] = useState(false);
 
   const loadPrograms = useCallback(async () => {
     const { data, error: err } = await supabase.from('programs').select('id, name').eq('is_active', true).order('name');
     if (err) throw err;
-    const rows = data || [];
-    setPrograms(rows);
-    setTemplateProgramId((prev) => prev || rows[0]?.id || '');
+    setPrograms(data || []);
   }, []);
 
   const loadChecklists = useCallback(async () => {
@@ -308,6 +308,24 @@ export default function AdminProgramChecklistsTab() {
     });
   }, []);
 
+  const loadChecklistVisibility = useCallback(async () => {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'program_checklist_enabled_overrides')
+      .maybeSingle();
+    const raw = (data?.value ?? null) as Record<string, unknown> | null;
+    if (!raw || typeof raw !== 'object') {
+      setChecklistVisibility({});
+      return;
+    }
+    const map: Record<string, boolean> = {};
+    Object.entries(raw).forEach(([key, value]) => {
+      map[key] = value !== false;
+    });
+    setChecklistVisibility(map);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -315,6 +333,7 @@ export default function AdminProgramChecklistsTab() {
         await loadPrograms();
         await loadChecklists();
         await loadStagePalette();
+        await loadChecklistVisibility();
       } catch (e: any) {
         if (mounted) setError(e?.message || 'Failed to load');
       } finally {
@@ -322,7 +341,7 @@ export default function AdminProgramChecklistsTab() {
       }
     })();
     return () => { mounted = false; };
-  }, [loadPrograms, loadChecklists, loadStagePalette]);
+  }, [loadPrograms, loadChecklists, loadStagePalette, loadChecklistVisibility]);
 
   const openAddChecklist = () => {
     setEditingChecklist(null);
@@ -427,6 +446,80 @@ export default function AdminProgramChecklistsTab() {
       await loadChecklists();
     } catch (e: any) {
       setError(e?.message || 'Delete failed');
+    }
+  };
+
+  const isChecklistEnabled = (checklistId: string): boolean => checklistVisibility[checklistId] !== false;
+
+  const handleToggleChecklistEnabled = async (checklistId: string, enabled: boolean) => {
+    const next = { ...checklistVisibility, [checklistId]: enabled };
+    setChecklistVisibility(next);
+    const { error: e } = await supabase.from('app_settings').upsert(
+      {
+        key: 'program_checklist_enabled_overrides',
+        value: next as any,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'key' }
+    );
+    if (e) {
+      setError(e.message || 'Failed to update checklist visibility');
+      await loadChecklistVisibility();
+    }
+  };
+
+  const handleMoveStage = async (checklistId: string, stageId: string, direction: 'up' | 'down') => {
+    const checklist = checklists.find((c) => c.id === checklistId);
+    const stages = [...(checklist?.stages || [])].sort((a, b) => a.sort_order - b.sort_order);
+    const index = stages.findIndex((s) => s.id === stageId);
+    if (index < 0) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= stages.length) return;
+    const current = stages[index];
+    const target = stages[targetIndex];
+    try {
+      const now = new Date().toISOString();
+      const { error: e1 } = await supabase
+        .from('program_checklist_stages')
+        .update({ sort_order: target.sort_order, updated_at: now })
+        .eq('id', current.id);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from('program_checklist_stages')
+        .update({ sort_order: current.sort_order, updated_at: now })
+        .eq('id', target.id);
+      if (e2) throw e2;
+      await loadChecklists();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to reorder stage');
+    }
+  };
+
+  const handleMoveTask = async (stageId: string, taskId: string, direction: 'up' | 'down') => {
+    const parentChecklist = checklists.find((c) => c.stages?.some((s) => s.id === stageId));
+    const stage = parentChecklist?.stages?.find((s) => s.id === stageId) as (ProgramChecklistStage & { tasks?: ProgramChecklistTask[] }) | undefined;
+    const tasks = [...(stage?.tasks || [])].sort((a, b) => a.sort_order - b.sort_order);
+    const index = tasks.findIndex((t) => t.id === taskId);
+    if (index < 0) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= tasks.length) return;
+    const current = tasks[index];
+    const target = tasks[targetIndex];
+    try {
+      const now = new Date().toISOString();
+      const { error: e1 } = await supabase
+        .from('program_checklist_tasks')
+        .update({ sort_order: target.sort_order, updated_at: now })
+        .eq('id', current.id);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from('program_checklist_tasks')
+        .update({ sort_order: current.sort_order, updated_at: now })
+        .eq('id', target.id);
+      if (e2) throw e2;
+      await loadChecklists();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to reorder item');
     }
   };
 
@@ -554,71 +647,74 @@ export default function AdminProgramChecklistsTab() {
   };
 
   const handleSeedDefaultTemplate = async () => {
-    if (!templateProgramId) return;
-    const programName = programs.find((p) => p.id === templateProgramId)?.name || 'selected program';
-    if (!window.confirm(`Create a new editable default 4-stage checklist for ${programName}?`)) return;
+    if (!programs.length) return;
+    if (!window.confirm('Create editable default 4-stage checklists for all active programs that do not already have one?')) return;
     setTemplateSeeding(true);
     setError(null);
     try {
-      const existing = checklists.find((c) => c.program_id === templateProgramId && c.name.toLowerCase() === 'default 4-stage checklist');
-      if (existing) throw new Error('A "Default 4-Stage Checklist" already exists for this program.');
+      let createdCount = 0;
+      for (const program of programs) {
+        const existing = checklists.find((c) => c.program_id === program.id && c.name.toLowerCase() === 'default 4-stage checklist');
+        if (existing) continue;
+        const currentForProgram = checklists.filter((c) => c.program_id === program.id).length;
+        const { data: insertedChecklist, error: checklistErr } = await supabase
+          .from('program_checklists')
+          .insert({
+            program_id: program.id,
+            name: 'Default 4-Stage Checklist',
+            show_before_default: false,
+            sort_order: currentForProgram
+          })
+          .select('id')
+          .single();
+        if (checklistErr || !insertedChecklist?.id) throw checklistErr || new Error(`Failed to create checklist for ${program.name}`);
 
-      const currentForProgram = checklists.filter((c) => c.program_id === templateProgramId).length;
-      const { data: insertedChecklist, error: checklistErr } = await supabase
-        .from('program_checklists')
-        .insert({
-          program_id: templateProgramId,
-          name: 'Default 4-Stage Checklist',
-          show_before_default: false,
-          sort_order: currentForProgram
-        })
-        .select('id')
-        .single();
-      if (checklistErr || !insertedChecklist?.id) throw checklistErr || new Error('Failed to create checklist');
+        const stagePayload = DEFAULT_MILESTONE_TEMPLATE_STAGES.map((stage, idx) => ({
+          checklist_id: insertedChecklist.id,
+          sort_order: idx,
+          title: stage.title,
+          subtitle: stage.subtitle,
+          color_hex: stagePalette[stage.id],
+          objectives: stage.objectives,
+          goal: stage.goal
+        }));
+        const { data: insertedStages, error: stageErr } = await supabase
+          .from('program_checklist_stages')
+          .insert(stagePayload)
+          .select('id, title');
+        if (stageErr || !insertedStages?.length) throw stageErr || new Error(`Failed to create stages for ${program.name}`);
 
-      const stagePayload = DEFAULT_MILESTONE_TEMPLATE_STAGES.map((stage, idx) => ({
-        checklist_id: insertedChecklist.id,
-        sort_order: idx,
-        title: stage.title,
-        subtitle: stage.subtitle,
-        color_hex: stagePalette[stage.id],
-        objectives: stage.objectives,
-        goal: stage.goal
-      }));
-      const { data: insertedStages, error: stageErr } = await supabase
-        .from('program_checklist_stages')
-        .insert(stagePayload)
-        .select('id, title');
-      if (stageErr || !insertedStages?.length) throw stageErr || new Error('Failed to create stages');
-
-      const stageIdByTitle = new Map(insertedStages.map((s: { id: string; title: string }) => [s.title, s.id]));
-      const taskPayload: Array<{
-        stage_id: string;
-        sort_order: number;
-        task_id_suffix: string;
-        text_content: string;
-        links: ProgramChecklistTaskLink[];
-      }> = [];
-      DEFAULT_MILESTONE_TEMPLATE_STAGES.forEach((stageTemplate) => {
-        const stageId = stageIdByTitle.get(stageTemplate.title);
-        if (!stageId) return;
-        stageTemplate.tasks.forEach((task, taskIndex) => {
-          taskPayload.push({
-            stage_id: stageId,
-            sort_order: taskIndex,
-            task_id_suffix: String(taskIndex + 1),
-            text_content: task.text,
-            links: task.links || []
+        const stageIdByTitle = new Map(insertedStages.map((s: { id: string; title: string }) => [s.title, s.id]));
+        const taskPayload: Array<{
+          stage_id: string;
+          sort_order: number;
+          task_id_suffix: string;
+          text_content: string;
+          links: ProgramChecklistTaskLink[];
+        }> = [];
+        DEFAULT_MILESTONE_TEMPLATE_STAGES.forEach((stageTemplate) => {
+          const stageId = stageIdByTitle.get(stageTemplate.title);
+          if (!stageId) return;
+          stageTemplate.tasks.forEach((task, taskIndex) => {
+            taskPayload.push({
+              stage_id: stageId,
+              sort_order: taskIndex,
+              task_id_suffix: String(taskIndex + 1),
+              text_content: task.text,
+              links: task.links || []
+            });
           });
         });
-      });
-      if (taskPayload.length) {
-        const { error: taskErr } = await supabase.from('program_checklist_tasks').insert(taskPayload);
-        if (taskErr) throw taskErr;
+        if (taskPayload.length) {
+          const { error: taskErr } = await supabase.from('program_checklist_tasks').insert(taskPayload);
+          if (taskErr) throw taskErr;
+        }
+        createdCount += 1;
       }
-
       await loadChecklists();
-      setExpandedChecklistId(insertedChecklist.id);
+      if (createdCount === 0) {
+        setError('Default template already exists for all active programs.');
+      }
     } catch (e: any) {
       setError(e?.message || 'Failed to seed default template');
     } finally {
@@ -639,7 +735,7 @@ export default function AdminProgramChecklistsTab() {
     <Box>
       <Typography variant="h6" gutterBottom>Program Checklists</Typography>
       <Typography color="textSecondary" sx={{ mb: 2 }}>
-        Create checklists per program for PECCs. Each checklist can appear before or after the default checklist. PECC primary program determines which program checklist they see.
+        Checklist content is editable here. Templates can be seeded for all programs, and each checklist can be toggled on/off and reordered.
       </Typography>
       <Box sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Default Stage Accordion Palette</Typography>
@@ -669,24 +765,12 @@ export default function AdminProgramChecklistsTab() {
         Add checklist
       </Button>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
-        <FormControl size="small" sx={{ minWidth: 260 }}>
-          <InputLabel>Program for default template</InputLabel>
-          <Select
-            value={templateProgramId}
-            label="Program for default template"
-            onChange={(e) => setTemplateProgramId(e.target.value)}
-          >
-            {programs.map((p) => (
-              <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
         <Button
           variant="outlined"
           onClick={handleSeedDefaultTemplate}
-          disabled={templateSeeding || !templateProgramId}
+          disabled={templateSeeding || programs.length === 0}
         >
-          {templateSeeding ? 'Creating template…' : 'Load default 4-stage template'}
+          {templateSeeding ? 'Creating templates…' : 'Load default 4-stage template for all programs'}
         </Button>
       </Box>
 
@@ -697,6 +781,7 @@ export default function AdminProgramChecklistsTab() {
               <TableCell>Program</TableCell>
               <TableCell>Name</TableCell>
               <TableCell>Order</TableCell>
+              <TableCell>Enabled</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -707,6 +792,13 @@ export default function AdminProgramChecklistsTab() {
                 <TableCell>{c.name}</TableCell>
                 <TableCell>
                   <Chip size="small" label={c.show_before_default ? 'Before default' : 'After default'} variant="outlined" />
+                </TableCell>
+                <TableCell>
+                  <Switch
+                    size="small"
+                    checked={isChecklistEnabled(c.id)}
+                    onChange={(e) => { void handleToggleChecklistEnabled(c.id, e.target.checked); }}
+                  />
                 </TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={() => openEditChecklist(c)}><EditIcon /></IconButton>
@@ -737,6 +829,12 @@ export default function AdminProgramChecklistsTab() {
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                   <Typography variant="subtitle1" fontWeight={600}>{stage.title}</Typography>
                   <Box>
+                    <IconButton size="small" onClick={() => { void handleMoveStage(c.id, stage.id, 'up'); }} title="Move stage up">
+                      <ArrowUpwardIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => { void handleMoveStage(c.id, stage.id, 'down'); }} title="Move stage down">
+                      <ArrowDownwardIcon fontSize="small" />
+                    </IconButton>
                     <Button size="small" startIcon={<AddIcon />} onClick={() => openAddTask(stage.id, c.id)}>Add item</Button>
                     <IconButton size="small" onClick={() => openEditStage(stage)}><EditIcon /></IconButton>
                     <IconButton size="small" color="error" onClick={() => handleDeleteStage(stage.id)}><DeleteIcon /></IconButton>
@@ -758,6 +856,12 @@ export default function AdminProgramChecklistsTab() {
                             </Typography>
                           );
                         })()}
+                        <IconButton size="small" onClick={() => { void handleMoveTask(stage.id, t.id, 'up'); }} title="Move item up">
+                          <ArrowUpwardIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => { void handleMoveTask(stage.id, t.id, 'down'); }} title="Move item down">
+                          <ArrowDownwardIcon fontSize="small" />
+                        </IconButton>
                         <IconButton size="small" onClick={() => openEditTask(t, c.id)}><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => handleDeleteTask(t.id)}><DeleteIcon fontSize="small" /></IconButton>
                       </li>
