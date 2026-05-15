@@ -89,6 +89,7 @@ const MilestonesPage = () => {
   const [hospitalId, setHospitalId] = useState<string | null>(null);
   const [programChecklists, setProgramChecklists] = useState<ProgramChecklistLoaded[]>([]);
   const [stagePalette, setStagePalette] = useState(DEFAULT_STAGE_PALETTE);
+  const hasProgramChecklistStages = programChecklists.some((c) => Array.isArray(c.stages) && c.stages.length > 0);
 
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
@@ -523,7 +524,7 @@ const MilestonesPage = () => {
 
     const before = programChecklists.filter((c) => c.show_before_default).flatMap((c) => c.stages.map((s, i) => toMilestoneStage(c, s, i)));
     const after = programChecklists.filter((c) => !c.show_before_default).flatMap((c) => c.stages.map((s, i) => toMilestoneStage(c, s, i)));
-    const merged: MilestoneStage[] = [...before, ...defaultStages, ...after];
+    const merged: MilestoneStage[] = hasProgramChecklistStages ? [...before, ...after] : [...defaultStages];
 
     setStages(merged);
     if (hospitalId) {
@@ -537,11 +538,12 @@ const MilestonesPage = () => {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- merges program checklists with default stages; adding stages would loop
-  }, [programChecklists, resolvedProgramId, hospitalId]);
+  }, [programChecklists, resolvedProgramId, hospitalId, hasProgramChecklistStages]);
 
-  // Load checklist from Supabase (shared with Mentor Site Milestones) when hospitalId is set (default stages only when no program checklists)
+  // Load checklist from Supabase (shared with Mentor Site Milestones) when hospitalId is set
+  // (default stages only when program checklists are not configured for this program).
   useEffect(() => {
-    if (!hospitalId || programChecklists.length > 0) return;
+    if (!hospitalId || hasProgramChecklistStages) return;
     (async () => {
       const { data: rows } = await supabase
         .from('site_checklist_progress')
@@ -560,7 +562,7 @@ const MilestonesPage = () => {
       }
       dataLoadedRef.current = true;
     })();
-  }, [hospitalId, programChecklists.length]);
+  }, [hospitalId, hasProgramChecklistStages]);
 
   const milestonesUserId = effectiveUserId;
   // Load milestone data from user_data when no site/hospital
@@ -669,6 +671,11 @@ const MilestonesPage = () => {
       <Typography variant="body1" paragraph sx={{ mb: 4, lineHeight: 1.6 }}>
         This staged approach is designed to guide Pediatric Emergency Care Coordinators (PECCs) in strengthening Pediatric Readiness through mentorship, simulation, and continuous quality improvement. At each stage, PECCs are supported by a Pediatric Readiness Improvement & Simulation Mentor (PRISM), who provides tailored guidance from foundational learning to sustained leadership.
       </Typography>
+      {hasProgramChecklistStages && (
+        <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+          Checklist stage and task content for this page is managed in Program Checklists.
+        </Typography>
+      )}
 
       {/* Export Buttons */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
