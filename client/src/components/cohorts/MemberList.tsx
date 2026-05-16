@@ -59,6 +59,7 @@ const MemberList: React.FC<MemberListProps> = ({
   const [removingMember, setRemovingMember] = useState<CohortMember | null>(null);
   const [removing, setRemoving] = useState(false);
   const [assigningMemberId, setAssigningMemberId] = useState<string | null>(null);
+  const [assigningAll, setAssigningAll] = useState(false);
 
   const handleRemoveClick = (member: CohortMember) => {
     setRemovingMember(member);
@@ -115,10 +116,29 @@ const MemberList: React.FC<MemberListProps> = ({
           ...(role === UserRole.MENTOR ? { manager_id: userProfile.id } : { manager_id_for_pecc: userProfile.id })
         } as any
       });
+      return true;
     } catch (err) {
       console.error('Error assigning member to manager:', err);
+      return false;
     } finally {
       setAssigningMemberId(null);
+    }
+  };
+
+  const unsupervisedMembers =
+    userProfile?.role === UserRole.MANAGER
+      ? members.filter((member) => canClaimMember(member) && !String(member.id).startsWith('pending-'))
+      : [];
+
+  const handleAssignAllUnsupervised = async () => {
+    if (!unsupervisedMembers.length) return;
+    setAssigningAll(true);
+    try {
+      for (const member of unsupervisedMembers) {
+        await handleAssignToCurrentManager(member);
+      }
+    } finally {
+      setAssigningAll(false);
     }
   };
 
@@ -177,6 +197,44 @@ const MemberList: React.FC<MemberListProps> = ({
         </Paper>
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {userProfile?.role === UserRole.MANAGER && unsupervisedMembers.length > 0 && (
+            <Paper variant="outlined" sx={{ p: 2, borderColor: 'warning.main', bgcolor: 'warning.50' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  Assignment Audit: {unsupervisedMembers.length} unsupervised member{unsupervisedMembers.length === 1 ? '' : 's'}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="warning"
+                  onClick={handleAssignAllUnsupervised}
+                  disabled={assigningAll || assigningMemberId !== null}
+                >
+                  {assigningAll ? 'Assigning all…' : 'Assign all to me'}
+                </Button>
+              </Box>
+              <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                {unsupervisedMembers.map((member) => (
+                  <Box
+                    key={`audit-${member.id}`}
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, bgcolor: 'background.paper', px: 1.25, py: 0.75, borderRadius: 1 }}
+                  >
+                    <Typography variant="body2">
+                      {getUserDisplayName(member.user)} - {member.user?.role === UserRole.MENTOR ? 'Mentor' : 'PECC'}
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleAssignToCurrentManager(member)}
+                      disabled={assigningMemberId === member.id || assigningAll}
+                    >
+                      {assigningMemberId === member.id ? 'Assigning…' : 'Assign to me'}
+                    </Button>
+                  </Box>
+                ))}
+              </Box>
+            </Paper>
+          )}
           {roleOrder.map(role => {
             const roleMembers = groupedMembers[role];
             if (!roleMembers || roleMembers.length === 0) return null;
