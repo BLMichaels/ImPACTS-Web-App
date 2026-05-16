@@ -2475,18 +2475,24 @@ const AdminCRMPage: React.FC = () => {
       const r = CONTACT_TYPE_TO_USER_ROLE[formData.type];
       if (r === 'pecc' || r === 'manager' || r === 'mentor') {
         const emailTrim = formData.email.trim();
+        const startingPasswordTrim = startingPassword.trim();
+        if (startingPasswordTrim && startingPasswordTrim.length < 8) {
+          setSaveError('Contact was saved, but portal provisioning was skipped because starting password must be at least 8 characters.');
+          return;
+        }
         const { data: existingRow } = await supabase.from('users').select('id').eq('email', emailTrim).maybeSingle();
-        const shouldProvision = !existingRow?.id || Boolean(startingPassword.trim());
+        const shouldProvision = !existingRow?.id || Boolean(startingPasswordTrim);
         if (shouldProvision) {
           const pr = await provisionCrmPortalUser({
             email: emailTrim,
             role: r,
             first_name: formData.firstName,
             last_name: formData.lastName,
-            starting_password: startingPassword.trim() || undefined
+            starting_password: startingPasswordTrim || undefined
           });
           if ('error' in pr) {
-            console.warn('CRM portal provision:', pr.error);
+            setSaveError(`Contact was saved, but portal provisioning failed: ${pr.error}`);
+            return;
           } else {
             const uid = pr.user_id;
             const emailKey = emailTrim.toLowerCase();
