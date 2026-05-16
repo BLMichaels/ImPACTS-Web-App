@@ -39,6 +39,7 @@ interface MemberListProps {
   canInvite: boolean;
   onMemberAdded: (member: CohortMember) => void;
   onMemberRemoved: (memberId: string) => void;
+  onMemberUpdated?: (memberId: string, updates: Partial<CohortMember>) => void;
   loading: boolean;
 }
 
@@ -49,6 +50,7 @@ const MemberList: React.FC<MemberListProps> = ({
   canInvite,
   onMemberAdded,
   onMemberRemoved,
+  onMemberUpdated,
   loading
 }) => {
   const { userProfile } = useUserProfile();
@@ -56,6 +58,7 @@ const MemberList: React.FC<MemberListProps> = ({
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<CohortMember | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [assigningMemberId, setAssigningMemberId] = useState<string | null>(null);
 
   const handleRemoveClick = (member: CohortMember) => {
     setRemovingMember(member);
@@ -80,6 +83,42 @@ const MemberList: React.FC<MemberListProps> = ({
       setRemoving(false);
       setRemoveConfirmOpen(false);
       setRemovingMember(null);
+    }
+  };
+
+  const canClaimMember = (member: CohortMember) => {
+    const role = member.user?.role;
+    if (!role) return false;
+    if (role === UserRole.MENTOR) return !Boolean((member.user as any).manager_id);
+    if (role === UserRole.PECC) {
+      const hasMentor = Boolean((member.user as any).mentor_id);
+      const hasDirectManager = Boolean((member.user as any).manager_id_for_pecc);
+      return !hasMentor && !hasDirectManager;
+    }
+    return false;
+  };
+
+  const handleAssignToCurrentManager = async (member: CohortMember) => {
+    if (!userProfile?.id || !member.user_id) return;
+    setAssigningMemberId(member.id);
+    try {
+      const role = member.user?.role;
+      const payload =
+        role === UserRole.MENTOR
+          ? { manager_id: userProfile.id }
+          : { manager_id_for_pecc: userProfile.id };
+      const { error } = await supabase.from('users').update(payload).eq('id', member.user_id);
+      if (error) throw error;
+      onMemberUpdated?.(member.id, {
+        user: {
+          ...(member.user as any),
+          ...(role === UserRole.MENTOR ? { manager_id: userProfile.id } : { manager_id_for_pecc: userProfile.id })
+        } as any
+      });
+    } catch (err) {
+      console.error('Error assigning member to manager:', err);
+    } finally {
+      setAssigningMemberId(null);
     }
   };
 
@@ -177,6 +216,9 @@ const MemberList: React.FC<MemberListProps> = ({
                               {String(member.id).startsWith('pending-') && (
                                 <Chip label="Pending" size="small" color="default" sx={{ ml: 1, height: 18, fontSize: '0.7rem' }} />
                               )}
+                              {userProfile?.role === UserRole.MANAGER && canClaimMember(member) && (
+                                <Chip label="Unsupervised" size="small" color="warning" sx={{ ml: 1, height: 18, fontSize: '0.7rem' }} />
+                              )}
                             </Typography>
                           }
                           secondary={
@@ -190,6 +232,17 @@ const MemberList: React.FC<MemberListProps> = ({
                             </Typography>
                           }
                         />
+                        {userProfile?.role === UserRole.MANAGER && canClaimMember(member) && !String(member.id).startsWith('pending-') && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleAssignToCurrentManager(member)}
+                            disabled={assigningMemberId === member.id}
+                            sx={{ mr: canManage && member.user_id !== userProfile?.id ? 6 : 0 }}
+                          >
+                            {assigningMemberId === member.id ? 'Assigning…' : 'Assign to me'}
+                          </Button>
+                        )}
                         {canManage && member.user_id !== userProfile?.id && !String(member.id).startsWith('manager-') && !String(member.id).startsWith('pending-') && (
                           <ListItemSecondaryAction>
                             <Tooltip title="Remove from cohort">

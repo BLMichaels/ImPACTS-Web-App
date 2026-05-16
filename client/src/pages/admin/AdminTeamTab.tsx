@@ -366,28 +366,30 @@ const AdminTeamTab: React.FC = () => {
     setSelectedUser(user);
   };
 
-  const openProfileDrawer = async (editMode = false) => {
+  const openProfileDrawer = async (editMode = false, targetUser?: User) => {
     setAnchorEl(null);
-    if (selectedUser) {
+    const user = targetUser || selectedUser;
+    if (user) {
       let assignedSystems: string[] = [];
-      if (selectedUser.role === 'hospital_system') {
-        const { data } = await supabase.from('hospital_system_assignments').select('hospital_system_name').eq('user_id', selectedUser.id);
+      if (user.role === 'hospital_system') {
+        const { data } = await supabase.from('hospital_system_assignments').select('hospital_system_name').eq('user_id', user.id);
         assignedSystems = (data || []).map((r: { hospital_system_name: string }) => r.hospital_system_name);
-      } else if (selectedUser.role === 'hiring_group') {
-        const { data } = await supabase.from('hiring_group_assignments').select('hospital_system_name').eq('user_id', selectedUser.id);
+      } else if (user.role === 'hiring_group') {
+        const { data } = await supabase.from('hiring_group_assignments').select('hospital_system_name').eq('user_id', user.id);
         assignedSystems = (data || []).map((r: { hospital_system_name: string }) => r.hospital_system_name);
       }
+      setSelectedUser(user);
       setProfileForm({
-        firstName: selectedUser.firstName,
-        lastName: selectedUser.lastName,
-        email: selectedUser.email,
-        phone: selectedUser.phone,
-        role: selectedUser.role,
-        is_admin: selectedUser.is_admin ?? false,
-        status: selectedUser.status,
-        assignedManagerId: selectedUser.role === 'mentor' && selectedUser.manager_id ? selectedUser.manager_id : '',
-        assignedMentorId: selectedUser.role === 'pecc' && selectedUser.mentor_id ? selectedUser.mentor_id : '',
-        assignedManagerIdForPECC: selectedUser.role === 'pecc' && selectedUser.manager_id_for_pecc ? selectedUser.manager_id_for_pecc : '',
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        is_admin: user.is_admin ?? false,
+        status: user.status,
+        assignedManagerId: user.role === 'mentor' && user.manager_id ? user.manager_id : '',
+        assignedMentorId: user.role === 'pecc' && user.mentor_id ? user.mentor_id : '',
+        assignedManagerIdForPECC: user.role === 'pecc' && user.manager_id_for_pecc ? user.manager_id_for_pecc : '',
         assignedHospitalSystems: assignedSystems
       });
       setProfileEditMode(editMode);
@@ -596,7 +598,13 @@ const AdminTeamTab: React.FC = () => {
                     </Box>
                   </TableCell>
                   <TableCell>
-                    {user.role === 'mentor' && user.managerName ? user.managerName : user.role === 'pecc' && user.mentorName ? user.mentorName : '—'}
+                    {user.role === 'mentor' && user.managerName ? (
+                      user.managerName
+                    ) : user.role === 'mentor' ? (
+                      <Button size="small" variant="outlined" onClick={() => { void openProfileDrawer(true, user); }}>
+                        Assign manager
+                      </Button>
+                    ) : user.role === 'pecc' && user.mentorName ? user.mentorName : '—'}
                   </TableCell>
                   <TableCell>
                     <Chip label={user.status} size="small" color={getStatusColor(user.status)} variant="outlined" />

@@ -180,7 +180,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
             .from('cohort_members')
             .select(`
               *,
-              user:user_id(id, first_name, last_name, email, role)
+              user:user_id(id, first_name, last_name, email, role, manager_id, mentor_id, manager_id_for_pecc)
             `)
             .eq('cohort_id', cohort.id)
             .eq('status', 'active')
@@ -395,6 +395,10 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
     loadData();
   };
 
+  const handleMemberUpdated = (memberId: string, updates: Partial<CohortMember>) => {
+    setMembers(prev => prev.map((m) => (m.id === memberId ? { ...m, ...updates } : m)));
+  };
+
   // If viewing a specific topic
   if (selectedTopic) {
     return (
@@ -567,6 +571,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
               canInvite={canInvite}
               onMemberAdded={handleMemberAdded}
               onMemberRemoved={handleMemberRemoved}
+              onMemberUpdated={handleMemberUpdated}
               loading={loading}
             />
           ) : (tabValue === 1 && !showMembersTab && showSnapshotTab) || (tabValue === 2 && showSnapshotTab) ? (
@@ -651,6 +656,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
                   canInvite={canInvite}
                   onMemberAdded={handleMemberAdded}
                   onMemberRemoved={handleMemberRemoved}
+                  onMemberUpdated={handleMemberUpdated}
                   loading={loading}
                 />
               );
