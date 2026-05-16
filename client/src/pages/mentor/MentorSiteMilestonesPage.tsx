@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -20,7 +20,8 @@ import {
   Menu,
   MenuItem,
   Chip,
-  LinearProgress
+  LinearProgress,
+  ButtonGroup
 } from '@mui/material';
 import {
   MoreVert as MoreIcon,
@@ -91,7 +92,8 @@ interface StageCompletion {
 
 interface HospitalMilestones {
   hospitalId: string;
-  stages: MilestoneStage[];
+  defaultStages: MilestoneStage[];
+  checklistStages: Record<string, { name: string; stages: MilestoneStage[] }>;
   stageCompletions: Record<string, StageCompletion>;
 }
 
@@ -350,6 +352,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const [editingStage, setEditingStage] = useState<{ hospitalId: string; stageId: string } | null>(null);
   const [completionDate, setCompletionDate] = useState<Date | null>(null);
   const [hiddenHospitals, setHiddenHospitals] = useState<Set<string>>(new Set());
+  const [selectedChecklistKey, setSelectedChecklistKey] = useState<string>('default');
   const [stagePalette, setStagePalette] = useState<Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string>>({
     stage1: '#2196F3',
     stage2: '#4CAF50',
@@ -358,6 +361,15 @@ const MentorSiteMilestonesPage: React.FC = () => {
   });
 
   const uid = effectiveUserId ?? currentUser?.id;
+  const getChecklistIdFromKey = useCallback((checklistKey: string) => {
+    return checklistKey.startsWith('program:') ? checklistKey.slice('program:'.length) : null;
+  }, []);
+  const getStagesForChecklist = useCallback((hospitalData: HospitalMilestones | undefined, checklistKey: string): MilestoneStage[] | null => {
+    if (!hospitalData) return null;
+    const checklistId = getChecklistIdFromKey(checklistKey);
+    if (!checklistId) return hospitalData.defaultStages;
+    return hospitalData.checklistStages[checklistId]?.stages ?? null;
+  }, [getChecklistIdFromKey]);
 
   useEffect(() => {
     let mounted = true;
@@ -520,7 +532,14 @@ const MentorSiteMilestonesPage: React.FC = () => {
           completedByTask[r.task_id] = { completed: r.completed, completed_at: r.completed_at };
         });
 
-        let stagesToUse = DEFAULT_STAGES;
+        const defaultStagesWithProgress = DEFAULT_STAGES.map((s) => ({
+          ...s,
+          tasks: s.tasks.map((t) => ({
+            ...t,
+            completed: completedByTask[t.id]?.completed ?? false
+          }))
+        }));
+        const checklistStages: Record<string, { name: string; stages: MilestoneStage[] }> = {};
         if (peccId) {
           const { data: peccProfile } = await supabase.from('users').select('primary_program_id').eq('id', peccId).single();
           let primaryProgramId = (peccProfile as { primary_program_id?: string | null })?.primary_program_id;
@@ -553,25 +572,33 @@ const MentorSiteMilestonesPage: React.FC = () => {
                   links: t.links || []
                 }))
               });
-              const before = withStages.filter((c: any) => c.show_before_default).flatMap((c: any) => c.stages.map((s: any) => toMilestoneStage(c, s)));
-              const after = withStages.filter((c: any) => !c.show_before_default).flatMap((c: any) => c.stages.map((s: any) => toMilestoneStage(c, s)));
-              stagesToUse = [...before, ...DEFAULT_STAGES, ...after];
+              withStages.forEach((c: any) => {
+                const rawStages = Array.isArray(c.stages) ? c.stages : [];
+                const stagesWithProgress = rawStages.map((s: any) => toMilestoneStage(c, s)).map((s: MilestoneStage) => ({
+                  ...s,
+                  tasks: s.tasks.map((t: MilestoneTask) => ({
+                    ...t,
+                    completed: completedByTask[t.id]?.completed ?? false
+                  }))
+                }));
+                checklistStages[String(c.id)] = {
+                  name: String(c.title || c.name || 'Program Checklist'),
+                  stages: stagesWithProgress
+                };
+              });
             }
           }
         }
 
-        const stagesWithProgress = stagesToUse.map(s => ({
-          ...s,
-          tasks: s.tasks.map(t => ({
-            ...t,
-            completed: completedByTask[t.id]?.completed ?? false
-          }))
-        }));
+        const allStageSets = [
+          ...defaultStagesWithProgress,
+          ...Object.values(checklistStages).flatMap((entry) => entry.stages)
+        ];
 
         const stageCompletions: Record<string, StageCompletion> = {};
-        stagesToUse.forEach(stage => {
+        allStageSets.forEach(stage => {
           const taskIds = stage.tasks.map(t => t.id);
-          const allComplete = taskIds.every(tid => completedByTask[tid]?.completed);
+          const allComplete = taskIds.length > 0 && taskIds.every(tid => completedByTask[tid]?.completed);
           const dates = taskIds.map(tid => completedByTask[tid]?.completed_at).filter(Boolean) as string[];
           const completionDate = dates.length > 0 ? dates.sort().pop()!.slice(0, 10) : null;
           stageCompletions[stage.id] = { completed: allComplete, completionDate };
@@ -587,7 +614,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
         milestones[hospital.id] = {
           hospitalId: hospital.id,
-          stages: stagesWithProgress,
+          defaultStages: defaultStagesWithProgress,
+          checklistStages,
           stageCompletions
         };
 
@@ -665,6 +693,28 @@ const MentorSiteMilestonesPage: React.FC = () => {
     loadMilestones();
   }, [uid, hospitals, effectiveUserId, currentUser?.id]);
 
+  const checklistOptions = useMemo(() => {
+    const options: Array<{ key: string; label: string }> = [{ key: 'default', label: 'Default 4-Stage Checklist' }];
+    const seen = new Map<string, string>();
+    Object.values(hospitalMilestones).forEach((hospitalData) => {
+      Object.entries(hospitalData.checklistStages).forEach(([checklistId, checklist]) => {
+        if (!seen.has(checklistId)) seen.set(checklistId, checklist.name);
+      });
+    });
+    Array.from(seen.entries())
+      .sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base' }))
+      .forEach(([checklistId, checklistName]) => {
+        options.push({ key: `program:${checklistId}`, label: checklistName });
+      });
+    return options;
+  }, [hospitalMilestones]);
+
+  useEffect(() => {
+    if (!checklistOptions.some((option) => option.key === selectedChecklistKey)) {
+      setSelectedChecklistKey('default');
+    }
+  }, [checklistOptions, selectedChecklistKey]);
+
   const saveStageCompletions = async (hospitalId: string, completions: Record<string, StageCompletion>) => {
     if (!uid) return;
     const all = await getUserData<Record<string, Record<string, StageCompletion>>>(uid, 'mentorStageCompletions');
@@ -703,9 +753,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const handleTaskToggle = (hospitalId: string, stageId: string, taskId: string) => {
     const hospital = hospitalMilestones[hospitalId];
     if (!hospital) return;
+    const selectedChecklistId = getChecklistIdFromKey(selectedChecklistKey);
+    const sourceStages = selectedChecklistId ? hospital.checklistStages[selectedChecklistId]?.stages : hospital.defaultStages;
+    if (!sourceStages) return;
 
-    const newCompleted = !hospital.stages.find(s => s.id === stageId)?.tasks.find(t => t.id === taskId)?.completed;
-    const updatedStages = hospital.stages.map(stage =>
+    const newCompleted = !sourceStages.find(s => s.id === stageId)?.tasks.find(t => t.id === taskId)?.completed;
+    const updatedStages = sourceStages.map(stage =>
       stage.id === stageId
         ? {
             ...stage,
@@ -726,10 +779,29 @@ const MentorSiteMilestonesPage: React.FC = () => {
       };
     }
 
-    setHospitalMilestones(prev => ({
-      ...prev,
-      [hospitalId]: { ...hospital, stages: updatedStages, stageCompletions: newStageCompletions }
-    }));
+    setHospitalMilestones(prev => {
+      const current = prev[hospitalId];
+      if (!current) return prev;
+      if (selectedChecklistId) {
+        const currentChecklist = current.checklistStages[selectedChecklistId];
+        if (!currentChecklist) return prev;
+        return {
+          ...prev,
+          [hospitalId]: {
+            ...current,
+            checklistStages: {
+              ...current.checklistStages,
+              [selectedChecklistId]: { ...currentChecklist, stages: updatedStages }
+            },
+            stageCompletions: newStageCompletions
+          }
+        };
+      }
+      return {
+        ...prev,
+        [hospitalId]: { ...current, defaultStages: updatedStages, stageCompletions: newStageCompletions }
+      };
+    });
 
     supabase
       .from('site_checklist_progress')
@@ -748,10 +820,13 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const handleStageCompletionToggle = (hospitalId: string, stageId: string) => {
     const hospital = hospitalMilestones[hospitalId];
     if (!hospital) return;
+    const selectedChecklistId = getChecklistIdFromKey(selectedChecklistKey);
+    const sourceStages = selectedChecklistId ? hospital.checklistStages[selectedChecklistId]?.stages : hospital.defaultStages;
+    if (!sourceStages) return;
 
     const current = hospital.stageCompletions[stageId];
     const newCompleted = !current?.completed;
-    const stage = DEFAULT_STAGES.find(s => s.id === stageId);
+    const stage = sourceStages.find(s => s.id === stageId);
     trackChecklist(newCompleted ? 'stage_complete' : 'stage_uncomplete', { checklist_id: 'site_milestones', stage_id: stageId, name: stage?.title?.slice(0, 80) });
     const completionDateStr = newCompleted ? format(new Date(), 'yyyy-MM-dd') : null;
 
@@ -776,16 +851,35 @@ const MentorSiteMilestonesPage: React.FC = () => {
         .then(({ error }) => { if (error) console.error('Checklist stage save error:', error); });
     });
 
-    const updatedStages = hospital.stages.map(s =>
+    const updatedStages = sourceStages.map(s =>
       s.id === stageId
         ? { ...s, tasks: s.tasks.map(t => ({ ...t, completed: newCompleted })) }
         : s
     );
 
-    setHospitalMilestones(prev => ({
-      ...prev,
-      [hospitalId]: { ...hospital, stages: updatedStages, stageCompletions: updated }
-    }));
+    setHospitalMilestones(prev => {
+      const currentHospital = prev[hospitalId];
+      if (!currentHospital) return prev;
+      if (selectedChecklistId) {
+        const currentChecklist = currentHospital.checklistStages[selectedChecklistId];
+        if (!currentChecklist) return prev;
+        return {
+          ...prev,
+          [hospitalId]: {
+            ...currentHospital,
+            checklistStages: {
+              ...currentHospital.checklistStages,
+              [selectedChecklistId]: { ...currentChecklist, stages: updatedStages }
+            },
+            stageCompletions: updated
+          }
+        };
+      }
+      return {
+        ...prev,
+        [hospitalId]: { ...currentHospital, defaultStages: updatedStages, stageCompletions: updated }
+      };
+    });
 
     saveStageCompletions(hospitalId, updated);
   };
@@ -796,6 +890,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const { hospitalId, stageId } = editingStage;
     const hospital = hospitalMilestones[hospitalId];
     if (!hospital) return;
+    const selectedChecklistId = getChecklistIdFromKey(selectedChecklistKey);
+    const sourceStages = selectedChecklistId ? hospital.checklistStages[selectedChecklistId]?.stages : hospital.defaultStages;
+    if (!sourceStages) return;
 
     const completionDateStr = completionDate ? format(completionDate, 'yyyy-MM-dd') : null;
     const completedAt = completionDate ? completionDate.toISOString() : null;
@@ -805,7 +902,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
       [stageId]: { completed: true, completionDate: completionDateStr }
     };
 
-    const stage = DEFAULT_STAGES.find(s => s.id === stageId);
+    const stage = sourceStages.find(s => s.id === stageId);
     const taskIds = stage?.tasks.map(t => t.id) ?? [];
     taskIds.forEach(taskId => {
       supabase
@@ -820,14 +917,33 @@ const MentorSiteMilestonesPage: React.FC = () => {
         .then(({ error }) => { if (error) console.error('Checklist date save error:', error); });
     });
 
-    const updatedStages = hospital.stages.map(s =>
+    const updatedStages = sourceStages.map(s =>
       s.id === stageId ? { ...s, tasks: s.tasks.map(t => ({ ...t, completed: true })) } : s
     );
 
-    setHospitalMilestones(prev => ({
-      ...prev,
-      [hospitalId]: { ...hospital, stages: updatedStages, stageCompletions: updated }
-    }));
+    setHospitalMilestones(prev => {
+      const currentHospital = prev[hospitalId];
+      if (!currentHospital) return prev;
+      if (selectedChecklistId) {
+        const currentChecklist = currentHospital.checklistStages[selectedChecklistId];
+        if (!currentChecklist) return prev;
+        return {
+          ...prev,
+          [hospitalId]: {
+            ...currentHospital,
+            checklistStages: {
+              ...currentHospital.checklistStages,
+              [selectedChecklistId]: { ...currentChecklist, stages: updatedStages }
+            },
+            stageCompletions: updated
+          }
+        };
+      }
+      return {
+        ...prev,
+        [hospitalId]: { ...currentHospital, defaultStages: updatedStages, stageCompletions: updated }
+      };
+    });
 
     saveStageCompletions(hospitalId, updated);
     setDateDialogOpen(false);
@@ -875,19 +991,28 @@ const MentorSiteMilestonesPage: React.FC = () => {
     }
   };
 
+  const selectedChecklistTemplate = useMemo(() => {
+    for (const hospital of hospitals) {
+      const hospitalData = hospitalMilestones[hospital.id];
+      const stages = getStagesForChecklist(hospitalData, selectedChecklistKey);
+      if (stages && stages.length > 0) return stages;
+    }
+    return selectedChecklistKey === 'default' ? DEFAULT_STAGES : [];
+  }, [hospitals, hospitalMilestones, selectedChecklistKey, getStagesForChecklist]);
+
   const tableRows = useMemo(() => {
     const rows: Array<{ type: 'stage' | 'task' | 'completion'; stageId?: string; stageTitle?: string; taskId?: string; task?: MilestoneTask }> = [];
-    
-    DEFAULT_STAGES.forEach(stage => {
+
+    selectedChecklistTemplate.forEach(stage => {
       rows.push({ type: 'stage', stageId: stage.id, stageTitle: stage.title });
       stage.tasks.forEach(task => {
         rows.push({ type: 'task', stageId: stage.id, taskId: task.id, task });
       });
       rows.push({ type: 'completion', stageId: stage.id, stageTitle: stage.title });
     });
-    
+
     return rows;
-  }, []);
+  }, [selectedChecklistTemplate]);
 
   const visibleHospitals = useMemo(
     () => hospitals.filter((h) => !hiddenHospitals.has(h.id)),
@@ -927,6 +1052,21 @@ const MentorSiteMilestonesPage: React.FC = () => {
               <Typography variant="body2" color="textSecondary">
                 {visibleHospitals.length} of {hospitals.length} hospitals visible
               </Typography>
+              <Typography variant="body2" color="textSecondary" sx={{ ml: 1 }}>
+                Checklist view:
+              </Typography>
+              <ButtonGroup size="small" variant="outlined" sx={{ flexWrap: 'wrap' }}>
+                {checklistOptions.map((option) => (
+                  <Button
+                    key={option.key}
+                    variant={selectedChecklistKey === option.key ? 'contained' : 'outlined'}
+                    onClick={() => setSelectedChecklistKey(option.key)}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </ButtonGroup>
               {hospitals.map(hospital => (
                 <Chip
                   key={hospital.id}
@@ -972,6 +1112,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
                     </TableCell>
                     {visibleHospitals.map((hospital, index) => {
                     const metrics = hospitalMetrics[hospital.id];
+                    const hospitalData = hospitalMilestones[hospital.id];
+                    const isChecklistAvailable = Boolean(getStagesForChecklist(hospitalData, selectedChecklistKey));
                     return (
                       <TableCell 
                         key={hospital.id} 
@@ -979,24 +1121,26 @@ const MentorSiteMilestonesPage: React.FC = () => {
                         sx={{ 
                           minWidth: 180,
                           maxWidth: 180,
-                          bgcolor: 'background.paper',
+                          bgcolor: isChecklistAvailable ? 'background.paper' : 'action.disabledBackground',
                           fontWeight: 600,
                           borderBottom: '2px solid',
-                          borderColor: 'primary.main'
+                          borderColor: isChecklistAvailable ? 'primary.main' : 'divider',
+                          opacity: isChecklistAvailable ? 1 : 0.7
                         }}
                       >
                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Link
                               component="button"
-                              onClick={() => handleViewCRM(hospital.id)}
+                              onClick={() => isChecklistAvailable && handleViewCRM(hospital.id)}
                               sx={{ 
                                 textDecoration: 'none', 
                                 fontWeight: 600, 
-                                color: 'primary.main', 
-                                cursor: 'pointer',
+                                color: isChecklistAvailable ? 'primary.main' : 'text.disabled', 
+                                cursor: isChecklistAvailable ? 'pointer' : 'default',
                                 fontSize: '0.75rem',
-                                '&:hover': { textDecoration: 'underline' }
+                                pointerEvents: isChecklistAvailable ? 'auto' : 'none',
+                                '&:hover': { textDecoration: isChecklistAvailable ? 'underline' : 'none' }
                               }}
                             >
                               {normalizeHospitalOrOrgName(hospital.name)}
@@ -1004,6 +1148,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             <IconButton 
                               size="small" 
                               onClick={(e) => handleHospitalMenuOpen(e, hospital.id)}
+                              disabled={!isChecklistAvailable}
                               sx={{ padding: '2px' }}
                             >
                               <MoreIcon fontSize="small" />
@@ -1057,9 +1202,15 @@ const MentorSiteMilestonesPage: React.FC = () => {
                         >
                           {row.stageTitle}
                         </TableCell>
-                        {visibleHospitals.map(() => (
-                          <TableCell key={`empty-${rowIndex}`} sx={{ bgcolor: stageColor }} />
-                        ))}
+                        {visibleHospitals.map((hospital) => {
+                          const isChecklistAvailable = Boolean(getStagesForChecklist(hospitalMilestones[hospital.id], selectedChecklistKey));
+                          return (
+                            <TableCell
+                              key={`${hospital.id}-${row.stageId}`}
+                              sx={{ bgcolor: isChecklistAvailable ? stageColor : 'action.disabledBackground', opacity: isChecklistAvailable ? 1 : 0.7 }}
+                            />
+                          );
+                        })}
                       </TableRow>
                     );
                   } else if (row.type === 'task' && row.task) {
@@ -1087,15 +1238,18 @@ const MentorSiteMilestonesPage: React.FC = () => {
                         </TableCell>
                         {visibleHospitals.map(hospital => {
                           const hospitalData = hospitalMilestones[hospital.id];
-                          const stage = hospitalData?.stages.find(s => s.id === row.stageId);
+                          const selectedStages = getStagesForChecklist(hospitalData, selectedChecklistKey);
+                          const isChecklistAvailable = Boolean(selectedStages);
+                          const stage = selectedStages?.find(s => s.id === row.stageId);
                           const task = stage?.tasks.find(t => t.id === row.taskId);
                           const isCompleted = task?.completed || false;
 
                           return (
-                            <TableCell key={hospital.id} align="center" sx={{ py: 0.5 }}>
+                            <TableCell key={hospital.id} align="center" sx={{ py: 0.5, bgcolor: isChecklistAvailable ? 'inherit' : 'action.disabledBackground', opacity: isChecklistAvailable ? 1 : 0.7 }}>
                               <Checkbox
                                 checked={isCompleted}
                                 onChange={() => handleTaskToggle(hospital.id, row.stageId!, row.taskId!)}
+                                disabled={!isChecklistAvailable}
                                 size="small"
                                 sx={{ padding: '2px' }}
                               />
@@ -1139,22 +1293,29 @@ const MentorSiteMilestonesPage: React.FC = () => {
                         </TableCell>
                         {visibleHospitals.map(hospital => {
                           const hospitalData = hospitalMilestones[hospital.id];
+                          const isChecklistAvailable = Boolean(getStagesForChecklist(hospitalData, selectedChecklistKey));
                           const completion = hospitalData?.stageCompletions[row.stageId!];
                           const isCompleted = completion?.completed || false;
 
                           return (
-                            <TableCell key={hospital.id} align="center" sx={{ py: 0.5, bgcolor: stageColor }}>
+                            <TableCell key={hospital.id} align="center" sx={{ py: 0.5, bgcolor: isChecklistAvailable ? stageColor : 'action.disabledBackground', opacity: isChecklistAvailable ? 1 : 0.7 }}>
                               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
                                 <Checkbox
                                   checked={isCompleted}
                                   onChange={() => handleStageCompletionToggle(hospital.id, row.stageId!)}
+                                  disabled={!isChecklistAvailable}
                                   size="small"
-                                  sx={{ padding: '2px', color: 'white', '&.Mui-checked': { color: 'white' } }}
+                                  sx={{
+                                    padding: '2px',
+                                    color: isChecklistAvailable ? 'white' : 'text.disabled',
+                                    '&.Mui-checked': { color: isChecklistAvailable ? 'white' : 'text.disabled' }
+                                  }}
                                 />
                                 {isCompleted && (
                                   <Button
                                     size="small"
                                     variant="outlined"
+                                    disabled={!isChecklistAvailable}
                                     onClick={() => {
                                       setEditingStage({ hospitalId: hospital.id, stageId: row.stageId! });
                                       setCompletionDate(completion?.completionDate ? parseISO(completion.completionDate) : new Date());
@@ -1165,9 +1326,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
                                       padding: '2px 6px',
                                       minWidth: 'auto',
                                       height: '20px',
-                                      borderColor: 'white',
-                                      color: 'white',
-                                      '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' }
+                                      borderColor: isChecklistAvailable ? 'white' : 'divider',
+                                      color: isChecklistAvailable ? 'white' : 'text.disabled',
+                                      '&:hover': { borderColor: isChecklistAvailable ? 'white' : 'divider', bgcolor: isChecklistAvailable ? 'rgba(255,255,255,0.1)' : 'inherit' }
                                     }}
                                   >
                                     {completion?.completionDate ? format(parseISO(completion.completionDate), 'M/d/yy') : 'Date'}
