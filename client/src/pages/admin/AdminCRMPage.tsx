@@ -117,6 +117,7 @@ const PEOPLE_TYPES: ContactType[] = ['manager', 'mentor', 'pecc', 'staff', 'othe
 const isPersonType = (t: ContactType) => PEOPLE_TYPES.includes(t);
 const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
 const USER_DATA_PECC_DIRECT_MANAGER_IDS = 'pecc_direct_manager_ids';
+const BACKUP_EMAIL_CUSTOM_FIELD_KEY = 'backup_email';
 
 interface Contact {
   id: string;
@@ -169,6 +170,15 @@ function contactDisplayName(c: Contact): string {
     return parts.length ? parts.join(', ') : (c.name || '—');
   }
   return c.name || '—';
+}
+
+function getBackupEmail(contact: Contact | null): string {
+  if (!contact?.customFields) return '';
+  const raw =
+    contact.customFields[BACKUP_EMAIL_CUSTOM_FIELD_KEY] ??
+    contact.customFields.secondary_email ??
+    '';
+  return String(raw || '').trim();
 }
 
 type SortField = 'name' | 'firstName' | 'lastName' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId' | 'hospitalSystem';
@@ -598,6 +608,8 @@ const AdminCRMPage: React.FC = () => {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSource, setMergeSource] = useState<Contact | null>(null);
   const [mergeTarget, setMergeTarget] = useState<Contact | null>(null);
+  const [mergePrimaryEmail, setMergePrimaryEmail] = useState('');
+  const [mergeSecondaryEmail, setMergeSecondaryEmail] = useState('');
   const [detectedDuplicates, setDetectedDuplicates] = useState<Array<{ contact: Contact; duplicates: Contact[] }>>([]);
   const [duplicatesScanning, setDuplicatesScanning] = useState(false);
 
@@ -1899,6 +1911,30 @@ const AdminCRMPage: React.FC = () => {
     if (pageSize === 'all') return filteredAndSortedContacts;
     return filteredAndSortedContacts.slice(0, pageSize);
   }, [filteredAndSortedContacts, pageSize]);
+
+  const selectedContacts = useMemo(
+    () => contacts.filter((c) => selectedIds.has(c.id)),
+    [contacts, selectedIds]
+  );
+
+  const detailDisplay = useMemo(() => {
+    if (!detailContact) {
+      return { organization: '—', region: '—', state: '—', backupEmail: '—' };
+    }
+    const linkedHospital =
+      (detailContact.linkedHospitalIds || [])
+        .map((id) => contacts.find((c) => c.type === 'hospital' && (c.hospitalId === id || c.id === id)))
+        .find(Boolean) || null;
+    const organization =
+      detailContact.organization ||
+      linkedHospital?.organization ||
+      linkedHospital?.name ||
+      '—';
+    const region = detailContact.region || linkedHospital?.region || '—';
+    const state = detailContact.state || linkedHospital?.state || '—';
+    const backupEmail = getBackupEmail(detailContact) || '—';
+    return { organization, region, state, backupEmail };
+  }, [detailContact, contacts]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
@@ -3449,8 +3485,27 @@ const AdminCRMPage: React.FC = () => {
     }
   };
 
+  const openMergeDialogForContacts = (source: Contact, target: Contact) => {
+    if (!source || !target || source.id === target.id) return;
+    const sourceBackupEmail = getBackupEmail(source);
+    const targetBackupEmail = getBackupEmail(target);
+    const candidates = [...new Set([
+      source.email?.trim() || '',
+      target.email?.trim() || '',
+      sourceBackupEmail,
+      targetBackupEmail
+    ].filter(Boolean))];
+    const preferredPrimary = target.email?.trim() || source.email?.trim() || candidates[0] || '';
+    const preferredSecondary = candidates.find((email) => email !== preferredPrimary) || '';
+    setMergeSource(source);
+    setMergeTarget(target);
+    setMergePrimaryEmail(preferredPrimary);
+    setMergeSecondaryEmail(preferredSecondary);
+    setMergeDialogOpen(true);
+  };
+
   // Merge two contacts
-  const mergeContacts = async (source: Contact, target: Contact) => {
+  const mergeContacts = async (source: Contact, target: Contact, primaryEmail: string, secondaryEmail: string) => {
     if (!source || !target || source.id === target.id) return;
     
     setSaveInProgress(true);
@@ -3472,6 +3527,11 @@ const AdminCRMPage: React.FC = () => {
         ...(source.customFields || {}),
         ...(target.customFields || {})
       };
+      const primaryEmailNorm = String(primaryEmail || '').trim().toLowerCase();
+      const secondaryEmailNormRaw = String(secondaryEmail || '').trim().toLowerCase();
+      const secondaryEmailNorm = secondaryEmailNormRaw && secondaryEmailNormRaw !== primaryEmailNorm ? secondaryEmailNormRaw : '';
+      if (secondaryEmailNorm) mergedCustomFields[BACKUP_EMAIL_CUSTOM_FIELD_KEY] = secondaryEmailNorm;
+      else delete mergedCustomFields[BACKUP_EMAIL_CUSTOM_FIELD_KEY];
       
       // Merge programs and cohorts (unique values)
       const mergedPrograms = Array.from(new Set([
@@ -3517,6 +3577,7 @@ const AdminCRMPage: React.FC = () => {
         const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
         
         const updatePayload: Record<string, unknown> = {
+          email: primaryEmailNorm || keepContact.email || deleteContact.email || null,
           notes: mergedNotes || null,
           notes_log: mergedNotesLog,
           activity_log: mergedActivityLog,
@@ -3538,6 +3599,7 @@ const AdminCRMPage: React.FC = () => {
       } else if (keepContact.crmCreated && keepContact.type !== 'hospital') {
         // Update CRM organization/person
         const updatePayload: Record<string, unknown> = {
+          email: primaryEmailNorm || keepContact.email || deleteContact.email || null,
           notes: mergedNotes || null,
           notes_log: mergedNotesLog,
           activity_log: mergedActivityLog,
@@ -3562,6 +3624,13 @@ const AdminCRMPage: React.FC = () => {
         }
         
         await supabase.from('crm_organizations').update(updatePayload).eq('id', keepContact.id);
+      }
+
+      if (keepContact.user_id && primaryEmailNorm) {
+        await supabase
+          .from('users')
+          .update({ email: primaryEmailNorm, updated_at: new Date().toISOString() })
+          .eq('id', keepContact.user_id);
       }
       
       // Delete the source contact
@@ -3589,7 +3658,7 @@ const AdminCRMPage: React.FC = () => {
               linkedOrganizationIds: mergedLinkedOrgs,
               linkedHospitalIds: mergedLinkedHospitals,
               linkedSystemIds: mergedLinkedSystems,
-              email: keepContact.email || deleteContact.email,
+              email: primaryEmailNorm || keepContact.email || deleteContact.email,
               phone: keepContact.phone || deleteContact.phone,
               firstName: keepContact.firstName || deleteContact.firstName,
               lastName: keepContact.lastName || deleteContact.lastName,
@@ -3623,6 +3692,8 @@ const AdminCRMPage: React.FC = () => {
       setMergeDialogOpen(false);
       setMergeSource(null);
       setMergeTarget(null);
+      setMergePrimaryEmail('');
+      setMergeSecondaryEmail('');
       
       // Refresh duplicates list
       scanForDuplicates();
@@ -3938,6 +4009,23 @@ const AdminCRMPage: React.FC = () => {
           </Menu>
           <Button size="small" variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { setDeleteConfirmTyped(''); setDeleteTarget({ bulk: new Set(selectedIds) }); setDeleteConfirmOpen(true); }}>
             Delete selected
+          </Button>
+          <Button
+            size="small"
+            variant="contained"
+            disabled={
+              selectedContacts.length !== 2 ||
+              selectedContacts[0].type !== selectedContacts[1].type
+            }
+            onClick={() => {
+              if (
+                selectedContacts.length !== 2 ||
+                selectedContacts[0].type !== selectedContacts[1].type
+              ) return;
+              openMergeDialogForContacts(selectedContacts[0], selectedContacts[1]);
+            }}
+          >
+            Merge selected
           </Button>
           <Button size="small" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
         </Paper>
@@ -4344,7 +4432,7 @@ const AdminCRMPage: React.FC = () => {
                   )}
                 </>
               )}
-              <ListItem disablePadding><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="Organization" secondary={detailDisplay.organization} /></ListItem>
               <ListItem disablePadding>
                 <ListItemText
                   primary="Email"
@@ -4361,11 +4449,14 @@ const AdminCRMPage: React.FC = () => {
                   }
                 />
               </ListItem>
+              {detailDisplay.backupEmail !== '—' && (
+                <ListItem disablePadding><ListItemText primary="Backup email" secondary={detailDisplay.backupEmail} /></ListItem>
+              )}
               {isPersonType(detailContact.type) && detailContact.is_admin && (
                 <ListItem disablePadding><ListItemText primary="Admin Status" secondary={<Chip label="Admin" size="small" color="primary" sx={{ mt: 0.5 }} />} /></ListItem>
               )}
-              <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
-              <ListItem disablePadding><ListItemText primary="State" secondary={detailContact.state ?? '—'} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="Region" secondary={detailDisplay.region} /></ListItem>
+              <ListItem disablePadding><ListItemText primary="State" secondary={detailDisplay.state} /></ListItem>
               <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
               {(detailContact.programs ?? []).length > 0 && (
                 <ListItem disablePadding><ListItemText primary="Program(s)" secondary={(detailContact.programs ?? []).join(', ')} /></ListItem>
@@ -4909,13 +5000,17 @@ const AdminCRMPage: React.FC = () => {
                         {detailContact.ownership != null && <ListItem disablePadding><ListItemText primary="Ownership" secondary={detailContact.ownership} /></ListItem>}
                       </>
                     )}
-                    <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Organization" secondary={detailContact.organization || '—'} /></ListItem>
+                    <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Organization" secondary={detailDisplay.organization} /></ListItem>
                     {isPersonType(detailContact.type) && detailContact.is_admin && (
                       <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><PersonIcon fontSize="small" /></ListItemIcon><ListItemText primary="Admin Status" secondary={<Chip label="Admin" size="small" color="primary" />} /></ListItem>
                     )}
                     <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><EmailIcon fontSize="small" /></ListItemIcon><ListItemText primary="Email" secondary={detailContact.email} /></ListItem>
+                    {detailDisplay.backupEmail !== '—' && (
+                      <ListItem disablePadding><ListItemText primary="Backup email" secondary={detailDisplay.backupEmail} /></ListItem>
+                    )}
                     <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><PhoneIcon fontSize="small" /></ListItemIcon><ListItemText primary="Phone" secondary={detailContact.phone || '—'} /></ListItem>
-                    <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
+                    <ListItem disablePadding><ListItemText primary="Region" secondary={detailDisplay.region} /></ListItem>
+                    <ListItem disablePadding><ListItemText primary="State" secondary={detailDisplay.state} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
                     {isPersonType(detailContact.type) && detailSupervisorInfo.mentorName && (
                       <ListItem disablePadding><ListItemText primary="Assigned Mentor" secondary={detailSupervisorInfo.mentorName} /></ListItem>
@@ -6182,9 +6277,7 @@ const AdminCRMPage: React.FC = () => {
                         variant="outlined"
                         onClick={() => {
                           if (duplicates.length > 0) {
-                            setMergeSource(duplicates[0]);
-                            setMergeTarget(contact);
-                            setMergeDialogOpen(true);
+                            openMergeDialogForContacts(duplicates[0], contact);
                           }
                         }}
                       >
@@ -6221,9 +6314,7 @@ const AdminCRMPage: React.FC = () => {
                           size="small"
                           variant="contained"
                           onClick={() => {
-                            setMergeSource(dup);
-                            setMergeTarget(contact);
-                            setMergeDialogOpen(true);
+                          openMergeDialogForContacts(dup, contact);
                           }}
                         >
                           Merge into {contactDisplayName(contact)}
@@ -6243,7 +6334,19 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Merge Contacts Dialog */}
-      <Dialog open={mergeDialogOpen} onClose={() => !saveInProgress && setMergeDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={mergeDialogOpen}
+        onClose={() => {
+          if (saveInProgress) return;
+          setMergeDialogOpen(false);
+          setMergeSource(null);
+          setMergeTarget(null);
+          setMergePrimaryEmail('');
+          setMergeSecondaryEmail('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Merge Contacts</DialogTitle>
         <DialogContent>
           {mergeSource && mergeTarget && (
@@ -6303,17 +6406,61 @@ const AdminCRMPage: React.FC = () => {
                     </ul>
                   </Alert>
                 </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                    Login / Primary Email
+                  </Typography>
+                  <RadioGroup value={mergePrimaryEmail} onChange={(e) => setMergePrimaryEmail(e.target.value)}>
+                    {[...new Set([mergeSource.email, mergeTarget.email].filter(Boolean))].map((email) => (
+                      <FormControlLabel key={email} value={email} control={<Radio />} label={email} />
+                    ))}
+                  </RadioGroup>
+                  <Typography variant="caption" color="text.secondary">
+                    Primary email is kept on the merged contact and used as the login email.
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Secondary backup email</InputLabel>
+                    <Select
+                      value={mergeSecondaryEmail}
+                      onChange={(e) => setMergeSecondaryEmail(e.target.value)}
+                      label="Secondary backup email"
+                    >
+                      <MenuItem value=""><em>None</em></MenuItem>
+                      {[...new Set([mergeSource.email, mergeTarget.email, getBackupEmail(mergeSource), getBackupEmail(mergeTarget)].filter(Boolean))]
+                        .filter((email) => email !== mergePrimaryEmail)
+                        .map((email) => (
+                          <MenuItem key={email} value={email}>{email}</MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Secondary email is stored on the CRM profile as backup.
+                  </Typography>
+                </Grid>
               </Grid>
             </>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setMergeDialogOpen(false)} disabled={saveInProgress}>Cancel</Button>
+          <Button
+            onClick={() => {
+              setMergeDialogOpen(false);
+              setMergeSource(null);
+              setMergeTarget(null);
+              setMergePrimaryEmail('');
+              setMergeSecondaryEmail('');
+            }}
+            disabled={saveInProgress}
+          >
+            Cancel
+          </Button>
           <Button
             variant="contained"
             color="error"
-            onClick={() => mergeSource && mergeTarget && mergeContacts(mergeSource, mergeTarget)}
-            disabled={saveInProgress || !mergeSource || !mergeTarget}
+            onClick={() => mergeSource && mergeTarget && mergeContacts(mergeSource, mergeTarget, mergePrimaryEmail, mergeSecondaryEmail)}
+            disabled={saveInProgress || !mergeSource || !mergeTarget || !mergePrimaryEmail}
             startIcon={saveInProgress ? <CircularProgress size={16} /> : <DeleteIcon />}
           >
             {saveInProgress ? 'Merging...' : 'Merge & Delete Source'}
