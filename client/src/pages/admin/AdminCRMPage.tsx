@@ -115,6 +115,8 @@ export interface ActivityLogEntry {
 
 const PEOPLE_TYPES: ContactType[] = ['manager', 'mentor', 'pecc', 'staff', 'other'];
 const isPersonType = (t: ContactType) => PEOPLE_TYPES.includes(t);
+const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
+const USER_DATA_PECC_DIRECT_MANAGER_IDS = 'pecc_direct_manager_ids';
 
 interface Contact {
   id: string;
@@ -446,6 +448,7 @@ const AdminCRMPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
   const [detailContactUserId, setDetailContactUserId] = useState<string | null>(null); // Resolved user id for "Manage permissions"
+  const [detailSupervisorInfo, setDetailSupervisorInfo] = useState<{ mentorName: string | null; managerNames: string[] }>({ mentorName: null, managerNames: [] });
   const [detailViewAsUserOptions, setDetailViewAsUserOptions] = useState<{ id: string; label: string }[]>([]); // For hospital/system/hiring_group: users who can be "viewed as"
   const [viewAsMenuAnchor, setViewAsMenuAnchor] = useState<null | HTMLElement>(null);
   const [viewAsPortalBusy, setViewAsPortalBusy] = useState(false);
@@ -1228,6 +1231,65 @@ const AdminCRMPage: React.FC = () => {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- detailContact fields listed to avoid object identity churn
   }, [detailContact?.id, detailContact?.type, detailContact?.email, detailContact?.user_id, detailContact?.crmCreated]);
+
+  useEffect(() => {
+    const c = detailContact;
+    if (!c || !isPersonType(c.type)) {
+      setDetailSupervisorInfo({ mentorName: null, managerNames: [] });
+      return;
+    }
+    const resolvedUserId =
+      detailContactUserId && !detailContactUserId.startsWith('pending:')
+        ? detailContactUserId
+        : (c.user_id ?? null);
+    if (!resolvedUserId) {
+      setDetailSupervisorInfo({ mentorName: null, managerNames: [] });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data: userRow, error: userErr } = await supabase
+        .from('users')
+        .select('id, manager_id, mentor_id, manager_id_for_pecc')
+        .eq('id', resolvedUserId)
+        .maybeSingle();
+      if (cancelled || userErr || !userRow) {
+        if (!cancelled) setDetailSupervisorInfo({ mentorName: null, managerNames: [] });
+        return;
+      }
+      const [mentorManagerIdsRaw, peccManagerIdsRaw] = await Promise.all([
+        getUserData<string[]>(resolvedUserId, USER_DATA_MENTOR_MANAGER_IDS),
+        getUserData<string[]>(resolvedUserId, USER_DATA_PECC_DIRECT_MANAGER_IDS),
+      ]);
+      if (cancelled) return;
+      const managerIds = [...new Set(
+        [
+          userRow.manager_id,
+          userRow.manager_id_for_pecc,
+          ...(Array.isArray(mentorManagerIdsRaw) ? mentorManagerIdsRaw : []),
+          ...(Array.isArray(peccManagerIdsRaw) ? peccManagerIdsRaw : []),
+        ]
+          .map((id) => String(id || '').trim())
+          .filter(Boolean)
+      )];
+      const lookupIds = [...new Set([userRow.mentor_id, ...managerIds].map((id) => String(id || '').trim()).filter(Boolean))];
+      if (lookupIds.length === 0) {
+        setDetailSupervisorInfo({ mentorName: null, managerNames: [] });
+        return;
+      }
+      const { data: lookupUsers } = await supabase.from('users').select('id, first_name, last_name, email').in('id', lookupIds);
+      if (cancelled) return;
+      const byId = new Map((lookupUsers || []).map((u: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null }) => {
+        const label = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || '');
+        return [u.id, label];
+      }));
+      setDetailSupervisorInfo({
+        mentorName: userRow.mentor_id ? (byId.get(userRow.mentor_id) || null) : null,
+        managerNames: managerIds.map((id) => byId.get(id)).filter(Boolean) as string[],
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [detailContact, detailContactUserId]);
 
   // Load "View as" user options for hospital/system/hiring_group contacts (so Admin can view as any linked user)
   useEffect(() => {
@@ -4335,6 +4397,26 @@ const AdminCRMPage: React.FC = () => {
                 ) : null;
               })()}
               {(() => {
+                if (!isPersonType(detailContact.type)) return null;
+                const hasMentor = Boolean(detailSupervisorInfo.mentorName);
+                const hasManagers = detailSupervisorInfo.managerNames.length > 0;
+                if (!hasMentor && !hasManagers) return null;
+                return (
+                  <>
+                    {hasMentor && (
+                      <ListItem disablePadding>
+                        <ListItemText primary="Assigned Mentor" secondary={detailSupervisorInfo.mentorName} />
+                      </ListItem>
+                    )}
+                    {hasManagers && (
+                      <ListItem disablePadding>
+                        <ListItemText primary="Assigned Manager(s)" secondary={detailSupervisorInfo.managerNames.join(', ')} />
+                      </ListItem>
+                    )}
+                  </>
+                );
+              })()}
+              {(() => {
                 const quickViewDefs = customFieldDefs.filter(d => d.applicableTypes.includes(detailContact.type) && (d.showInCrm === 'both' || d.showInCrm === 'quick_view_only' || !d.showInCrm) && detailContact.customFields?.[d.id]);
                 if (quickViewDefs.length === 0) return null;
                 return (
@@ -4826,6 +4908,12 @@ const AdminCRMPage: React.FC = () => {
                     <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><PhoneIcon fontSize="small" /></ListItemIcon><ListItemText primary="Phone" secondary={detailContact.phone || '—'} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Region" secondary={detailContact.region || '—'} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
+                    {isPersonType(detailContact.type) && detailSupervisorInfo.mentorName && (
+                      <ListItem disablePadding><ListItemText primary="Assigned Mentor" secondary={detailSupervisorInfo.mentorName} /></ListItem>
+                    )}
+                    {isPersonType(detailContact.type) && detailSupervisorInfo.managerNames.length > 0 && (
+                      <ListItem disablePadding><ListItemText primary="Assigned Manager(s)" secondary={detailSupervisorInfo.managerNames.join(', ')} /></ListItem>
+                    )}
                     <ListItem disablePadding><ListItemText primary="Added" secondary={detailContact.createdAt} /></ListItem>
                     {(detailContact.programs ?? []).length > 0 && (
                       <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Program(s)" secondary={(detailContact.programs ?? []).join(', ')} /></ListItem>

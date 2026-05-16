@@ -54,6 +54,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole, normalizeUserRole } from '../../types/database';
+import { batchGetUserDataForKey, setUserData } from '../../utils/userData';
 
 interface User {
   id: string;
@@ -72,6 +73,22 @@ interface User {
   managerName?: string;
   mentorName?: string;
   managerNameForPECC?: string;  // Display name for direct manager
+  managerNames?: string[];
+  managerNamesForPECC?: string[];
+  additionalManagerIds?: string[];
+  additionalManagerIdsForPECC?: string[];
+}
+
+const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
+const USER_DATA_PECC_DIRECT_MANAGER_IDS = 'pecc_direct_manager_ids';
+
+function normalizeIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
+}
+
+function uniqueIds(ids: string[]): string[] {
+  return [...new Set(ids.map((id) => String(id || '').trim()).filter(Boolean))];
 }
 
 /** Team (user) management content for Admin CRM Team tab. */
@@ -102,8 +119,10 @@ const AdminTeamTab: React.FC = () => {
     is_admin: false,
     status: 'active' as 'active' | 'pending' | 'inactive',
     assignedManagerId: '' as string,
+    assignedManagerIds: [] as string[],
     assignedMentorId: '' as string,
     assignedManagerIdForPECC: '' as string,
+    assignedManagerIdsForPECC: [] as string[],
     assignedHospitalSystems: [] as string[]
   });
   const [profileSaving, setProfileSaving] = useState(false);
@@ -118,8 +137,10 @@ const AdminTeamTab: React.FC = () => {
     is_admin: false,
     sendInvite: true,
     assignedManagerId: '' as string,
+    assignedManagerIds: [] as string[],
     assignedMentorId: '' as string,
     assignedManagerIdForPECC: '' as string,
+    assignedManagerIdsForPECC: [] as string[],
     assignedHospitalId: '' as string,
     assignedHospitalSystems: [] as string[]
   });
@@ -144,6 +165,78 @@ const AdminTeamTab: React.FC = () => {
     loadHospitalSystems();
   }, []);
 
+  const hydrateUsersWithAssignments = async (rows: Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string | null;
+    role: string;
+    is_admin?: boolean;
+    is_active: boolean;
+    last_login: string | null;
+    created_at: string;
+    manager_id: string | null;
+    mentor_id: string | null;
+    manager_id_for_pecc: string | null;
+  }>): Promise<User[]> => {
+    const mapped: User[] = rows.map((r) => ({
+      id: r.id,
+      firstName: r.first_name || '',
+      lastName: r.last_name || '',
+      email: r.email || '',
+      phone: r.phone || '',
+      role: normalizeUserRole(r.role) as User['role'],
+      is_admin: r.is_admin === true,
+      status: r.is_active ? 'active' : 'inactive',
+      lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : '',
+      manager_id: r.manager_id,
+      mentor_id: r.mentor_id,
+      manager_id_for_pecc: r.manager_id_for_pecc
+    }));
+    const userIds = mapped.map((u) => u.id);
+    const [mentorManagerRows, peccManagerRows] = await Promise.all([
+      batchGetUserDataForKey<string[]>(userIds, USER_DATA_MENTOR_MANAGER_IDS),
+      batchGetUserDataForKey<string[]>(userIds, USER_DATA_PECC_DIRECT_MANAGER_IDS),
+    ]);
+    const byId = new Map(mapped.map((u) => [u.id, u]));
+    const toDisplayName = (id: string) => {
+      const user = byId.get(id);
+      if (!user) return null;
+      return `${user.firstName} ${user.lastName}`.trim() || user.email;
+    };
+    mapped.forEach((u) => {
+      const extraMentorManagers = normalizeIdList(mentorManagerRows.get(u.id));
+      const extraPeccManagers = normalizeIdList(peccManagerRows.get(u.id));
+      if (u.role === 'mentor') {
+        u.additionalManagerIds = uniqueIds([u.manager_id || '', ...extraMentorManagers]);
+      } else {
+        u.additionalManagerIds = [];
+      }
+      if (u.role === 'pecc') {
+        u.additionalManagerIdsForPECC = uniqueIds([u.manager_id_for_pecc || '', ...extraPeccManagers]);
+      } else {
+        u.additionalManagerIdsForPECC = [];
+      }
+      if (u.manager_id) {
+        const m = mapped.find((x) => x.id === u.manager_id);
+        if (m) u.managerName = `${m.firstName} ${m.lastName}`.trim() || m.email;
+      }
+      if (u.mentor_id) {
+        const ment = mapped.find((x) => x.id === u.mentor_id);
+        if (ment) u.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
+      }
+      if (u.manager_id_for_pecc) {
+        const m = mapped.find((x) => x.id === u.manager_id_for_pecc);
+        if (m) u.managerNameForPECC = `${m.firstName} ${m.lastName}`.trim() || m.email;
+      }
+      u.managerNames = (u.additionalManagerIds || []).map(toDisplayName).filter(Boolean) as string[];
+      u.managerNamesForPECC = (u.additionalManagerIdsForPECC || []).map(toDisplayName).filter(Boolean) as string[];
+    });
+    return mapped;
+  };
+
   useEffect(() => {
     const loadUsers = async () => {
       setLoadingUsers(true);
@@ -153,49 +246,7 @@ const AdminTeamTab: React.FC = () => {
       if (error) {
         setUsers([]);
       } else {
-        const mapped: User[] = (data || []).map((r: {
-          id: string;
-          first_name: string;
-          last_name: string;
-          email: string;
-          phone: string | null;
-          role: string;
-          is_admin?: boolean;
-          is_active: boolean;
-          last_login: string | null;
-          created_at: string;
-          manager_id: string | null;
-          mentor_id: string | null;
-          manager_id_for_pecc: string | null;
-        }) => ({
-          id: r.id,
-          firstName: r.first_name || '',
-          lastName: r.last_name || '',
-          email: r.email || '',
-          phone: r.phone || '',
-          role: normalizeUserRole(r.role) as User['role'],
-          is_admin: r.is_admin === true,
-          status: r.is_active ? 'active' : 'inactive',
-          lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,
-          createdAt: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : '',
-          manager_id: r.manager_id,
-          mentor_id: r.mentor_id,
-          manager_id_for_pecc: r.manager_id_for_pecc
-        }));
-        mapped.forEach((u) => {
-          if (u.manager_id) {
-            const m = mapped.find((x) => x.id === u.manager_id);
-            if (m) u.managerName = `${m.firstName} ${m.lastName}`.trim() || m.email;
-          }
-          if (u.mentor_id) {
-            const ment = mapped.find((x) => x.id === u.mentor_id);
-            if (ment) u.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
-          }
-          if (u.manager_id_for_pecc) {
-            const m = mapped.find((x) => x.id === u.manager_id_for_pecc);
-            if (m) u.managerNameForPECC = `${m.firstName} ${m.lastName}`.trim() || m.email;
-          }
-        });
+        const mapped = await hydrateUsersWithAssignments(data || []);
         setUsers(mapped);
       }
       setLoadingUsers(false);
@@ -293,8 +344,10 @@ const AdminTeamTab: React.FC = () => {
         is_admin: false,
         sendInvite: true,
         assignedManagerId: '',
+        assignedManagerIds: [],
         assignedMentorId: '',
         assignedManagerIdForPECC: '',
+        assignedManagerIdsForPECC: [],
         assignedHospitalId: '',
         assignedHospitalSystems: []
       });
@@ -304,49 +357,7 @@ const AdminTeamTab: React.FC = () => {
         .from('users')
         .select('id, email, first_name, last_name, phone, role, is_admin, is_active, last_login, created_at, manager_id, mentor_id, manager_id_for_pecc');
       if (usersData) {
-        const mapped: User[] = (usersData || []).map((r: {
-          id: string;
-          first_name: string;
-          last_name: string;
-          email: string;
-          phone: string | null;
-          role: string;
-          is_admin?: boolean;
-          is_active: boolean;
-          last_login: string | null;
-          created_at: string;
-          manager_id: string | null;
-          mentor_id: string | null;
-          manager_id_for_pecc: string | null;
-        }) => ({
-          id: r.id,
-          firstName: r.first_name || '',
-          lastName: r.last_name || '',
-          email: r.email || '',
-          phone: r.phone || '',
-          role: normalizeUserRole(r.role) as User['role'],
-          is_admin: r.is_admin === true,
-          status: r.is_active ? 'active' : 'inactive',
-          lastLogin: r.last_login ? new Date(r.last_login).toISOString().split('T')[0] : null,
-          createdAt: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : '',
-          manager_id: r.manager_id,
-          mentor_id: r.mentor_id,
-          manager_id_for_pecc: r.manager_id_for_pecc
-        }));
-        mapped.forEach((u) => {
-          if (u.manager_id) {
-            const m = mapped.find((x) => x.id === u.manager_id);
-            if (m) u.managerName = `${m.firstName} ${m.lastName}`.trim() || m.email;
-          }
-          if (u.mentor_id) {
-            const ment = mapped.find((x) => x.id === u.mentor_id);
-            if (ment) u.mentorName = `${ment.firstName} ${ment.lastName}`.trim() || ment.email;
-          }
-          if (u.manager_id_for_pecc) {
-            const m = mapped.find((x) => x.id === u.manager_id_for_pecc);
-            if (m) u.managerNameForPECC = `${m.firstName} ${m.lastName}`.trim() || m.email;
-          }
-        });
+        const mapped = await hydrateUsersWithAssignments(usersData || []);
         setUsers(mapped);
       }
     } catch (error: any) {
@@ -388,8 +399,10 @@ const AdminTeamTab: React.FC = () => {
         is_admin: user.is_admin ?? false,
         status: user.status,
         assignedManagerId: user.role === 'mentor' && user.manager_id ? user.manager_id : '',
+        assignedManagerIds: user.role === 'mentor' ? uniqueIds([user.manager_id || '', ...(user.additionalManagerIds || [])]) : [],
         assignedMentorId: user.role === 'pecc' && user.mentor_id ? user.mentor_id : '',
         assignedManagerIdForPECC: user.role === 'pecc' && user.manager_id_for_pecc ? user.manager_id_for_pecc : '',
+        assignedManagerIdsForPECC: user.role === 'pecc' ? uniqueIds([user.manager_id_for_pecc || '', ...(user.additionalManagerIdsForPECC || [])]) : [],
         assignedHospitalSystems: assignedSystems
       });
       setProfileEditMode(editMode);
@@ -440,6 +453,18 @@ const AdminTeamTab: React.FC = () => {
         await supabase.from('hiring_group_assignments').insert({ user_id: selectedUser.id, hospital_system_name: name });
       }
     }
+    const mentorManagerIdsToSave =
+      profileForm.role === 'mentor'
+        ? uniqueIds([profileForm.assignedManagerId, ...profileForm.assignedManagerIds])
+        : [];
+    const peccDirectManagerIdsToSave =
+      profileForm.role === 'pecc'
+        ? uniqueIds([profileForm.assignedManagerIdForPECC, ...profileForm.assignedManagerIdsForPECC])
+        : [];
+    await Promise.all([
+      setUserData(selectedUser.id, USER_DATA_MENTOR_MANAGER_IDS, mentorManagerIdsToSave),
+      setUserData(selectedUser.id, USER_DATA_PECC_DIRECT_MANAGER_IDS, peccDirectManagerIdsToSave),
+    ]);
     setProfileSaving(false);
     setUsers(prev => prev.map(u => {
       if (u.id !== selectedUser.id) return u;
@@ -453,7 +478,9 @@ const AdminTeamTab: React.FC = () => {
         status: profileForm.status,
         manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
         mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
-        manager_id_for_pecc: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? profileForm.assignedManagerIdForPECC : null
+        manager_id_for_pecc: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? profileForm.assignedManagerIdForPECC : null,
+        additionalManagerIds: profileForm.role === 'mentor' ? uniqueIds([profileForm.assignedManagerId, ...profileForm.assignedManagerIds]) : [],
+        additionalManagerIdsForPECC: profileForm.role === 'pecc' ? uniqueIds([profileForm.assignedManagerIdForPECC, ...profileForm.assignedManagerIdsForPECC]) : []
       };
       if (profileForm.role === 'mentor' && profileForm.assignedManagerId) {
         const m = prev.find(x => x.id === profileForm.assignedManagerId);
@@ -463,6 +490,18 @@ const AdminTeamTab: React.FC = () => {
         const ment = prev.find(x => x.id === profileForm.assignedMentorId);
         updated.mentorName = ment ? `${ment.firstName} ${ment.lastName}`.trim() || ment.email : undefined;
       } else updated.mentorName = undefined;
+      updated.managerNames = (updated.additionalManagerIds || [])
+        .map((id) => {
+          const m = prev.find((x) => x.id === id);
+          return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : null;
+        })
+        .filter(Boolean) as string[];
+      updated.managerNamesForPECC = (updated.additionalManagerIdsForPECC || [])
+        .map((id) => {
+          const m = prev.find((x) => x.id === id);
+          return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : null;
+        })
+        .filter(Boolean) as string[];
       return updated;
     }));
     setSelectedUser(prev => prev ? {
@@ -476,9 +515,23 @@ const AdminTeamTab: React.FC = () => {
       manager_id: profileForm.role === 'mentor' && profileForm.assignedManagerId ? profileForm.assignedManagerId : null,
       mentor_id: profileForm.role === 'pecc' && profileForm.assignedMentorId ? profileForm.assignedMentorId : null,
       manager_id_for_pecc: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? profileForm.assignedManagerIdForPECC : null,
+      additionalManagerIds: profileForm.role === 'mentor' ? uniqueIds([profileForm.assignedManagerId, ...profileForm.assignedManagerIds]) : [],
+      additionalManagerIdsForPECC: profileForm.role === 'pecc' ? uniqueIds([profileForm.assignedManagerIdForPECC, ...profileForm.assignedManagerIdsForPECC]) : [],
       managerName: profileForm.role === 'mentor' && profileForm.assignedManagerId ? (() => { const m = users.find(u => u.id === profileForm.assignedManagerId); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined,
       mentorName: profileForm.role === 'pecc' && profileForm.assignedMentorId ? (() => { const m = users.find(u => u.id === profileForm.assignedMentorId); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined,
-      managerNameForPECC: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? (() => { const m = users.find(u => u.id === profileForm.assignedManagerIdForPECC); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined
+      managerNameForPECC: profileForm.role === 'pecc' && profileForm.assignedManagerIdForPECC ? (() => { const m = users.find(u => u.id === profileForm.assignedManagerIdForPECC); return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : undefined; })() : undefined,
+      managerNames: profileForm.role === 'mentor'
+        ? uniqueIds([profileForm.assignedManagerId, ...profileForm.assignedManagerIds]).map((id) => {
+            const m = users.find((u) => u.id === id);
+            return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : null;
+          }).filter(Boolean) as string[]
+        : [],
+      managerNamesForPECC: profileForm.role === 'pecc'
+        ? uniqueIds([profileForm.assignedManagerIdForPECC, ...profileForm.assignedManagerIdsForPECC]).map((id) => {
+            const m = users.find((u) => u.id === id);
+            return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : null;
+          }).filter(Boolean) as string[]
+        : []
     } : null);
     setProfileEditMode(false);
   };
@@ -599,12 +652,16 @@ const AdminTeamTab: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     {user.role === 'mentor' && user.managerName ? (
-                      user.managerName
+                      (user.managerNames && user.managerNames.length > 0 ? user.managerNames.join(', ') : user.managerName)
                     ) : user.role === 'mentor' ? (
                       <Button size="small" variant="outlined" onClick={() => { void openProfileDrawer(true, user); }}>
                         Assign manager
                       </Button>
-                    ) : user.role === 'pecc' && user.mentorName ? user.mentorName : '—'}
+                    ) : user.role === 'pecc' && user.mentorName
+                      ? `${user.mentorName}${user.managerNamesForPECC && user.managerNamesForPECC.length > 0 ? ` | Direct mgr: ${user.managerNamesForPECC.join(', ')}` : ''}`
+                      : user.role === 'pecc' && user.managerNamesForPECC && user.managerNamesForPECC.length > 0
+                        ? `Direct mgr: ${user.managerNamesForPECC.join(', ')}`
+                        : '—'}
                   </TableCell>
                   <TableCell>
                     <Chip label={user.status} size="small" color={getStatusColor(user.status)} variant="outlined" />
@@ -696,8 +753,10 @@ const AdminTeamTab: React.FC = () => {
                         ...p,
                         role,
                         assignedManagerId: role !== 'mentor' ? '' : p.assignedManagerId,
+                        assignedManagerIds: role !== 'mentor' ? [] : p.assignedManagerIds,
                         assignedMentorId: role !== 'pecc' ? '' : p.assignedMentorId,
                         assignedManagerIdForPECC: role !== 'pecc' ? '' : p.assignedManagerIdForPECC,
+                        assignedManagerIdsForPECC: role !== 'pecc' ? [] : p.assignedManagerIdsForPECC,
                         assignedHospitalSystems: (role === 'hospital_system' || role === 'hiring_group') ? p.assignedHospitalSystems : []
                       }));
                     }}>
@@ -731,9 +790,24 @@ const AdminTeamTab: React.FC = () => {
                 {profileForm.role === 'mentor' && (
                   <Grid item xs={12}>
                     <FormControl fullWidth size="small">
-                      <InputLabel>Reports to (Manager)</InputLabel>
-                      <Select value={profileForm.assignedManagerId} onChange={(e) => setProfileForm(p => ({ ...p, assignedManagerId: e.target.value }))} label="Reports to (Manager)">
-                        <MenuItem value=""><em>None</em></MenuItem>
+                      <InputLabel>Managers</InputLabel>
+                      <Select
+                        multiple
+                        value={profileForm.assignedManagerIds}
+                        onChange={(e) => {
+                          const ids = uniqueIds(e.target.value as string[]);
+                          setProfileForm((p) => ({ ...p, assignedManagerIds: ids, assignedManagerId: ids[0] || '' }));
+                        }}
+                        label="Managers"
+                        renderValue={(selected) =>
+                          (selected as string[])
+                            .map((id) => {
+                              const m = managers.find((mgr) => mgr.id === id);
+                              return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : id;
+                            })
+                            .join(', ')
+                        }
+                      >
                         {managers.filter(m => m.id !== selectedUser.id).map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
                       </Select>
                     </FormControl>
@@ -753,8 +827,23 @@ const AdminTeamTab: React.FC = () => {
                     <Grid item xs={12}>
                       <FormControl fullWidth size="small">
                         <InputLabel>Direct Manager (optional, bypasses mentor)</InputLabel>
-                        <Select value={profileForm.assignedManagerIdForPECC} onChange={(e) => setProfileForm(p => ({ ...p, assignedManagerIdForPECC: e.target.value }))} label="Direct Manager (optional, bypasses mentor)">
-                          <MenuItem value=""><em>None</em></MenuItem>
+                        <Select
+                          multiple
+                          value={profileForm.assignedManagerIdsForPECC}
+                          onChange={(e) => {
+                            const ids = uniqueIds(e.target.value as string[]);
+                            setProfileForm((p) => ({ ...p, assignedManagerIdsForPECC: ids, assignedManagerIdForPECC: ids[0] || '' }));
+                          }}
+                          label="Direct Manager (optional, bypasses mentor)"
+                          renderValue={(selected) =>
+                            (selected as string[])
+                              .map((id) => {
+                                const m = managers.find((mgr) => mgr.id === id);
+                                return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : id;
+                              })
+                              .join(', ')
+                          }
+                        >
                           {managers.filter(m => m.id !== selectedUser.id).map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
                         </Select>
                       </FormControl>
@@ -822,9 +911,13 @@ const AdminTeamTab: React.FC = () => {
                   <ListItem disablePadding><ListItemText primary="Status" secondary={<Chip label={selectedUser.status} size="small" color={getStatusColor(selectedUser.status)} variant="outlined" />} /></ListItem>
                   <ListItem disablePadding><ListItemText primary="Last login" secondary={selectedUser.lastLogin || 'Never'} /></ListItem>
                   <ListItem disablePadding><ListItemText primary="Joined" secondary={selectedUser.createdAt} /></ListItem>
-                  {selectedUser.managerName && <ListItem disablePadding><ListItemText primary="Manager" secondary={selectedUser.managerName} /></ListItem>}
+                  {selectedUser.managerNames && selectedUser.managerNames.length > 0
+                    ? <ListItem disablePadding><ListItemText primary="Manager(s)" secondary={selectedUser.managerNames.join(', ')} /></ListItem>
+                    : selectedUser.managerName && <ListItem disablePadding><ListItemText primary="Manager" secondary={selectedUser.managerName} /></ListItem>}
                   {selectedUser.mentorName && <ListItem disablePadding><ListItemText primary="Mentor" secondary={selectedUser.mentorName} /></ListItem>}
-                  {selectedUser.managerNameForPECC && <ListItem disablePadding><ListItemText primary="Direct Manager" secondary={selectedUser.managerNameForPECC} /></ListItem>}
+                  {selectedUser.managerNamesForPECC && selectedUser.managerNamesForPECC.length > 0
+                    ? <ListItem disablePadding><ListItemText primary="Direct Manager(s)" secondary={selectedUser.managerNamesForPECC.join(', ')} /></ListItem>
+                    : selectedUser.managerNameForPECC && <ListItem disablePadding><ListItemText primary="Direct Manager" secondary={selectedUser.managerNameForPECC} /></ListItem>}
                 </List>
                 <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setProfileEditMode(true)}>Edit user</Button>
@@ -880,8 +973,10 @@ const AdminTeamTab: React.FC = () => {
                     ...prev,
                     role,
                     assignedManagerId: role !== 'mentor' ? '' : prev.assignedManagerId,
+                    assignedManagerIds: role !== 'mentor' ? [] : prev.assignedManagerIds,
                     assignedMentorId: role !== 'pecc' ? '' : prev.assignedMentorId,
                     assignedManagerIdForPECC: role !== 'pecc' ? '' : prev.assignedManagerIdForPECC,
+                    assignedManagerIdsForPECC: role !== 'pecc' ? [] : prev.assignedManagerIdsForPECC,
                     assignedHospitalId: role !== 'pecc' ? '' : prev.assignedHospitalId,
                     assignedHospitalSystems: (role === 'hospital_system' || role === 'hiring_group') ? prev.assignedHospitalSystems : []
                   }));
@@ -906,9 +1001,24 @@ const AdminTeamTab: React.FC = () => {
             {formData.role === 'mentor' && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Assign to Manager</InputLabel>
-                  <Select value={formData.assignedManagerId} onChange={(e) => setFormData((prev) => ({ ...prev, assignedManagerId: e.target.value }))} label="Assign to Manager">
-                    <MenuItem value=""><em>None</em></MenuItem>
+                  <InputLabel>Assign Managers</InputLabel>
+                  <Select
+                    multiple
+                    value={formData.assignedManagerIds}
+                    onChange={(e) => {
+                      const ids = uniqueIds(e.target.value as string[]);
+                      setFormData((prev) => ({ ...prev, assignedManagerIds: ids, assignedManagerId: ids[0] || '' }));
+                    }}
+                    label="Assign Managers"
+                    renderValue={(selected) =>
+                      (selected as string[])
+                        .map((id) => {
+                          const m = managers.find((mgr) => mgr.id === id);
+                          return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : id;
+                        })
+                        .join(', ')
+                    }
+                  >
                     {managers.map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
                   </Select>
                 </FormControl>
@@ -940,8 +1050,23 @@ const AdminTeamTab: React.FC = () => {
                 <Grid item xs={12}>
                   <FormControl fullWidth>
                     <InputLabel>Assign Direct Manager (optional, bypasses mentor)</InputLabel>
-                    <Select value={formData.assignedManagerIdForPECC} onChange={(e) => setFormData((prev) => ({ ...prev, assignedManagerIdForPECC: e.target.value }))} label="Assign Direct Manager (optional, bypasses mentor)">
-                      <MenuItem value=""><em>None</em></MenuItem>
+                    <Select
+                      multiple
+                      value={formData.assignedManagerIdsForPECC}
+                      onChange={(e) => {
+                        const ids = uniqueIds(e.target.value as string[]);
+                        setFormData((prev) => ({ ...prev, assignedManagerIdsForPECC: ids, assignedManagerIdForPECC: ids[0] || '' }));
+                      }}
+                      label="Assign Direct Manager (optional, bypasses mentor)"
+                      renderValue={(selected) =>
+                        (selected as string[])
+                          .map((id) => {
+                            const m = managers.find((mgr) => mgr.id === id);
+                            return m ? `${m.firstName} ${m.lastName}`.trim() || m.email : id;
+                          })
+                          .join(', ')
+                      }
+                    >
                       {managers.map((m) => <MenuItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</MenuItem>)}
                     </Select>
                   </FormControl>
