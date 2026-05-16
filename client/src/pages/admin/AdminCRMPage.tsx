@@ -1218,7 +1218,7 @@ const AdminCRMPage: React.FC = () => {
       try {
         // Try exact match first, then case-insensitive so we resolve platform user even if CRM/DB casing differs
         let res = await supabase.from('users').select('id').eq('email', c.email.trim()).maybeSingle();
-        if (res.error && res.data == null) {
+        if (!res.error && !res.data?.id) {
           res = await supabase.from('users').select('id').ilike('email', c.email.trim()).limit(1).maybeSingle();
         }
         if (cancelled) return;
@@ -1238,16 +1238,25 @@ const AdminCRMPage: React.FC = () => {
       setDetailSupervisorInfo({ mentorName: null, managerNames: [] });
       return;
     }
-    const resolvedUserId =
-      detailContactUserId && !detailContactUserId.startsWith('pending:')
-        ? detailContactUserId
-        : (c.user_id ?? null);
-    if (!resolvedUserId) {
-      setDetailSupervisorInfo({ mentorName: null, managerNames: [] });
-      return;
-    }
     let cancelled = false;
     (async () => {
+      let resolvedUserId =
+        detailContactUserId && !detailContactUserId.startsWith('pending:')
+          ? detailContactUserId
+          : (c.user_id ?? null);
+      if (!resolvedUserId && c.email?.trim()) {
+        let userLookup = await supabase.from('users').select('id').eq('email', c.email.trim()).maybeSingle();
+        if (!userLookup.error && !userLookup.data?.id) {
+          userLookup = await supabase.from('users').select('id').ilike('email', c.email.trim()).limit(1).maybeSingle();
+        }
+        if (!userLookup.error && userLookup.data?.id) {
+          resolvedUserId = userLookup.data.id;
+        }
+      }
+      if (!resolvedUserId) {
+        if (!cancelled) setDetailSupervisorInfo({ mentorName: null, managerNames: [] });
+        return;
+      }
       const { data: userRow, error: userErr } = await supabase
         .from('users')
         .select('id, manager_id, mentor_id, manager_id_for_pecc')
