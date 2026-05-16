@@ -2694,31 +2694,63 @@ const AdminCRMPage: React.FC = () => {
   };
 
   useEffect(() => {
+    const crmContactId = searchParams.get('crmContact');
+    const crmView = searchParams.get('crmView');
     const oc = searchParams.get('openContact');
     const ou = searchParams.get('openUser');
     const oh = searchParams.get('openHospital');
     const ohc = searchParams.get('openHospitalContact');
-    if (!oc && !ou && !oh && !ohc) {
+    if (!crmContactId && !oc && !ou && !oh && !ohc) {
       deepLinkConsumed.current = false;
       return;
     }
     if (loading || !contacts.length) return;
     if (deepLinkConsumed.current) return;
     let c: Contact | undefined;
+    if (crmContactId) c = contacts.find((x) => x.id === crmContactId);
     if (oc) c = contacts.find((x) => x.id === oc);
     if (!c && ou) c = contacts.find((x) => x.user_id === ou || (isPersonType(x.type) && x.id === ou));
     if (!c && oh) c = contacts.find((x) => x.type === 'hospital' && (x.hospitalId === oh || x.id === oh));
     if (!c && ohc) c = contacts.find((x) => x.id === ohc);
     if (c) {
-      openDetail(c);
+      setDetailContact(c);
+      if (crmView === 'full') {
+        setPanelOpen(false);
+        setFullScreenOpen(true);
+      } else {
+        openDetail(c);
+      }
       deepLinkConsumed.current = true;
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        ['openContact', 'openUser', 'openHospital', 'openHospitalContact'].forEach((k) => next.delete(k));
-        return next;
-      }, { replace: true });
+      if (oc || ou || oh || ohc) {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          ['openContact', 'openUser', 'openHospital', 'openHospitalContact'].forEach((k) => next.delete(k));
+          return next;
+        }, { replace: true });
+      }
     }
   }, [loading, contacts, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!fullScreenOpen || !detailContact) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('crmContact', detailContact.id);
+      next.set('crmView', 'full');
+      return next;
+    }, { replace: true });
+  }, [fullScreenOpen, detailContact?.id, setSearchParams, detailContact]);
+
+  useEffect(() => {
+    if (fullScreenOpen) return;
+    setSearchParams((prev) => {
+      if (!prev.get('crmContact') && !prev.get('crmView')) return prev;
+      const next = new URLSearchParams(prev);
+      next.delete('crmContact');
+      next.delete('crmView');
+      return next;
+    }, { replace: true });
+  }, [fullScreenOpen, setSearchParams]);
 
   // When viewing a hospital's detail, refetch notes_log and activity_log so mentor/manager notes appear
   useEffect(() => {
@@ -4815,6 +4847,12 @@ const AdminCRMPage: React.FC = () => {
         fullScreen
         open={fullScreenOpen}
         onClose={() => {
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('crmContact');
+            next.delete('crmView');
+            return next;
+          }, { replace: true });
           setFullScreenOpen(false);
           setFullScreenEditMode(false);
           setFullScreenDetailTab(0);
@@ -4835,6 +4873,12 @@ const AdminCRMPage: React.FC = () => {
               </Box>
               <IconButton
                 onClick={() => {
+                  setSearchParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.delete('crmContact');
+                    next.delete('crmView');
+                    return next;
+                  }, { replace: true });
                   setFullScreenOpen(false);
                   setFullScreenEditMode(false);
                   setFullScreenDetailTab(0);
