@@ -118,6 +118,7 @@ const isPersonType = (t: ContactType) => PEOPLE_TYPES.includes(t);
 const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
 const USER_DATA_PECC_DIRECT_MANAGER_IDS = 'pecc_direct_manager_ids';
 const BACKUP_EMAIL_CUSTOM_FIELD_KEY = 'backup_email';
+const CRM_MERGE_HIDDEN_KEY = 'crm_merge_hidden_contacts';
 
 interface Contact {
   id: string;
@@ -179,6 +180,15 @@ function getBackupEmail(contact: Contact | null): string {
     contact.customFields.secondary_email ??
     '';
   return String(raw || '').trim();
+}
+
+function normalizeStringList(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return [...new Set(input.map((entry) => String(entry || '').trim()).filter(Boolean))];
+}
+
+function normalizeEmailList(input: unknown): string[] {
+  return [...new Set(normalizeStringList(input).map((email) => email.toLowerCase()))];
 }
 
 type SortField = 'name' | 'firstName' | 'lastName' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId' | 'hospitalSystem';
@@ -940,7 +950,21 @@ const AdminCRMPage: React.FC = () => {
         list.length = 0;
         if (!background) setLoadError(err instanceof Error ? err.message : 'Failed to load contacts');
       }
-      setContacts(list);
+      const { data: hiddenMergeSettings } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', CRM_MERGE_HIDDEN_KEY)
+        .maybeSingle();
+      const hiddenRaw = (hiddenMergeSettings?.value ?? {}) as Record<string, unknown>;
+      const hiddenUserIds = new Set(normalizeStringList(hiddenRaw.userIds));
+      const hiddenEmails = new Set(normalizeEmailList(hiddenRaw.emails));
+      const filteredList = list.filter((contact) => {
+        if (contact.user_id && hiddenUserIds.has(String(contact.user_id))) return false;
+        const emailKey = String(contact.email || '').trim().toLowerCase();
+        if (emailKey && hiddenEmails.has(emailKey)) return false;
+        return true;
+      });
+      setContacts(filteredList);
 
       // Refresh programs and cohorts so dropdowns/filters stay in sync after add/edit/delete elsewhere
       const { data: programsData } = await supabase
@@ -3565,10 +3589,28 @@ const AdminCRMPage: React.FC = () => {
         source.notes || ''
       ].filter(Boolean).join('\n\n---\n\n');
       
-      // Determine which contact to keep (prefer the one with more data or newer)
-      const keepContact = target; // Keep target as primary
-      const deleteContact = source; // Delete source
-      
+      // Determine which contact to keep (target remains authoritative)
+      const keepContact = target;
+      const deleteContact = source;
+      const mergedName = keepContact.name || deleteContact.name || contactDisplayName(keepContact);
+      const mergedFirstName = keepContact.firstName || deleteContact.firstName || '';
+      const mergedLastName = keepContact.lastName || deleteContact.lastName || '';
+      const mergedPhone = keepContact.phone || deleteContact.phone || '';
+      const mergedOrganization = keepContact.organization || deleteContact.organization || '';
+      const mergedRegion = keepContact.region || deleteContact.region || '';
+      const mergedState = keepContact.state || deleteContact.state || '';
+      const mergedAddress = keepContact.address || deleteContact.address || '';
+      const mergedAddress2 = keepContact.address2 || deleteContact.address2 || '';
+      const mergedCity = keepContact.city || deleteContact.city || '';
+      const mergedZip = keepContact.zip || deleteContact.zip || '';
+      const mergedCounty = keepContact.county || deleteContact.county || '';
+      const mergedFacilityId = keepContact.facilityId || deleteContact.facilityId || null;
+      const mergedHospitalSystem = keepContact.hospitalSystem || deleteContact.hospitalSystem || '';
+      const finalPrimaryEmail = primaryEmailNorm || keepContact.email || deleteContact.email || '';
+
+      let keepContactRecordId = keepContact.id;
+      let keepContactCrmCreated = keepContact.crmCreated === true;
+
       // Update the kept contact with merged data
       if (keepContact.type === 'hospital' && (keepContact.facilityId || keepContact.id)) {
         // Update hospital
@@ -3577,29 +3619,40 @@ const AdminCRMPage: React.FC = () => {
         const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
         
         const updatePayload: Record<string, unknown> = {
-          email: primaryEmailNorm || keepContact.email || deleteContact.email || null,
+          email: finalPrimaryEmail || null,
           notes: mergedNotes || null,
           notes_log: mergedNotesLog,
           activity_log: mergedActivityLog,
           custom_fields: mergedCustomFields,
           programs: mergedPrograms,
-          cohorts: mergedCohorts
+          cohorts: mergedCohorts,
+          address: mergedAddress || null,
+          address2: mergedAddress2 || null,
+          city: mergedCity || null,
+          state: mergedState || null,
+          zip: mergedZip || null,
+          county: mergedCounty || null
         };
-        
-        // Merge other fields if target is missing them
-        if (!keepContact.email && deleteContact.email) updatePayload.email = deleteContact.email;
-        if (!keepContact.phone && deleteContact.phone) updatePayload.phone = deleteContact.phone;
-        if (!keepContact.address && deleteContact.address) updatePayload.address = deleteContact.address;
-        if (!keepContact.city && deleteContact.city) updatePayload.city = deleteContact.city;
-        if (!keepContact.state && deleteContact.state) updatePayload.state = deleteContact.state;
-        if (!keepContact.zip && deleteContact.zip) updatePayload.zip = deleteContact.zip;
-        if (!keepContact.county && deleteContact.county) updatePayload.county = deleteContact.county;
-        
         await supabase.from('hospitals').update(updatePayload).or(filterClause);
-      } else if (keepContact.crmCreated && keepContact.type !== 'hospital') {
-        // Update CRM organization/person
+      } else {
         const updatePayload: Record<string, unknown> = {
-          email: primaryEmailNorm || keepContact.email || deleteContact.email || null,
+          contact_type: keepContact.type,
+          name: mergedName,
+          first_name: mergedFirstName || null,
+          last_name: mergedLastName || null,
+          organization: mergedOrganization || null,
+          email: finalPrimaryEmail || null,
+          phone: mergedPhone || null,
+          region: mergedRegion || null,
+          state: mergedState || null,
+          status: keepContact.status || deleteContact.status || 'Active',
+          address: mergedAddress || null,
+          address2: mergedAddress2 || null,
+          city: mergedCity || null,
+          county: mergedCounty || null,
+          zip: mergedZip || null,
+          facility_id: mergedFacilityId,
+          hospital_system: mergedHospitalSystem || null,
           notes: mergedNotes || null,
           notes_log: mergedNotesLog,
           activity_log: mergedActivityLog,
@@ -3611,25 +3664,36 @@ const AdminCRMPage: React.FC = () => {
           linked_system_ids: mergedLinkedSystems,
           updated_at: new Date().toISOString()
         };
-        
-        // Merge other fields if target is missing them
-        if (!keepContact.email && deleteContact.email) updatePayload.email = deleteContact.email;
-        if (!keepContact.phone && deleteContact.phone) updatePayload.phone = deleteContact.phone;
-        if (!keepContact.region && deleteContact.region) updatePayload.region = deleteContact.region;
-        if (!keepContact.state && deleteContact.state) updatePayload.state = deleteContact.state;
-        if (isPersonType(keepContact.type)) {
-          if (!keepContact.firstName && deleteContact.firstName) updatePayload.first_name = deleteContact.firstName;
-          if (!keepContact.lastName && deleteContact.lastName) updatePayload.last_name = deleteContact.lastName;
-          if (!keepContact.organization && deleteContact.organization) updatePayload.organization = deleteContact.organization;
+        if (keepContact.crmCreated && keepContact.type !== 'hospital') {
+          await supabase.from('crm_organizations').update(updatePayload).eq('id', keepContact.id);
+          keepContactRecordId = keepContact.id;
+          keepContactCrmCreated = true;
+        } else {
+          const { data: existingByEmail } = await supabase
+            .from('crm_organizations')
+            .select('id')
+            .eq('contact_type', keepContact.type)
+            .eq('email', finalPrimaryEmail)
+            .maybeSingle();
+          if (existingByEmail?.id) {
+            await supabase.from('crm_organizations').update(updatePayload).eq('id', existingByEmail.id);
+            keepContactRecordId = existingByEmail.id;
+          } else {
+            const { data: insertedRow } = await supabase
+              .from('crm_organizations')
+              .insert(updatePayload)
+              .select('id')
+              .single();
+            if (insertedRow?.id) keepContactRecordId = insertedRow.id;
+          }
+          keepContactCrmCreated = true;
         }
-        
-        await supabase.from('crm_organizations').update(updatePayload).eq('id', keepContact.id);
       }
 
-      if (keepContact.user_id && primaryEmailNorm) {
+      if (keepContact.user_id && finalPrimaryEmail) {
         await supabase
           .from('users')
-          .update({ email: primaryEmailNorm, updated_at: new Date().toISOString() })
+          .update({ email: finalPrimaryEmail, updated_at: new Date().toISOString() })
           .eq('id', keepContact.user_id);
       }
       
@@ -3642,6 +3706,30 @@ const AdminCRMPage: React.FC = () => {
         const filterClause = isUuid ? `facility_id.eq.${key},id.eq.${key}` : `facility_id.eq.${key}`;
         await supabase.from('hospitals').delete().or(filterClause);
       }
+      if (deleteContact.type !== 'hospital') {
+        const { data: hiddenMergeSettings } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', CRM_MERGE_HIDDEN_KEY)
+          .maybeSingle();
+        const hiddenRaw = (hiddenMergeSettings?.value ?? {}) as Record<string, unknown>;
+        const hiddenUserIds = new Set(normalizeStringList(hiddenRaw.userIds));
+        const hiddenEmails = new Set(normalizeEmailList(hiddenRaw.emails));
+        if (deleteContact.user_id && deleteContact.user_id !== keepContact.user_id) {
+          hiddenUserIds.add(String(deleteContact.user_id));
+        }
+        if (deleteContact.email?.trim() && deleteContact.email.trim().toLowerCase() !== finalPrimaryEmail) {
+          hiddenEmails.add(deleteContact.email.trim().toLowerCase());
+        }
+        await supabase.from('app_settings').upsert(
+          {
+            key: CRM_MERGE_HIDDEN_KEY,
+            value: { userIds: [...hiddenUserIds], emails: [...hiddenEmails] },
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'key' }
+        );
+      }
       
       // Update local state
       setContacts(prev => {
@@ -3649,6 +3737,8 @@ const AdminCRMPage: React.FC = () => {
           if (c.id === keepContact.id) {
             return {
               ...keepContact,
+              id: keepContactRecordId,
+              crmCreated: keepContactCrmCreated,
               notes: mergedNotes,
               notesLog: mergedNotesLog,
               activityLog: mergedActivityLog,
@@ -3658,34 +3748,57 @@ const AdminCRMPage: React.FC = () => {
               linkedOrganizationIds: mergedLinkedOrgs,
               linkedHospitalIds: mergedLinkedHospitals,
               linkedSystemIds: mergedLinkedSystems,
-              email: primaryEmailNorm || keepContact.email || deleteContact.email,
-              phone: keepContact.phone || deleteContact.phone,
-              firstName: keepContact.firstName || deleteContact.firstName,
-              lastName: keepContact.lastName || deleteContact.lastName,
-              organization: keepContact.organization || deleteContact.organization,
-              region: keepContact.region || deleteContact.region,
-              state: keepContact.state || deleteContact.state,
-              address: keepContact.address || deleteContact.address,
-              city: keepContact.city || deleteContact.city,
-              zip: keepContact.zip || deleteContact.zip,
-              county: keepContact.county || deleteContact.county
+              email: finalPrimaryEmail || keepContact.email || deleteContact.email,
+              phone: mergedPhone,
+              firstName: mergedFirstName,
+              lastName: mergedLastName,
+              organization: mergedOrganization,
+              region: mergedRegion,
+              state: mergedState,
+              address: mergedAddress,
+              address2: mergedAddress2,
+              city: mergedCity,
+              zip: mergedZip,
+              county: mergedCounty
             };
           }
           return c;
         }).filter(c => c.id !== deleteContact.id);
         return updated;
       });
+      const mergedContactForDetail: Contact = {
+        ...keepContact,
+        id: keepContactRecordId,
+        crmCreated: keepContactCrmCreated,
+        notes: mergedNotes,
+        notesLog: mergedNotesLog,
+        activityLog: mergedActivityLog,
+        customFields: mergedCustomFields,
+        programs: mergedPrograms,
+        cohorts: mergedCohorts,
+        linkedOrganizationIds: mergedLinkedOrgs,
+        linkedHospitalIds: mergedLinkedHospitals,
+        linkedSystemIds: mergedLinkedSystems,
+        email: finalPrimaryEmail || keepContact.email || deleteContact.email,
+        phone: mergedPhone,
+        firstName: mergedFirstName,
+        lastName: mergedLastName,
+        organization: mergedOrganization,
+        region: mergedRegion,
+        state: mergedState,
+        address: mergedAddress,
+        address2: mergedAddress2,
+        city: mergedCity,
+        zip: mergedZip,
+        county: mergedCounty
+      };
       
       // Update detail contact if viewing merged contact
       if (detailContact?.id === keepContact.id) {
-        const updated = contacts.find(c => c.id === keepContact.id);
-        if (updated) setDetailContact(updated);
+        setDetailContact(mergedContactForDetail);
       } else if (detailContact?.id === deleteContact.id) {
-        const updated = contacts.find(c => c.id === keepContact.id);
-        if (updated) {
-          setDetailContact(updated);
-          setPanelOpen(true);
-        }
+        setDetailContact(mergedContactForDetail);
+        setPanelOpen(true);
       }
       
       // Close dialogs
