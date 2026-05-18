@@ -3862,8 +3862,13 @@ const AdminCRMPage: React.FC = () => {
           .eq('id', keepContact.user_id);
       }
       
+      const sourceCrmRowWasReused =
+        deleteContact.crmCreated &&
+        deleteContact.type !== 'hospital' &&
+        deleteContact.id === keepContactRecordId;
+
       // Delete the source contact
-      if (deleteContact.crmCreated && deleteContact.type !== 'hospital') {
+      if (deleteContact.crmCreated && deleteContact.type !== 'hospital' && !sourceCrmRowWasReused) {
         await supabase.from('crm_organizations').delete().eq('id', deleteContact.id);
       } else if (deleteContact.type === 'hospital' && (deleteContact.facilityId || deleteContact.id)) {
         const key = String(deleteContact.facilityId ?? deleteContact.id);
@@ -3898,8 +3903,9 @@ const AdminCRMPage: React.FC = () => {
       
       // Update local state
       setContacts(prev => {
+        const keepRowIds = new Set([keepContact.id, keepContactRecordId]);
         const updated = prev.map(c => {
-          if (c.id === keepContact.id) {
+          if (keepRowIds.has(c.id)) {
             return {
               ...keepContact,
               id: keepContactRecordId,
@@ -3928,7 +3934,7 @@ const AdminCRMPage: React.FC = () => {
             };
           }
           return c;
-        }).filter(c => c.id !== deleteContact.id);
+        }).filter(c => !(c.id === deleteContact.id && deleteContact.id !== keepContactRecordId));
         return updated;
       });
       const mergedContactForDetail: Contact = {
