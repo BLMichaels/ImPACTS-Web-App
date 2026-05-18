@@ -2887,17 +2887,6 @@ const AdminCRMPage: React.FC = () => {
     }, { replace: true });
   }, [fullScreenOpen, detailContact?.id, setSearchParams, detailContact]);
 
-  useEffect(() => {
-    if (fullScreenOpen) return;
-    setSearchParams((prev) => {
-      if (!prev.get('crmContact') && !prev.get('crmView')) return prev;
-      const next = new URLSearchParams(prev);
-      next.delete('crmContact');
-      next.delete('crmView');
-      return next;
-    }, { replace: true });
-  }, [fullScreenOpen, setSearchParams]);
-
   // When viewing a hospital's detail, refetch notes_log and activity_log so mentor/manager notes appear
   useEffect(() => {
     const c = detailContact;
