@@ -103,6 +103,13 @@ interface TabPanelProps {
   value: number;
 }
 
+const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
+
+function normalizeManagerIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
+}
+
 const TabPanel = (props: TabPanelProps) => {
   const { children, value, index, ...other } = props;
   return (
@@ -267,12 +274,11 @@ const ManagerMentorsPage: React.FC = () => {
         setLoadError(null);
       }
 
-      // Load all mentors (users table has phone and is_active, not phone_number/status)
+      // Load all mentors and include both primary and additional manager assignments.
       const { data: mentorUsers, error: mentorError } = await supabase
         .from('users')
-        .select('id, first_name, last_name, email, phone, is_active')
-        .eq('role', 'mentor')
-        .eq('manager_id', userProfile.id);
+        .select('id, first_name, last_name, email, phone, is_active, manager_id')
+        .eq('role', 'mentor');
 
       if (mentorError) throw mentorError;
       if (!mentorUsers || mentorUsers.length === 0) {
@@ -280,15 +286,27 @@ const ManagerMentorsPage: React.FC = () => {
         return;
       }
 
+      const mentorIds = mentorUsers.map((m) => m.id);
+      const extraManagerMap = await batchGetUserDataForKey<string[]>(mentorIds, USER_DATA_MENTOR_MANAGER_IDS);
+      const scopedMentors = mentorUsers.filter((mentor) => {
+        if (mentor.manager_id === userProfile.id) return true;
+        const additional = normalizeManagerIds(extraManagerMap.get(mentor.id));
+        return additional.includes(userProfile.id);
+      });
+      if (scopedMentors.length === 0) {
+        if (isMountedRef.current) setMentors([]);
+        return;
+      }
+
       // Load mentor hospital assignments
-      const mentorIds = (mentorUsers || []).map(m => m.id);
+      const scopedMentorIds = scopedMentors.map((m) => m.id);
       const { data: assignments, error: assignmentError } = await supabase
         .from('mentor_hospital_assignments')
         .select(`
           mentor_id,
           hospital:hospital_id(id, name)
         `)
-        .in('mentor_id', mentorIds)
+        .in('mentor_id', scopedMentorIds)
         .eq('is_active', true);
 
       if (assignmentError) throw assignmentError;
@@ -368,7 +386,7 @@ const ManagerMentorsPage: React.FC = () => {
 
       // Build mentor data with PECCs
       const mentorData: MentorData[] = await Promise.all(
-        (mentorUsers || []).map(async (mentor) => {
+        scopedMentors.map(async (mentor) => {
           const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
           
           // Load mentor activities from Supabase (user_data)

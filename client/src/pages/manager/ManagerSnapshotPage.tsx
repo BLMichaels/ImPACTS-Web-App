@@ -35,6 +35,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+import { batchGetUserDataForKey } from '../../utils/userData';
 interface AssignedHospital {
   id: string;
   name: string;
@@ -62,6 +63,13 @@ interface ManagerOwnMentoring {
   hoursTotal: number;
   hoursThisMonth: number;
   lastMonthHours: number;
+}
+
+const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
+
+function normalizeManagerIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
 }
 
 const ManagerSnapshotPage: React.FC = () => {
@@ -98,12 +106,11 @@ const ManagerSnapshotPage: React.FC = () => {
           setHasError(false);
         }
 
-        // Load all mentors
+        // Load all mentors and include both primary and additional manager assignments.
         const { data: mentorUsers, error: mentorError } = await supabase
           .from('users')
-          .select('id, first_name, last_name, email')
-          .eq('role', 'mentor')
-          .eq('manager_id', userProfile.id);
+          .select('id, first_name, last_name, email, manager_id')
+          .eq('role', 'mentor');
 
         if (mentorError) throw mentorError;
         if (!mentorUsers || mentorUsers.length === 0) {
@@ -117,13 +124,30 @@ const ManagerSnapshotPage: React.FC = () => {
           return;
         }
 
-        const mentorIds = (mentorUsers || []).map(m => m.id);
+        const mentorIds = mentorUsers.map((m) => m.id);
+        const extraManagerMap = await batchGetUserDataForKey<string[]>(mentorIds, USER_DATA_MENTOR_MANAGER_IDS);
+        const scopedMentors = mentorUsers.filter((mentor) => {
+          if (mentor.manager_id === userProfile.id) return true;
+          const additional = normalizeManagerIds(extraManagerMap.get(mentor.id));
+          return additional.includes(userProfile.id);
+        });
+        if (scopedMentors.length === 0) {
+          if (!cancelled) {
+            setMentors([]);
+            setTotalPeccs(0);
+            setTotalSites(0);
+            setPeccProgressSum(0);
+            setPeccProgressCount(0);
+          }
+          return;
+        }
+        const scopedMentorIds = scopedMentors.map((m) => m.id);
 
         // Load mentor hospital assignments
         const { data: assignments, error: assignmentError } = await supabase
           .from('mentor_hospital_assignments')
           .select('mentor_id, hospital:hospital_id(id, name)')
-          .in('mentor_id', mentorIds)
+          .in('mentor_id', scopedMentorIds)
           .eq('is_active', true);
 
         if (assignmentError) throw assignmentError;
@@ -214,7 +238,7 @@ const ManagerSnapshotPage: React.FC = () => {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
         const mentorRows: MentorSnapshotRow[] = await Promise.all(
-          (mentorUsers || []).map(async (mentor: any) => {
+          scopedMentors.map(async (mentor: any) => {
             const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
             const assignedHospitals: AssignedHospital[] = mentorAssignments.map((a: any) => {
               const h = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
