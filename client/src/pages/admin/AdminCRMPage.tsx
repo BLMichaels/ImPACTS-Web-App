@@ -964,10 +964,10 @@ const AdminCRMPage: React.FC = () => {
         .eq('key', CRM_MERGE_HIDDEN_KEY)
         .maybeSingle();
       const hiddenRaw = (hiddenMergeSettings?.value ?? {}) as Record<string, unknown>;
-      const hiddenUserIds = new Set(normalizeStringList(hiddenRaw.userIds));
+      const hiddenContactIds = new Set(normalizeStringList(hiddenRaw.contactIds));
       const hiddenEmails = new Set(normalizeEmailList(hiddenRaw.emails));
       const filteredList = list.filter((contact) => {
-        if (contact.user_id && hiddenUserIds.has(String(contact.user_id))) return false;
+        if (hiddenContactIds.has(String(contact.id))) return false;
         const emailKey = String(contact.email || '').trim().toLowerCase();
         if (emailKey && hiddenEmails.has(emailKey)) return false;
         return true;
@@ -3840,7 +3840,7 @@ const AdminCRMPage: React.FC = () => {
             .eq('contact_type', keepContact.type)
             .eq('email', finalPrimaryEmail)
             .maybeSingle();
-          if (existingByEmail?.id) {
+          if (existingByEmail?.id && existingByEmail.id !== deleteContact.id) {
             await supabase.from('crm_organizations').update(updatePayload).eq('id', existingByEmail.id);
             keepContactRecordId = existingByEmail.id;
           } else {
@@ -3883,10 +3883,10 @@ const AdminCRMPage: React.FC = () => {
           .eq('key', CRM_MERGE_HIDDEN_KEY)
           .maybeSingle();
         const hiddenRaw = (hiddenMergeSettings?.value ?? {}) as Record<string, unknown>;
-        const hiddenUserIds = new Set(normalizeStringList(hiddenRaw.userIds));
+        const hiddenContactIds = new Set(normalizeStringList(hiddenRaw.contactIds));
         const hiddenEmails = new Set(normalizeEmailList(hiddenRaw.emails));
-        if (deleteContact.user_id && deleteContact.user_id !== keepContact.user_id) {
-          hiddenUserIds.add(String(deleteContact.user_id));
+        if (deleteContact.id !== keepContactRecordId) {
+          hiddenContactIds.add(String(deleteContact.id));
         }
         if (deleteContact.email?.trim() && deleteContact.email.trim().toLowerCase() !== finalPrimaryEmail) {
           hiddenEmails.add(deleteContact.email.trim().toLowerCase());
@@ -3894,7 +3894,7 @@ const AdminCRMPage: React.FC = () => {
         await supabase.from('app_settings').upsert(
           {
             key: CRM_MERGE_HIDDEN_KEY,
-            value: { userIds: [...hiddenUserIds], emails: [...hiddenEmails] },
+            value: { contactIds: [...hiddenContactIds], emails: [...hiddenEmails] },
             updated_at: new Date().toISOString()
           },
           { onConflict: 'key' }
