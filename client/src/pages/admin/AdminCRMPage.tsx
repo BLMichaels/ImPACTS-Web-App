@@ -6722,6 +6722,25 @@ const AdminCRMPage: React.FC = () => {
                 This will merge "{contactDisplayName(mergeSource)}" into "{contactDisplayName(mergeTarget)}" and delete the source contact.
                 All notes, activities, and data will be combined. This action cannot be undone.
               </Alert>
+              {(() => {
+                const primaryEmailNorm = String(mergePrimaryEmail || '').trim().toLowerCase();
+                const sourceEmailNorm = String(mergeSource.email || '').trim().toLowerCase();
+                const targetEmailNorm = String(mergeTarget.email || '').trim().toLowerCase();
+                const projectedKeepId =
+                  !mergeTarget.crmCreated &&
+                  mergeSource.crmCreated &&
+                  primaryEmailNorm &&
+                  sourceEmailNorm === primaryEmailNorm &&
+                  targetEmailNorm !== primaryEmailNorm
+                    ? mergeSource.id
+                    : mergeTarget.id;
+                const projectedRemoveId = projectedKeepId === mergeSource.id ? mergeTarget.id : mergeSource.id;
+                return (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    Keep record ID: <strong>{projectedKeepId}</strong> | Remove record ID: <strong>{projectedRemoveId}</strong>
+                  </Alert>
+                );
+              })()}
               <Grid container spacing={2}>
                 <Grid item xs={12}>
                   <Typography variant="subtitle2" color="text.secondary">Source (will be deleted)</Typography>
