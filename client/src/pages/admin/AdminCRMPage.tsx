@@ -222,6 +222,7 @@ function getLinkedSystemIdForHospital(hospitalContact: Contact, allContacts: Con
 
 /** Tab index for Team (user management) - when selected, show AdminTeamTab instead of contacts. */
 const TEAM_TAB_INDEX = 8;
+const CRM_TAB_QUERY_VALUES = ['all', 'organizations', 'hospitals', 'managers', 'mentors', 'peccs', 'staff', 'other', 'team'] as const;
 
 const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs' | 'linkedTo' | 'assignedHospitals'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
@@ -435,27 +436,41 @@ const AdminCRMPage: React.FC = () => {
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
   const canViewAsUser = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
 
-  const [tabValue, setTabValue] = useState(() => (searchParams.get('tab') === 'team' ? TEAM_TAB_INDEX : 0));
-  useEffect(() => {
-    if (searchParams.get('tab') === 'team') setTabValue(TEAM_TAB_INDEX);
-  }, [searchParams]);
+  const [tabValue, setTabValue] = useState(() => {
+    const tabParam = String(searchParams.get('tab') || 'all').toLowerCase();
+    const idx = CRM_TAB_QUERY_VALUES.findIndex((v) => v === tabParam);
+    return idx >= 0 ? idx : 0;
+  });
   // Quick filter for the summary cards at the top of the CRM page.
   // Keeps card filtering aligned with exact `contact.type` even when the Tabs group multiple types (e.g. Organizations includes org/system/hiring_group).
   const [crmQuickTypeFilter, setCrmQuickTypeFilter] = useState<ContactType | 'organizationGroup' | 'all'>('all');
   const handleTabChange = (_: React.SyntheticEvent, v: number) => {
     setTabValue(v);
-    // Keep the summary cards aligned with the tab labels.
-    if (v === 1) setCrmQuickTypeFilter('organizationGroup');
-    else if (v === 2) setCrmQuickTypeFilter('hospital');
-    else if (v === 3) setCrmQuickTypeFilter('manager');
-    else if (v === 4) setCrmQuickTypeFilter('mentor');
-    else if (v === 5) setCrmQuickTypeFilter('pecc');
-    else if (v === 6) setCrmQuickTypeFilter('staff');
-    else if (v === 7) setCrmQuickTypeFilter('other');
-    else setCrmQuickTypeFilter('all');
-    if (v === TEAM_TAB_INDEX) setSearchParams({ tab: 'team' });
-    else setSearchParams({});
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', CRM_TAB_QUERY_VALUES[v] ?? 'all');
+      return next;
+    }, { replace: true });
   };
+
+  useEffect(() => {
+    const tabParam = String(searchParams.get('tab') || 'all').toLowerCase();
+    const idx = CRM_TAB_QUERY_VALUES.findIndex((v) => v === tabParam);
+    const resolved = idx >= 0 ? idx : 0;
+    if (resolved !== tabValue) setTabValue(resolved);
+  }, [searchParams, tabValue]);
+
+  useEffect(() => {
+    // Keep the summary cards aligned with the selected tab.
+    if (tabValue === 1) setCrmQuickTypeFilter('organizationGroup');
+    else if (tabValue === 2) setCrmQuickTypeFilter('hospital');
+    else if (tabValue === 3) setCrmQuickTypeFilter('manager');
+    else if (tabValue === 4) setCrmQuickTypeFilter('mentor');
+    else if (tabValue === 5) setCrmQuickTypeFilter('pecc');
+    else if (tabValue === 6) setCrmQuickTypeFilter('staff');
+    else if (tabValue === 7) setCrmQuickTypeFilter('other');
+    else setCrmQuickTypeFilter('all');
+  }, [tabValue]);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [contacts, setContacts] = useState<Contact[]>([]);
