@@ -194,8 +194,8 @@ function normalizeEmailList(input: unknown): string[] {
 type SortField = 'name' | 'firstName' | 'lastName' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId' | 'hospitalSystem';
 type SortOrder = 'asc' | 'desc';
 
-/** Display order for type dropdown: Hospital, System, Hiring Group, then people, then Other */
-const CONTACT_TYPES: ContactType[] = ['hospital', 'system', 'hiring_group', 'manager', 'mentor', 'pecc', 'staff', 'other'];
+/** Display order for type dropdown: Organization, Hospital, System, Hiring Group, then people, then Other */
+const CONTACT_TYPES: ContactType[] = ['organization', 'hospital', 'system', 'hiring_group', 'manager', 'mentor', 'pecc', 'staff', 'other'];
 
 /** Filter autocomplete options by search text: every word/token in inputValue must appear in the option label (case-insensitive). */
 function filterOptionsBySearch<T extends { label: string }>(
@@ -4908,7 +4908,7 @@ const AdminCRMPage: React.FC = () => {
                 </Grid>
                 {formData.type === 'organization' ? (
                   <Grid item xs={12}>
-                    <TextField label="Organization name" value={formData.name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, name: v, organization: v })); }} fullWidth size="small" required />
+                    <TextField label="Organization/Company" value={formData.name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, name: v, organization: v })); }} fullWidth size="small" required />
                   </Grid>
                 ) : formData.type === 'system' ? (
                   <>
@@ -5675,7 +5675,7 @@ const AdminCRMPage: React.FC = () => {
             </Grid>
             {formData.type === 'organization' ? (
               <Grid item xs={12}>
-                <TextField label="Organization name" value={formData.name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, name: v, organization: v })); }} fullWidth size="small" required />
+                <TextField label="Organization/Company" value={formData.name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, name: v, organization: v })); }} fullWidth size="small" required />
               </Grid>
             ) : formData.type === 'system' ? (
               <>
