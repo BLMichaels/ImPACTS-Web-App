@@ -444,13 +444,17 @@ const AdminCRMPage: React.FC = () => {
   // Quick filter for the summary cards at the top of the CRM page.
   // Keeps card filtering aligned with exact `contact.type` even when the Tabs group multiple types (e.g. Organizations includes org/system/hiring_group).
   const [crmQuickTypeFilter, setCrmQuickTypeFilter] = useState<ContactType | 'organizationGroup' | 'all'>('all');
-  const handleTabChange = (_: React.SyntheticEvent, v: number) => {
-    setTabValue(v);
+  const setCrmTab = useCallback((nextTab: number) => {
+    setTabValue(nextTab);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      next.set('tab', CRM_TAB_QUERY_VALUES[v] ?? 'all');
+      next.set('tab', CRM_TAB_QUERY_VALUES[nextTab] ?? 'all');
       return next;
     }, { replace: true });
+  }, [setSearchParams]);
+
+  const handleTabChange = (_: React.SyntheticEvent, v: number) => {
+    setCrmTab(v);
   };
 
   useEffect(() => {
@@ -4092,7 +4096,7 @@ const AdminCRMPage: React.FC = () => {
               key={key}
               onClick={() => {
                 if (isAll) {
-                  setTabValue(0);
+                  setCrmTab(0);
                   setCrmQuickTypeFilter('all');
                   setStatusFilter([]);
                 } else {
@@ -4108,7 +4112,7 @@ const AdminCRMPage: React.FC = () => {
                     case 'other': nextTab = 7; break;
                     default: nextTab = 0;
                   }
-                  setTabValue(nextTab);
+                  setCrmTab(nextTab);
                   setStatusFilter([]);
                 }
               }}
@@ -4480,7 +4484,7 @@ const AdminCRMPage: React.FC = () => {
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
         <MenuItem onClick={() => { if (detailContact) openDetail(detailContact); setAnchorEl(null); }}>View details</MenuItem>
         {detailContact && isPersonType(detailContact.type) && (
-          <MenuItem onClick={() => { setTabValue(TEAM_TAB_INDEX); setSearchParams({ tab: 'team' }); setAnchorEl(null); }}>
+          <MenuItem onClick={() => { setCrmTab(TEAM_TAB_INDEX); setAnchorEl(null); }}>
             <PersonIcon fontSize="small" sx={{ mr: 1 }} /> Manage in Team tab
           </MenuItem>
         )}
