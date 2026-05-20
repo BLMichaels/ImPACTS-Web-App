@@ -147,7 +147,7 @@ const REPORT_DATASET_PEOPLE_OPTIONS: { value: ReportDataset; label: string }[] =
 
 const REPORT_DATASET_CRM_OPTIONS: { value: ReportDataset; label: string }[] = (
   [
-    { value: 'contacts', label: 'Hospital contacts' },
+    { value: 'contacts', label: 'Hospital + General contacts' },
     { value: 'crm_system', label: 'Hospital Systems (CRM)' },
     { value: 'crm_hiring_group', label: 'Hiring Groups (CRM)' },
     { value: 'hospital', label: 'Hospitals & sites' },
@@ -2761,7 +2761,7 @@ function datasetReportTitle(d: ReportDataset): string {
     case 'crm_hiring_group':
       return 'Hiring Groups (CRM)';
     case 'contacts':
-      return 'Hospital contacts';
+      return 'Hospital + General contacts';
     case 'internal_staff':
       return 'internal-staff';
     case 'managers':
@@ -3803,7 +3803,63 @@ async function loadContactsDataset(params: {
     };
   });
 
-  setRows(rows);
+  type CrmGeneralContactRow = {
+    id: string;
+    name: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+    status: string | null;
+    notes: string | null;
+    linked_hospital_ids: string[] | null;
+  };
+
+  const crmGeneralRows = await fetchAllRowsOrEmpty<CrmGeneralContactRow>((from, to) =>
+    supabase
+      .from('crm_organizations')
+      .select('id, name, first_name, last_name, email, phone, status, notes, linked_hospital_ids')
+      .eq('contact_type', 'other')
+      .range(from, to)
+  );
+
+  const scopeSet = hospitalScope === null ? null : new Set(hospitalScope);
+  const crmFiltered = crmGeneralRows.filter((row) => {
+    if (hospitalScope === null) return true;
+    if (hospitalScope.length === 0) return false;
+    const links = Array.isArray(row.linked_hospital_ids) ? row.linked_hospital_ids.filter(Boolean) : [];
+    if (!links.length) return false;
+    return links.some((hid) => scopeSet!.has(hid));
+  });
+
+  const crmRows: ReportDataRow[] = crmFiltered.map((row) => {
+    const links = Array.isArray(row.linked_hospital_ids) ? row.linked_hospital_ids.filter(Boolean) : [];
+    const linkedHospitalId = links[0] || '';
+    const linkedHospitalNames = links.map((hid) => hospById.get(hid)?.name || hid).join('; ');
+    const name =
+      [String(row.first_name || '').trim(), String(row.last_name || '').trim()].filter(Boolean).join(' ').trim() ||
+      String(row.name || '').trim();
+    const state = linkedHospitalId ? (hospById.get(linkedHospitalId)?.state ? String(hospById.get(linkedHospitalId)?.state).toUpperCase() : '') : '';
+    return {
+      id: `crm-general:${row.id}`,
+      cells: {
+        contactName: name,
+        email: String(row.email || ''),
+        phone: String(row.phone || ''),
+        hospitalName: linkedHospitalNames,
+        state,
+        roleAtHospital: 'General contact',
+        contactStatus: String(row.status || ''),
+        isPrimary: '',
+        isEngaged: '',
+        linkedUser: 'None',
+        notes: String(row.notes || ''),
+      },
+      linkHints: { crmContactId: row.id, hospitalId: linkedHospitalId || undefined },
+    };
+  });
+
+  setRows([...rows, ...crmRows]);
 }
 
 type StaffReportUserRow = {
