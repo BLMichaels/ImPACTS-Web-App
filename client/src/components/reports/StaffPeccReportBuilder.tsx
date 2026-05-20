@@ -332,18 +332,169 @@ async function fetchHospitalDataBatch(
   return map;
 }
 
-function countGapPlans(value: unknown): { total: number; completed: number; open: number } {
-  if (!Array.isArray(value)) return { total: 0, completed: 0, open: 0 };
-  let completed = 0;
-  for (const g of value) {
-    if (g && typeof g === 'object' && (g as { status?: string }).status === 'Completed') completed++;
-  }
-  const total = value.length;
-  return { total, completed, open: total - completed };
+const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
+const USER_DATA_PECC_DIRECT_MANAGER_IDS = 'pecc_direct_manager_ids';
+const USER_DATA_PECC_MENTOR_IDS = 'pecc_mentor_ids';
+
+function normalizeIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
 }
 
-function countActivities(value: unknown): number {
-  return Array.isArray(value) ? value.length : 0;
+function countGapPlansDetailed(value: unknown): {
+  total: number;
+  completed: number;
+  open: number;
+  inProgress: number;
+  needsUpdate: number;
+  needToDevelop: number;
+  cannotDo: number;
+} {
+  if (!Array.isArray(value)) {
+    return { total: 0, completed: 0, open: 0, inProgress: 0, needsUpdate: 0, needToDevelop: 0, cannotDo: 0 };
+  }
+  let completed = 0;
+  let inProgress = 0;
+  let needsUpdate = 0;
+  let needToDevelop = 0;
+  let cannotDo = 0;
+  value.forEach((entry) => {
+    const status = String((entry as { status?: string })?.status || '').trim().toLowerCase();
+    if (status === 'completed') completed += 1;
+    if (status === 'in progress') inProgress += 1;
+    if (status === 'needs update') needsUpdate += 1;
+    if (status === 'need to develop') needToDevelop += 1;
+    if (status === 'cannot be done at this time') cannotDo += 1;
+  });
+  const total = value.length;
+  return {
+    total,
+    completed,
+    open: Math.max(total - completed, 0),
+    inProgress,
+    needsUpdate,
+    needToDevelop,
+    cannotDo,
+  };
+}
+
+function summarizeActivityMetrics(value: unknown): {
+  count: number;
+  hours: number;
+  byCategory: string;
+  last30Count: number;
+  last30Hours: number;
+} {
+  if (!Array.isArray(value)) return { count: 0, hours: 0, byCategory: '', last30Count: 0, last30Hours: 0 };
+  const agg = new Map<string, { count: number; hours: number }>();
+  let hours = 0;
+  let last30Count = 0;
+  let last30Hours = 0;
+  const since30 = subDays(new Date(), 30);
+  value.forEach((entry) => {
+    const raw = Number((entry as { hours?: unknown })?.hours ?? 0);
+    if (Number.isFinite(raw)) hours += raw;
+    const dateRaw = String((entry as { date?: unknown })?.date || '');
+    const parsedDate = dateRaw ? new Date(dateRaw) : null;
+    const inLast30 = parsedDate instanceof Date && !Number.isNaN(parsedDate.getTime()) && parsedDate >= since30;
+    if (inLast30) {
+      last30Count += 1;
+      if (Number.isFinite(raw)) last30Hours += raw;
+    }
+    const category = String(
+      (entry as { category?: unknown; activityType?: unknown; activityName?: unknown })?.category ||
+      (entry as { activityType?: unknown })?.activityType ||
+      (entry as { activityName?: unknown })?.activityName ||
+      'Uncategorized'
+    ).trim();
+    const key = category || 'Uncategorized';
+    const prev = agg.get(key) || { count: 0, hours: 0 };
+    prev.count += 1;
+    if (Number.isFinite(raw)) prev.hours += raw;
+    agg.set(key, prev);
+  });
+  const byCategory = [...agg.entries()]
+    .sort((a, b) => b[1].hours - a[1].hours || b[1].count - a[1].count)
+    .map(([name, data]) => `${name}: ${data.count} (${data.hours.toFixed(1)}h)`)
+    .join('; ');
+  return { count: value.length, hours, byCategory, last30Count, last30Hours };
+}
+
+function summarizeReadinessScores(value: unknown): { latest: string; delta: string; count: number; lastDate: string } {
+  if (!Array.isArray(value) || value.length === 0) return { latest: '', delta: '', count: 0, lastDate: '' };
+  const parsed = value
+    .map((entry) => {
+      const score = Number((entry as { score?: unknown })?.score);
+      const date = String((entry as { date?: unknown })?.date || '');
+      if (!Number.isFinite(score) || !date) return null;
+      return { score, date };
+    })
+    .filter((x): x is { score: number; date: string } => Boolean(x))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  if (!parsed.length) return { latest: '', delta: '', count: 0, lastDate: '' };
+  const latestScore = parsed[parsed.length - 1].score;
+  const firstScore = parsed[0].score;
+  return {
+    latest: latestScore.toFixed(2),
+    delta: parsed.length > 1 ? (latestScore - firstScore).toFixed(2) : '0.00',
+    count: parsed.length,
+    lastDate: parsed[parsed.length - 1].date,
+  };
+}
+
+function stageKeyFromTaskId(taskId: string): string {
+  const raw = String(taskId || '').trim();
+  if (!raw) return 'unknown';
+  if (raw.startsWith('program:')) {
+    const stagePart = raw.split(':')[2] || '';
+    return (stagePart.split('.')[0] || 'program').trim() || 'program';
+  }
+  return (raw.split('.')[0] || 'unknown').trim() || 'unknown';
+}
+
+function loadChecklistStageSummaryText(stats: { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> } | undefined): string {
+  if (!stats || stats.byStage.size === 0) return '';
+  return [...stats.byStage.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }))
+    .map(([stage, s]) => `${stage}: ${s.completed}/${s.total}`)
+    .join('; ');
+}
+
+async function loadDiscussionCountsByUser(
+  userIds: string[]
+): Promise<Map<string, { topics: number; replies: number; posts: number; postsLast30: number }>> {
+  const out = new Map<string, { topics: number; replies: number; posts: number; postsLast30: number }>();
+  const ids = [...new Set(userIds.filter(Boolean))];
+  ids.forEach((id) => out.set(id, { topics: 0, replies: 0, posts: 0, postsLast30: 0 }));
+  if (!ids.length) return out;
+  const since30 = subDays(new Date(), 30);
+  for (const part of chunk(ids, 80)) {
+    const [topics, replies] = await Promise.all([
+      fetchAllRowsOrEmpty<{ created_by: string | null; created_at: string | null }>((from, to) =>
+        supabase.from('cohort_discussion_topics').select('created_by, created_at').in('created_by', part).range(from, to)
+      ),
+      fetchAllRowsOrEmpty<{ created_by: string | null; created_at: string | null }>((from, to) =>
+        supabase.from('cohort_discussion_replies').select('created_by, created_at').in('created_by', part).range(from, to)
+      ),
+    ]);
+    topics.forEach((row) => {
+      if (!row.created_by) return;
+      const prev = out.get(row.created_by) || { topics: 0, replies: 0, posts: 0, postsLast30: 0 };
+      prev.topics += 1;
+      prev.posts += 1;
+      if (row.created_at && new Date(row.created_at) >= since30) prev.postsLast30 += 1;
+      out.set(row.created_by, prev);
+    });
+    replies.forEach((row) => {
+      if (!row.created_by) return;
+      const prev = out.get(row.created_by) || { topics: 0, replies: 0, posts: 0, postsLast30: 0 };
+      prev.replies += 1;
+      prev.posts += 1;
+      if (row.created_at && new Date(row.created_at) >= since30) prev.postsLast30 += 1;
+      out.set(row.created_by, prev);
+    });
+  }
+  return out;
 }
 
 function checklistPercent(stats: { total: number; completed: number } | undefined): string {
@@ -413,9 +564,20 @@ async function resolveHospitalIdsForScope(scope: StaffReportScope, userId: strin
     }
     return expandHospitalScopeKeys([...set]);
   }
-  const { data: mentors } = await supabase.from('users').select('id').eq('manager_id', userId).eq('role', 'mentor').eq('is_active', true);
-  const mentorIds = [...(mentors || []).map((m: { id: string }) => m.id), userId];
-  for (const mentorPart of chunk(mentorIds, 80)) {
+  const mentorRows = await fetchAllRows<{ id: string; manager_id: string | null; is_active: boolean | null }>((from, to) =>
+    supabase.from('users').select('id, manager_id, is_active').eq('role', 'mentor').eq('is_active', true).range(from, to)
+  );
+  const mentorIdsAll = mentorRows.map((m) => m.id);
+  const mentorManagerMap = await fetchUserDataBatch(mentorIdsAll, [USER_DATA_MENTOR_MANAGER_IDS]);
+  const mentorIds = mentorRows
+    .filter((mentor) => {
+      if (mentor.manager_id === userId) return true;
+      const extra = normalizeIdList(mentorManagerMap.get(mentor.id)?.[USER_DATA_MENTOR_MANAGER_IDS]);
+      return extra.includes(userId);
+    })
+    .map((m) => m.id);
+  const scopedMentorIds = [...new Set([...mentorIds, userId])];
+  for (const mentorPart of chunk(scopedMentorIds, 80)) {
     const rows = await fetchAllRowsOrEmpty<{ hospital_id: string }>((from, to) =>
       supabase
         .from('mentor_hospital_assignments')
@@ -460,12 +622,34 @@ function buildColumnList(
     { id: 'lastLogin', label: 'Last login', defaultOn: true, group: 'Engagement' },
     { id: 'activeWindow', label: 'Met activity filter (user accounts)', defaultOn: true, group: 'Engagement' },
     { id: 'checklistProgress', label: 'Site checklist %', defaultOn: true, group: 'Checklist & gaps' },
+    { id: 'checklistItemsCompleted', label: 'Checklist items completed', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'checklistItemsTotal', label: 'Checklist items total', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'checklistByStage', label: 'Checklist by stage', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'readinessLatest', label: 'Latest PRS score', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'readinessDelta', label: 'PRS delta (first to latest)', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'readinessAssessmentsCount', label: 'PRS assessments recorded', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'readinessLastDate', label: 'PRS latest assessment date', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'activitiesCount', label: 'Activities logged', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'activitiesHours', label: 'Activity hours (total)', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'activitiesLast30Count', label: 'Activities (last 30 days)', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'activitiesLast30Hours', label: 'Activity hours (last 30 days)', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'activitiesByCategory', label: 'Activities by category', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'gapPlansTotal', label: 'Gap plans (total)', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'gapPlansOpen', label: 'Gap plans (open)', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'gapPlansCompleted', label: 'Gap plans (completed)', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'gapPlansCompletionRate', label: 'Gap plans completion rate %', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'gapPlansInProgress', label: 'Gap plans (in progress)', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'gapPlansNeedsUpdate', label: 'Gap plans (needs update)', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'gapPlansNeedDevelop', label: 'Gap plans (need to develop)', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'gapPlansCannotDo', label: 'Gap plans (cannot do now)', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'mentorName', label: 'Mentor', defaultOn: true, group: 'Team' },
     { id: 'managerName', label: 'Manager', defaultOn: true, group: 'Team' },
+    { id: 'mentorNamesAll', label: 'Assigned mentors (all)', defaultOn: false, group: 'Team' },
+    { id: 'managerNamesAll', label: 'Assigned managers (all)', defaultOn: false, group: 'Team' },
+    { id: 'discussionTopics', label: 'Discussion topics posted', defaultOn: false, group: 'Team' },
+    { id: 'discussionReplies', label: 'Discussion replies posted', defaultOn: false, group: 'Team' },
+    { id: 'discussionPosts', label: 'Discussion posts total', defaultOn: false, group: 'Team' },
+    { id: 'discussionPostsLast30', label: 'Discussion posts (last 30 days)', defaultOn: false, group: 'Team' },
     { id: 'programs', label: 'Programs (membership)', defaultOn: true, group: 'Programs & cohorts' },
     { id: 'cohorts', label: 'Cohorts (membership)', defaultOn: true, group: 'Programs & cohorts' },
     { id: 'hospitalPrograms', label: 'Programs (on site record)', defaultOn: false, group: 'Programs & cohorts' },
@@ -533,8 +717,31 @@ function buildColumnList(
     { id: 'userCreatedAt', label: 'Created', defaultOn: false, group: 'Staff' },
     { id: 'managerName', label: 'Manager', defaultOn: false, group: 'Staff' },
     { id: 'mentorName', label: 'Mentor', defaultOn: false, group: 'Staff' },
+    { id: 'managerNamesAll', label: 'Assigned managers (all)', defaultOn: false, group: 'Staff' },
+    { id: 'mentorNamesAll', label: 'Assigned mentors (all)', defaultOn: false, group: 'Staff' },
     { id: 'hospitalName', label: 'Primary site', defaultOn: false, group: 'Staff' },
     { id: 'state', label: 'Site state', defaultOn: false, group: 'Staff' },
+    { id: 'readinessLatest', label: 'Latest PRS score', defaultOn: false, group: 'Metrics' },
+    { id: 'readinessDelta', label: 'PRS delta (first to latest)', defaultOn: false, group: 'Metrics' },
+    { id: 'readinessAssessmentsCount', label: 'PRS assessments recorded', defaultOn: false, group: 'Metrics' },
+    { id: 'readinessLastDate', label: 'PRS latest assessment date', defaultOn: false, group: 'Metrics' },
+    { id: 'activitiesCount', label: 'Activities logged', defaultOn: false, group: 'Metrics' },
+    { id: 'activitiesHours', label: 'Activity hours (total)', defaultOn: false, group: 'Metrics' },
+    { id: 'activitiesLast30Count', label: 'Activities (last 30 days)', defaultOn: false, group: 'Metrics' },
+    { id: 'activitiesLast30Hours', label: 'Activity hours (last 30 days)', defaultOn: false, group: 'Metrics' },
+    { id: 'activitiesByCategory', label: 'Activities by category', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansTotal', label: 'Gap plans (total)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansOpen', label: 'Gap plans (open)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansCompleted', label: 'Gap plans (completed)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansCompletionRate', label: 'Gap plans completion rate %', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansInProgress', label: 'Gap plans (in progress)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansNeedsUpdate', label: 'Gap plans (needs update)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansNeedDevelop', label: 'Gap plans (need to develop)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansCannotDo', label: 'Gap plans (cannot do now)', defaultOn: false, group: 'Metrics' },
+    { id: 'discussionTopics', label: 'Discussion topics posted', defaultOn: false, group: 'Metrics' },
+    { id: 'discussionReplies', label: 'Discussion replies posted', defaultOn: false, group: 'Metrics' },
+    { id: 'discussionPosts', label: 'Discussion posts total', defaultOn: false, group: 'Metrics' },
+    { id: 'discussionPostsLast30', label: 'Discussion posts (last 30 days)', defaultOn: false, group: 'Metrics' },
   ];
 
   const contactsCols: ColumnMeta[] = [
@@ -2621,6 +2828,30 @@ async function loadChecklistForHospitals(hospitalIds: string[]): Promise<Map<str
   return map;
 }
 
+async function loadChecklistDetailsForHospitals(
+  hospitalIds: string[]
+): Promise<Map<string, { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> }>> {
+  const map = new Map<string, { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> }>();
+  if (!hospitalIds.length) return map;
+  for (const part of chunk(hospitalIds, 80)) {
+    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string; task_id: string; completed: boolean }>((from, to) =>
+      supabase.from('site_checklist_progress').select('hospital_id, task_id, completed').in('hospital_id', part).range(from, to)
+    );
+    rows.forEach((row) => {
+      const prev = map.get(row.hospital_id) || { total: 0, completed: 0, byStage: new Map<string, { total: number; completed: number }>() };
+      prev.total += 1;
+      if (row.completed) prev.completed += 1;
+      const stageKey = stageKeyFromTaskId(row.task_id);
+      const stagePrev = prev.byStage.get(stageKey) || { total: 0, completed: 0 };
+      stagePrev.total += 1;
+      if (row.completed) stagePrev.completed += 1;
+      prev.byStage.set(stageKey, stagePrev);
+      map.set(row.hospital_id, prev);
+    });
+  }
+  return map;
+}
+
 function peccDedupeKey(source: 'user' | 'hc' | 'crm', id: string, email: string | null | undefined): string {
   const e = (email || '').trim().toLowerCase();
   if (e) return `email:${e}`;
@@ -2984,33 +3215,49 @@ async function loadPeccDataset(params: {
   const managerIds = [...new Set(peccs.map((p) => p.manager_id).filter(Boolean))] as string[];
   const staffIds = [...new Set([...mentorIds, ...managerIds])];
 
-  type StaffNameRow = { id: string; first_name?: string | null; last_name?: string | null };
-
   const hospitalIdsForUsers = [...new Set(
     peccs
       .map((p) => (p.hospital_facility_id ? hospById.get(p.hospital_facility_id)?.id : null))
       .filter(Boolean) as string[]
   )];
 
-  const [staffRes, pm, cm, checklistByHospital, udMap, hdMap, usageInWindow] = await Promise.all([
-    staffIds.length
-      ? supabase.from('users').select('id, first_name, last_name').in('id', staffIds)
-      : Promise.resolve({ data: [] as StaffNameRow[], error: null }),
+  const [pm, cm, checklistByHospital, checklistDetailsByHospital, udMap, hdMap, usageInWindow, discussionByUser] = await Promise.all([
     fetchActiveProgramMembersForUsers(peccIds),
     fetchActiveCohortMembersForUsers(peccIds),
     loadChecklistForHospitals(hidSet),
+    loadChecklistDetailsForHospitals(hidSet),
     shouldMirrorLegacyUserData()
-      ? fetchUserDataBatch(peccIds, ['gapPlans', 'activities'])
+      ? fetchUserDataBatch(peccIds, ['gapPlans', 'activities', 'readinessScores', 'prsReadinessScores', USER_DATA_PECC_DIRECT_MANAGER_IDS, USER_DATA_PECC_MENTOR_IDS])
       : Promise.resolve(new Map<string, Record<string, unknown>>()),
-    fetchHospitalDataBatch(hospitalIdsForUsers, ['gapPlans', 'activities']),
+    fetchHospitalDataBatch(hospitalIdsForUsers, ['gapPlans', 'activities', 'readinessScores', 'prsReadinessScores']),
     loadUsageActivityPeccSet(peccIds, activityPreset),
+    loadDiscussionCountsByUser(peccIds),
   ]);
 
-  const staff: StaffNameRow[] = staffRes.data ?? [];
+  const additionalManagerIds = new Set<string>();
+  const additionalMentorIds = new Set<string>();
+  peccIds.forEach((id) => {
+    const extraManagers = normalizeIdList(udMap.get(id)?.[USER_DATA_PECC_DIRECT_MANAGER_IDS]);
+    const extraMentors = normalizeIdList(udMap.get(id)?.[USER_DATA_PECC_MENTOR_IDS]);
+    extraManagers.forEach((mid) => additionalManagerIds.add(mid));
+    extraMentors.forEach((mid) => additionalMentorIds.add(mid));
+  });
+  const staffLookupIds = [
+    ...new Set([
+      ...staffIds,
+      ...[...additionalManagerIds],
+      ...[...additionalMentorIds],
+    ]),
+  ];
+  const staffRows = staffLookupIds.length
+    ? await fetchAllRows<{ id: string; first_name?: string | null; last_name?: string | null }>((from, to) =>
+      supabase.from('users').select('id, first_name, last_name').in('id', staffLookupIds).range(from, to)
+    )
+    : [];
+  const staffById = new Map(staffRows.map((row) => [row.id, `${row.first_name || ''} ${row.last_name || ''}`.trim() || row.id]));
   const staffName = (id: string | null) => {
     if (!id) return '—';
-    const u = staff.find((s) => s.id === id);
-    return u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || '—' : '—';
+    return staffById.get(id) || '—';
   };
 
   const programLabelsFor = (uid: string) => {
@@ -3059,8 +3306,16 @@ async function loadPeccDataset(params: {
     }
 
     const chk = h?.id ? checklistByHospital.get(h.id) : undefined;
-    const gap = countGapPlans(continuity?.gapPlans ?? udMap.get(p.id)?.gapPlans);
-    const actCount = countActivities(continuity?.activities ?? udMap.get(p.id)?.activities);
+    const checklistDetail = h?.id ? checklistDetailsByHospital.get(h.id) : undefined;
+    const gapDetail = countGapPlansDetailed(continuity?.gapPlans ?? udMap.get(p.id)?.gapPlans);
+    const activitySummary = summarizeActivityMetrics(continuity?.activities ?? udMap.get(p.id)?.activities);
+    const readinessRaw = continuity?.readinessScores ?? continuity?.prsReadinessScores ?? udMap.get(p.id)?.readinessScores ?? udMap.get(p.id)?.prsReadinessScores;
+    const readiness = summarizeReadinessScores(readinessRaw);
+    const assignedManagerIds = [...new Set([p.manager_id, ...normalizeIdList(udMap.get(p.id)?.[USER_DATA_PECC_DIRECT_MANAGER_IDS])].filter(Boolean) as string[])];
+    const assignedMentorIds = [...new Set([p.mentor_id, ...normalizeIdList(udMap.get(p.id)?.[USER_DATA_PECC_MENTOR_IDS])].filter(Boolean) as string[])];
+    const assignedManagerNames = assignedManagerIds.map((id) => staffName(id)).filter(Boolean).join('; ');
+    const assignedMentorNames = assignedMentorIds.map((id) => staffName(id)).filter(Boolean).join('; ');
+    const discussion = discussionByUser.get(p.id) || { topics: 0, replies: 0, posts: 0, postsLast30: 0 };
 
     const cf = h?.custom_fields || {};
     const registrationStatus = !p.is_active ? 'Inactive' : p.last_login ? 'Active' : 'Invited / pending login';
@@ -3089,12 +3344,34 @@ async function loadPeccDataset(params: {
       lastLogin: p.last_login ? format(new Date(p.last_login), 'yyyy-MM-dd') : '',
       activeWindow: activeInWindow ? 'Yes' : 'No',
       checklistProgress: checklistPercent(chk) + (chk && chk.total > 0 ? '%' : ''),
-      activitiesCount: String(actCount),
-      gapPlansTotal: String(gap.total),
-      gapPlansOpen: String(gap.open),
-      gapPlansCompleted: String(gap.completed),
+      checklistItemsCompleted: String(checklistDetail?.completed ?? 0),
+      checklistItemsTotal: String(checklistDetail?.total ?? 0),
+      checklistByStage: loadChecklistStageSummaryText(checklistDetail),
+      readinessLatest: readiness.latest,
+      readinessDelta: readiness.delta,
+      readinessAssessmentsCount: String(readiness.count),
+      readinessLastDate: readiness.lastDate,
+      activitiesCount: String(activitySummary.count),
+      activitiesHours: activitySummary.hours.toFixed(1),
+      activitiesLast30Count: String(activitySummary.last30Count),
+      activitiesLast30Hours: activitySummary.last30Hours.toFixed(1),
+      activitiesByCategory: activitySummary.byCategory,
+      gapPlansTotal: String(gapDetail.total),
+      gapPlansOpen: String(gapDetail.open),
+      gapPlansCompleted: String(gapDetail.completed),
+      gapPlansCompletionRate: gapDetail.total > 0 ? ((gapDetail.completed / gapDetail.total) * 100).toFixed(1) : '0.0',
+      gapPlansInProgress: String(gapDetail.inProgress),
+      gapPlansNeedsUpdate: String(gapDetail.needsUpdate),
+      gapPlansNeedDevelop: String(gapDetail.needToDevelop),
+      gapPlansCannotDo: String(gapDetail.cannotDo),
       mentorName: staffName(p.mentor_id),
       managerName: staffName(p.manager_id),
+      managerNamesAll: assignedManagerNames,
+      mentorNamesAll: assignedMentorNames,
+      discussionTopics: String(discussion.topics),
+      discussionReplies: String(discussion.replies),
+      discussionPosts: String(discussion.posts),
+      discussionPostsLast30: String(discussion.postsLast30),
       programs: programLabelsFor(p.id),
       cohorts: cohortLabelsFor(p.id),
       hospitalPrograms: (h?.programs || []).map((id) => progMap.get(id) || id).join('; '),
@@ -3111,6 +3388,9 @@ async function loadPeccDataset(params: {
   const contactRows: ReportDataRow[] = peccHospitalContactRows.map((c) => {
     const h = hospById.get(c.hospital_id);
     const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
+    const checklistDetail = c.hospital_id ? checklistDetailsByHospital.get(c.hospital_id) : undefined;
+    const readinessRaw = h?.id ? hdMap.get(h.id)?.readinessScores ?? hdMap.get(h.id)?.prsReadinessScores : undefined;
+    const readiness = summarizeReadinessScores(readinessRaw);
     const cf = h?.custom_fields || {};
 
     const cells: Record<string, string> = {
@@ -3138,12 +3418,34 @@ async function loadPeccDataset(params: {
       lastLogin: '',
       activeWindow: 'N/A',
       checklistProgress: checklistPercent(chk) + (chk && chk.total > 0 ? '%' : ''),
+      checklistItemsCompleted: String(checklistDetail?.completed ?? 0),
+      checklistItemsTotal: String(checklistDetail?.total ?? 0),
+      checklistByStage: loadChecklistStageSummaryText(checklistDetail),
+      readinessLatest: readiness.latest,
+      readinessDelta: readiness.delta,
+      readinessAssessmentsCount: String(readiness.count),
+      readinessLastDate: readiness.lastDate,
       activitiesCount: '0',
+      activitiesHours: '0.0',
+      activitiesLast30Count: '0',
+      activitiesLast30Hours: '0.0',
+      activitiesByCategory: '',
       gapPlansTotal: '0',
       gapPlansOpen: '0',
       gapPlansCompleted: '0',
+      gapPlansCompletionRate: '0.0',
+      gapPlansInProgress: '0',
+      gapPlansNeedsUpdate: '0',
+      gapPlansNeedDevelop: '0',
+      gapPlansCannotDo: '0',
       mentorName: '—',
       managerName: '—',
+      managerNamesAll: '—',
+      mentorNamesAll: '—',
+      discussionTopics: '0',
+      discussionReplies: '0',
+      discussionPosts: '0',
+      discussionPostsLast30: '0',
       programs: '',
       cohorts: '',
       hospitalPrograms: (h?.programs || []).map((id) => progMap.get(id) || id).join('; '),
@@ -3160,6 +3462,9 @@ async function loadPeccDataset(params: {
   const crmRows: ReportDataRow[] = crmPeccRows.map((c) => {
     const h = c.hospital_id ? hospById.get(c.hospital_id) : null;
     const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
+    const checklistDetail = c.hospital_id ? checklistDetailsByHospital.get(c.hospital_id) : undefined;
+    const readinessRaw = h?.id ? hdMap.get(h.id)?.readinessScores ?? hdMap.get(h.id)?.prsReadinessScores : undefined;
+    const readiness = summarizeReadinessScores(readinessRaw);
     const cf = h?.custom_fields || {};
 
     const cells: Record<string, string> = {
@@ -3187,12 +3492,34 @@ async function loadPeccDataset(params: {
       lastLogin: '',
       activeWindow: 'N/A',
       checklistProgress: checklistPercent(chk) + (chk && chk.total > 0 ? '%' : ''),
+      checklistItemsCompleted: String(checklistDetail?.completed ?? 0),
+      checklistItemsTotal: String(checklistDetail?.total ?? 0),
+      checklistByStage: loadChecklistStageSummaryText(checklistDetail),
+      readinessLatest: readiness.latest,
+      readinessDelta: readiness.delta,
+      readinessAssessmentsCount: String(readiness.count),
+      readinessLastDate: readiness.lastDate,
       activitiesCount: '0',
+      activitiesHours: '0.0',
+      activitiesLast30Count: '0',
+      activitiesLast30Hours: '0.0',
+      activitiesByCategory: '',
       gapPlansTotal: '0',
       gapPlansOpen: '0',
       gapPlansCompleted: '0',
+      gapPlansCompletionRate: '0.0',
+      gapPlansInProgress: '0',
+      gapPlansNeedsUpdate: '0',
+      gapPlansNeedDevelop: '0',
+      gapPlansCannotDo: '0',
       mentorName: '—',
       managerName: '—',
+      managerNamesAll: '—',
+      mentorNamesAll: '—',
+      discussionTopics: '0',
+      discussionReplies: '0',
+      discussionPosts: '0',
+      discussionPostsLast30: '0',
       programs: '',
       cohorts: '',
       hospitalPrograms: (h?.programs || []).map((id) => progMap.get(id) || id).join('; '),
@@ -3561,8 +3888,31 @@ function toCrmPeopleReportRows(
         userCreatedAt: '',
         managerName: '',
         mentorName: '',
+        managerNamesAll: '',
+        mentorNamesAll: '',
         hospitalName: '',
         state,
+        readinessLatest: '',
+        readinessDelta: '',
+        readinessAssessmentsCount: '',
+        readinessLastDate: '',
+        activitiesCount: '',
+        activitiesHours: '',
+        activitiesLast30Count: '',
+        activitiesLast30Hours: '',
+        activitiesByCategory: '',
+        gapPlansTotal: '',
+        gapPlansOpen: '',
+        gapPlansCompleted: '',
+        gapPlansCompletionRate: '',
+        gapPlansInProgress: '',
+        gapPlansNeedsUpdate: '',
+        gapPlansNeedDevelop: '',
+        gapPlansCannotDo: '',
+        discussionTopics: '',
+        discussionReplies: '',
+        discussionPosts: '',
+        discussionPostsLast30: '',
       },
       linkHints: { crmContactId: row.id, hospitalId: linkedHospitalId || undefined },
     });
@@ -3572,16 +3922,18 @@ function toCrmPeopleReportRows(
 }
 
 async function enrichStaffUsersToReportRows(urows: StaffReportUserRow[]): Promise<ReportDataRow[]> {
-  const userRefIds = [...new Set(urows.flatMap((u) => [u.manager_id, u.mentor_id].filter(Boolean)))] as string[];
+  const userIds = [...new Set(urows.map((u) => u.id))];
+  const userDataMap = await fetchUserDataBatch(userIds, [
+    USER_DATA_MENTOR_MANAGER_IDS,
+    USER_DATA_PECC_DIRECT_MANAGER_IDS,
+    USER_DATA_PECC_MENTOR_IDS,
+    'mentorActivities',
+    'activities',
+    'gapPlans',
+    'readinessScores',
+    'prsReadinessScores',
+  ]);
   const hospitalRefs = [...new Set(urows.map((u) => u.hospital_facility_id).filter(Boolean))] as string[];
-
-  const nameById = new Map<string, string>();
-  for (const uidPart of chunk(userRefIds, 80)) {
-    const { data: refUsers } = await supabase.from('users').select('id, first_name, last_name').in('id', uidPart);
-    (refUsers || []).forEach((u: { id: string; first_name?: string; last_name?: string }) => {
-      nameById.set(u.id, `${u.first_name || ''} ${u.last_name || ''}`.trim());
-    });
-  }
 
   const hospById = new Map<string, { name: string; state?: string; facility_id?: string }>();
   const refToHospitalId = hospitalRefs.length
@@ -3594,6 +3946,36 @@ async function enrichStaffUsersToReportRows(urows: StaffReportUserRow[]): Promis
         .filter(Boolean)
     ),
   ];
+  const hospitalContinuityMap = await fetchHospitalDataBatch(canonicalHospitalIds, ['activities', 'gapPlans', 'readinessScores', 'prsReadinessScores']);
+
+  const extraManagerIds = new Set<string>();
+  const extraMentorIds = new Set<string>();
+  urows.forEach((u) => {
+    if (u.role === 'mentor') {
+      normalizeIdList(userDataMap.get(u.id)?.[USER_DATA_MENTOR_MANAGER_IDS]).forEach((id) => extraManagerIds.add(id));
+    }
+    if (u.role === 'pecc') {
+      normalizeIdList(userDataMap.get(u.id)?.[USER_DATA_PECC_DIRECT_MANAGER_IDS]).forEach((id) => extraManagerIds.add(id));
+      normalizeIdList(userDataMap.get(u.id)?.[USER_DATA_PECC_MENTOR_IDS]).forEach((id) => extraMentorIds.add(id));
+    }
+  });
+  const userRefIds = [
+    ...new Set(
+      urows
+        .flatMap((u) => [u.manager_id, u.mentor_id].filter(Boolean))
+        .concat([...extraManagerIds, ...extraMentorIds])
+    ),
+  ] as string[];
+  const nameById = new Map<string, string>();
+  for (const uidPart of chunk(userRefIds, 80)) {
+    const { data: refUsers } = await supabase.from('users').select('id, first_name, last_name').in('id', uidPart);
+    (refUsers || []).forEach((u: { id: string; first_name?: string; last_name?: string }) => {
+      nameById.set(u.id, `${u.first_name || ''} ${u.last_name || ''}`.trim());
+    });
+  }
+
+  const discussionByUser = await loadDiscussionCountsByUser(userIds);
+
   for (const hidPart of chunk(canonicalHospitalIds, 80)) {
     const { data: refHosp } = await supabase.from('hospitals').select('id, facility_id, name, state').in('id', hidPart);
     (refHosp || []).forEach((h: { id: string; facility_id?: string; name: string; state?: string }) => {
@@ -3605,6 +3987,29 @@ async function enrichStaffUsersToReportRows(urows: StaffReportUserRow[]): Promis
   return urows.map((u) => {
     const canonicalId = u.hospital_facility_id ? (refToHospitalId.get(u.hospital_facility_id) || u.hospital_facility_id) : null;
     const h = canonicalId ? hospById.get(canonicalId) || null : null;
+    const continuity = canonicalId ? hospitalContinuityMap.get(canonicalId) : undefined;
+    const userData = userDataMap.get(u.id) || {};
+    const activitySource =
+      u.role === 'pecc'
+        ? continuity?.activities ?? userData.activities
+        : userData.mentorActivities ?? userData.activities;
+    const gapSource = u.role === 'pecc' ? continuity?.gapPlans ?? userData.gapPlans : userData.gapPlans;
+    const readinessSource =
+      u.role === 'pecc'
+        ? continuity?.readinessScores ?? continuity?.prsReadinessScores ?? userData.readinessScores ?? userData.prsReadinessScores
+        : userData.readinessScores ?? userData.prsReadinessScores;
+    const activity = summarizeActivityMetrics(activitySource);
+    const gap = countGapPlansDetailed(gapSource);
+    const readiness = summarizeReadinessScores(readinessSource);
+    const discussion = discussionByUser.get(u.id) || { topics: 0, replies: 0, posts: 0, postsLast30: 0 };
+    const managerIdsAll = u.role === 'mentor'
+      ? [...new Set([u.manager_id, ...normalizeIdList(userData[USER_DATA_MENTOR_MANAGER_IDS])].filter(Boolean) as string[])]
+      : u.role === 'pecc'
+        ? [...new Set([u.manager_id, ...normalizeIdList(userData[USER_DATA_PECC_DIRECT_MANAGER_IDS])].filter(Boolean) as string[])]
+        : (u.manager_id ? [u.manager_id] : []);
+    const mentorIdsAll = u.role === 'pecc'
+      ? [...new Set([u.mentor_id, ...normalizeIdList(userData[USER_DATA_PECC_MENTOR_IDS])].filter(Boolean) as string[])]
+      : (u.mentor_id ? [u.mentor_id] : []);
     return {
       id: u.id,
       cells: {
@@ -3617,8 +4022,31 @@ async function enrichStaffUsersToReportRows(urows: StaffReportUserRow[]): Promis
         userCreatedAt: u.created_at ? format(new Date(u.created_at), 'yyyy-MM-dd') : '',
         managerName: u.manager_id ? nameById.get(u.manager_id) || '' : '',
         mentorName: u.mentor_id ? nameById.get(u.mentor_id) || '' : '',
+        managerNamesAll: managerIdsAll.map((id) => nameById.get(id) || id).join('; '),
+        mentorNamesAll: mentorIdsAll.map((id) => nameById.get(id) || id).join('; '),
         hospitalName: h ? String(h.name) : '',
         state: h && h.state ? String(h.state).toUpperCase() : '',
+        readinessLatest: readiness.latest,
+        readinessDelta: readiness.delta,
+        readinessAssessmentsCount: String(readiness.count),
+        readinessLastDate: readiness.lastDate,
+        activitiesCount: String(activity.count),
+        activitiesHours: activity.hours.toFixed(1),
+        activitiesLast30Count: String(activity.last30Count),
+        activitiesLast30Hours: activity.last30Hours.toFixed(1),
+        activitiesByCategory: activity.byCategory,
+        gapPlansTotal: String(gap.total),
+        gapPlansOpen: String(gap.open),
+        gapPlansCompleted: String(gap.completed),
+        gapPlansCompletionRate: gap.total > 0 ? ((gap.completed / gap.total) * 100).toFixed(1) : '0.0',
+        gapPlansInProgress: String(gap.inProgress),
+        gapPlansNeedsUpdate: String(gap.needsUpdate),
+        gapPlansNeedDevelop: String(gap.needToDevelop),
+        gapPlansCannotDo: String(gap.cannotDo),
+        discussionTopics: String(discussion.topics),
+        discussionReplies: String(discussion.replies),
+        discussionPosts: String(discussion.posts),
+        discussionPostsLast30: String(discussion.postsLast30),
       },
       linkHints: { userId: u.id, hospitalId: u.hospital_facility_id || undefined },
     };
@@ -3684,8 +4112,17 @@ async function loadPlatformUsersByRoles(params: {
   if (scope === 'admin') {
     allowedIds = null;
   } else if (scope === 'manager') {
-    const { data: mentors } = await supabase.from('users').select('id').eq('manager_id', actorUserId).eq('role', 'mentor');
-    const mentorIds = (mentors || []).map((m: { id: string }) => m.id);
+    const mentorRows = await fetchAllRows<{ id: string; manager_id: string | null; is_active: boolean | null }>((from, to) =>
+      supabase.from('users').select('id, manager_id, is_active').eq('role', 'mentor').eq('is_active', true).range(from, to)
+    );
+    const mentorManagerMap = await fetchUserDataBatch(mentorRows.map((m) => m.id), [USER_DATA_MENTOR_MANAGER_IDS]);
+    const mentorIds = mentorRows
+      .filter((mentor) => {
+        if (mentor.manager_id === actorUserId) return true;
+        const extra = normalizeIdList(mentorManagerMap.get(mentor.id)?.[USER_DATA_MENTOR_MANAGER_IDS]);
+        return extra.includes(actorUserId);
+      })
+      .map((m) => m.id);
     const hs = hospitalScope || [];
     const peccIdSet = new Set<string>();
     if (hs.length > 0) {
