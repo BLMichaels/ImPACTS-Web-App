@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -96,6 +96,21 @@ const MilestonesPage = () => {
   const [programChecklists, setProgramChecklists] = useState<ProgramChecklistLoaded[]>([]);
   const [stagePalette, setStagePalette] = useState(DEFAULT_STAGE_PALETTE);
   const hasProgramChecklistStages = programChecklists.some((c) => Array.isArray(c.stages) && c.stages.length > 0);
+  const refreshChecklistProgress = useCallback(async (targetHospitalId: string) => {
+    if (!targetHospitalId) return;
+    const { data: rows } = await supabase
+      .from('site_checklist_progress')
+      .select('task_id, completed')
+      .eq('hospital_id', targetHospitalId);
+    const completedByTask: Record<string, boolean> = {};
+    (rows || []).forEach((r: { task_id: string; completed: boolean }) => {
+      completedByTask[r.task_id] = r.completed;
+    });
+    setStages((prev) => prev.map((stage) => ({
+      ...stage,
+      tasks: stage.tasks.map((task) => ({ ...task, completed: completedByTask[task.id] ?? false }))
+    })));
+  }, []);
 
   const exportToPDF = () => {
     // Create a simple PDF export using window.print() for now
@@ -547,41 +562,37 @@ const MilestonesPage = () => {
 
     setStages(merged);
     if (hospitalId) {
-      supabase.from('site_checklist_progress').select('task_id, completed').eq('hospital_id', hospitalId).then(({ data: rows }) => {
-        const completedByTask: Record<string, boolean> = {};
-        (rows || []).forEach((r: { task_id: string; completed: boolean }) => { completedByTask[r.task_id] = r.completed; });
-        setStages((prev) => prev.map((stage) => ({
-          ...stage,
-          tasks: stage.tasks.map((task) => ({ ...task, completed: completedByTask[task.id] ?? task.completed }))
-        })));
-      });
+      void refreshChecklistProgress(hospitalId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- merges program checklists with default stages; adding stages would loop
-  }, [programChecklists, resolvedProgramId, hospitalId, hasProgramChecklistStages]);
+  }, [programChecklists, resolvedProgramId, hospitalId, hasProgramChecklistStages, refreshChecklistProgress]);
 
   // Load checklist from Supabase (shared with Mentor Site Milestones) when hospitalId is set
   // (default stages only when program checklists are not configured for this program).
   useEffect(() => {
     if (!hospitalId || hasProgramChecklistStages) return;
     (async () => {
-      const { data: rows } = await supabase
-        .from('site_checklist_progress')
-        .select('task_id, completed')
-        .eq('hospital_id', hospitalId);
-      if (rows && rows.length > 0) {
-        const completedByTask: Record<string, boolean> = {};
-        rows.forEach((r: { task_id: string; completed: boolean }) => { completedByTask[r.task_id] = r.completed; });
-        setStages(prev => prev.map(stage => ({
-          ...stage,
-          tasks: stage.tasks.map(task => ({
-            ...task,
-            completed: completedByTask[task.id] ?? task.completed
-          }))
-        })));
-      }
+      await refreshChecklistProgress(hospitalId);
       dataLoadedRef.current = true;
     })();
-  }, [hospitalId, hasProgramChecklistStages]);
+  }, [hospitalId, hasProgramChecklistStages, refreshChecklistProgress]);
+
+  useEffect(() => {
+    if (!hospitalId) return;
+    const channel = supabase
+      .channel(`pecc-milestones-progress:${hospitalId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'site_checklist_progress', filter: `hospital_id=eq.${hospitalId}` },
+        () => {
+          void refreshChecklistProgress(hospitalId);
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [hospitalId, refreshChecklistProgress]);
 
   const milestonesUserId = effectiveUserId;
   // Load milestone data from user_data when no site/hospital

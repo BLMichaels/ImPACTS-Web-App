@@ -1529,6 +1529,56 @@ const AdminCRMPage: React.FC = () => {
     setAssignmentDialogOpen(false);
   }, [detailContact, detailContactUserId, assignmentManagerIds, assignmentMentorIds, assignmentManagerOptions, assignmentMentorOptions]);
 
+  const reassignManagerReferences = useCallback(async (removedManagerUserId: string, replacementManagerUserId: string | null) => {
+    const removedId = String(removedManagerUserId || '').trim();
+    const replacementId = String(replacementManagerUserId || '').trim();
+    if (!isUuid(removedId)) return;
+    const nextManagerId = isUuid(replacementId) && replacementId !== removedId ? replacementId : null;
+
+    const [{ data: mentorUsers, error: mentorUsersErr }, { data: peccUsers, error: peccUsersErr }] = await Promise.all([
+      supabase.from('users').select('id, manager_id').eq('role', 'mentor'),
+      supabase.from('users').select('id, manager_id_for_pecc').eq('role', 'pecc'),
+    ]);
+    if (mentorUsersErr || peccUsersErr) {
+      throw new Error(mentorUsersErr?.message || peccUsersErr?.message || 'Unable to load manager assignments');
+    }
+
+    const mentorRows = (mentorUsers || []) as Array<{ id: string; manager_id?: string | null }>;
+    const peccRows = (peccUsers || []) as Array<{ id: string; manager_id_for_pecc?: string | null }>;
+
+    await Promise.all(mentorRows.map(async (user) => {
+      const rawIds = normalizeStringList(await getUserData<string[]>(user.id, USER_DATA_MENTOR_MANAGER_IDS));
+      const mergedIds = [String(user.manager_id || '').trim(), ...rawIds].filter(Boolean);
+      if (!mergedIds.includes(removedId)) return;
+      const nextIds = [...new Set([
+        ...(nextManagerId ? [nextManagerId] : []),
+        ...mergedIds.filter((id) => id !== removedId && id !== nextManagerId),
+      ])];
+      const { error } = await supabase
+        .from('users')
+        .update({ manager_id: nextIds[0] || null, updated_at: new Date().toISOString() })
+        .eq('id', user.id);
+      if (error) throw new Error(error.message);
+      await setUserData(user.id, USER_DATA_MENTOR_MANAGER_IDS, nextIds);
+    }));
+
+    await Promise.all(peccRows.map(async (user) => {
+      const rawIds = normalizeStringList(await getUserData<string[]>(user.id, USER_DATA_PECC_DIRECT_MANAGER_IDS));
+      const mergedIds = [String(user.manager_id_for_pecc || '').trim(), ...rawIds].filter(Boolean);
+      if (!mergedIds.includes(removedId)) return;
+      const nextIds = [...new Set([
+        ...(nextManagerId ? [nextManagerId] : []),
+        ...mergedIds.filter((id) => id !== removedId && id !== nextManagerId),
+      ])];
+      const { error } = await supabase
+        .from('users')
+        .update({ manager_id_for_pecc: nextIds[0] || null, updated_at: new Date().toISOString() })
+        .eq('id', user.id);
+      if (error) throw new Error(error.message);
+      await setUserData(user.id, USER_DATA_PECC_DIRECT_MANAGER_IDS, nextIds);
+    }));
+  }, []);
+
   // Load "View as" user options for hospital/system/hiring_group contacts (so Admin can view as any linked user)
   useEffect(() => {
     const c = detailContact;
@@ -3515,6 +3565,14 @@ const AdminCRMPage: React.FC = () => {
     }
 
     if (contact.user_id && isUuid(contact.user_id)) {
+      if (contact.type === 'manager') {
+        try {
+          await reassignManagerReferences(contact.user_id, null);
+        } catch (err) {
+          setLoadError(`Delete failed while reassigning manager references: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          return;
+        }
+      }
       const { error: deactivateErr } = await supabase
         .from('users')
         .update({ is_active: false, updated_at: new Date().toISOString() })
@@ -3562,6 +3620,14 @@ const AdminCRMPage: React.FC = () => {
       if (!contact) continue;
 
       if (contact.user_id && isUuid(contact.user_id)) {
+        if (contact.type === 'manager') {
+          try {
+            await reassignManagerReferences(contact.user_id, null);
+          } catch (err) {
+            setLoadError(`Delete failed while reassigning manager references: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            continue;
+          }
+        }
         const { error: deactivateErr } = await supabase
           .from('users')
           .update({ is_active: false, updated_at: new Date().toISOString() })
@@ -3979,6 +4045,12 @@ const AdminCRMPage: React.FC = () => {
           .from('users')
           .update({ email: finalPrimaryEmail, updated_at: new Date().toISOString() })
           .eq('id', keepContact.user_id);
+      }
+      if (deleteContact.type === 'manager' && isUuid(deleteContact.user_id)) {
+        await reassignManagerReferences(
+          String(deleteContact.user_id),
+          isUuid(keepContact.user_id) ? String(keepContact.user_id) : null
+        );
       }
       
       const sourceCrmRowWasReused =
@@ -5960,6 +6032,11 @@ const AdminCRMPage: React.FC = () => {
       <Dialog disableRestoreFocus open={assignmentDialogOpen} onClose={() => !assignmentSaving && setAssignmentDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Assignments</DialogTitle>
         <DialogContent>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <Button size="small" onClick={() => { setAssignmentManagerIds([]); if (assignmentRole === 'pecc') setAssignmentMentorIds([]); }} disabled={assignmentSaving}>
+              Clear all assignments
+            </Button>
+          </Box>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}>
               <FormControl fullWidth size="small">

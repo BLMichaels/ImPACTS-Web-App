@@ -182,6 +182,7 @@ const ActivitiesPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
+  const [activitySubmitterById, setActivitySubmitterById] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -270,6 +271,33 @@ const ActivitiesPage = () => {
     })();
     return () => { mounted = false; };
   }, [open, userId, effectiveHospitalId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const submitterIds = [...new Set(
+        activities.map((a) => String(a.submitted_by || '').trim()).filter(Boolean)
+      )];
+      if (!submitterIds.length) {
+        if (!cancelled) setActivitySubmitterById({});
+        return;
+      }
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .in('id', submitterIds);
+      if (cancelled || error) return;
+      const next: Record<string, string> = {};
+      ((data || []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; email?: string | null }>).forEach((u) => {
+        const label = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || u.id);
+        next[u.id] = label;
+      });
+      if (!cancelled) setActivitySubmitterById(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activities]);
 
   const saveActivities = async (newActivities: Activity[]) => {
     try {
@@ -531,6 +559,7 @@ const ActivitiesPage = () => {
       const exportData = filteredAndSortedActivities.map(activity => ({
         Date: formatDate(activity.date),
         Activity: activity.activity,
+        SubmittedBy: activity.submitted_by ? (activitySubmitterById[activity.submitted_by] || activity.submitted_by) : '',
         Category: getActivityCategories(activity).join('; '),
         Hours: activity.hours,
         Simulation: activity.simulation || '',
@@ -582,6 +611,10 @@ const ActivitiesPage = () => {
         doc.setFontSize(10);
         doc.text(`Date: ${formatDate(activity.date)} | Category: ${getActivityCategories(activity).join(', ')} | Hours: ${activity.hours}`, 20, yPos);
         yPos += 8;
+        if (activity.submitted_by) {
+          doc.text(`Entered by: ${activitySubmitterById[activity.submitted_by] || activity.submitted_by}`, 20, yPos);
+          yPos += 8;
+        }
 
         if (activity.simulation) {
           doc.text(`Simulation: ${activity.simulation}`, 20, yPos);
@@ -1018,6 +1051,11 @@ const ActivitiesPage = () => {
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </Box>
+                    {activity.submitted_by && (
+                      <Typography variant="caption" color="text.secondary">
+                        Entered by: {activitySubmitterById[activity.submitted_by] || activity.submitted_by}
+                      </Typography>
+                    )}
                   </Box>
 
                   {/* Content Section */}

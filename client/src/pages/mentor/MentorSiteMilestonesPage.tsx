@@ -353,6 +353,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const [completionDate, setCompletionDate] = useState<Date | null>(null);
   const [hiddenHospitals, setHiddenHospitals] = useState<Set<string>>(new Set());
   const [selectedChecklistKey, setSelectedChecklistKey] = useState<string>('default');
+  const [hospitalChecklistIds, setHospitalChecklistIds] = useState<Record<string, string>>({});
+  const [progressVersion, setProgressVersion] = useState(0);
   const [stagePalette, setStagePalette] = useState<Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string>>({
     stage1: '#2196F3',
     stage2: '#4CAF50',
@@ -471,6 +473,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
       const mentorDataUserId = uid!;
       const milestones: Record<string, HospitalMilestones> = {};
       const metrics: Record<string, HospitalMetrics> = {};
+      const canonicalIdsByHospital: Record<string, string> = {};
 
       const hospitalRefLists = hospitals.flatMap((h) => [h.id, h.facilityId].filter(Boolean) as string[]);
       const hospitalRefToRowId = await mapSiteRefsToHospitalRowIds(hospitalRefLists);
@@ -518,6 +521,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
           hospitalRefToRowId.get(hospital.id) ||
           (hospital.facilityId ? hospitalRefToRowId.get(hospital.facilityId) : undefined) ||
           null;
+        if (progressHospitalUuid) {
+          canonicalIdsByHospital[hospital.id] = progressHospitalUuid;
+        }
         let progressRows: Array<{ task_id: string; completed: boolean; completed_at: string | null }> = [];
         if (progressHospitalUuid) {
           const { data } = await supabase
@@ -540,15 +546,18 @@ const MentorSiteMilestonesPage: React.FC = () => {
           }))
         }));
         const checklistStages: Record<string, { name: string; stages: MilestoneStage[] }> = {};
-        if (peccId) {
-          const { data: peccProfile } = await supabase.from('users').select('primary_program_id').eq('id', peccId).single();
-          let primaryProgramId = (peccProfile as { primary_program_id?: string | null })?.primary_program_id;
-          if (!primaryProgramId) {
-            const { data: members } = await supabase.from('program_members').select('program_id').eq('user_id', peccId).eq('status', 'active').order('program_id').limit(1);
-            primaryProgramId = (members && members[0]) ? (members[0] as { program_id: string }).program_id : undefined;
-          }
-          if (primaryProgramId) {
-            const { data: list } = await supabase.from('program_checklists').select('*').eq('program_id', primaryProgramId).order('sort_order');
+        if (peccUserIds.length > 0) {
+          const uniquePeccIds = [...new Set(peccUserIds.map((id) => String(id || '').trim()).filter(Boolean))];
+          const [{ data: peccProfiles }, { data: programMemberships }] = await Promise.all([
+            supabase.from('users').select('id, primary_program_id').in('id', uniquePeccIds),
+            supabase.from('program_members').select('user_id, program_id').in('user_id', uniquePeccIds).eq('status', 'active')
+          ]);
+          const programIds = [...new Set([
+            ...((peccProfiles || []) as Array<{ primary_program_id?: string | null }>).map((row) => String(row.primary_program_id || '').trim()).filter(Boolean),
+            ...((programMemberships || []) as Array<{ program_id?: string | null }>).map((row) => String(row.program_id || '').trim()).filter(Boolean),
+          ])];
+          if (programIds.length > 0) {
+            const { data: list } = await supabase.from('program_checklists').select('*').in('program_id', programIds).order('sort_order');
             const enabledList = (list || []).filter((c: { id: string }) => isChecklistEnabled(c.id));
             if (enabledList.length) {
               const withStages = await Promise.all(enabledList.map(async (c: any) => {
@@ -687,11 +696,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
       setHospitalMilestones(milestones);
       setHospitalMetrics(metrics);
+      setHospitalChecklistIds(canonicalIdsByHospital);
       setLoading(false);
     };
 
     loadMilestones();
-  }, [uid, hospitals, effectiveUserId, currentUser?.id]);
+  }, [uid, hospitals, effectiveUserId, currentUser?.id, progressVersion]);
 
   const checklistOptions = useMemo(() => {
     const options: Array<{ key: string; label: string }> = [{ key: 'default', label: 'Default 4-Stage Checklist' }];
@@ -803,10 +813,11 @@ const MentorSiteMilestonesPage: React.FC = () => {
       };
     });
 
+    const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
     supabase
       .from('site_checklist_progress')
       .upsert({
-        hospital_id: hospitalId,
+        hospital_id: canonicalHospitalId,
         task_id: taskId,
         completed: newCompleted,
         completed_at: newCompleted ? new Date().toISOString() : null,
@@ -838,11 +849,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const taskIds = stage?.tasks.map(t => t.id) ?? [];
     const completedAt = newCompleted ? new Date().toISOString() : null;
 
+    const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
     taskIds.forEach(taskId => {
       supabase
         .from('site_checklist_progress')
         .upsert({
-          hospital_id: hospitalId,
+          hospital_id: canonicalHospitalId,
           task_id: taskId,
           completed: newCompleted,
           completed_at: completedAt,
@@ -902,13 +914,14 @@ const MentorSiteMilestonesPage: React.FC = () => {
       [stageId]: { completed: true, completionDate: completionDateStr }
     };
 
+    const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
     const stage = sourceStages.find(s => s.id === stageId);
     const taskIds = stage?.tasks.map(t => t.id) ?? [];
     taskIds.forEach(taskId => {
       supabase
         .from('site_checklist_progress')
         .upsert({
-          hospital_id: hospitalId,
+          hospital_id: canonicalHospitalId,
           task_id: taskId,
           completed: true,
           completed_at: completedAt,
@@ -950,6 +963,31 @@ const MentorSiteMilestonesPage: React.FC = () => {
     setEditingStage(null);
     setCompletionDate(null);
   };
+
+  useEffect(() => {
+    const watchedHospitalIds = [...new Set(Object.values(hospitalChecklistIds).filter(Boolean))];
+    if (!watchedHospitalIds.length) return;
+    const channel = supabase
+      .channel(`mentor-site-milestones-progress:${watchedHospitalIds.join(',')}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'site_checklist_progress' },
+        (payload) => {
+          const changedHospitalId = String(
+            (payload.new as { hospital_id?: string } | null)?.hospital_id ||
+            (payload.old as { hospital_id?: string } | null)?.hospital_id ||
+            ''
+          ).trim();
+          if (!changedHospitalId) return;
+          if (!watchedHospitalIds.includes(changedHospitalId)) return;
+          setProgressVersion((prev) => prev + 1);
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [hospitalChecklistIds]);
 
   const handleHospitalMenuOpen = (event: React.MouseEvent<HTMLElement>, hospitalId: string) => {
     event.stopPropagation();

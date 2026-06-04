@@ -35,7 +35,8 @@ import {
   Security as SecurityIcon,
   Logout as LogoutIcon,
   Feedback as FeedbackIcon,
-  Email as EmailIcon
+  Email as EmailIcon,
+  ContentCopy as ContentCopyIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
@@ -158,6 +159,7 @@ const AccountPage = () => {
   const [showTerms, setShowTerms] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState('');
+  const SUPPORT_EMAIL = 'BenjaminLMichaels@gmail.com';
   const [editingNotifications, setEditingNotifications] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState({
     gapPlanReminders: {
@@ -327,6 +329,48 @@ const AccountPage = () => {
     } catch (error) {
       setAlert({ type: 'error', message: 'Logout failed. Please try again.' });
     }
+  };
+
+  const buildFeedbackEmailPayload = () => {
+    const subjectRaw = 'ImPACTS - Feedback / Technical issue';
+    const role = actualRole || getTier() || 'User';
+    const email = currentUser?.email || userProfile?.email || '';
+    const bodyRaw = `Role: ${role}\nEmail: ${email}\n\nMessage:\n${feedbackMessage.trim() || '(No additional message)'}`;
+    return {
+      subjectRaw,
+      bodyRaw,
+      mailtoUrl: `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subjectRaw)}&body=${encodeURIComponent(bodyRaw)}`,
+      webmailUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(SUPPORT_EMAIL)}&su=${encodeURIComponent(subjectRaw)}&body=${encodeURIComponent(bodyRaw)}`
+    };
+  };
+
+  const launchFeedbackEmail = () => {
+    const { mailtoUrl, webmailUrl } = buildFeedbackEmailPayload();
+    try {
+      const link = document.createElement('a');
+      link.href = mailtoUrl;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => {
+        window.open(webmailUrl, '_blank', 'noopener,noreferrer');
+      }, 800);
+    } catch {
+      window.location.href = mailtoUrl;
+    }
+  };
+
+  const copyFeedbackTemplate = async () => {
+    const { subjectRaw, bodyRaw } = buildFeedbackEmailPayload();
+    const text = `To: ${SUPPORT_EMAIL}\nSubject: ${subjectRaw}\n\n${bodyRaw}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setAlert({ type: 'success', message: 'Support email details copied to clipboard.' });
+    } catch {
+      setAlert({ type: 'error', message: 'Could not copy to clipboard on this device. Please copy manually.' });
+    }
+    setTimeout(() => setAlert(null), 4000);
   };
 
   return (
@@ -681,7 +725,7 @@ const AccountPage = () => {
                   </Typography>
                 </Box>
                 <Typography variant="body2" color="text.secondary" paragraph>
-                  Send feedback or report a technical issue. Your message will open in your email client addressed to support.
+                  Send feedback or report a technical issue. If your default email app does not open on this device, use the fallback options below.
                 </Typography>
                 <TextField
                   fullWidth
@@ -698,22 +742,19 @@ const AccountPage = () => {
                   variant="contained"
                   startIcon={<EmailIcon />}
                   type="button"
-                  onClick={() => {
-                    const to = 'BenjaminLMichaels@gmail.com';
-                    const subject = encodeURIComponent('ImPACTS – Feedback / Technical issue');
-                    const role = actualRole || getTier() || 'User';
-                    const email = currentUser?.email || userProfile?.email || '';
-                    const body = encodeURIComponent(
-                      `Role: ${role}\nEmail: ${email}\n\nMessage:\n${feedbackMessage.trim() || '(No additional message)'}`
-                    );
-                    const mailtoUrl = `mailto:${to}?subject=${subject}&body=${body}`;
-                    // Use the OS-registered mailto handler so the user’s default email client opens.
-                    window.location.href = mailtoUrl;
-                  }}
+                  onClick={launchFeedbackEmail}
                   sx={{ py: 1 }}
                 >
                   Email feedback to support
                 </Button>
+                <Box sx={{ mt: 1.25, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Button variant="outlined" size="small" onClick={() => window.open(buildFeedbackEmailPayload().webmailUrl, '_blank', 'noopener,noreferrer')}>
+                    Open webmail fallback
+                  </Button>
+                  <Button variant="outlined" size="small" startIcon={<ContentCopyIcon />} onClick={copyFeedbackTemplate}>
+                    Copy email details
+                  </Button>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
