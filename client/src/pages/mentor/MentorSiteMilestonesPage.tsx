@@ -510,10 +510,20 @@ const MentorSiteMilestonesPage: React.FC = () => {
           .from('site_members')
           .select('user_id')
           .eq('site_id', hospital.siteId);
+        const siteMemberUserIds = [...new Set((siteMembers || []).map((sm: { user_id: string }) => sm.user_id).filter(Boolean))];
+        let siteMemberPeccIds: string[] = [];
+        if (siteMemberUserIds.length > 0) {
+          const { data: siteMemberPeccs } = await supabase
+            .from('users')
+            .select('id')
+            .in('id', siteMemberUserIds)
+            .eq('role', 'pecc');
+          siteMemberPeccIds = (siteMemberPeccs || []).map((u: { id: string }) => u.id);
+        }
 
         const peccUserIds = [
           ...(peccUsers?.map(u => u.id) || []),
-          ...(siteMembers?.map(sm => sm.user_id) || [])
+          ...siteMemberPeccIds
         ];
         const peccId = peccUserIds.length > 0 ? peccUserIds[0] : undefined;
 

@@ -4049,7 +4049,7 @@ const AdminCRMPage: React.FC = () => {
       if (deleteContact.type === 'manager' && isUuid(deleteContact.user_id)) {
         await reassignManagerReferences(
           String(deleteContact.user_id),
-          isUuid(keepContact.user_id) ? String(keepContact.user_id) : null
+          keepContact.type === 'manager' && isUuid(keepContact.user_id) ? String(keepContact.user_id) : null
         );
       }
       

@@ -345,7 +345,7 @@ const AccountPage = () => {
   };
 
   const launchFeedbackEmail = () => {
-    const { mailtoUrl, webmailUrl } = buildFeedbackEmailPayload();
+    const { mailtoUrl } = buildFeedbackEmailPayload();
     try {
       const link = document.createElement('a');
       link.href = mailtoUrl;
@@ -353,9 +353,8 @@ const AccountPage = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      setTimeout(() => {
-        window.open(webmailUrl, '_blank', 'noopener,noreferrer');
-      }, 800);
+      setAlert({ type: 'info', message: 'If your email app did not open, use "Open webmail fallback" below.' });
+      setTimeout(() => setAlert(null), 4500);
     } catch {
       window.location.href = mailtoUrl;
     }
