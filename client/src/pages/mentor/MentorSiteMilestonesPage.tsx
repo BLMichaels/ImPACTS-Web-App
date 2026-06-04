@@ -528,6 +528,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
           ...siteMemberPeccIds
         ];
         const peccId = peccUserIds.length > 0 ? peccUserIds[0] : undefined;
+        const checklistUserIds = [...new Set([...peccUserIds, ...siteMemberUserIds].map((id) => String(id || '').trim()).filter(Boolean))];
 
         const progressHospitalUuid =
           hospitalRefToRowId.get(hospital.id) ||
@@ -549,6 +550,14 @@ const MentorSiteMilestonesPage: React.FC = () => {
         (progressRows || []).forEach((r: { task_id: string; completed: boolean; completed_at: string | null }) => {
           completedByTask[r.task_id] = { completed: r.completed, completed_at: r.completed_at };
         });
+        const checklistIdsFromProgress = [...new Set(
+          Object.keys(completedByTask)
+            .map((taskId) => {
+              const match = /^program:([^:]+):/.exec(String(taskId || '').trim());
+              return match?.[1] ? String(match[1]).trim() : '';
+            })
+            .filter(Boolean)
+        )];
 
         const defaultStagesWithProgress = DEFAULT_STAGES.map((s) => ({
           ...s,
@@ -558,12 +567,17 @@ const MentorSiteMilestonesPage: React.FC = () => {
           }))
         }));
         const checklistStages: Record<string, { name: string; stages: MilestoneStage[] }> = {};
-        if (peccUserIds.length > 0) {
-          const uniquePeccIds = [...new Set(peccUserIds.map((id) => String(id || '').trim()).filter(Boolean))];
-          const [{ data: peccProfiles }, { data: programMemberships }, { data: cohortMemberships }] = await Promise.all([
-            supabase.from('users').select('id, primary_program_id').in('id', uniquePeccIds),
-            supabase.from('program_members').select('user_id, program_id').in('user_id', uniquePeccIds).eq('status', 'active'),
-            supabase.from('cohort_members').select('user_id, cohort_id').in('user_id', uniquePeccIds).eq('status', 'active')
+        if (checklistUserIds.length > 0 || checklistIdsFromProgress.length > 0) {
+          const [{ data: checklistProfiles }, { data: programMemberships }, { data: cohortMemberships }] = await Promise.all([
+            checklistUserIds.length > 0
+              ? supabase.from('users').select('id, primary_program_id').in('id', checklistUserIds)
+              : Promise.resolve({ data: [] as Array<{ id: string; primary_program_id?: string | null }> }),
+            checklistUserIds.length > 0
+              ? supabase.from('program_members').select('user_id, program_id').in('user_id', checklistUserIds).eq('status', 'active')
+              : Promise.resolve({ data: [] as Array<{ user_id: string; program_id?: string | null }> }),
+            checklistUserIds.length > 0
+              ? supabase.from('cohort_members').select('user_id, cohort_id').in('user_id', checklistUserIds).eq('status', 'active')
+              : Promise.resolve({ data: [] as Array<{ user_id: string; cohort_id?: string | null }> })
           ]);
           const cohortIds = [...new Set(
             ((cohortMemberships || []) as Array<{ cohort_id?: string | null }>)
@@ -575,19 +589,38 @@ const MentorSiteMilestonesPage: React.FC = () => {
             const { data: cohortRows } = await supabase
               .from('cohorts')
               .select('id, program_id')
-              .in('id', cohortIds)
-              .eq('is_active', true);
+              .in('id', cohortIds);
             cohortProgramIds = ((cohortRows || []) as Array<{ program_id?: string | null }>)
               .map((row) => String(row.program_id || '').trim())
               .filter(Boolean);
           }
           const programIds = [...new Set([
-            ...((peccProfiles || []) as Array<{ primary_program_id?: string | null }>).map((row) => String(row.primary_program_id || '').trim()).filter(Boolean),
+            ...((checklistProfiles || []) as Array<{ primary_program_id?: string | null }>).map((row) => String(row.primary_program_id || '').trim()).filter(Boolean),
             ...((programMemberships || []) as Array<{ program_id?: string | null }>).map((row) => String(row.program_id || '').trim()).filter(Boolean),
             ...cohortProgramIds,
           ])];
-          if (programIds.length > 0) {
-            const { data: list } = await supabase.from('program_checklists').select('*').in('program_id', programIds).order('sort_order');
+          if (programIds.length > 0 || checklistIdsFromProgress.length > 0) {
+            let list: any[] = [];
+            if (programIds.length > 0 && checklistIdsFromProgress.length > 0) {
+              const [{ data: byProgram }, { data: byChecklistIds }] = await Promise.all([
+                supabase.from('program_checklists').select('*').in('program_id', programIds).order('sort_order'),
+                supabase.from('program_checklists').select('*').in('id', checklistIdsFromProgress)
+              ]);
+              const merged = [...(byProgram || []), ...(byChecklistIds || [])];
+              const seenChecklist = new Set<string>();
+              list = merged.filter((row: any) => {
+                const id = String(row?.id || '').trim();
+                if (!id || seenChecklist.has(id)) return false;
+                seenChecklist.add(id);
+                return true;
+              });
+            } else if (programIds.length > 0) {
+              const { data: byProgram } = await supabase.from('program_checklists').select('*').in('program_id', programIds).order('sort_order');
+              list = byProgram || [];
+            } else {
+              const { data: byChecklistIds } = await supabase.from('program_checklists').select('*').in('id', checklistIdsFromProgress);
+              list = byChecklistIds || [];
+            }
             const enabledList = (list || []).filter((c: { id: string }) => isChecklistEnabled(c.id));
             if (enabledList.length) {
               const withStages = await Promise.all(enabledList.map(async (c: any) => {
@@ -1032,7 +1065,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
   const handleViewCRM = (hospitalId: string) => {
     handleHospitalMenuClose();
-    navigate(`/mentor/hospitals`);
+    navigate(`/mentor/hospitals?hospital=${encodeURIComponent(hospitalId)}`);
   };
 
   const handleViewPECCAccount = async (hospitalId: string) => {
@@ -1049,6 +1082,15 @@ const MentorSiteMilestonesPage: React.FC = () => {
       return;
     }
     alert('Unable to open PECC full-site view. Confirm that this PECC is assigned to you and has approved full-site sharing.');
+  };
+
+  const handleHospitalHeaderClick = async (hospitalId: string) => {
+    const metrics = hospitalMetrics[hospitalId];
+    if (metrics?.peccUserId && metrics.fullSiteAccessApproved === true) {
+      await handleViewPECCAccount(hospitalId);
+      return;
+    }
+    navigate(`/mentor/hospitals?hospital=${encodeURIComponent(hospitalId)}`);
   };
 
   // Match stage colors from PECC checklist page
@@ -1208,7 +1250,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Link
                               component="button"
-                              onClick={() => isChecklistAvailable && handleViewCRM(hospital.id)}
+                              onClick={() => isChecklistAvailable && void handleHospitalHeaderClick(hospital.id)}
                               sx={{ 
                                 textDecoration: 'none', 
                                 fontWeight: 600, 
