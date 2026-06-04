@@ -2460,16 +2460,18 @@ const AdminCRMPage: React.FC = () => {
         zip: formData.zip?.trim() || null,
         is_admin: formData.type === 'staff' ? effectiveStaffIsAdmin : false
       };
-      if (isPersonType(formData.type) && editingContact?.user_id) {
+      if (isPersonType(formData.type) && editingContact?.user_id && isUuid(editingContact.user_id)) {
         payloadDb.user_id = editingContact.user_id;
       }
       
       // Check if this is a user-sourced contact (from users table) vs CRM-created
-      const isUserSourced = editingContact?.user_id && !editingContact?.crmCreated;
+      const isUserSourced = Boolean(editingContact?.user_id && isUuid(editingContact.user_id) && !editingContact?.crmCreated);
       
       if (editingContact && editingContact.id && editingContact.crmCreated === true && isUuid(editingContact.id) && !isUserSourced) {
         // Update existing CRM contact
-        const uid = editingContact.user_id ?? (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle()).data?.id : null);
+        const uid = (editingContact.user_id && isUuid(editingContact.user_id))
+          ? editingContact.user_id
+          : (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle()).data?.id : null);
         const { error } = await supabase
           .from('crm_organizations')
           .update({ ...payloadDb, ...(uid ? { user_id: uid } : {}), updated_at: new Date().toISOString() })
@@ -2506,7 +2508,7 @@ const AdminCRMPage: React.FC = () => {
         setSaveError(null);
       } else if (isUserSourced && editingContact) {
         // Sync users.role, is_admin, and name so platform and CRM stay in sync (pairing by user_id; name reflects change)
-        if (editingContact.user_id) {
+        if (editingContact.user_id && isUuid(editingContact.user_id)) {
           const userUpdates: Record<string, unknown> = {
             first_name: formData.firstName?.trim() || null,
             last_name: formData.lastName?.trim() || null,
@@ -2538,7 +2540,7 @@ const AdminCRMPage: React.FC = () => {
         if (hasCrmData) {
           // Create/update a CRM record for this user to store CRM-specific data
           // Use upsert with the user's email as the unique identifier
-          const existingCrmRows = editingContact.user_id
+          const existingCrmRows = (editingContact.user_id && isUuid(editingContact.user_id))
             ? (await supabase
               .from('crm_organizations')
               .select('id, contact_type, updated_at, created_at')
@@ -2567,7 +2569,7 @@ const AdminCRMPage: React.FC = () => {
               .from('crm_organizations')
               .update({
                 ...payloadDb,
-                user_id: editingContact.user_id,
+                user_id: (editingContact.user_id && isUuid(editingContact.user_id)) ? editingContact.user_id : null,
                 updated_at: new Date().toISOString()
               })
               .eq('id', existingCrm.id);
@@ -2578,13 +2580,13 @@ const AdminCRMPage: React.FC = () => {
               return;
             }
             // Update local state to reflect CRM record
-            setContacts(prev => prev.map(c => (c.id === editingContact.id ? { ...c, ...payload, id: existingCrm.id, crmCreated: true, user_id: editingContact.user_id } : c)));
+            setContacts(prev => prev.map(c => (c.id === editingContact.id ? { ...c, ...payload, id: existingCrm.id, crmCreated: true, user_id: (editingContact.user_id && isUuid(editingContact.user_id)) ? editingContact.user_id : undefined } : c)));
             setSaveError(null);
           } else {
             // Create new CRM record for this user
             const { data: inserted, error } = await supabase
               .from('crm_organizations')
-              .insert({ ...payloadDb, user_id: editingContact.user_id })
+              .insert({ ...payloadDb, user_id: (editingContact.user_id && isUuid(editingContact.user_id)) ? editingContact.user_id : null })
               .select('id, created_at')
               .single();
             setSaveInProgress(false);
@@ -2597,7 +2599,7 @@ const AdminCRMPage: React.FC = () => {
               // Remove the user-sourced entry and add the CRM entry
               setContacts(prev => {
                 const filtered = prev.filter(c => c.id !== editingContact.id);
-                return [...filtered, { ...payload, id: (inserted as { id: string }).id, crmCreated: true, user_id: editingContact.user_id }];
+                return [...filtered, { ...payload, id: (inserted as { id: string }).id, crmCreated: true, user_id: (editingContact.user_id && isUuid(editingContact.user_id)) ? editingContact.user_id : undefined }];
               });
               setSaveError(null);
             }
@@ -2605,7 +2607,7 @@ const AdminCRMPage: React.FC = () => {
         } else {
           // No CRM-specific data to save, but we might need to update the users table
           // for fields that are stored there (phone)
-          if (formData.phone?.trim() !== editingContact.phone) {
+          if (formData.phone?.trim() !== editingContact.phone && editingContact.user_id && isUuid(editingContact.user_id)) {
             // Update phone in users table
             await supabase
               .from('users')
@@ -3495,7 +3497,7 @@ const AdminCRMPage: React.FC = () => {
       return;
     }
 
-    if (contact.user_id) {
+    if (contact.user_id && isUuid(contact.user_id)) {
       const { error: deactivateErr } = await supabase
         .from('users')
         .update({ is_active: false, updated_at: new Date().toISOString() })
@@ -3542,7 +3544,7 @@ const AdminCRMPage: React.FC = () => {
       const contact = contacts.find(c => c.id === id);
       if (!contact) continue;
 
-      if (contact.user_id) {
+      if (contact.user_id && isUuid(contact.user_id)) {
         const { error: deactivateErr } = await supabase
           .from('users')
           .update({ is_active: false, updated_at: new Date().toISOString() })
