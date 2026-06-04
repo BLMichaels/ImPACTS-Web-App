@@ -4,7 +4,7 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { provisionCrmPortalUser } from '../../utils/provisionCrmPortalUser';
 import { useAuth } from '../../context/AuthContext';
-import { getUserData, setUserData } from '../../utils/userData';
+import { batchGetUserDataForKey, getUserData, setUserData } from '../../utils/userData';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database';
@@ -165,6 +165,11 @@ interface Contact {
   /** Whether this person is an admin (for person-type contacts) */
   is_admin?: boolean;
 }
+
+type AssignedPersonLink = {
+  id: string;
+  label: string;
+};
 
 function contactDisplayName(c: Contact): string {
   if (isPersonType(c.type) && (c.firstName != null || c.lastName != null)) {
@@ -493,14 +498,20 @@ const AdminCRMPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
   const [detailContactUserId, setDetailContactUserId] = useState<string | null>(null); // Resolved user id for "Manage permissions"
-  const [detailSupervisorInfo, setDetailSupervisorInfo] = useState<{ mentorNames: string[]; managerNames: string[] }>({ mentorNames: [], managerNames: [] });
+  const [detailSupervisorInfo, setDetailSupervisorInfo] = useState<{
+    mentorLinks: AssignedPersonLink[];
+    managerLinks: AssignedPersonLink[];
+    peccLinks: AssignedPersonLink[];
+  }>({ mentorLinks: [], managerLinks: [], peccLinks: [] });
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assignmentRole, setAssignmentRole] = useState<'mentor' | 'pecc' | null>(null);
   const [assignmentManagerIds, setAssignmentManagerIds] = useState<string[]>([]);
   const [assignmentMentorIds, setAssignmentMentorIds] = useState<string[]>([]);
+  const [assignmentPeccIds, setAssignmentPeccIds] = useState<string[]>([]);
   const [assignmentManagerOptions, setAssignmentManagerOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [assignmentMentorOptions, setAssignmentMentorOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [assignmentPeccOptions, setAssignmentPeccOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [detailViewAsUserOptions, setDetailViewAsUserOptions] = useState<{ id: string; label: string }[]>([]); // For hospital/system/hiring_group: users who can be "viewed as"
   const [viewAsMenuAnchor, setViewAsMenuAnchor] = useState<null | HTMLElement>(null);
   const [viewAsPortalBusy, setViewAsPortalBusy] = useState(false);
@@ -565,8 +576,11 @@ const AdminCRMPage: React.FC = () => {
     county: '',
     zip: '',
     facilityId: '',
-    is_admin: false
+    is_admin: false,
+    assignedMentorIds: [] as string[],
+    assignedPeccIds: [] as string[],
   });
+  const [assignmentFieldsTouched, setAssignmentFieldsTouched] = useState({ mentors: false, peccs: false });
   const [startingPassword, setStartingPassword] = useState('');
 
   const canGrantPlatformAdminAccess = userProfile?.role === UserRole.ADMIN;
@@ -580,10 +594,12 @@ const AdminCRMPage: React.FC = () => {
   useEffect(() => {
     if (!dialogOpen) {
       setStartingPassword('');
+      setAssignmentFieldsTouched({ mentors: false, peccs: false });
       return;
     }
     // Always start blank for safety; admins can set per-user as needed.
     setStartingPassword('');
+    setAssignmentFieldsTouched({ mentors: false, peccs: false });
   }, [dialogOpen, editingContact?.id]);
 
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
@@ -659,6 +675,30 @@ const AdminCRMPage: React.FC = () => {
   const [contactUsageLoading, setContactUsageLoading] = useState(false);
   const [contactUsagePeriod, setContactUsagePeriod] = useState<'7' | '30' | '90' | 'all'>('30');
   const [contactUsageDetailsExpanded, setContactUsageDetailsExpanded] = useState(false);
+
+  const mentorAssignmentOptions = useMemo(
+    () =>
+      contacts
+        .filter((c) => c.type === 'mentor' && c.user_id && isUuid(c.user_id))
+        .map((c) => ({
+          id: String(c.user_id),
+          label: `${contactDisplayName(c)}${c.email ? ` (${c.email})` : ''}`,
+        }))
+        .filter((opt, idx, arr) => arr.findIndex((o) => o.id === opt.id) === idx),
+    [contacts]
+  );
+
+  const peccAssignmentOptions = useMemo(
+    () =>
+      contacts
+        .filter((c) => c.type === 'pecc' && c.user_id && isUuid(c.user_id))
+        .map((c) => ({
+          id: String(c.user_id),
+          label: `${contactDisplayName(c)}${c.email ? ` (${c.email})` : ''}`,
+        }))
+        .filter((opt, idx, arr) => arr.findIndex((o) => o.id === opt.id) === idx),
+    [contacts]
+  );
   const [duplicatesDialogOpen, setDuplicatesDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSource, setMergeSource] = useState<Contact | null>(null);
@@ -1341,10 +1381,31 @@ const AdminCRMPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- detailContact fields listed to avoid object identity churn
   }, [detailContact?.id, detailContact?.type, detailContact?.email, detailContact?.user_id, detailContact?.crmCreated]);
 
+  const getAssignedPeccLinksForMentor = useCallback(async (mentorUserId: string): Promise<AssignedPersonLink[]> => {
+    if (!isUuid(mentorUserId)) return [];
+    const { data: peccUsers, error: peccErr } = await supabase
+      .from('users')
+      .select('id, mentor_id, first_name, last_name, email')
+      .eq('role', 'pecc')
+      .eq('is_active', true);
+    if (peccErr || !peccUsers || peccUsers.length === 0) return [];
+    const peccIds = peccUsers.map((u: { id: string }) => u.id);
+    const mentorLists = await batchGetUserDataForKey<string[]>(peccIds, USER_DATA_PECC_MENTOR_IDS);
+    return (peccUsers as Array<{ id: string; mentor_id?: string | null; first_name?: string | null; last_name?: string | null; email?: string | null }>)
+      .filter((u) => {
+        const list = normalizeStringList(mentorLists.get(u.id));
+        return String(u.mentor_id || '').trim() === mentorUserId || list.includes(mentorUserId);
+      })
+      .map((u) => ({
+        id: u.id,
+        label: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || u.id),
+      }));
+  }, []);
+
   useEffect(() => {
     const c = detailContact;
     if (!c || !isPersonType(c.type)) {
-      setDetailSupervisorInfo({ mentorNames: [], managerNames: [] });
+      setDetailSupervisorInfo({ mentorLinks: [], managerLinks: [], peccLinks: [] });
       return;
     }
     let cancelled = false;
@@ -1363,7 +1424,7 @@ const AdminCRMPage: React.FC = () => {
         }
       }
       if (!resolvedUserId) {
-        if (!cancelled) setDetailSupervisorInfo({ mentorNames: [], managerNames: [] });
+        if (!cancelled) setDetailSupervisorInfo({ mentorLinks: [], managerLinks: [], peccLinks: [] });
         return;
       }
       const { data: userRow, error: userErr } = await supabase
@@ -1372,7 +1433,7 @@ const AdminCRMPage: React.FC = () => {
         .eq('id', resolvedUserId)
         .maybeSingle();
       if (cancelled || userErr || !userRow) {
-        if (!cancelled) setDetailSupervisorInfo({ mentorNames: [], managerNames: [] });
+        if (!cancelled) setDetailSupervisorInfo({ mentorLinks: [], managerLinks: [], peccLinks: [] });
         return;
       }
       const [mentorManagerIdsRaw, peccManagerIdsRaw, peccMentorIdsRaw] = await Promise.all([
@@ -1401,23 +1462,25 @@ const AdminCRMPage: React.FC = () => {
           .filter(Boolean)
       )];
       const lookupIds = [...new Set([...mentorIds, ...managerIds].map((id) => String(id || '').trim()).filter(Boolean))];
-      if (lookupIds.length === 0) {
-        setDetailSupervisorInfo({ mentorNames: [], managerNames: [] });
-        return;
-      }
-      const { data: lookupUsers } = await supabase.from('users').select('id, first_name, last_name, email').in('id', lookupIds);
+      const [lookupUsersRes, assignedPeccLinks] = await Promise.all([
+        lookupIds.length > 0
+          ? supabase.from('users').select('id, first_name, last_name, email').in('id', lookupIds)
+          : Promise.resolve({ data: [] as Array<{ id: string; first_name?: string | null; last_name?: string | null; email?: string | null }> }),
+        userRole === 'mentor' ? getAssignedPeccLinksForMentor(resolvedUserId) : Promise.resolve([] as AssignedPersonLink[]),
+      ]);
       if (cancelled) return;
-      const byId = new Map((lookupUsers || []).map((u: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null }) => {
+      const byId = new Map((lookupUsersRes.data || []).map((u: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null }) => {
         const label = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || '');
         return [u.id, label];
       }));
       setDetailSupervisorInfo({
-        mentorNames: mentorIds.map((id) => byId.get(id)).filter(Boolean) as string[],
-        managerNames: managerIds.map((id) => byId.get(id)).filter(Boolean) as string[],
+        mentorLinks: mentorIds.map((id) => ({ id, label: byId.get(id) || id })),
+        managerLinks: managerIds.map((id) => ({ id, label: byId.get(id) || id })),
+        peccLinks: assignedPeccLinks,
       });
     })();
     return () => { cancelled = true; };
-  }, [detailContact, detailContactUserId]);
+  }, [detailContact, detailContactUserId, getAssignedPeccLinksForMentor]);
 
   const openAssignmentDialog = useCallback(async () => {
     const c = detailContact;
@@ -1439,12 +1502,13 @@ const AdminCRMPage: React.FC = () => {
       setSaveError(`Failed to load assignment data: ${userErr?.message || 'Unknown error'}`);
       return;
     }
-    const [mentorManagerIdsRaw, peccManagerIdsRaw, peccMentorIdsRaw, managersRes, mentorsRes] = await Promise.all([
+    const [mentorManagerIdsRaw, peccManagerIdsRaw, peccMentorIdsRaw, managersRes, mentorsRes, peccUsersRes] = await Promise.all([
       getUserData<string[]>(resolvedUserId, USER_DATA_MENTOR_MANAGER_IDS),
       getUserData<string[]>(resolvedUserId, USER_DATA_PECC_DIRECT_MANAGER_IDS),
       getUserData<string[]>(resolvedUserId, USER_DATA_PECC_MENTOR_IDS),
       supabase.from('users').select('id, first_name, last_name, email').eq('role', 'manager').eq('is_active', true),
       supabase.from('users').select('id, first_name, last_name, email').eq('role', 'mentor').eq('is_active', true),
+      supabase.from('users').select('id, first_name, last_name, email').eq('role', 'pecc').eq('is_active', true),
     ]);
     const managerOptions = ((managersRes.data || []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; email?: string | null }>)
       .map((u) => ({
@@ -1452,6 +1516,11 @@ const AdminCRMPage: React.FC = () => {
         label: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || u.id),
       }));
     const mentorOptions = ((mentorsRes.data || []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; email?: string | null }>)
+      .map((u) => ({
+        id: u.id,
+        label: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || u.id),
+      }));
+    const peccOptions = ((peccUsersRes.data || []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; email?: string | null }>)
       .map((u) => ({
         id: u.id,
         label: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || u.id),
@@ -1464,14 +1533,20 @@ const AdminCRMPage: React.FC = () => {
       c.type === 'pecc'
         ? [...new Set([userRow.mentor_id, ...(Array.isArray(peccMentorIdsRaw) ? peccMentorIdsRaw : [])].map((id) => String(id || '').trim()).filter(Boolean))]
         : [];
+    const peccIds =
+      c.type === 'mentor'
+        ? (await getAssignedPeccLinksForMentor(resolvedUserId)).map((link) => link.id)
+        : [];
     setAssignmentRole(c.type);
     setAssignmentManagerOptions(managerOptions);
     setAssignmentMentorOptions(mentorOptions);
+    setAssignmentPeccOptions(peccOptions);
     setAssignmentManagerIds(managerIds);
     setAssignmentMentorIds(mentorIds);
+    setAssignmentPeccIds(peccIds);
     prepareModalOpen();
     setAssignmentDialogOpen(true);
-  }, [detailContact, detailContactUserId, prepareModalOpen]);
+  }, [detailContact, detailContactUserId, getAssignedPeccLinksForMentor, prepareModalOpen]);
 
   const saveAssignments = useCallback(async () => {
     const c = detailContact;
@@ -1484,6 +1559,7 @@ const AdminCRMPage: React.FC = () => {
     setAssignmentSaving(true);
     const managerIds = [...new Set(assignmentManagerIds.map((id) => String(id || '').trim()).filter(Boolean))];
     const mentorIds = [...new Set(assignmentMentorIds.map((id) => String(id || '').trim()).filter(Boolean))];
+    const peccIds = [...new Set(assignmentPeccIds.map((id) => String(id || '').trim()).filter(Boolean))];
     if (c.type === 'mentor') {
       const { error } = await supabase
         .from('users')
@@ -1498,9 +1574,34 @@ const AdminCRMPage: React.FC = () => {
         return;
       }
       await setUserData(resolvedUserId, USER_DATA_MENTOR_MANAGER_IDS, managerIds);
+      const { data: allPeccUsers } = await supabase.from('users').select('id, mentor_id').eq('role', 'pecc').eq('is_active', true);
+      const allPeccRows = (allPeccUsers || []) as Array<{ id: string; mentor_id?: string | null }>;
+      const allPeccIds = allPeccRows.map((row) => row.id);
+      const existingMentorLists = await batchGetUserDataForKey<string[]>(allPeccIds, USER_DATA_PECC_MENTOR_IDS);
+      const selectedPeccSet = new Set(peccIds);
+      await Promise.all(allPeccRows.map(async (peccRow) => {
+        const currentMentorIds = normalizeStringList(existingMentorLists.get(peccRow.id));
+        const currentlyAssigned = String(peccRow.mentor_id || '').trim() === resolvedUserId || currentMentorIds.includes(resolvedUserId);
+        const shouldAssign = selectedPeccSet.has(peccRow.id);
+        if (currentlyAssigned === shouldAssign) return;
+        const nextMentorIds = shouldAssign
+          ? [...new Set([resolvedUserId, ...currentMentorIds])]
+          : currentMentorIds.filter((id) => id !== resolvedUserId);
+        const nextPrimaryMentorId = shouldAssign
+          ? (String(peccRow.mentor_id || '').trim() || resolvedUserId)
+          : (String(peccRow.mentor_id || '').trim() === resolvedUserId ? (nextMentorIds[0] || null) : (String(peccRow.mentor_id || '').trim() || null));
+        if (String(peccRow.mentor_id || '').trim() !== String(nextPrimaryMentorId || '').trim()) {
+          await supabase
+            .from('users')
+            .update({ mentor_id: nextPrimaryMentorId, updated_at: new Date().toISOString() })
+            .eq('id', peccRow.id);
+        }
+        await setUserData(peccRow.id, USER_DATA_PECC_MENTOR_IDS, nextMentorIds);
+      }));
       setDetailSupervisorInfo((prev) => ({
         ...prev,
-        managerNames: managerIds.map((id) => assignmentManagerOptions.find((opt) => opt.id === id)?.label || id),
+        managerLinks: managerIds.map((id) => ({ id, label: assignmentManagerOptions.find((opt) => opt.id === id)?.label || id })),
+        peccLinks: peccIds.map((id) => ({ id, label: assignmentPeccOptions.find((opt) => opt.id === id)?.label || id })),
       }));
     } else {
       const { error } = await supabase
@@ -1521,13 +1622,14 @@ const AdminCRMPage: React.FC = () => {
         setUserData(resolvedUserId, USER_DATA_PECC_MENTOR_IDS, mentorIds),
       ]);
       setDetailSupervisorInfo({
-        managerNames: managerIds.map((id) => assignmentManagerOptions.find((opt) => opt.id === id)?.label || id),
-        mentorNames: mentorIds.map((id) => assignmentMentorOptions.find((opt) => opt.id === id)?.label || id),
+        managerLinks: managerIds.map((id) => ({ id, label: assignmentManagerOptions.find((opt) => opt.id === id)?.label || id })),
+        mentorLinks: mentorIds.map((id) => ({ id, label: assignmentMentorOptions.find((opt) => opt.id === id)?.label || id })),
+        peccLinks: [],
       });
     }
     setAssignmentSaving(false);
     setAssignmentDialogOpen(false);
-  }, [detailContact, detailContactUserId, assignmentManagerIds, assignmentMentorIds, assignmentManagerOptions, assignmentMentorOptions]);
+  }, [detailContact, detailContactUserId, assignmentManagerIds, assignmentMentorIds, assignmentPeccIds, assignmentManagerOptions, assignmentMentorOptions, assignmentPeccOptions]);
 
   const reassignManagerReferences = useCallback(async (removedManagerUserId: string, replacementManagerUserId: string | null) => {
     const removedId = String(removedManagerUserId || '').trim();
@@ -2249,6 +2351,53 @@ const AdminCRMPage: React.FC = () => {
     }
   };
 
+  const applyMentorPeccAssignments = useCallback(async (
+    contactType: ContactType,
+    resolvedUserId: string | null,
+    selectedMentorIds: string[],
+    selectedPeccIds: string[]
+  ) => {
+    if (!resolvedUserId || !isUuid(resolvedUserId)) return;
+
+    if (contactType === 'pecc') {
+      const mentorIds = [...new Set(selectedMentorIds.map((id) => String(id || '').trim()).filter(Boolean))];
+      await supabase
+        .from('users')
+        .update({ mentor_id: mentorIds[0] || null, updated_at: new Date().toISOString() })
+        .eq('id', resolvedUserId);
+      await setUserData(resolvedUserId, USER_DATA_PECC_MENTOR_IDS, mentorIds);
+      return;
+    }
+
+    if (contactType === 'mentor') {
+      const peccIds = [...new Set(selectedPeccIds.map((id) => String(id || '').trim()).filter(Boolean))];
+      const { data: allPeccUsers } = await supabase.from('users').select('id, mentor_id').eq('role', 'pecc').eq('is_active', true);
+      const allPeccRows = (allPeccUsers || []) as Array<{ id: string; mentor_id?: string | null }>;
+      const allPeccUserIds = allPeccRows.map((row) => row.id);
+      const existingMentorLists = await batchGetUserDataForKey<string[]>(allPeccUserIds, USER_DATA_PECC_MENTOR_IDS);
+      const selectedPeccSet = new Set(peccIds);
+      await Promise.all(allPeccRows.map(async (peccRow) => {
+        const currentMentorIds = normalizeStringList(existingMentorLists.get(peccRow.id));
+        const currentlyAssigned = String(peccRow.mentor_id || '').trim() === resolvedUserId || currentMentorIds.includes(resolvedUserId);
+        const shouldAssign = selectedPeccSet.has(peccRow.id);
+        if (currentlyAssigned === shouldAssign) return;
+        const nextMentorIds = shouldAssign
+          ? [...new Set([resolvedUserId, ...currentMentorIds])]
+          : currentMentorIds.filter((id) => id !== resolvedUserId);
+        const nextPrimaryMentorId = shouldAssign
+          ? (String(peccRow.mentor_id || '').trim() || resolvedUserId)
+          : (String(peccRow.mentor_id || '').trim() === resolvedUserId ? (nextMentorIds[0] || null) : (String(peccRow.mentor_id || '').trim() || null));
+        if (String(peccRow.mentor_id || '').trim() !== String(nextPrimaryMentorId || '').trim()) {
+          await supabase
+            .from('users')
+            .update({ mentor_id: nextPrimaryMentorId, updated_at: new Date().toISOString() })
+            .eq('id', peccRow.id);
+        }
+        await setUserData(peccRow.id, USER_DATA_PECC_MENTOR_IDS, nextMentorIds);
+      }));
+    }
+  }, []);
+
   const handleSaveContact = async (fromFullScreen = false) => {
     trackClick?.(editingContact ? 'CRM - Save contact (edit)' : 'CRM - Save contact (add)');
     if (['hospital', 'system', 'hiring_group'].includes(formData.type) && !(formData.name?.trim())) {
@@ -2304,6 +2453,13 @@ const AdminCRMPage: React.FC = () => {
       zip: formData.zip || undefined,
       ...(Object.keys(formData.customFields || {}).length ? { customFields: formData.customFields } : {})
     };
+    const selectedMentorIdsForSave = [...new Set((formData.assignedMentorIds ?? []).map((id) => String(id || '').trim()).filter(Boolean))];
+    const selectedPeccIdsForSave = [...new Set((formData.assignedPeccIds ?? []).map((id) => String(id || '').trim()).filter(Boolean))];
+    const shouldApplyAssignmentChanges =
+      (formData.type === 'pecc' && assignmentFieldsTouched.mentors) ||
+      (formData.type === 'mentor' && assignmentFieldsTouched.peccs);
+    let assignmentTargetUserId: string | null =
+      editingContact?.user_id && isUuid(editingContact.user_id) ? String(editingContact.user_id) : null;
     const customFieldValidationError = validateCustomFieldValues(
       customFieldDefs,
       formData.type,
@@ -2547,6 +2703,7 @@ const AdminCRMPage: React.FC = () => {
         }
         // Sync users.role and name so platform and CRM stay in sync (pairing stays by user_id; name reflects change)
         if (uid) {
+          assignmentTargetUserId = uid;
           const userUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
           const userRole = CONTACT_TYPE_TO_USER_ROLE[formData.type];
           if (userRole != null) {
@@ -2570,6 +2727,7 @@ const AdminCRMPage: React.FC = () => {
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
         setSaveError(null);
       } else if (isUserSourced && editingContact) {
+        if (editingContact.user_id && isUuid(editingContact.user_id)) assignmentTargetUserId = String(editingContact.user_id);
         // Sync users.role, is_admin, and name so platform and CRM stay in sync (pairing by user_id; name reflects change)
         if (editingContact.user_id && isUuid(editingContact.user_id)) {
           const userUpdates: Record<string, unknown> = {
@@ -2737,6 +2895,7 @@ const AdminCRMPage: React.FC = () => {
         if (userRole != null && formData.email?.trim()) {
           const { data: userRow } = await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle();
           if (userRow?.id) {
+            assignmentTargetUserId = String(userRow.id);
             await supabase.from('users').update({
               role: userRole,
               is_admin: formData.type === 'staff' ? effectiveStaffIsAdmin : false,
@@ -2798,6 +2957,7 @@ const AdminCRMPage: React.FC = () => {
             return;
           } else {
             const uid = pr.user_id;
+            assignmentTargetUserId = uid;
             const emailKey = emailTrim.toLowerCase();
             setContacts((prev) =>
               prev.map((c) =>
@@ -2814,6 +2974,14 @@ const AdminCRMPage: React.FC = () => {
           }
         }
       }
+    }
+
+    if (shouldApplyAssignmentChanges && (formData.type === 'pecc' || formData.type === 'mentor')) {
+      if (!assignmentTargetUserId && formData.email?.trim()) {
+        const { data: lookupUser } = await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle();
+        assignmentTargetUserId = lookupUser?.id ? String(lookupUser.id) : null;
+      }
+      await applyMentorPeccAssignments(formData.type, assignmentTargetUserId, selectedMentorIdsForSave, selectedPeccIdsForSave);
     }
 
     // When a person contact has cohort(s) assigned, sync cohort_members so they show in the cohort's Members list
@@ -2988,7 +3156,7 @@ const AdminCRMPage: React.FC = () => {
       setDialogOpen(false);
       setEditingContact(null);
     }
-    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false });
+    setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedMentorIds: [], assignedPeccIds: [] });
   };
 
   const openDetail = useCallback((c: Contact) => {
@@ -2996,6 +3164,13 @@ const AdminCRMPage: React.FC = () => {
     setDetailContact(c);
     setPanelOpen(true);
   }, [prepareModalOpen]);
+
+  const openContactByUserId = useCallback((userId: string) => {
+    const target = contacts.find((c) => isPersonType(c.type) && c.user_id === userId);
+    if (!target) return;
+    setFullScreenOpen(false);
+    openDetail(target);
+  }, [contacts, openDetail]);
 
   useEffect(() => {
     const crmContactId = searchParams.get('crmContact');
@@ -4218,7 +4393,7 @@ const AdminCRMPage: React.FC = () => {
               Manage custom fields
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); setSaveError(null); prepareModalOpen(); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedMentorIds: [], assignedPeccIds: [] }); setSaveError(null); prepareModalOpen(); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -4526,7 +4701,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedMentorIds: [], assignedPeccIds: [] }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -4612,7 +4787,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedMentorIds: [], assignedPeccIds: [] }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>
@@ -4669,7 +4844,7 @@ const AdminCRMPage: React.FC = () => {
         <MenuItem onClick={() => {
           if (detailContact) {
             setEditingContact(detailContact);
-            setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false });
+            setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false, assignedMentorIds: detailContact.type === 'pecc' ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: detailContact.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
             setAnchorEl(null);
             prepareModalOpen();
             queueUiTransition(() => {
@@ -5008,20 +5183,71 @@ const AdminCRMPage: React.FC = () => {
               })()}
               {(() => {
                 if (!isPersonType(detailContact.type)) return null;
-                const hasMentor = detailSupervisorInfo.mentorNames.length > 0;
-                const hasManagers = detailSupervisorInfo.managerNames.length > 0;
+                const hasMentor = detailSupervisorInfo.mentorLinks.length > 0;
+                const hasManagers = detailSupervisorInfo.managerLinks.length > 0;
+                const hasPeccs = detailContact.type === 'mentor' && detailSupervisorInfo.peccLinks.length > 0;
                 const canEditAssignments = detailContact.type === 'mentor' || detailContact.type === 'pecc';
-                if (!hasMentor && !hasManagers && !canEditAssignments) return null;
+                if (!hasMentor && !hasManagers && !hasPeccs && !canEditAssignments) return null;
                 return (
                   <>
                     {hasMentor && (
                       <ListItem disablePadding>
-                        <ListItemText primary="Assigned Mentor(s)" secondary={detailSupervisorInfo.mentorNames.join(', ')} />
+                        <ListItemText
+                          primary="Assigned Mentor(s)"
+                          secondary={
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {detailSupervisorInfo.mentorLinks.map((link) => (
+                                <Chip
+                                  key={link.id}
+                                  label={link.label}
+                                  size="small"
+                                  onClick={() => openContactByUserId(link.id)}
+                                  sx={{ cursor: 'pointer' }}
+                                />
+                              ))}
+                            </Box>
+                          }
+                        />
                       </ListItem>
                     )}
                     {hasManagers && (
                       <ListItem disablePadding>
-                        <ListItemText primary="Assigned Manager(s)" secondary={detailSupervisorInfo.managerNames.join(', ')} />
+                        <ListItemText
+                          primary="Assigned Manager(s)"
+                          secondary={
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {detailSupervisorInfo.managerLinks.map((link) => (
+                                <Chip
+                                  key={link.id}
+                                  label={link.label}
+                                  size="small"
+                                  onClick={() => openContactByUserId(link.id)}
+                                  sx={{ cursor: 'pointer' }}
+                                />
+                              ))}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    )}
+                    {hasPeccs && (
+                      <ListItem disablePadding>
+                        <ListItemText
+                          primary="Assigned PECC(s)"
+                          secondary={
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {detailSupervisorInfo.peccLinks.map((link) => (
+                                <Chip
+                                  key={link.id}
+                                  label={link.label}
+                                  size="small"
+                                  onClick={() => openContactByUserId(link.id)}
+                                  sx={{ cursor: 'pointer' }}
+                                />
+                              ))}
+                            </Box>
+                          }
+                        />
                       </ListItem>
                     )}
                     {canEditAssignments && (
@@ -5124,7 +5350,7 @@ const AdminCRMPage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false, assignedMentorIds: c.type === 'pecc' ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: c.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
                   setEditingContact(c);
                   setPanelOpen(false);
                   prepareModalOpen();
@@ -5308,6 +5534,42 @@ const AdminCRMPage: React.FC = () => {
                     <Grid item xs={12}>
                       <Autocomplete multiple size="small" options={contacts.filter(c => c.type === 'hospital' && c.hospitalId).map(c => ({ id: c.hospitalId!, label: ((c.organization || c.hospitalSystem || '').trim()) ? `${(c.organization || c.hospitalSystem || '').trim()} – ${c.name}` : c.name }))} filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)} value={formData.linkedHospitalIds.map(id => contacts.find(c => c.hospitalId === id || c.id === id)).filter(Boolean).map(c => ({ id: c!.hospitalId || c!.id, label: ((c!.organization || c!.hospitalSystem || '').trim()) ? `${(c!.organization || c!.hospitalSystem || '').trim()} – ${c!.name}` : c!.name }))} getOptionLabel={(opt) => opt.label} isOptionEqualToValue={(a, b) => a.id === b.id} onChange={(_, arr) => setFormData(prev => ({ ...prev, linkedHospitalIds: arr.map(x => x.id) }))} renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />} />
                     </Grid>
+                    {formData.type === 'pecc' && (
+                      <Grid item xs={12}>
+                        <Autocomplete
+                          multiple
+                          size="small"
+                          options={mentorAssignmentOptions}
+                          value={mentorAssignmentOptions.filter((opt) => (formData.assignedMentorIds ?? []).includes(opt.id))}
+                          onChange={(_, values) => {
+                            setAssignmentFieldsTouched((prev) => ({ ...prev, mentors: true }));
+                            setFormData((prev) => ({ ...prev, assignedMentorIds: values.map((v) => v.id) }));
+                          }}
+                          getOptionLabel={(opt) => opt.label}
+                          isOptionEqualToValue={(a, b) => a.id === b.id}
+                          filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                          renderInput={(params) => <TextField {...params} label="Assigned Mentor(s)" placeholder="Search mentor..." />}
+                        />
+                      </Grid>
+                    )}
+                    {formData.type === 'mentor' && (
+                      <Grid item xs={12}>
+                        <Autocomplete
+                          multiple
+                          size="small"
+                          options={peccAssignmentOptions}
+                          value={peccAssignmentOptions.filter((opt) => (formData.assignedPeccIds ?? []).includes(opt.id))}
+                          onChange={(_, values) => {
+                            setAssignmentFieldsTouched((prev) => ({ ...prev, peccs: true }));
+                            setFormData((prev) => ({ ...prev, assignedPeccIds: values.map((v) => v.id) }));
+                          }}
+                          getOptionLabel={(opt) => opt.label}
+                          isOptionEqualToValue={(a, b) => a.id === b.id}
+                          filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                          renderInput={(params) => <TextField {...params} label="Assigned PECC(s)" placeholder="Search PECC..." />}
+                        />
+                      </Grid>
+                    )}
                     {formData.type === 'staff' && canGrantPlatformAdminAccess && (
                     <Grid item xs={12}>
                       <FormControlLabel
@@ -5546,11 +5808,65 @@ const AdminCRMPage: React.FC = () => {
                     <ListItem disablePadding><ListItemText primary="Region" secondary={detailDisplay.region} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="State" secondary={detailDisplay.state} /></ListItem>
                     <ListItem disablePadding><ListItemText primary="Status" secondary={detailContact.status} /></ListItem>
-                    {isPersonType(detailContact.type) && detailSupervisorInfo.mentorNames.length > 0 && (
-                      <ListItem disablePadding><ListItemText primary="Assigned Mentor(s)" secondary={detailSupervisorInfo.mentorNames.join(', ')} /></ListItem>
+                    {isPersonType(detailContact.type) && detailSupervisorInfo.mentorLinks.length > 0 && (
+                      <ListItem disablePadding>
+                        <ListItemText
+                          primary="Assigned Mentor(s)"
+                          secondary={
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {detailSupervisorInfo.mentorLinks.map((link) => (
+                                <Chip
+                                  key={link.id}
+                                  size="small"
+                                  label={link.label}
+                                  onClick={() => openContactByUserId(link.id)}
+                                  sx={{ cursor: 'pointer' }}
+                                />
+                              ))}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
                     )}
-                    {isPersonType(detailContact.type) && detailSupervisorInfo.managerNames.length > 0 && (
-                      <ListItem disablePadding><ListItemText primary="Assigned Manager(s)" secondary={detailSupervisorInfo.managerNames.join(', ')} /></ListItem>
+                    {isPersonType(detailContact.type) && detailSupervisorInfo.managerLinks.length > 0 && (
+                      <ListItem disablePadding>
+                        <ListItemText
+                          primary="Assigned Manager(s)"
+                          secondary={
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {detailSupervisorInfo.managerLinks.map((link) => (
+                                <Chip
+                                  key={link.id}
+                                  size="small"
+                                  label={link.label}
+                                  onClick={() => openContactByUserId(link.id)}
+                                  sx={{ cursor: 'pointer' }}
+                                />
+                              ))}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    )}
+                    {detailContact.type === 'mentor' && detailSupervisorInfo.peccLinks.length > 0 && (
+                      <ListItem disablePadding>
+                        <ListItemText
+                          primary="Assigned PECC(s)"
+                          secondary={
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {detailSupervisorInfo.peccLinks.map((link) => (
+                                <Chip
+                                  key={link.id}
+                                  size="small"
+                                  label={link.label}
+                                  onClick={() => openContactByUserId(link.id)}
+                                  sx={{ cursor: 'pointer' }}
+                                />
+                              ))}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
                     )}
                     {(detailContact.type === 'mentor' || detailContact.type === 'pecc') && (
                       <ListItem disablePadding sx={{ pt: 0.5 }}>
@@ -5812,7 +6128,7 @@ const AdminCRMPage: React.FC = () => {
                 <Box sx={{ mt: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                     const c = detailContact;
-                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
+                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false, assignedMentorIds: c.type === 'pecc' ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: c.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
                     setEditingContact(c);
                     setFullScreenEditMode(true);
                   }}>
@@ -6032,51 +6348,52 @@ const AdminCRMPage: React.FC = () => {
         <DialogTitle>Edit Assignments</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-            <Button size="small" onClick={() => { setAssignmentManagerIds([]); if (assignmentRole === 'pecc') setAssignmentMentorIds([]); }} disabled={assignmentSaving}>
+            <Button size="small" onClick={() => { setAssignmentManagerIds([]); setAssignmentMentorIds([]); setAssignmentPeccIds([]); }} disabled={assignmentSaving}>
               Clear all assignments
             </Button>
           </Box>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Assigned Manager(s)</InputLabel>
-                <Select
-                  multiple
-                  value={assignmentManagerIds}
-                  onChange={(e) => setAssignmentManagerIds(e.target.value as string[])}
-                  label="Assigned Manager(s)"
-                  renderValue={(selected) =>
-                    (selected as string[])
-                      .map((id) => assignmentManagerOptions.find((opt) => opt.id === id)?.label || id)
-                      .join(', ')
-                  }
-                >
-                  {assignmentManagerOptions.map((opt) => (
-                    <MenuItem key={opt.id} value={opt.id}>{opt.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Autocomplete
+                multiple
+                size="small"
+                options={assignmentManagerOptions}
+                value={assignmentManagerOptions.filter((opt) => assignmentManagerIds.includes(opt.id))}
+                onChange={(_, values) => setAssignmentManagerIds(values.map((v) => v.id))}
+                getOptionLabel={(opt) => opt.label}
+                isOptionEqualToValue={(a, b) => a.id === b.id}
+                filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                renderInput={(params) => <TextField {...params} label="Assigned Manager(s)" placeholder="Search manager..." />}
+              />
             </Grid>
             {assignmentRole === 'pecc' && (
               <Grid item xs={12}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Assigned Mentor(s)</InputLabel>
-                  <Select
-                    multiple
-                    value={assignmentMentorIds}
-                    onChange={(e) => setAssignmentMentorIds(e.target.value as string[])}
-                    label="Assigned Mentor(s)"
-                    renderValue={(selected) =>
-                      (selected as string[])
-                        .map((id) => assignmentMentorOptions.find((opt) => opt.id === id)?.label || id)
-                        .join(', ')
-                    }
-                  >
-                    {assignmentMentorOptions.map((opt) => (
-                      <MenuItem key={opt.id} value={opt.id}>{opt.label}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={assignmentMentorOptions}
+                  value={assignmentMentorOptions.filter((opt) => assignmentMentorIds.includes(opt.id))}
+                  onChange={(_, values) => setAssignmentMentorIds(values.map((v) => v.id))}
+                  getOptionLabel={(opt) => opt.label}
+                  isOptionEqualToValue={(a, b) => a.id === b.id}
+                  filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                  renderInput={(params) => <TextField {...params} label="Assigned Mentor(s)" placeholder="Search mentor..." />}
+                />
+              </Grid>
+            )}
+            {assignmentRole === 'mentor' && (
+              <Grid item xs={12}>
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={assignmentPeccOptions}
+                  value={assignmentPeccOptions.filter((opt) => assignmentPeccIds.includes(opt.id))}
+                  onChange={(_, values) => setAssignmentPeccIds(values.map((v) => v.id))}
+                  getOptionLabel={(opt) => opt.label}
+                  isOptionEqualToValue={(a, b) => a.id === b.id}
+                  filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                  renderInput={(params) => <TextField {...params} label="Assigned PECC(s)" placeholder="Search PECC..." />}
+                />
               </Grid>
             )}
           </Grid>
@@ -6219,6 +6536,42 @@ const AdminCRMPage: React.FC = () => {
                     renderInput={(params) => <TextField {...params} label="Linked hospitals (by organization)" placeholder="Type to search (e.g. Riley, Memorial)" />}
                   />
                 </Grid>
+                {formData.type === 'pecc' && (
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      multiple
+                      size="small"
+                      options={mentorAssignmentOptions}
+                      value={mentorAssignmentOptions.filter((opt) => (formData.assignedMentorIds ?? []).includes(opt.id))}
+                      onChange={(_, values) => {
+                        setAssignmentFieldsTouched((prev) => ({ ...prev, mentors: true }));
+                        setFormData((prev) => ({ ...prev, assignedMentorIds: values.map((v) => v.id) }));
+                      }}
+                      getOptionLabel={(opt) => opt.label}
+                      isOptionEqualToValue={(a, b) => a.id === b.id}
+                      filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                      renderInput={(params) => <TextField {...params} label="Assigned Mentor(s)" placeholder="Search mentor..." />}
+                    />
+                  </Grid>
+                )}
+                {formData.type === 'mentor' && (
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      multiple
+                      size="small"
+                      options={peccAssignmentOptions}
+                      value={peccAssignmentOptions.filter((opt) => (formData.assignedPeccIds ?? []).includes(opt.id))}
+                      onChange={(_, values) => {
+                        setAssignmentFieldsTouched((prev) => ({ ...prev, peccs: true }));
+                        setFormData((prev) => ({ ...prev, assignedPeccIds: values.map((v) => v.id) }));
+                      }}
+                      getOptionLabel={(opt) => opt.label}
+                      isOptionEqualToValue={(a, b) => a.id === b.id}
+                      filterOptions={(opts, { inputValue }) => filterOptionsBySearch(opts, inputValue)}
+                      renderInput={(params) => <TextField {...params} label="Assigned PECC(s)" placeholder="Search PECC..." />}
+                    />
+                  </Grid>
+                )}
               </>
             ) : (
               <>
