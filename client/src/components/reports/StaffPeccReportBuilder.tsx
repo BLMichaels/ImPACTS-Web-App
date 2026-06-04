@@ -401,17 +401,25 @@ function summarizeActivityMetrics(value: unknown): {
       last30Count += 1;
       if (Number.isFinite(raw)) last30Hours += raw;
     }
-    const category = String(
+    const categoriesRaw = (entry as { categories?: unknown })?.categories;
+    const normalizedCategories = Array.isArray(categoriesRaw)
+      ? [...new Set(categoriesRaw.map((v) => String(v || '').trim()).filter(Boolean))]
+      : [];
+    const legacyCategory = String(
       (entry as { category?: unknown; activityType?: unknown; activityName?: unknown })?.category ||
       (entry as { activityType?: unknown })?.activityType ||
       (entry as { activityName?: unknown })?.activityName ||
-      'Uncategorized'
+      ''
     ).trim();
-    const key = category || 'Uncategorized';
-    const prev = agg.get(key) || { count: 0, hours: 0 };
-    prev.count += 1;
-    if (Number.isFinite(raw)) prev.hours += raw;
-    agg.set(key, prev);
+    const buckets = normalizedCategories.length > 0
+      ? normalizedCategories
+      : [legacyCategory || 'Uncategorized'];
+    buckets.forEach((key) => {
+      const prev = agg.get(key) || { count: 0, hours: 0 };
+      prev.count += 1;
+      if (Number.isFinite(raw)) prev.hours += raw;
+      agg.set(key, prev);
+    });
   });
   const byCategory = [...agg.entries()]
     .sort((a, b) => b[1].hours - a[1].hours || b[1].count - a[1].count)

@@ -135,6 +135,19 @@ const SnapshotPage = () => {
     const parsed = parseActivityDate(dateValue);
     return parsed ? parsed.getTime() : 0;
   };
+  const getActivityCategories = (activity: any): string[] => {
+    if (Array.isArray(activity?.categories)) {
+      const next = (activity.categories as unknown[])
+        .map((v: unknown) => String(v || '').trim())
+        .filter((v: string) => Boolean(v)) as string[];
+      if (next.length > 0) return [...new Set(next)];
+    }
+    const single = String(activity?.category || '').trim();
+    return single ? [single] : [];
+  };
+  const hasActivityCategory = (activity: any, category: string): boolean => getActivityCategories(activity).includes(category);
+  const displayActivityCategories = (activity: any): string =>
+    getActivityCategories(activity).join(', ') || 'Uncategorized';
 
   // Load all data for snapshot. When PRS section is hidden, do not load readiness scores or PRS questions.
   useEffect(() => {
@@ -512,7 +525,11 @@ const SnapshotPage = () => {
         currentY = addSectionHeader('Activity Category Distribution', currentY + 10);
         
         const activityCategories = activities.reduce((acc, activity) => {
-          acc[activity.category] = (acc[activity.category] || 0) + 1;
+          const categories = getActivityCategories(activity);
+          if (categories.length === 0) categories.push('Uncategorized');
+          categories.forEach((category) => {
+            acc[category] = (acc[category] || 0) + 1;
+          });
           return acc;
         }, {} as Record<string, number>);
         
@@ -616,14 +633,14 @@ const SnapshotPage = () => {
             doc.setTextColor(108, 117, 125);
             
             // Wrap activity details to fit page width
-            const detailsText = `${activity.date} - ${activity.category || (Array.isArray(activity.categories) ? activity.categories.join(', ') : '')}${activity.submitted_by ? ` - Entered by: ${activitySubmitterById[activity.submitted_by] || activity.submitted_by}` : ''}`;
+            const detailsText = `${activity.date} - ${displayActivityCategories(activity)}${activity.submitted_by ? ` - Entered by: ${activitySubmitterById[activity.submitted_by] || activity.submitted_by}` : ''}`;
             const detailsY = addWrappedText(detailsText, margin + 10, currentY + 5, pageWidth - margin * 2 - 10, 9);
             currentY = detailsY + 5;
           }
         });
         
         // Page 4: Simulation Analytics & Participant Data
-        if (activities.filter(a => a.category === 'Simulation Facilitation').length > 0) {
+        if (activities.filter((a) => hasActivityCategory(a, 'Simulation Facilitation')).length > 0) {
           doc.addPage();
           currentY = titleY;
           
@@ -633,13 +650,13 @@ const SnapshotPage = () => {
           currentY = addSectionHeader('Simulations by Type', currentY + 10);
           
           const simulationTypes = Array.from(new Set(activities
-            .filter(a => a.category === 'Simulation Facilitation')
+            .filter((a) => hasActivityCategory(a, 'Simulation Facilitation'))
             .map(a => a.simulation || 'Other')));
           
           if (simulationTypes.length > 0) {
             const simTypeData = simulationTypes.map(simType => {
               const count = activities.filter(a => 
-                a.category === 'Simulation Facilitation' && 
+                hasActivityCategory(a, 'Simulation Facilitation') &&
                 (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
               ).length;
               return {
@@ -659,7 +676,7 @@ const SnapshotPage = () => {
           if (simulationTypes.length > 0) {
             const participantData = simulationTypes.map(simType => {
               const simActivities = activities.filter(a => 
-                a.category === 'Simulation Facilitation' && 
+                hasActivityCategory(a, 'Simulation Facilitation') &&
                 (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
               );
               const totalParticipants = simActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
@@ -678,7 +695,7 @@ const SnapshotPage = () => {
             
             simulationTypes.forEach(simType => {
               const simActivities = activities.filter(a => 
-                a.category === 'Simulation Facilitation' && 
+                hasActivityCategory(a, 'Simulation Facilitation') &&
                 (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
               );
               const totalParticipants = simActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
@@ -831,12 +848,15 @@ const SnapshotPage = () => {
         
         if (activities.length > 0) {
           const categoryStats = activities.reduce((acc, activity) => {
-            const category = activity.category;
-            if (!acc[category]) {
-              acc[category] = { count: 0, hours: 0 };
-            }
-            acc[category].count += 1;
-            acc[category].hours += activity.hours || 0;
+            const categories = getActivityCategories(activity);
+            if (categories.length === 0) categories.push('Uncategorized');
+            categories.forEach((category) => {
+              if (!acc[category]) {
+                acc[category] = { count: 0, hours: 0 };
+              }
+              acc[category].count += 1;
+              acc[category].hours += activity.hours || 0;
+            });
             return acc;
           }, {} as Record<string, { count: number; hours: number }>);
           
@@ -1401,7 +1421,7 @@ const SnapshotPage = () => {
                           {a.activity || a.title || 'Activity'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {a.date} • {(a.category || (Array.isArray(a.categories) ? a.categories.join(', ') : 'Uncategorized'))}
+                          {a.date} • {displayActivityCategories(a)}
                         </Typography>
                         {a.submitted_by && (
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -1438,17 +1458,17 @@ const SnapshotPage = () => {
                     Simulations by Type
                   </Typography>
                   <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', justifyContent: 'center', gap: 2, px: 2 }}>
-                    {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
+                    {activities.filter((a) => hasActivityCategory(a, 'Simulation Facilitation')).length > 0 ? (
                       <>
                         {Array.from(new Set(activities
-                          .filter(a => a.category === 'Simulation Facilitation')
+                          .filter((a) => hasActivityCategory(a, 'Simulation Facilitation'))
                           .map(a => a.simulation || 'Other')))
                           .map(simType => {
                             const count = activities.filter(a => 
-                              a.category === 'Simulation Facilitation' && 
+                              hasActivityCategory(a, 'Simulation Facilitation') &&
                               (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
                             ).length;
-                            const totalSims = activities.filter(a => a.category === 'Simulation Facilitation').length;
+                            const totalSims = activities.filter((a) => hasActivityCategory(a, 'Simulation Facilitation')).length;
                             const percentage = (count / totalSims) * 100;
                             const maxHeight = 200; // Maximum height for the tallest bar
                             const barHeight = (percentage / 100) * maxHeight;
@@ -1519,14 +1539,14 @@ const SnapshotPage = () => {
                     Simulation Participants
                   </Typography>
                   <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', justifyContent: 'center', gap: 2, px: 2 }}>
-                    {activities.filter(a => a.category === 'Simulation Facilitation').length > 0 ? (
+                    {activities.filter((a) => hasActivityCategory(a, 'Simulation Facilitation')).length > 0 ? (
                       <>
                         {Array.from(new Set(activities
-                          .filter(a => a.category === 'Simulation Facilitation')
+                          .filter((a) => hasActivityCategory(a, 'Simulation Facilitation'))
                           .map(a => a.simulation || 'Other')))
                           .map(simType => {
                             const simActivities = activities.filter(a => 
-                              a.category === 'Simulation Facilitation' && 
+                              hasActivityCategory(a, 'Simulation Facilitation') &&
                               (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
                             );
                             const totalParticipants = simActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
@@ -1534,11 +1554,11 @@ const SnapshotPage = () => {
                             
                             // Find the maximum participants to scale the bars appropriately
                             const allSimTypes = Array.from(new Set(activities
-                              .filter(a => a.category === 'Simulation Facilitation')
+                              .filter((a) => hasActivityCategory(a, 'Simulation Facilitation'))
                               .map(a => a.simulation || 'Other')));
                             const maxParticipants = Math.max(...allSimTypes.map(type => {
                               const typeActivities = activities.filter(a => 
-                                a.category === 'Simulation Facilitation' && 
+                                hasActivityCategory(a, 'Simulation Facilitation') &&
                                 (a.simulation === type || (a.simulation === undefined && type === 'Other'))
                               );
                               return typeActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
@@ -1870,8 +1890,15 @@ const SnapshotPage = () => {
               <Box sx={{ mt: 2 }}>
                 {activities.length > 0 ? (
                   <>
-                    {Array.from(new Set(activities.map(a => a.category))).map(category => {
-                      const count = activities.filter(a => a.category === category).length;
+                    {Array.from(new Set(activities.flatMap((a) => {
+                      const categories = getActivityCategories(a);
+                      return categories.length > 0 ? categories : ['Uncategorized'];
+                    }))).map(category => {
+                      const count = activities.filter((a) => {
+                        const categories = getActivityCategories(a);
+                        if (categories.length === 0) return category === 'Uncategorized';
+                        return categories.includes(category);
+                      }).length;
                       const percentage = (count / activities.length) * 100;
                       return (
                         <Box key={category} sx={{ mb: 2 }}>
