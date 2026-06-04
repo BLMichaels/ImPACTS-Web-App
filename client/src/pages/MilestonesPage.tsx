@@ -23,26 +23,17 @@ import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage, writeContinuityData } from '../utils/userData';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml, stripHtmlToText } from '../components/cohorts/RichTextEditor';
-
-type ChecklistEntryType = 'task' | 'banner' | 'footnote' | 'subnote' | 'divider';
+import {
+  decodeChecklistEntry,
+  isValidHexColor,
+  type ChecklistEntryType,
+} from '../utils/checklistEntries';
 const DEFAULT_STAGE_PALETTE: Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string> = {
   stage1: '#2196F3',
   stage2: '#4CAF50',
   stage3: '#FF9800',
   stage4: '#9C27B0'
 };
-
-function isValidHexColor(value: string): boolean {
-  return /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(String(value || '').trim());
-}
-
-function decodeEntry(text: string): { type: ChecklistEntryType; content: string; color_hex?: string } {
-  const m = String(text || '').match(/^\[\[ENTRY:(task|banner|footnote|subnote|divider)(?:;color=(#[0-9a-fA-F]{3,6}))?\]\]/i);
-  if (!m) return { type: 'task', content: text || '' };
-  const type = m[1].toLowerCase() as ChecklistEntryType;
-  const colorHex = m[2] && isValidHexColor(m[2]) ? m[2] : undefined;
-  return { type, content: String(text || '').slice(m[0].length), color_hex: colorHex };
-}
 
 interface MilestoneTask {
   id: string;
@@ -544,7 +535,7 @@ const MilestonesPage = () => {
       program_checklist_name: checklist.name,
       program_checklist_first_stage: stageIndex === 0,
                 tasks: (stage.tasks || []).map((t: { task_id_suffix: string; text_content: string; links?: Array<{ text: string; url: string }> }) => {
-                  const decoded = decodeEntry(t.text_content);
+                  const decoded = decodeChecklistEntry(t.text_content);
                   return {
                     id: `program:${checklist.id}:${stage.id}.${t.task_id_suffix}`,
                     text: decoded.content,

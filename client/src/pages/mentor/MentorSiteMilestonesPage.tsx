@@ -21,7 +21,8 @@ import {
   MenuItem,
   Chip,
   LinearProgress,
-  ButtonGroup
+  ButtonGroup,
+  Divider
 } from '@mui/material';
 import {
   MoreVert as MoreIcon,
@@ -54,7 +55,12 @@ import {
 } from '../../utils/mentorPeccHospitalMatch';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
-import { sanitizeHtml } from '../../components/cohorts/RichTextEditor';
+import { sanitizeHtml, stripHtmlToText } from '../../components/cohorts/RichTextEditor';
+import {
+  decodeChecklistEntry,
+  isValidHexColor,
+  type ChecklistEntryType,
+} from '../../utils/checklistEntries';
 
 // Interfaces matching MilestonesPage
 interface MilestoneTask {
@@ -62,6 +68,8 @@ interface MilestoneTask {
   text: string;
   completed: boolean;
   links?: { text: string; url: string; }[];
+  entry_type?: ChecklistEntryType;
+  entry_color?: string;
 }
 
 interface MilestoneStage {
@@ -71,7 +79,19 @@ interface MilestoneStage {
   objectives: string[];
   goal: string;
   tasks: MilestoneTask[];
+  color_hex?: string | null;
+  program_checklist_name?: string | null;
+  program_checklist_first_stage?: boolean;
 }
+
+const isActionableChecklistTask = (task: MilestoneTask) => (task.entry_type ?? 'task') === 'task';
+
+type MilestoneTableRow =
+  | { type: 'checklist_header'; checklistName: string }
+  | { type: 'stage'; stageId: string; stageTitle: string; stage: MilestoneStage }
+  | { type: 'task'; stageId: string; taskId: string; task: MilestoneTask }
+  | { type: 'entry'; stageId: string; task: MilestoneTask }
+  | { type: 'completion'; stageId: string; stageTitle: string; stage: MilestoneStage };
 
 interface Hospital {
   id: string;
@@ -300,38 +320,55 @@ const DEFAULT_STAGES: MilestoneStage[] = [
   }
 ];
 
-// Helper to render task text with links or HTML
-const renderTaskText = (task: MilestoneTask) => {
-  if (task.text && task.text.includes('<')) {
+const richTextSx = {
+  fontSize: '0.8rem',
+  lineHeight: 1.45,
+  '& p': { my: 0.25 },
+  '& ul, & ol': { my: 0.35, pl: 2.25 },
+  '& strong': { fontWeight: 600 },
+};
+
+const renderRichContent = (htmlOrText: string, sx?: Record<string, unknown>) => {
+  if (htmlOrText.includes('<')) {
     return (
-      <Typography variant="body2" sx={{ fontSize: '0.75rem', lineHeight: 1.3 }} component="span">
-        <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }} />
+      <Box
+        sx={{ ...richTextSx, ...sx }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(htmlOrText) }}
+      />
+    );
+  }
+  return (
+    <Typography variant="body2" sx={{ ...richTextSx, ...sx }} component="div">
+      {htmlOrText}
+    </Typography>
+  );
+};
+
+const renderTaskLabel = (task: MilestoneTask) => {
+  if (task.text && task.text.includes('<')) {
+    return renderRichContent(task.text, { fontWeight: 500 });
+  }
+  if (!task.links || task.links.length === 0) {
+    return (
+      <Typography variant="body2" sx={{ ...richTextSx, fontWeight: 500 }}>
+        {task.text}
       </Typography>
     );
   }
-  if (!task.links || task.links.length === 0) {
-    return <Typography variant="body2" sx={{ fontSize: '0.75rem', lineHeight: 1.3 }}>{task.text}</Typography>;
-  }
 
-  let text = task.text;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
-
   task.links.forEach((link, idx) => {
-    const linkIndex = text.indexOf(link.text, lastIndex);
+    const linkIndex = task.text.indexOf(link.text, lastIndex);
     if (linkIndex !== -1) {
-      // Add text before link
-      if (linkIndex > lastIndex) {
-        parts.push(text.substring(lastIndex, linkIndex));
-      }
-      // Add link
+      if (linkIndex > lastIndex) parts.push(task.text.substring(lastIndex, linkIndex));
       parts.push(
         <Link
           key={idx}
           href={link.url}
           target="_blank"
           rel="noopener noreferrer"
-          sx={{ fontSize: '0.75rem', textDecoration: 'underline' }}
+          sx={{ fontSize: '0.8rem', fontWeight: 500 }}
         >
           {link.text}
         </Link>
@@ -339,14 +376,82 @@ const renderTaskText = (task: MilestoneTask) => {
       lastIndex = linkIndex + link.text.length;
     }
   });
+  if (lastIndex < task.text.length) parts.push(task.text.substring(lastIndex));
 
-  // Add remaining text
-  if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex));
+  return (
+    <Typography variant="body2" sx={{ ...richTextSx, fontWeight: 500 }}>
+      {parts}
+    </Typography>
+  );
+};
+
+const renderDecorativeEntry = (task: MilestoneTask, stageColor: string) => {
+  const entryType = task.entry_type ?? 'task';
+  const accent =
+    task.entry_color && isValidHexColor(task.entry_color) ? task.entry_color : stageColor;
+  const accentBg = `${accent}14`;
+
+  if (entryType === 'divider') {
+    return (
+      <Box sx={{ py: 0.75 }}>
+        <Divider sx={{ borderColor: 'divider' }} />
+      </Box>
+    );
   }
 
-  return <Typography variant="body2" sx={{ fontSize: '0.75rem', lineHeight: 1.3 }}>{parts}</Typography>;
+  if (entryType === 'banner') {
+    return (
+      <Box
+        sx={{
+          px: 1.25,
+          py: 1,
+          borderRadius: 1,
+          bgcolor: accentBg,
+          borderLeft: `4px solid ${accent}`,
+        }}
+      >
+        {renderRichContent(task.text, { fontWeight: 700, color: accent })}
+      </Box>
+    );
+  }
+
+  if (entryType === 'subnote') {
+    return (
+      <Box
+        sx={{
+          pl: 1.5,
+          py: 0.75,
+          borderLeft: `3px solid ${accent}`,
+          bgcolor: accentBg,
+          borderRadius: '0 4px 4px 0',
+        }}
+      >
+        {renderRichContent(task.text, { fontWeight: 600, color: 'text.primary' })}
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        px: 1,
+        py: 0.65,
+        bgcolor: 'grey.50',
+        borderRadius: 1,
+        border: '1px solid',
+        borderColor: 'grey.200',
+      }}
+    >
+      {renderRichContent(task.text, {
+        fontSize: '0.72rem',
+        color: 'text.secondary',
+        fontStyle: 'italic',
+      })}
+    </Box>
+  );
 };
+
+const formatStageLabel = (stage: MilestoneStage) => stripHtmlToText(stage.title || '').trim() || 'Stage';
 
 const MentorSiteMilestonesPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -720,22 +825,32 @@ const MentorSiteMilestonesPage: React.FC = () => {
                 }));
                 return { ...c, stages: stagesWithTasks };
               }));
-              const toMilestoneStage = (checklist: any, stage: any): MilestoneStage => ({
+              const toMilestoneStage = (checklist: any, stage: any, stageIndex: number): MilestoneStage => ({
                 id: stage.id,
                 title: stage.title,
                 subtitle: stage.subtitle || '',
                 objectives: Array.isArray(stage.objectives) ? stage.objectives : [],
                 goal: stage.goal || '',
-                tasks: (stage.tasks || []).map((t: any) => ({
-                  id: `program:${checklist.id}:${stage.id}.${t.task_id_suffix}`,
-                  text: t.text_content,
-                  completed: false,
-                  links: t.links || []
-                }))
+                color_hex: stage.color_hex || null,
+                program_checklist_name: String(checklist.title || checklist.name || 'Program Checklist'),
+                program_checklist_first_stage: stageIndex === 0,
+                tasks: (stage.tasks || []).map((t: any) => {
+                  const decoded = decodeChecklistEntry(String(t.text_content || ''));
+                  return {
+                    id: `program:${checklist.id}:${stage.id}.${t.task_id_suffix}`,
+                    text: decoded.content,
+                    entry_type: decoded.type,
+                    entry_color: decoded.color_hex,
+                    completed: false,
+                    links: t.links || [],
+                  };
+                }),
               });
               withStages.forEach((c: any) => {
                 const rawStages = Array.isArray(c.stages) ? c.stages : [];
-                const stagesWithProgress = rawStages.map((s: any) => toMilestoneStage(c, s)).map((s: MilestoneStage) => ({
+                const stagesWithProgress = rawStages
+                  .map((s: any, stageIndex: number) => toMilestoneStage(c, s, stageIndex))
+                  .map((s: MilestoneStage) => ({
                   ...s,
                   tasks: s.tasks.map((t: MilestoneTask) => ({
                     ...t,
@@ -758,7 +873,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
         const stageCompletions: Record<string, StageCompletion> = {};
         allStageSets.forEach(stage => {
-          const taskIds = stage.tasks.map(t => t.id);
+          const taskIds = stage.tasks.filter(isActionableChecklistTask).map(t => t.id);
           const allComplete = taskIds.length > 0 && taskIds.every(tid => completedByTask[tid]?.completed);
           const dates = taskIds.map(tid => completedByTask[tid]?.completed_at).filter(Boolean) as string[];
           const completionDate = dates.length > 0 ? dates.sort().pop()!.slice(0, 10) : null;
@@ -952,7 +1067,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const newStageCompletions = { ...hospital.stageCompletions };
     const stage = updatedStages.find(s => s.id === stageId);
     if (stage) {
-      const allComplete = stage.tasks.every(t => t.completed);
+      const allComplete = stage.tasks.filter(isActionableChecklistTask).every(t => t.completed);
       newStageCompletions[stageId] = {
         completed: allComplete,
         completionDate: hospital.stageCompletions[stageId]?.completionDate ?? (allComplete ? format(new Date(), 'yyyy-MM-dd') : null)
@@ -1198,8 +1313,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
     navigate(`/mentor/hospitals?hospital=${encodeURIComponent(hospitalId)}`);
   };
 
-  // Match stage colors from PECC checklist page
-  const getStageColor = (stageId: string) => {
+  const getStageColor = (stageId: string, stage?: MilestoneStage) => {
+    const resolved = stage ?? selectedChecklistTemplate.find((s) => s.id === stageId);
+    if (resolved?.color_hex && isValidHexColor(resolved.color_hex)) return resolved.color_hex;
     switch (stageId) {
       case 'stage1':
         return stagePalette.stage1;
@@ -1224,14 +1340,31 @@ const MentorSiteMilestonesPage: React.FC = () => {
   }, [hospitals, hospitalMilestones, selectedChecklistKey, getStagesForChecklist]);
 
   const tableRows = useMemo(() => {
-    const rows: Array<{ type: 'stage' | 'task' | 'completion'; stageId?: string; stageTitle?: string; taskId?: string; task?: MilestoneTask }> = [];
+    const rows: MilestoneTableRow[] = [];
 
-    selectedChecklistTemplate.forEach(stage => {
-      rows.push({ type: 'stage', stageId: stage.id, stageTitle: stage.title });
-      stage.tasks.forEach(task => {
-        rows.push({ type: 'task', stageId: stage.id, taskId: task.id, task });
+    selectedChecklistTemplate.forEach((stage) => {
+      if (stage.program_checklist_first_stage && stage.program_checklist_name) {
+        rows.push({ type: 'checklist_header', checklistName: stage.program_checklist_name });
+      }
+      rows.push({
+        type: 'stage',
+        stageId: stage.id,
+        stageTitle: formatStageLabel(stage),
+        stage,
       });
-      rows.push({ type: 'completion', stageId: stage.id, stageTitle: stage.title });
+      stage.tasks.forEach((task) => {
+        if (isActionableChecklistTask(task)) {
+          rows.push({ type: 'task', stageId: stage.id, taskId: task.id, task });
+        } else {
+          rows.push({ type: 'entry', stageId: stage.id, task });
+        }
+      });
+      rows.push({
+        type: 'completion',
+        stageId: stage.id,
+        stageTitle: formatStageLabel(stage),
+        stage,
+      });
     });
 
     return rows;
@@ -1393,8 +1526,30 @@ const MentorSiteMilestonesPage: React.FC = () => {
               </TableHead>
               <TableBody>
                 {tableRows.map((row, rowIndex) => {
+                  const hospitalColSpan = visibleHospitals.length;
+
+                  if (row.type === 'checklist_header') {
+                    return (
+                      <TableRow key={`checklist-${row.checklistName}-${rowIndex}`}>
+                        <TableCell
+                          colSpan={1 + hospitalColSpan}
+                          sx={{
+                            py: 1.25,
+                            bgcolor: 'primary.50',
+                            borderBottom: '2px solid',
+                            borderColor: 'primary.light',
+                          }}
+                        >
+                          <Typography variant="subtitle1" color="primary" sx={{ fontWeight: 700 }}>
+                            {row.checklistName} Checklist
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+
                   if (row.type === 'stage') {
-                    const stageColor = getStageColor(row.stageId!);
+                    const stageColor = getStageColor(row.stageId, row.stage);
                     return (
                       <TableRow 
                         key={`${row.stageId}-header`} 
@@ -1414,13 +1569,14 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             left: 0, 
                             zIndex: 9, 
                             bgcolor: stageColor,
-                            fontWeight: 600,
+                            fontWeight: 700,
                             borderRight: '1px solid',
                             borderColor: 'divider',
-                            fontSize: '0.8rem',
+                            fontSize: '0.85rem',
                             minWidth: 250,
                             maxWidth: 250,
-                            color: 'white'
+                            color: 'white',
+                            py: 1,
                           }}
                         >
                           {row.stageTitle}
@@ -1436,7 +1592,32 @@ const MentorSiteMilestonesPage: React.FC = () => {
                         })}
                       </TableRow>
                     );
-                  } else if (row.type === 'task' && row.task) {
+                  }
+
+                  if (row.type === 'entry' && row.task) {
+                    const stageColor = getStageColor(row.stageId);
+                    return (
+                      <TableRow key={`${row.stageId}-entry-${row.task.id}`}>
+                        <TableCell
+                          colSpan={1 + hospitalColSpan}
+                          sx={{
+                            position: 'sticky',
+                            left: 0,
+                            zIndex: 8,
+                            bgcolor: 'background.paper',
+                            borderRight: '1px solid',
+                            borderColor: 'divider',
+                            py: 0.75,
+                            px: 1.5,
+                          }}
+                        >
+                          {renderDecorativeEntry(row.task, stageColor)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+
+                  if (row.type === 'task' && row.task) {
                     return (
                       <TableRow 
                         key={`${row.stageId}-${row.taskId}`}
@@ -1452,12 +1633,13 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             bgcolor: 'background.paper',
                             borderRight: '1px solid',
                             borderColor: 'divider',
-                            pl: 2,
+                            pl: 2.5,
+                            py: 0.75,
                             minWidth: 250,
                             maxWidth: 250
                           }}
                         >
-                          {renderTaskText(row.task)}
+                          {renderTaskLabel(row.task)}
                         </TableCell>
                         {visibleHospitals.map(hospital => {
                           const hospitalData = hospitalMilestones[hospital.id];
@@ -1471,7 +1653,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             <TableCell key={hospital.id} align="center" sx={{ py: 0.5, bgcolor: isChecklistAvailable ? 'inherit' : 'action.disabledBackground', opacity: isChecklistAvailable ? 1 : 0.7 }}>
                               <Checkbox
                                 checked={isCompleted}
-                                onChange={() => handleTaskToggle(hospital.id, row.stageId!, row.taskId!)}
+                                onChange={() => handleTaskToggle(hospital.id, row.stageId, row.taskId)}
                                 disabled={!isChecklistAvailable}
                                 size="small"
                                 sx={{ padding: '2px' }}
@@ -1481,9 +1663,10 @@ const MentorSiteMilestonesPage: React.FC = () => {
                         })}
                       </TableRow>
                     );
-                  } else {
-                    const stageNum = row.stageId?.replace('stage', '');
-                    const stageColor = getStageColor(row.stageId!);
+                  }
+
+                  if (row.type === 'completion') {
+                    const stageColor = getStageColor(row.stageId, row.stage);
                     return (
                       <TableRow 
                         key={`${row.stageId}-completion`} 
@@ -1509,10 +1692,11 @@ const MentorSiteMilestonesPage: React.FC = () => {
                             pl: 2,
                             minWidth: 250,
                             maxWidth: 250,
-                            color: 'white'
+                            color: 'white',
+                            fontSize: '0.78rem',
                           }}
                         >
-                          Stage {stageNum} Complete
+                          {row.stageTitle} — mark stage complete
                         </TableCell>
                         {visibleHospitals.map(hospital => {
                           const hospitalData = hospitalMilestones[hospital.id];
@@ -1564,6 +1748,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
                       </TableRow>
                     );
                   }
+
+                  return null;
                 })}
               </TableBody>
             </Table>
