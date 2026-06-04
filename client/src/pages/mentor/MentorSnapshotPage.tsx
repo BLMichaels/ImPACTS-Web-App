@@ -133,6 +133,15 @@ const MentorSnapshotPage = () => {
         }));
 
         setAssignedHospitals(mergedHospitals);
+        const mentorContacts = (await getUserData<Array<{ hospitalId?: string | null; email?: string | null }>>(userProfile.id, 'mentorContacts')) || [];
+        const contactEmailToHospitalRefs = new Map<string, Set<string>>();
+        mentorContacts.forEach((contact) => {
+          const email = String(contact?.email || '').trim().toLowerCase();
+          const hospitalRef = String(contact?.hospitalId || '').trim();
+          if (!email || !hospitalRef) return;
+          if (!contactEmailToHospitalRefs.has(email)) contactEmailToHospitalRefs.set(email, new Set<string>());
+          contactEmailToHospitalRefs.get(email)!.add(hospitalRef);
+        });
 
         if (mergedHospitals.length > 0) {
           const hospitalIds = Array.from(
@@ -154,33 +163,48 @@ const MentorSnapshotPage = () => {
           ]);
 
           // Load PECCs assigned to these hospitals
-          const { data: peccs, error: peccsError } = await supabase
-            .from('users')
-            .select('id, first_name, last_name, email, hospital_facility_id')
-            .eq('role', 'pecc')
-            .in('hospital_facility_id', hospitalIds);
-
-          if (peccsError) throw peccsError;
+          const [{ data: byHospital, error: byHospitalError }, { data: byMentor, error: byMentorError }] = await Promise.all([
+            supabase
+              .from('users')
+              .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
+              .eq('role', 'pecc')
+              .in('hospital_facility_id', hospitalIds),
+            supabase
+              .from('users')
+              .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
+              .eq('role', 'pecc')
+              .eq('mentor_id', userProfile.id),
+          ]);
+          if (byHospitalError) throw byHospitalError;
+          if (byMentorError) throw byMentorError;
+          const peccsMap = new Map<string, any>();
+          [...(byHospital || []), ...(byMentor || [])].forEach((row: any) => {
+            if (row?.id) peccsMap.set(row.id, row);
+          });
+          const peccs = [...peccsMap.values()];
 
           // Load checklist progress for each PECC
           const peccDataPromises = (peccs || []).map(async (pecc) => {
             const peccHospitalId = pecc.hospital_facility_id;
+            const emailRefs = contactEmailToHospitalRefs.get(String(pecc.email || '').trim().toLowerCase());
             const hospital = mergedHospitals.find(
               (h) =>
                 h.hospital?.id === peccHospitalId ||
-                h.hospital?.facility_id === peccHospitalId
+                h.hospital?.facility_id === peccHospitalId ||
+                Boolean(emailRefs && (emailRefs.has(h.hospital?.id) || emailRefs.has(String(h.hospital?.facility_id || ''))))
             );
 
             // Get checklist progress from site_checklist_progress
-            const progressOr =
-              hospital?.hospital?.facility_id &&
-              hospital.hospital.facility_id !== hospital.hospital.id
-                ? `hospital_id.eq.${hospital.hospital.id},hospital_id.eq.${hospital.hospital.facility_id}`
-                : `hospital_id.eq.${peccHospitalId}`;
+            const progressRefs = [
+              String(hospital?.hospital?.id || ''),
+              String(hospital?.hospital?.facility_id || ''),
+              String(peccHospitalId || ''),
+            ].filter((ref) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ref));
+            const progressOr = [...new Set(progressRefs)].map((ref) => `hospital_id.eq.${ref}`).join(',');
             const { data: checklistData } = await supabase
               .from('site_checklist_progress')
               .select('completed')
-              .or(progressOr);
+              .or(progressOr || 'hospital_id.eq.00000000-0000-0000-0000-000000000000');
 
             const totalTasks = 100; // Approximate total from DEFAULT_STAGES
             const completedTasks = (checklistData || []).filter(t => t.completed).length;
@@ -228,7 +252,7 @@ const MentorSnapshotPage = () => {
               name: `${pecc.first_name} ${pecc.last_name}`,
               email: pecc.email,
               hospital: hospital?.hospital?.name || 'Unknown Hospital',
-              hospitalId: canonicalHospitalId || peccHospitalId,
+              hospitalId: canonicalHospitalId || String(hospital?.hospital?.id || peccHospitalId || ''),
               checklistProgress,
               activityCount,
               lastActivity,
@@ -242,20 +266,20 @@ const MentorSnapshotPage = () => {
           
           // Calculate per-hospital metrics
           const metrics: HospitalMetrics[] = mergedHospitals.map(h => {
-            const hospitalId = h.hospital?.id;
+            const hospitalId = String(h.hospital?.id || '');
             const hospitalName = h.hospital?.name || 'Unknown Hospital';
-            
-            // Count mentor activities and hours for this hospital (support hospital or hospitalIds)
-            const hospitalActivities = parsedMentorActivities.filter((a: any) =>
-              a.hospital === hospitalId || (Array.isArray(a.hospitalIds) && a.hospitalIds.includes(hospitalId))
-            );
-            const mentorHours = hospitalActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
-            
-            // Count simulations
-            const simulations = hospitalActivities.filter((a: MentorActivity) => isSimulationActivity(a)).length;
-            
-            // Count PECCs at this hospital
-            const peccCount = resolvedPeccData.filter(p => p.hospitalId === hospitalId).length;
+            const hospitalFacilityId = String(h.hospital?.facility_id || hospitalId);
+            const canonicalHospitalId =
+              hospitalRefToUuid.get(hospitalId) ||
+              hospitalRefToUuid.get(hospitalFacilityId) ||
+              '';
+            const hospitalActivities = canonicalHospitalId
+              ? (hospActivitiesMap.get(canonicalHospitalId) || [])
+              : [];
+            const mentorHours = hospitalActivities.reduce((sum: number, a: any) => sum + (Number(a?.hours) || 0), 0);
+            const simulations = hospitalActivities.filter((a: any) => isSimulationActivity(a)).length;
+            const hospitalRefSet = new Set([hospitalId, hospitalFacilityId, canonicalHospitalId].filter(Boolean));
+            const peccCount = resolvedPeccData.filter((p) => hospitalRefSet.has(String(p.hospitalId || ''))).length;
             
             return {
               hospitalId,
@@ -913,7 +937,7 @@ const MentorSnapshotPage = () => {
                 Hospital-Level Mentoring Metrics
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 3, display: 'block' }}>
-                Activities, hours, and simulations breakdown by hospital from mentor_activities
+                Site-level activities, hours, and simulations breakdown by hospital
               </Typography>
               <Box sx={{ mt: 2 }}>
                 {hospitalMetrics.length > 0 ? (

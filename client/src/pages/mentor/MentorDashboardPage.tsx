@@ -34,7 +34,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 import { format } from 'date-fns';
 import { supabase } from '../../supabase';
-import { getUserData } from '../../utils/userData';
+import { batchGetHospitalDataForKey, getUserData, mapSiteRefsToHospitalRowIds } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import DashboardResources from '../../components/DashboardResources';
 
@@ -48,6 +48,7 @@ interface DashboardStats {
 
 interface StoredHospital {
   id: string;
+  facilityId?: string;
   name: string;
   address?: string;
   city?: string;
@@ -73,11 +74,16 @@ interface StoredContact {
 interface StoredActivity {
   id: string;
   date: string;
-  activityName: string;
-  category: string;
+  activityName?: string;
+  activity_type?: string;
+  category?: string;
   categories?: string[];
-  hours: number;
+  hours?: number;
   description?: string;
+  enteredByName?: string;
+  entered_by_name?: string;
+  enteredBy?: string;
+  userName?: string;
   hospitalIds?: string[];
 }
 
@@ -146,8 +152,7 @@ const MentorDashboardPage: React.FC = () => {
     }
     setLoadError(null);
     try {
-    const [activitiesVal, hospitalsVal, contactsVal] = await Promise.all([
-      getUserData<any[]>(uid, 'mentorActivities'),
+    const [hospitalsVal, contactsVal] = await Promise.all([
       getUserData<any[]>(uid, 'mentorHospitals'),
       getUserData<any[]>(uid, 'mentorContacts')
     ]);
@@ -157,7 +162,6 @@ const MentorDashboardPage: React.FC = () => {
     } catch (e) {
       console.warn('[MentorDashboard] merged mentor hospitals unavailable:', e);
     }
-    const activities: StoredActivity[] = Array.isArray(activitiesVal) ? activitiesVal : [];
     const storedHospitals: StoredHospital[] = Array.isArray(hospitalsVal) ? hospitalsVal : [];
     const contacts: StoredContact[] = Array.isArray(contactsVal) ? contactsVal : [];
 
@@ -170,13 +174,19 @@ const MentorDashboardPage: React.FC = () => {
           if (s && s.isWorkingWith === false) return null;
           const base: StoredHospital = s ?? {
             id: m.hospital.id,
+            facilityId: String(m.hospital.facility_id ?? m.hospital.id),
             name: m.hospital.name || 'Hospital',
             city: m.storedHospital?.city,
             state: m.storedHospital?.state
           };
-          return { ...base, id: m.hospital.id, name: base.name || m.hospital.name || 'Hospital' };
+          return {
+            ...base,
+            id: m.hospital.id,
+            facilityId: String(m.hospital.facility_id ?? base.facilityId ?? m.hospital.id),
+            name: base.name || m.hospital.name || 'Hospital'
+          };
         })
-        .filter((h): h is StoredHospital => h != null);
+        .filter(Boolean) as StoredHospital[];
     } else {
       workingHospitals = storedHospitals.filter((h: StoredHospital) => h.isWorkingWith !== false);
     }
@@ -194,10 +204,16 @@ const MentorDashboardPage: React.FC = () => {
       });
     }
 
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisMonthActivities = activities.filter((a: StoredActivity) => new Date(a.date) >= startOfMonth);
-    const simulationsThisMonth = thisMonthActivities.filter((a: StoredActivity) => hasActivityCategory(a, 'SC')).length;
+    const hospitalRefs = [...new Set(
+      workingHospitals.flatMap((h: StoredHospital) =>
+        [h.id, h.facilityId].map((ref) => String(ref || '').trim()).filter(Boolean)
+      )
+    )];
+    const hospitalRefToUuid = hospitalRefs.length > 0 ? await mapSiteRefsToHospitalRowIds(hospitalRefs) : new Map<string, string>();
+    const canonicalHospitalIds = [...new Set([...hospitalRefToUuid.values()])];
+    const hospitalActivitiesMap = canonicalHospitalIds.length > 0
+      ? await batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'activities')
+      : new Map<string, any[] | null>();
 
     const summaries: HospitalSummary[] = workingHospitals.map((h: StoredHospital) => {
       const hContacts = contacts.filter((c: StoredContact) => c.hospitalId === h.id);
@@ -205,14 +221,16 @@ const MentorDashboardPage: React.FC = () => {
       const peccName = primary ? `${primary.firstName} ${primary.lastName}`.trim() || '—' : '—';
       const peccEmail = primary?.email?.trim() || '—';
 
-      const hospitalActivities = (activities || []).filter(
-        (a: StoredActivity) => (a.hospitalIds || []).includes(h.id)
-      );
+      const canonicalHospitalId =
+        hospitalRefToUuid.get(h.id) ||
+        (h.facilityId ? hospitalRefToUuid.get(h.facilityId) : undefined) ||
+        null;
+      const hospitalActivities = (canonicalHospitalId ? hospitalActivitiesMap.get(canonicalHospitalId) : null) || [];
       const sortedByDate = [...hospitalActivities].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
       );
       const lastActivityAt = sortedByDate[0]?.date || null;
-      const totalHours = hospitalActivities.reduce((sum: number, a: StoredActivity) => sum + (a.hours || 0), 0);
+      const totalHours = hospitalActivities.reduce((sum: number, a: StoredActivity) => sum + (Number(a.hours) || 0), 0);
 
       const displayName = nameByKey[h.id] ?? normalizeHospitalOrOrgName(h.name ?? 'Unknown');
       return {
@@ -236,11 +254,16 @@ const MentorDashboardPage: React.FC = () => {
     const distinctPeccEmails = new Set(
       summaries.map(s => s.peccEmail).filter(e => e && e !== '—')
     );
+    const allHospitalActivities = summaries.flatMap((s) => s.activities);
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisMonthActivities = allHospitalActivities.filter((a: StoredActivity) => new Date(a.date) >= startOfMonth);
+    const simulationsThisMonth = thisMonthActivities.filter((a: StoredActivity) => hasActivityCategory(a, 'SC')).length;
     setStats({
       totalHospitals: workingHospitals.length,
       totalPeccs: distinctPeccEmails.size,
       activitiesThisMonth: thisMonthActivities.length,
-      hoursThisMonth: thisMonthActivities.reduce((sum: number, a: StoredActivity) => sum + (a.hours || 0), 0),
+      hoursThisMonth: thisMonthActivities.reduce((sum: number, a: StoredActivity) => sum + (Number(a.hours) || 0), 0),
       simulationsThisMonth
     });
     setHospitalSummaries(summaries);
@@ -493,11 +516,11 @@ const MentorDashboardPage: React.FC = () => {
 
               {/* Activities at this hospital */}
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Your activities at this hospital ({selectedHospital.activities.length})
+                Activities logged for this site ({selectedHospital.activities.length})
               </Typography>
               {selectedHospital.activities.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
-                  No activities logged yet for this hospital.
+                  No activities logged yet for this site.
                 </Typography>
               ) : (
                 <List disablePadding>
@@ -505,15 +528,20 @@ const MentorDashboardPage: React.FC = () => {
                     <ListItem key={activity.id} disablePadding sx={{ py: 1, flexDirection: 'column', alignItems: 'stretch' }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
                         <Typography variant="body2" fontWeight={500}>
-                          {activity.activityName}
+                          {String(activity.activityName || activity.activity_type || 'Activity')}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {format(new Date(activity.date), 'MMM d, yyyy')} · {activity.hours}h
+                          {format(new Date(activity.date), 'MMM d, yyyy')} · {(Number(activity.hours) || 0).toFixed(1)}h
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
                         <Chip label={displayActivityCategories(activity)} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
                       </Box>
+                      {String(activity.enteredByName || activity.entered_by_name || activity.enteredBy || activity.userName || '').trim() && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                          Logged by {String(activity.enteredByName || activity.entered_by_name || activity.enteredBy || activity.userName).trim()}
+                        </Typography>
+                      )}
                       {activity.description?.trim() && (
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                           {activity.description}

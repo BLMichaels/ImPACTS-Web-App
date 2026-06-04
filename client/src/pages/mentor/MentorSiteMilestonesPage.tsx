@@ -99,6 +99,11 @@ interface HospitalMilestones {
   stageCompletions: Record<string, StageCompletion>;
 }
 
+interface MentorContactRecord {
+  hospitalId?: string | null;
+  email?: string | null;
+}
+
 const STIPEND_PER_STAGE = 200;
 const isUuidText = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
@@ -493,6 +498,20 @@ const MentorSiteMilestonesPage: React.FC = () => {
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIdsForData, 'activities'),
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIdsForData, 'readinessScores'),
       ]);
+      const mentorContacts = (await getUserData<MentorContactRecord[]>(mentorDataUserId, 'mentorContacts')) || [];
+      const { data: mentorLinkedPeccRows } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email, mentor_id, hospital_facility_id')
+        .eq('role', 'pecc')
+        .eq('mentor_id', mentorDataUserId);
+      const mentorLinkedPeccs = (mentorLinkedPeccRows || []) as Array<{
+        id: string;
+        first_name?: string | null;
+        last_name?: string | null;
+        email?: string | null;
+        mentor_id?: string | null;
+        hospital_facility_id?: string | null;
+      }>;
       const { data: allPrograms } = await supabase.from('programs').select('id, name');
       const programNameToId = new Map(
         ((allPrograms || []) as Array<{ id: string; name?: string | null }>)
@@ -520,12 +539,28 @@ const MentorSiteMilestonesPage: React.FC = () => {
             .map((v) => String(v || '').trim())
             .filter(Boolean)
         )];
+        const userHospitalRefSet = new Set(userHospitalRefs);
+        const contactEmailSet = new Set(
+          mentorContacts
+            .filter((contact) => {
+              const contactHospitalId = String(contact?.hospitalId || '').trim();
+              return Boolean(contactHospitalId) && userHospitalRefSet.has(contactHospitalId);
+            })
+            .map((contact) => String(contact?.email || '').trim().toLowerCase())
+            .filter(Boolean)
+        );
         const userHospitalOrClause = userHospitalRefs.map((ref) => `hospital_facility_id.eq.${ref}`).join(',');
         const { data: peccUsers } = await supabase
           .from('users')
-          .select('id, first_name, last_name, mentor_id')
+          .select('id, first_name, last_name, email, mentor_id, hospital_facility_id')
           .eq('role', 'pecc')
           .or(userHospitalOrClause);
+        const mentorLinkedPeccsForHospital = mentorLinkedPeccs.filter((row) => {
+          const linkedRef = String(row.hospital_facility_id || '').trim();
+          const linkedEmail = String(row.email || '').trim().toLowerCase();
+          return (linkedRef && userHospitalRefSet.has(linkedRef)) || (linkedEmail && contactEmailSet.has(linkedEmail));
+        });
+        const mergedPeccUsers = [...(peccUsers || []), ...mentorLinkedPeccsForHospital];
 
         const { data: siteMembers } = await supabase
           .from('site_members')
@@ -543,12 +578,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
         }
 
         const peccUserIds = [
-          ...(peccUsers?.map(u => u.id) || []),
+          ...mergedPeccUsers.map((u: { id: string }) => u.id),
           ...siteMemberPeccIds
         ];
         const uniquePeccUserIds = [...new Set(peccUserIds.map((id) => String(id || '').trim()).filter(Boolean))];
         const peccNameById = new Map(
-          ((peccUsers || []) as Array<{ id: string; first_name?: string | null; last_name?: string | null }>)
+          (mergedPeccUsers as Array<{ id: string; first_name?: string | null; last_name?: string | null }>)
             .map((u) => [u.id, [u.first_name, u.last_name].filter(Boolean).join(' ').trim()])
         );
         const missingPeccNameIds = uniquePeccUserIds.filter((id) => !peccNameById.get(id));
@@ -562,7 +597,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
             if (label) peccNameById.set(u.id, label);
           });
         }
-        const directMentorPeccIds = ((peccUsers || []) as Array<{ id: string; mentor_id?: string | null }>)
+        const directMentorPeccIds = (mergedPeccUsers as Array<{ id: string; mentor_id?: string | null }>)
           .filter((u) => String(u.mentor_id || '').trim() === mentorDataUserId)
           .map((u) => u.id);
         const checklistUserIds = [...new Set([...uniquePeccUserIds, ...siteMemberUserIds].map((id) => String(id || '').trim()).filter(Boolean))];
@@ -576,10 +611,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
         }
         let progressRows: Array<{ task_id: string; completed: boolean; completed_at: string | null }> = [];
         if (progressHospitalUuid) {
+          const progressRefs = [...new Set([progressHospitalUuid, ...userHospitalRefs].filter((ref) => isUuidText(ref)))];
+          const progressOrClause = progressRefs.map((ref) => `hospital_id.eq.${ref}`).join(',');
           const { data } = await supabase
             .from('site_checklist_progress')
             .select('task_id, completed, completed_at')
-            .eq('hospital_id', progressHospitalUuid);
+            .or(progressOrClause || `hospital_id.eq.${progressHospitalUuid}`);
           progressRows = (data || []) as Array<{ task_id: string; completed: boolean; completed_at: string | null }>;
         }
 
