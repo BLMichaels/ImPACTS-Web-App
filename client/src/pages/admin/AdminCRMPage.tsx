@@ -192,6 +192,11 @@ function normalizeEmailList(input: unknown): string[] {
   return [...new Set(normalizeStringList(input).map((email) => email.toLowerCase()))];
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function isUuid(value: unknown): boolean {
+  return UUID_RE.test(String(value || '').trim());
+}
+
 type SortField = 'name' | 'firstName' | 'lastName' | 'email' | 'type' | 'status' | 'region' | 'state' | 'organization' | 'createdAt' | 'facilityId' | 'hospitalSystem';
 type SortOrder = 'asc' | 'desc';
 
@@ -1205,8 +1210,14 @@ const AdminCRMPage: React.FC = () => {
       setContactUsage(null);
       return;
     }
-    // Use only platform user id (never CRM org id) so usage and view-as are correct; pending users have no usage yet
-    const userId = isPerson ? (detailContactUserId?.startsWith('pending:') ? null : (detailContactUserId ?? c.user_id ?? (c.crmCreated ? null : c.id))) : null;
+    // Use only platform UUID user ids (never CRM org ids / invitation placeholder ids).
+    const userId = isPerson
+      ? (
+        detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
+          ? detailContactUserId
+          : (isUuid(c.user_id) ? String(c.user_id) : (c.crmCreated ? null : (isUuid(c.id) ? String(c.id) : null)))
+      )
+      : null;
     if (isPerson && !userId) {
       setContactUsage(null);
       setContactUsageLoading(false);
@@ -1286,11 +1297,11 @@ const AdminCRMPage: React.FC = () => {
       setDetailContactUserId(null);
       return;
     }
-    if (c.user_id) {
+    if (c.user_id && isUuid(c.user_id)) {
       setDetailContactUserId(c.user_id);
       return;
     }
-    if (!c.crmCreated && c.id) {
+    if (!c.crmCreated && c.id && isUuid(c.id)) {
       setDetailContactUserId(c.id);
       return;
     }
@@ -1326,9 +1337,9 @@ const AdminCRMPage: React.FC = () => {
     let cancelled = false;
     (async () => {
       let resolvedUserId =
-        detailContactUserId && !detailContactUserId.startsWith('pending:')
+        detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
           ? detailContactUserId
-          : (c.user_id ?? null);
+          : (isUuid(c.user_id) ? String(c.user_id) : null);
       if (!resolvedUserId && c.email?.trim()) {
         let userLookup = await supabase.from('users').select('id').eq('email', c.email.trim()).maybeSingle();
         if (!userLookup.error && !userLookup.data?.id) {
@@ -1399,9 +1410,9 @@ const AdminCRMPage: React.FC = () => {
     const c = detailContact;
     if (!c || (c.type !== 'mentor' && c.type !== 'pecc')) return;
     const resolvedUserId =
-      detailContactUserId && !detailContactUserId.startsWith('pending:')
+      detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
         ? detailContactUserId
-        : (c.user_id ?? null);
+        : (isUuid(c.user_id) ? String(c.user_id) : null);
     if (!resolvedUserId) {
       setSaveError('This CRM contact is not linked to a platform user yet. Use "Send Invitation" first.');
       return;
@@ -1452,9 +1463,9 @@ const AdminCRMPage: React.FC = () => {
     const c = detailContact;
     if (!c || (c.type !== 'mentor' && c.type !== 'pecc')) return;
     const resolvedUserId =
-      detailContactUserId && !detailContactUserId.startsWith('pending:')
+      detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
         ? detailContactUserId
-        : (c.user_id ?? null);
+        : (isUuid(c.user_id) ? String(c.user_id) : null);
     if (!resolvedUserId) return;
     setAssignmentSaving(true);
     const managerIds = [...new Set(assignmentManagerIds.map((id) => String(id || '').trim()).filter(Boolean))];
@@ -1590,7 +1601,7 @@ const AdminCRMPage: React.FC = () => {
 
   // Load primary program and programs list when viewing a person with user id (for CRM primary program selector)
   useEffect(() => {
-    if (!detailContactUserId || detailContactUserId.startsWith('pending:')) {
+    if (!detailContactUserId || detailContactUserId.startsWith('pending:') || !isUuid(detailContactUserId)) {
       setDetailUserPrimaryProgramId(null);
       setDetailUserPrimaryProgramLogoUrl(null);
       setCrmProgramsForPrimary([]);
@@ -1619,9 +1630,9 @@ const AdminCRMPage: React.FC = () => {
     const c = detailContact;
     if (!c || !isPersonType(c.type)) return true;
     const resolvedId =
-      detailContactUserId && !detailContactUserId.startsWith('pending:')
+      detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
         ? detailContactUserId
-        : (c.user_id ?? null);
+        : (isUuid(c.user_id) ? String(c.user_id) : null);
     if (resolvedId) return false;
     if (['pecc', 'manager', 'mentor'].includes(c.type) && c.email?.trim()) return false;
     return true;
@@ -1642,9 +1653,9 @@ const AdminCRMPage: React.FC = () => {
     if (!c || !canViewAsUser || !isPersonType(c.type) || personViewAsDisabled) return;
 
     const resolvedId =
-      detailContactUserId && !detailContactUserId.startsWith('pending:')
+      detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
         ? detailContactUserId
-        : (c.user_id ?? null);
+        : (isUuid(c.user_id) ? String(c.user_id) : null);
 
     if (resolvedId) {
       const result = await enterViewAsUser(resolvedId);
@@ -2456,7 +2467,7 @@ const AdminCRMPage: React.FC = () => {
       // Check if this is a user-sourced contact (from users table) vs CRM-created
       const isUserSourced = editingContact?.user_id && !editingContact?.crmCreated;
       
-      if (editingContact && editingContact.id && !isUserSourced) {
+      if (editingContact && editingContact.id && editingContact.crmCreated === true && isUuid(editingContact.id) && !isUserSourced) {
         // Update existing CRM contact
         const uid = editingContact.user_id ?? (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle()).data?.id : null);
         const { error } = await supabase
@@ -5678,7 +5689,7 @@ const AdminCRMPage: React.FC = () => {
                     Edit
                   </Button>
                   <Button variant="contained" startIcon={<EmailIcon />} onClick={() => detailContact?.email?.trim() && window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`)} disabled={!detailContact?.email?.trim()}>Email</Button>
-                  {detailContact && isPersonType(detailContact.type) && detailContactUserId && (
+                  {detailContact && isPersonType(detailContact.type) && detailContactUserId && isUuid(detailContactUserId) && (
                     <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => navigate(`/admin/settings?tab=granular-permissions&userId=${detailContactUserId}`)}>
                       Manage permissions
                     </Button>
@@ -5730,7 +5741,7 @@ const AdminCRMPage: React.FC = () => {
               </> )}
               {fullScreenDetailTab === 1 && (
               <>
-              {isPersonType(detailContact.type) && detailContactUserId && (
+              {isPersonType(detailContact.type) && detailContactUserId && isUuid(detailContactUserId) && (
                 <Accordion defaultExpanded={false} sx={{ mt: 2 }}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                     <Typography variant="subtitle1" fontWeight={600}>Granular permissions</Typography>
