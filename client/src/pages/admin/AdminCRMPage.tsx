@@ -2521,8 +2521,7 @@ const AdminCRMPage: React.FC = () => {
         address2: formData.address2?.trim() || null,
         city: formData.city?.trim() || null,
         county: formData.county?.trim() || null,
-        zip: formData.zip?.trim() || null,
-        is_admin: formData.type === 'staff' ? effectiveStaffIsAdmin : false
+        zip: formData.zip?.trim() || null
       };
       if (isPersonType(formData.type) && editingContact?.user_id && isUuid(editingContact.user_id)) {
         payloadDb.user_id = editingContact.user_id;

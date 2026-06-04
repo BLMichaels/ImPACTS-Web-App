@@ -7,6 +7,8 @@
 -- - Idempotent by design (upserts + migration log).
 -- - Keeps user attribution in migrated JSON payload under `_migrated_from_user_id` when needed.
 -- - Uses users.hospital_facility_id mapped to hospitals.id / hospitals.facility_id.
+-- - Deduplicates by (hospital_id, data_key) and keeps latest updated_at when multiple
+--   users map to the same hospital key.
 
 BEGIN;
 
@@ -66,6 +68,19 @@ eligible AS (
   FROM resolved
   WHERE hospital_id IS NOT NULL
 ),
+eligible_dedup AS (
+  SELECT *
+  FROM (
+    SELECT
+      e.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY e.hospital_id, e.data_key
+        ORDER BY e.updated_at DESC NULLS LAST, e.user_id
+      ) AS rn
+    FROM eligible e
+  ) ranked
+  WHERE rn = 1
+),
 upserted AS (
   INSERT INTO public.hospital_data AS hd (hospital_id, data_key, value, updated_at)
   SELECT
@@ -73,7 +88,7 @@ upserted AS (
     e.data_key,
     e.value,
     e.updated_at
-  FROM eligible e
+  FROM eligible_dedup e
   ON CONFLICT (hospital_id, data_key)
   DO UPDATE SET
     -- Keep the most recently updated source value.
@@ -105,6 +120,39 @@ DO UPDATE SET
   details = EXCLUDED.details;
 
 -- Log unresolved rows (no hospital mapping), without failing the migration.
+WITH scoped_source AS (
+  SELECT
+    ud.user_id,
+    ud.data_key,
+    NULLIF(TRIM(u.hospital_facility_id), '') AS hospital_ref
+  FROM public.user_data ud
+  JOIN public.users u ON u.id = ud.user_id
+  WHERE ud.data_key IN (
+    'activities',
+    'gapPlans',
+    'milestones',
+    'simulation_sessions',
+    'simulation_gaps',
+    'readinessScores',
+    'prsQuestions',
+    'prsReadinessScores'
+  )
+),
+resolved AS (
+  SELECT
+    s.user_id,
+    s.data_key,
+    h.id AS hospital_id
+  FROM scoped_source s
+  LEFT JOIN LATERAL (
+    SELECT h2.id
+    FROM public.hospitals h2
+    WHERE h2.id::TEXT = s.hospital_ref
+       OR COALESCE(to_jsonb(h2)->>'facility_id', '') = COALESCE(s.hospital_ref, '')
+    ORDER BY CASE WHEN h2.id::TEXT = s.hospital_ref THEN 0 ELSE 1 END
+    LIMIT 1
+  ) h ON true
+)
 INSERT INTO public.hospital_data_migration_log (
   source_user_id,
   source_data_key,
@@ -119,11 +167,6 @@ SELECT
   'unresolved_hospital_mapping',
   jsonb_build_object('note', 'No hospitals.id/facility_id match for users.hospital_facility_id')
 FROM resolved r
-WHERE r.hospital_id IS NULL
-ON CONFLICT (source_user_id, source_data_key, target_hospital_id)
-DO UPDATE SET
-  migrated_at = NOW(),
-  status = EXCLUDED.status,
-  details = EXCLUDED.details;
+WHERE r.hospital_id IS NULL;
 
 COMMIT;

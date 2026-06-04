@@ -145,6 +145,9 @@ const EMPTY_CONTACT_FORM = {
   notes: ''
 };
 
+const isUuid = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+
 const MentorHospitalContactsPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { userProfile, effectiveUserId } = useUserProfile();
@@ -365,13 +368,18 @@ const MentorHospitalContactsPage: React.FC = () => {
     if (hospitals.length > 0) {
       const nameByKey: Record<string, string> = {};
       const ids = hospitals.map((h: Hospital) => h.id);
-      const orParts = ids.flatMap((id: string) => [`id.eq.${id}`, `facility_id.eq.${id}`]);
-      const { data: rows } = await supabase.from('hospitals').select('id, facility_id, name').or(orParts.join(','));
-      (rows || []).forEach((r: { id?: string; facility_id?: string; name?: string }) => {
-        const name = r.name != null ? normalizeHospitalOrOrgName(r.name) : '';
-        if (r.id) nameByKey[r.id] = name;
-        if (r.facility_id != null) nameByKey[String(r.facility_id)] = name;
-      });
+      const orParts = [
+        ...ids.filter((id: string) => isUuid(id)).map((id: string) => `id.eq.${id}`),
+        ...ids.map((id: string) => `facility_id.eq.${id}`),
+      ];
+      if (orParts.length > 0) {
+        const { data: rows } = await supabase.from('hospitals').select('id, facility_id, name').or(orParts.join(','));
+        (rows || []).forEach((r: { id?: string; facility_id?: string; name?: string }) => {
+          const name = r.name != null ? normalizeHospitalOrOrgName(r.name) : '';
+          if (r.id) nameByKey[r.id] = name;
+          if (r.facility_id != null) nameByKey[String(r.facility_id)] = name;
+        });
+      }
       hospitals = hospitals.map((h: Hospital) => ({
         ...h,
         name: nameByKey[h.id] ?? normalizeHospitalOrOrgName(h.name)
@@ -597,8 +605,12 @@ const MentorHospitalContactsPage: React.FC = () => {
     let cancelled = false;
     const hospitalId = selectedHospital.id;
     (async () => {
+      const hospitalOr = [
+        ...(isUuid(hospitalId) ? [`id.eq.${hospitalId}`] : []),
+        `facility_id.eq.${hospitalId}`,
+      ];
       const [{ data, error }, activities] = await Promise.all([
-        supabase.from('hospitals').select('notes_log').eq('id', hospitalId).maybeSingle(),
+        supabase.from('hospitals').select('notes_log').or(hospitalOr.join(',')).limit(1).maybeSingle(),
         dataUserId ? getMentorActivitiesForUser(dataUserId) : Promise.resolve([])
       ]);
       if (cancelled) return;

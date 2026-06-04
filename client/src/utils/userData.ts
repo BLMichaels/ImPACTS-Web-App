@@ -65,6 +65,24 @@ export async function setUserData(userId: string, dataKey: string, value: unknow
 
 const USER_DATA_BATCH = 120;
 const HOSPITAL_DATA_BATCH = 120;
+let hospitalDataTableMissing = false;
+
+function isHospitalDataTableMissingError(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  const msg = String(e?.message || '').toLowerCase();
+  return e?.code === 'PGRST205' && msg.includes('hospital_data');
+}
+
+function handleHospitalDataError(context: string, error: unknown): void {
+  if (isHospitalDataTableMissingError(error)) {
+    if (!hospitalDataTableMissing) {
+      hospitalDataTableMissing = true;
+      console.warn('[userData] hospital_data unavailable; falling back to legacy user_data reads where available.');
+    }
+    return;
+  }
+  logSupabaseError(context, error);
+}
 
 /** Batch-load one data_key for many users (e.g. PECC activities for admin snapshot). */
 export async function batchGetUserDataForKey<T = unknown>(
@@ -153,6 +171,7 @@ export async function resolveHospitalUuid(siteRef: string): Promise<string | nul
 /** Hospital-scoped key/value storage for PECC continuity across user turnover. */
 export async function getHospitalData<T = unknown>(hospitalId: string, dataKey: string): Promise<T | null> {
   if (!hospitalId || !dataKey) return null;
+  if (hospitalDataTableMissing) return null;
   const { data, error } = await supabase
     .from('hospital_data')
     .select('value')
@@ -160,13 +179,14 @@ export async function getHospitalData<T = unknown>(hospitalId: string, dataKey: 
     .eq('data_key', dataKey)
     .maybeSingle();
   if (!error) return (data?.value as T) ?? null;
-  logSupabaseError(`getHospitalData(${dataKey})`, error);
+  handleHospitalDataError(`getHospitalData(${dataKey})`, error);
   return null;
 }
 
 /** Upsert hospital-scoped JSON value, preserving actor attribution server-side via auth.uid(). */
 export async function setHospitalData(hospitalId: string, dataKey: string, value: unknown): Promise<void> {
   if (!hospitalId || !dataKey) return;
+  if (hospitalDataTableMissing) return;
   const { error } = await supabase
     .from('hospital_data')
     .upsert(
@@ -178,7 +198,7 @@ export async function setHospitalData(hospitalId: string, dataKey: string, value
       },
       { onConflict: 'hospital_id,data_key' }
     );
-  if (error) logSupabaseError(`setHospitalData(${dataKey})`, error);
+  if (error) handleHospitalDataError(`setHospitalData(${dataKey})`, error);
 }
 
 /**
@@ -191,6 +211,7 @@ export async function ensureHospitalDataPlaceholder(
   defaultValue: unknown = []
 ): Promise<void> {
   if (!hospitalId || !dataKey) return;
+  if (hospitalDataTableMissing) return;
   const { data, error } = await supabase
     .from('hospital_data')
     .select('hospital_id')
@@ -198,7 +219,7 @@ export async function ensureHospitalDataPlaceholder(
     .eq('data_key', dataKey)
     .maybeSingle();
   if (error) {
-    logSupabaseError(`ensureHospitalDataPlaceholder(${dataKey})`, error);
+    handleHospitalDataError(`ensureHospitalDataPlaceholder(${dataKey})`, error);
     return;
   }
   if (data) return;
@@ -272,6 +293,7 @@ export async function batchGetHospitalDataForKey<T = unknown>(
   const unique = [...new Set(hospitalIds.filter(Boolean))];
   unique.forEach((id) => out.set(id, null));
   if (!dataKey || unique.length === 0) return out;
+  if (hospitalDataTableMissing) return out;
 
   for (let i = 0; i < unique.length; i += HOSPITAL_DATA_BATCH) {
     const part = unique.slice(i, i + HOSPITAL_DATA_BATCH);
@@ -281,7 +303,7 @@ export async function batchGetHospitalDataForKey<T = unknown>(
       .eq('data_key', dataKey)
       .in('hospital_id', part);
     if (error) {
-      logSupabaseError(`batchGetHospitalDataForKey(${dataKey})`, error);
+      handleHospitalDataError(`batchGetHospitalDataForKey(${dataKey})`, error);
       continue;
     }
     (data || []).forEach((row: { hospital_id: string; value: unknown }) => {
