@@ -1022,7 +1022,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
     if (!metrics?.peccUserId) return;
     handleHospitalMenuClose();
     if (metrics.fullSiteAccessApproved !== true) {
-      alert('This PECC has not approved full-site sharing. You can continue using Site Milestones checklist view only.');
+      alert('This PECC has not approved full-site sharing. You can continue using checklist and aggregated milestone/snapshot metrics only.');
       return;
     }
     const result = await enterViewAsUser(metrics.peccUserId);
@@ -1420,7 +1420,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
               <ViewIcon sx={{ mr: 1, fontSize: '1rem' }} />
               {hospitalMetrics[hospitalMenuAnchor.hospitalId]?.fullSiteAccessApproved
                 ? 'Open PECC Full Site (All Tabs)'
-                : 'Checklist Only (Full Site Not Approved)'}
+                : 'Summary Metrics + Checklist (No Full Access)'}
             </MenuItem>
           )}
         </Menu>

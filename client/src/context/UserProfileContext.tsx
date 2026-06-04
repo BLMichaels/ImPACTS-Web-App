@@ -398,7 +398,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       // Always fetch fresh from DB so recategorized role (e.g. PECC → staff) is correct; select role and is_admin explicitly
       const { data: profile, error } = await supabase
         .from('users')
-        .select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, hospital_facility_id, primary_program_id')
+        .select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, manager_id_for_pecc, mentor_id, hospital_facility_id, primary_program_id')
         .eq('id', userId)
         .single();
       if (error || !profile) return { ok: false };

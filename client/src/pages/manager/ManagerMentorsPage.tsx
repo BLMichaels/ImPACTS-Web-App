@@ -933,7 +933,7 @@ const ManagerMentorsPage: React.FC = () => {
                                             handleViewPECCDetail(pecc);
                                           }}
                                         >
-                                          {pecc.fullSiteAccessApproved ? 'Open Full Site' : 'Checklist Only'}
+                                          {pecc.fullSiteAccessApproved ? 'Open Full Site' : 'View Summary + Checklist'}
                                         </Button>
                                         <IconButton
                                           size="small"
@@ -1057,8 +1057,36 @@ const ManagerMentorsPage: React.FC = () => {
               ) : (
                 <>
                   <Alert severity="info" sx={{ mb: 2 }}>
-                    This PECC has not approved full-site sharing. Checklist view only.
+                    This PECC has not approved full-site sharing. You can view aggregated summary metrics and checklist progress, but not individual activity or gap details.
                   </Alert>
+                  <Grid container spacing={2} sx={{ mb: 2 }}>
+                    <Grid item xs={12} sm={3}>
+                      <Paper sx={{ p: 1.5, textAlign: 'center' }}>
+                        <Typography variant="h6" color="primary">{viewingPECC.activityCount}</Typography>
+                        <Typography variant="caption" color="textSecondary">Total Activities</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Paper sx={{ p: 1.5, textAlign: 'center' }}>
+                        <Typography variant="h6" color="success.main">{viewingPECC.gapPlanCount}</Typography>
+                        <Typography variant="caption" color="textSecondary">Total Gaps</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Paper sx={{ p: 1.5, textAlign: 'center' }}>
+                        <Typography variant="h6" color="info.main">{viewingPECC.checklistProgress}%</Typography>
+                        <Typography variant="caption" color="textSecondary">Checklist Completion</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Paper sx={{ p: 1.5, textAlign: 'center' }}>
+                        <Typography variant="body2" fontWeight={600}>
+                          {viewingPECC.lastActivity ? format(new Date(viewingPECC.lastActivity), 'MMM d, yyyy') : 'No activity'}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">Last Activity</Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
                   {renderPECCChecklist(viewingPECC)}
                 </>
               )}
