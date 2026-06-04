@@ -1134,7 +1134,7 @@ const AccountPage = () => {
                         PECC Site Sharing
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        If enabled, your assigned mentor/manager can open your full PECC site view (all tabs). If disabled, they can only view your Site Milestones checklist(s).
+                        If enabled, your assigned mentor/manager can open your full PECC site view (all tabs). If disabled, they can only view summary metrics and Site Milestones checklist progress.
                       </Typography>
                       <FormControlLabel
                         control={
@@ -1149,7 +1149,7 @@ const AccountPage = () => {
                       <Alert severity={peccFullSiteAccessApproved ? 'success' : 'info'} sx={{ mt: 1.5 }}>
                         {peccFullSiteAccessApproved
                           ? 'Approved: mentor/manager may open your full PECC view.'
-                          : 'Not approved: mentor/manager can only access your checklist view.'}
+                          : 'Not approved: mentor/manager can only access summary metrics and checklist progress.'}
                       </Alert>
                     </Grid>
                     
