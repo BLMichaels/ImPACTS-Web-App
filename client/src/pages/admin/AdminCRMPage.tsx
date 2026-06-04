@@ -615,6 +615,13 @@ const AdminCRMPage: React.FC = () => {
     const active = document.activeElement;
     if (active && active instanceof HTMLElement) active.blur();
   }, []);
+  const queueUiTransition = useCallback((action: () => void) => {
+    if (typeof window === 'undefined') {
+      action();
+      return;
+    }
+    window.setTimeout(action, 0);
+  }, []);
   const [importData, setImportData] = useState<Array<Record<string, string>>>([]);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
   const [importColumnMapping, setImportColumnMapping] = useState<Record<string, string>>({});
@@ -3025,7 +3032,7 @@ const AdminCRMPage: React.FC = () => {
   const openFullScreen = () => {
     setPanelOpen(false);
     prepareModalOpen();
-    setFullScreenOpen(true);
+    queueUiTransition(() => setFullScreenOpen(true));
   };
 
   const allExportColumns = useMemo(() => [...EXPORT_COLUMNS, ...customFieldDefs.map(d => ({ id: d.id, label: d.label }))], [customFieldDefs]);
@@ -4575,17 +4582,47 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Row actions menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
-        <MenuItem onClick={() => { if (detailContact) openDetail(detailContact); setAnchorEl(null); }}>View details</MenuItem>
+        <MenuItem onClick={() => {
+          if (detailContact) {
+            setAnchorEl(null);
+            queueUiTransition(() => openDetail(detailContact));
+            return;
+          }
+          setAnchorEl(null);
+        }}>View details</MenuItem>
         {detailContact && isPersonType(detailContact.type) && (
           <MenuItem onClick={() => { setCrmTab(TEAM_TAB_INDEX); setAnchorEl(null); }}>
             <PersonIcon fontSize="small" sx={{ mr: 1 }} /> Manage in Team tab
           </MenuItem>
         )}
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false }); prepareModalOpen(); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
+        <MenuItem onClick={() => {
+          if (detailContact) {
+            setEditingContact(detailContact);
+            setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false });
+            setAnchorEl(null);
+            prepareModalOpen();
+            queueUiTransition(() => {
+              setFullScreenOpen(true);
+              setFullScreenEditMode(true);
+            });
+            return;
+          }
+          setAnchorEl(null);
+        }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => { if (detailContact?.email?.trim()) window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`); setAnchorEl(null); }} disabled={!detailContact?.email?.trim()}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
-        <MenuItem onClick={() => { if (detailContact) { setDeleteConfirmTyped(''); setDeleteTarget({ single: detailContact.id }); prepareModalOpen(); setDeleteConfirmOpen(true); } setAnchorEl(null); }} sx={{ color: 'error.main' }}>
+        <MenuItem onClick={() => {
+          if (detailContact) {
+            setDeleteConfirmTyped('');
+            setDeleteTarget({ single: detailContact.id });
+            setAnchorEl(null);
+            prepareModalOpen();
+            queueUiTransition(() => setDeleteConfirmOpen(true));
+            return;
+          }
+          setAnchorEl(null);
+        }} sx={{ color: 'error.main' }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete
         </MenuItem>
       </Menu>
@@ -4679,7 +4716,13 @@ const AdminCRMPage: React.FC = () => {
                   sx={{ cursor: 'pointer' }}
                   onClick={() => {
                     const c = contacts.find(x => x.id === r.contact_id);
-                    if (c) { setDetailContact(c); setPanelOpen(false); setMyRemindersOpen(false); prepareModalOpen(); setFullScreenOpen(true); }
+                    if (c) {
+                      setDetailContact(c);
+                      setPanelOpen(false);
+                      setMyRemindersOpen(false);
+                      prepareModalOpen();
+                      queueUiTransition(() => setFullScreenOpen(true));
+                    }
                   }}
                 >
                   <ListItemText primary={r.title || 'Follow up'} secondary={`${r.contact_name || r.contact_id} · ${new Date(r.remind_at).toLocaleString()}`} />
@@ -5014,8 +5057,10 @@ const AdminCRMPage: React.FC = () => {
                   setEditingContact(c);
                   setPanelOpen(false);
                   prepareModalOpen();
-                  setFullScreenOpen(true);
-                  setFullScreenEditMode(true);
+                  queueUiTransition(() => {
+                    setFullScreenOpen(true);
+                    setFullScreenEditMode(true);
+                  });
                 }}>
                   Edit
                 </Button>
@@ -6505,7 +6550,7 @@ const AdminCRMPage: React.FC = () => {
               setPendingExport({ scope: exportScope, columnIds: exportColumnIds });
               setExportDialogOpen(false);
               prepareModalOpen();
-              setExportPiiDialogOpen(true);
+              queueUiTransition(() => setExportPiiDialogOpen(true));
             }}
             disabled={exportColumnIds.length === 0 || (exportScope === 'selected' && selectedIds.size === 0)}
           >
