@@ -442,7 +442,7 @@ const MentorSnapshotPage = () => {
             Overview
           </Typography>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-            Mentoring metrics (advanced data reports are in Admin → Reports)
+            Mentoring metrics
           </Typography>
         </Box>
         <Box sx={{ py: 4, textAlign: 'center', maxWidth: 'md', mx: 'auto' }}>
@@ -467,7 +467,7 @@ const MentorSnapshotPage = () => {
               Overview
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              Mentoring metrics (advanced data reports are in Admin → Reports)
+              Mentoring metrics
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Track your activities, monitor PECC progress, and measure engagement across all assigned hospitals
