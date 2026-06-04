@@ -75,20 +75,6 @@ interface LegacyProfile {
 
 const AccountPage = () => {
   const { logout, currentUser } = useAuth();
-  const accountUserId = currentUser?.uid ?? (currentUser as { id?: string })?.id;
-  const [termsAcceptedAt, setTermsAcceptedAt] = useState<string | null>(null);
-  useEffect(() => {
-    if (!accountUserId) return;
-    getUserData<string>(accountUserId, 'terms_accepted_at').then((v) => {
-      if (v) setTermsAcceptedAt(v);
-      else {
-        try {
-          const ls = localStorage.getItem('termsAcceptedDate');
-          if (ls) setTermsAcceptedAt(ls);
-        } catch {}
-      }
-    });
-  }, [accountUserId]);
   const { 
     userProfile: rawUserProfile, 
     updateUserProfile,
@@ -102,8 +88,24 @@ const AccountPage = () => {
     isViewingAsUser,
     mentorWorkMode,
     canToggleMentorWorkMode,
-    setMentorWorkMode
+    setMentorWorkMode,
+    effectiveUserId,
   } = useUserProfile();
+  const accountUserId =
+    effectiveUserId ?? currentUser?.uid ?? (currentUser as { id?: string })?.id;
+  const [termsAcceptedAt, setTermsAcceptedAt] = useState<string | null>(null);
+  useEffect(() => {
+    if (!accountUserId) return;
+    getUserData<string>(accountUserId, 'terms_accepted_at').then((v) => {
+      if (v) setTermsAcceptedAt(v);
+      else {
+        try {
+          const ls = localStorage.getItem('termsAcceptedDate');
+          if (ls) setTermsAcceptedAt(ls);
+        } catch {}
+      }
+    });
+  }, [accountUserId]);
   const navigate = useNavigate();
 
   // Handle both old and new field names

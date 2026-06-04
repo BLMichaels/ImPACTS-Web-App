@@ -35,6 +35,14 @@ import {
   shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
+import {
+  contactMatchesPeccAtHospital,
+  contactNameMatchesPecc,
+  resolvePeccsForMentorHospital,
+  type MentorContactLike,
+  type PeccUserLike,
+} from '../../utils/mentorPeccHospitalMatch';
+import { hospitalKeysMatch } from '../../utils/hospitalId';
 interface MentorActivity {
   id: string;
   date: string;
@@ -133,15 +141,7 @@ const MentorSnapshotPage = () => {
         }));
 
         setAssignedHospitals(mergedHospitals);
-        const mentorContacts = (await getUserData<Array<{ hospitalId?: string | null; email?: string | null }>>(userProfile.id, 'mentorContacts')) || [];
-        const contactEmailToHospitalRefs = new Map<string, Set<string>>();
-        mentorContacts.forEach((contact) => {
-          const email = String(contact?.email || '').trim().toLowerCase();
-          const hospitalRef = String(contact?.hospitalId || '').trim();
-          if (!email || !hospitalRef) return;
-          if (!contactEmailToHospitalRefs.has(email)) contactEmailToHospitalRefs.set(email, new Set<string>());
-          contactEmailToHospitalRefs.get(email)!.add(hospitalRef);
-        });
+        const mentorContacts = (await getUserData<MentorContactLike[]>(userProfile.id, 'mentorContacts')) || [];
 
         if (mergedHospitals.length > 0) {
           const hospitalIds = Array.from(
@@ -164,11 +164,13 @@ const MentorSnapshotPage = () => {
 
           // Load PECCs assigned to these hospitals
           const [{ data: byHospital, error: byHospitalError }, { data: byMentor, error: byMentorError }] = await Promise.all([
-            supabase
-              .from('users')
-              .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
-              .eq('role', 'pecc')
-              .in('hospital_facility_id', hospitalIds),
+            hospitalIds.length > 0
+              ? supabase
+                  .from('users')
+                  .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
+                  .eq('role', 'pecc')
+                  .in('hospital_facility_id', hospitalIds)
+              : Promise.resolve({ data: [] as PeccUserLike[], error: null }),
             supabase
               .from('users')
               .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
@@ -177,22 +179,44 @@ const MentorSnapshotPage = () => {
           ]);
           if (byHospitalError) throw byHospitalError;
           if (byMentorError) throw byMentorError;
-          const peccsMap = new Map<string, any>();
-          [...(byHospital || []), ...(byMentor || [])].forEach((row: any) => {
-            if (row?.id) peccsMap.set(row.id, row);
-          });
+          const mentorLinkedPeccs = (byMentor || []) as PeccUserLike[];
+          const peccsMap = new Map<string, PeccUserLike>();
+          for (const h of mergedHospitals) {
+            const hospitalRefs = new Set(
+              [h.hospital?.id, h.hospital?.facility_id, hospitalRefToUuid.get(h.hospital?.id || ''), hospitalRefToUuid.get(String(h.hospital?.facility_id || ''))]
+                .map((ref) => String(ref || '').trim())
+                .filter(Boolean)
+            );
+            const byHospPeccs = ((byHospital || []) as PeccUserLike[]).filter((p) =>
+              [...hospitalRefs].some((ref) => hospitalKeysMatch(p.hospital_facility_id, ref))
+            );
+            const { mergedPeccUsers } = resolvePeccsForMentorHospital({
+              hospitalRefs,
+              contacts: mentorContacts,
+              mentorLinkedPeccs,
+              peccUsersByHospital: byHospPeccs,
+              siteMemberPeccIds: [],
+              mentorId: userProfile.id,
+            });
+            mergedPeccUsers.forEach((row) => peccsMap.set(row.id, row));
+          }
           const peccs = [...peccsMap.values()];
 
           // Load checklist progress for each PECC
           const peccDataPromises = (peccs || []).map(async (pecc) => {
             const peccHospitalId = pecc.hospital_facility_id;
-            const emailRefs = contactEmailToHospitalRefs.get(String(pecc.email || '').trim().toLowerCase());
-            const hospital = mergedHospitals.find(
-              (h) =>
-                h.hospital?.id === peccHospitalId ||
-                h.hospital?.facility_id === peccHospitalId ||
-                Boolean(emailRefs && (emailRefs.has(h.hospital?.id) || emailRefs.has(String(h.hospital?.facility_id || ''))))
-            );
+            const hospital = mergedHospitals.find((h) => {
+              const refs = new Set(
+                [h.hospital?.id, h.hospital?.facility_id].map((ref) => String(ref || '').trim()).filter(Boolean)
+              );
+              if (peccHospitalId && [...refs].some((ref) => hospitalKeysMatch(ref, peccHospitalId))) return true;
+              return mentorContacts.some(
+                (contact) =>
+                  contactMatchesPeccAtHospital(contact, pecc, refs) ||
+                  (refs.has(String(contact.hospitalId || '').trim()) &&
+                    contactNameMatchesPecc(contact, pecc))
+              );
+            });
 
             // Get checklist progress from site_checklist_progress
             const progressRefs = [
@@ -250,7 +274,7 @@ const MentorSnapshotPage = () => {
             return {
               id: pecc.id,
               name: `${pecc.first_name} ${pecc.last_name}`,
-              email: pecc.email,
+              email: String(pecc.email || ''),
               hospital: hospital?.hospital?.name || 'Unknown Hospital',
               hospitalId: canonicalHospitalId || String(hospital?.hospital?.id || peccHospitalId || ''),
               checklistProgress,
