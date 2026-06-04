@@ -609,6 +609,12 @@ const AdminCRMPage: React.FC = () => {
   // Import state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importMappingConfirmed, setImportMappingConfirmed] = useState(false);
+
+  const prepareModalOpen = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    const active = document.activeElement;
+    if (active && active instanceof HTMLElement) active.blur();
+  }, []);
   const [importData, setImportData] = useState<Array<Record<string, string>>>([]);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
   const [importColumnMapping, setImportColumnMapping] = useState<Record<string, string>>({});
@@ -1456,8 +1462,9 @@ const AdminCRMPage: React.FC = () => {
     setAssignmentMentorOptions(mentorOptions);
     setAssignmentManagerIds(managerIds);
     setAssignmentMentorIds(mentorIds);
+    prepareModalOpen();
     setAssignmentDialogOpen(true);
-  }, [detailContact, detailContactUserId]);
+  }, [detailContact, detailContactUserId, prepareModalOpen]);
 
   const saveAssignments = useCallback(async () => {
     const c = detailContact;
@@ -2928,10 +2935,11 @@ const AdminCRMPage: React.FC = () => {
     setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false });
   };
 
-  const openDetail = (c: Contact) => {
+  const openDetail = useCallback((c: Contact) => {
+    prepareModalOpen();
     setDetailContact(c);
     setPanelOpen(true);
-  };
+  }, [prepareModalOpen]);
 
   useEffect(() => {
     const crmContactId = searchParams.get('crmContact');
@@ -2956,6 +2964,7 @@ const AdminCRMPage: React.FC = () => {
       setDetailContact(c);
       if (crmView === 'full') {
         setPanelOpen(false);
+        prepareModalOpen();
         setFullScreenOpen(true);
       } else {
         openDetail(c);
@@ -2969,7 +2978,7 @@ const AdminCRMPage: React.FC = () => {
         }, { replace: true });
       }
     }
-  }, [loading, contacts, searchParams, setSearchParams]);
+  }, [loading, contacts, searchParams, setSearchParams, openDetail, prepareModalOpen]);
 
   useEffect(() => {
     if (!fullScreenOpen || !detailContact) return;
@@ -3015,6 +3024,7 @@ const AdminCRMPage: React.FC = () => {
 
   const openFullScreen = () => {
     setPanelOpen(false);
+    prepareModalOpen();
     setFullScreenOpen(true);
   };
 
@@ -4105,7 +4115,7 @@ const AdminCRMPage: React.FC = () => {
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {canSeeReminders && (
             <Tooltip title="View your follow-up reminders across all contacts">
-              <Button startIcon={<NotificationsIcon />} onClick={() => setMyRemindersOpen(true)} size="medium" color={reminders.length > 0 ? 'primary' : 'inherit'}>
+              <Button startIcon={<NotificationsIcon />} onClick={() => { prepareModalOpen(); setMyRemindersOpen(true); }} size="medium" color={reminders.length > 0 ? 'primary' : 'inherit'}>
                 My reminders {reminders.length > 0 ? `(${reminders.length})` : ''}
               </Button>
             </Tooltip>
@@ -4116,21 +4126,21 @@ const AdminCRMPage: React.FC = () => {
             </Button>
           </Tooltip>
           <Tooltip title="Import contacts from a CSV file">
-            <Button startIcon={<UploadIcon />} onClick={() => { setImportDialogOpen(true); setImportData([]); setImportHeaders([]); setImportColumnMapping({}); setImportError(null); setImportSuccess(null); setImportMappingConfirmed(false); }} size="medium">
+            <Button startIcon={<UploadIcon />} onClick={() => { prepareModalOpen(); setImportDialogOpen(true); setImportData([]); setImportHeaders([]); setImportColumnMapping({}); setImportError(null); setImportSuccess(null); setImportMappingConfirmed(false); }} size="medium">
               Import
             </Button>
           </Tooltip>
           <Tooltip title="Choose columns and export all filtered or selected contacts">
-            <Button startIcon={<DownloadIcon />} onClick={() => setExportDialogOpen(true)} size="medium">
+            <Button startIcon={<DownloadIcon />} onClick={() => { prepareModalOpen(); setExportDialogOpen(true); }} size="medium">
               Export
             </Button>
           </Tooltip>
           <Tooltip title="Add or remove custom fields for contacts (Admins only)">
-            <Button startIcon={<SettingsIcon />} onClick={() => setCustomFieldsDialogOpen(true)} size="medium" variant="outlined">
+            <Button startIcon={<SettingsIcon />} onClick={() => { prepareModalOpen(); setCustomFieldsDialogOpen(true); }} size="medium" variant="outlined">
               Manage custom fields
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); setSaveError(null); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); setSaveError(null); prepareModalOpen(); setDialogOpen(true); }}>
             Add Contact
           </Button>
         </Box>
@@ -4393,7 +4403,7 @@ const AdminCRMPage: React.FC = () => {
               <MenuItem key={s} onClick={() => handleBulkStatusChange(s)}>{s}</MenuItem>
             ))}
           </Menu>
-          <Button size="small" variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { setDeleteConfirmTyped(''); setDeleteTarget({ bulk: new Set(selectedIds) }); setDeleteConfirmOpen(true); }}>
+          <Button size="small" variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => { setDeleteConfirmTyped(''); setDeleteTarget({ bulk: new Set(selectedIds) }); prepareModalOpen(); setDeleteConfirmOpen(true); }}>
             Delete selected
           </Button>
           <Button
@@ -4438,7 +4448,7 @@ const AdminCRMPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
                   {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" size="large">
+                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" size="large">
                   {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                 </Button>
               </Paper>
@@ -4524,7 +4534,7 @@ const AdminCRMPage: React.FC = () => {
                     <Typography variant="h6" color="text.secondary">
                       {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                     </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" sx={{ mt: 2 }}>
+                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false }); }} variant="contained" sx={{ mt: 2 }}>
                       {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
                     </Button>
                   </TableCell>
@@ -4571,17 +4581,17 @@ const AdminCRMPage: React.FC = () => {
             <PersonIcon fontSize="small" sx={{ mr: 1 }} /> Manage in Team tab
           </MenuItem>
         )}
-        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false }); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
+        <MenuItem onClick={() => { if (detailContact) { setEditingContact(detailContact); setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false }); prepareModalOpen(); setFullScreenOpen(true); setFullScreenEditMode(true); } setAnchorEl(null); }}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
         </MenuItem>
         <MenuItem onClick={() => { if (detailContact?.email?.trim()) window.open(`mailto:${encodeURIComponent(detailContact.email.trim())}`); setAnchorEl(null); }} disabled={!detailContact?.email?.trim()}><EmailIcon fontSize="small" sx={{ mr: 1 }} /> Email</MenuItem>
-        <MenuItem onClick={() => { if (detailContact) { setDeleteConfirmTyped(''); setDeleteTarget({ single: detailContact.id }); setDeleteConfirmOpen(true); } setAnchorEl(null); }} sx={{ color: 'error.main' }}>
+        <MenuItem onClick={() => { if (detailContact) { setDeleteConfirmTyped(''); setDeleteTarget({ single: detailContact.id }); prepareModalOpen(); setDeleteConfirmOpen(true); } setAnchorEl(null); }} sx={{ color: 'error.main' }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete
         </MenuItem>
       </Menu>
 
       {/* Delete confirmation */}
-      <Dialog open={deleteConfirmOpen} onClose={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); setDeleteConfirmTyped(''); }}>
+      <Dialog disableRestoreFocus open={deleteConfirmOpen} onClose={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); setDeleteConfirmTyped(''); }}>
         <DialogTitle>
           {deleteTarget?.bulk ? `Delete ${deleteTarget.bulk.size} contacts?` : 'Delete contact?'}
         </DialogTitle>
@@ -4630,7 +4640,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Note delete confirmation */}
-      <Dialog open={noteDeleteConfirmIndex !== null} onClose={() => setNoteDeleteConfirmIndex(null)}>
+      <Dialog disableRestoreFocus open={noteDeleteConfirmIndex !== null} onClose={() => setNoteDeleteConfirmIndex(null)}>
         <DialogTitle>Delete this note?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">This cannot be undone.</Typography>
@@ -4653,7 +4663,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* My reminders – per-user, Mentor/Manager/Admin only */}
-      <Dialog open={myRemindersOpen} onClose={() => setMyRemindersOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog disableRestoreFocus open={myRemindersOpen} onClose={() => setMyRemindersOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>My follow-up reminders</DialogTitle>
         <DialogContent>
           {remindersLoading ? (
@@ -4669,7 +4679,7 @@ const AdminCRMPage: React.FC = () => {
                   sx={{ cursor: 'pointer' }}
                   onClick={() => {
                     const c = contacts.find(x => x.id === r.contact_id);
-                    if (c) { setDetailContact(c); setPanelOpen(false); setMyRemindersOpen(false); setFullScreenOpen(true); }
+                    if (c) { setDetailContact(c); setPanelOpen(false); setMyRemindersOpen(false); prepareModalOpen(); setFullScreenOpen(true); }
                   }}
                 >
                   <ListItemText primary={r.title || 'Follow up'} secondary={`${r.contact_name || r.contact_id} · ${new Date(r.remind_at).toLocaleString()}`} />
@@ -5003,6 +5013,7 @@ const AdminCRMPage: React.FC = () => {
                   setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false });
                   setEditingContact(c);
                   setPanelOpen(false);
+                  prepareModalOpen();
                   setFullScreenOpen(true);
                   setFullScreenEditMode(true);
                 }}>
@@ -5087,6 +5098,7 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Contact detail – full-screen popup (opened via Expand); can switch to edit mode in same view */}
       <Dialog
+        disableRestoreFocus
         fullScreen
         open={fullScreenOpen}
         onClose={() => {
@@ -5900,7 +5912,7 @@ const AdminCRMPage: React.FC = () => {
         )}
       </Dialog>
 
-      <Dialog open={assignmentDialogOpen} onClose={() => !assignmentSaving && setAssignmentDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog disableRestoreFocus open={assignmentDialogOpen} onClose={() => !assignmentSaving && setAssignmentDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Assignments</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -5957,7 +5969,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Add/Edit dialog */}
-      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditingContact(null); }} maxWidth="sm" fullWidth>
+      <Dialog disableRestoreFocus open={dialogOpen} onClose={() => { setDialogOpen(false); setEditingContact(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>{editingContact ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
@@ -6297,7 +6309,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Manage custom fields (Admins only) */}
-      <Dialog open={customFieldsDialogOpen} onClose={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false); setNewDefShowInCrm('both'); setCsvUploadError(null); }} maxWidth="sm" fullWidth>
+      <Dialog disableRestoreFocus open={customFieldsDialogOpen} onClose={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false); setNewDefShowInCrm('both'); setCsvUploadError(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>Manage custom fields</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -6441,7 +6453,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Export – choose scope and columns */}
-      <Dialog open={exportDialogOpen} onClose={() => setExportDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog disableRestoreFocus open={exportDialogOpen} onClose={() => setExportDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Export contacts</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle2" sx={{ mt: 0.5, mb: 1 }}>What to export</Typography>
@@ -6492,6 +6504,7 @@ const AdminCRMPage: React.FC = () => {
               if (exportColumnIds.length === 0 || (exportScope === 'selected' && selectedIds.size === 0)) return;
               setPendingExport({ scope: exportScope, columnIds: exportColumnIds });
               setExportDialogOpen(false);
+              prepareModalOpen();
               setExportPiiDialogOpen(true);
             }}
             disabled={exportColumnIds.length === 0 || (exportScope === 'selected' && selectedIds.size === 0)}
@@ -6501,7 +6514,7 @@ const AdminCRMPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={exportPiiDialogOpen} onClose={() => { setExportPiiDialogOpen(false); setPendingExport(null); }} maxWidth="xs" fullWidth>
+      <Dialog disableRestoreFocus open={exportPiiDialogOpen} onClose={() => { setExportPiiDialogOpen(false); setPendingExport(null); }} maxWidth="xs" fullWidth>
         <DialogTitle>Export may contain sensitive data</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
@@ -6528,7 +6541,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
 
       {/* Import – upload CSV file */}
-      <Dialog open={importDialogOpen} onClose={() => !importInProgress && setImportDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog disableRestoreFocus open={importDialogOpen} onClose={() => !importInProgress && setImportDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Import contacts from CSV</DialogTitle>
         <DialogContent>
           {importData.length === 0 ? (
@@ -6709,7 +6722,7 @@ const AdminCRMPage: React.FC = () => {
       </Dialog>
       
       {/* Duplicates Detection Dialog */}
-      <Dialog open={duplicatesDialogOpen} onClose={() => setDuplicatesDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog disableRestoreFocus open={duplicatesDialogOpen} onClose={() => setDuplicatesDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Duplicate Contacts Detected</DialogTitle>
         <DialogContent>
           {detectedDuplicates.length === 0 ? (
@@ -6804,6 +6817,7 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Merge Contacts Dialog */}
       <Dialog
+        disableRestoreFocus
         open={mergeDialogOpen}
         onClose={() => {
           if (saveInProgress) return;
