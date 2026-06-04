@@ -83,6 +83,7 @@ interface HospitalMetrics {
   readinessScoreDate: string | null;
   simulationCount: number;
   peccUserId?: string;
+  peccDisplayName?: string;
   fullSiteAccessApproved?: boolean;
 }
 
@@ -528,6 +529,21 @@ const MentorSiteMilestonesPage: React.FC = () => {
           ...siteMemberPeccIds
         ];
         const uniquePeccUserIds = [...new Set(peccUserIds.map((id) => String(id || '').trim()).filter(Boolean))];
+        const peccNameById = new Map(
+          ((peccUsers || []) as Array<{ id: string; first_name?: string | null; last_name?: string | null }>)
+            .map((u) => [u.id, [u.first_name, u.last_name].filter(Boolean).join(' ').trim()])
+        );
+        const missingPeccNameIds = uniquePeccUserIds.filter((id) => !peccNameById.get(id));
+        if (missingPeccNameIds.length > 0) {
+          const { data: missingProfiles } = await supabase
+            .from('users')
+            .select('id, first_name, last_name, email')
+            .in('id', missingPeccNameIds);
+          (missingProfiles || []).forEach((u: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null }) => {
+            const label = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || '');
+            if (label) peccNameById.set(u.id, label);
+          });
+        }
         const directMentorPeccIds = ((peccUsers || []) as Array<{ id: string; mentor_id?: string | null }>)
           .filter((u) => String(u.mentor_id || '').trim() === mentorDataUserId)
           .map((u) => u.id);
@@ -767,6 +783,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
             readinessScoreDate: latestScore?.date || null,
             simulationCount: simulations,
             peccUserId: preferredPeccId,
+            peccDisplayName: preferredPeccId ? (peccNameById.get(preferredPeccId) || preferredPeccId) : undefined,
             fullSiteAccessApproved
           };
         } else {
@@ -1492,6 +1509,11 @@ const MentorSiteMilestonesPage: React.FC = () => {
           open={Boolean(hospitalMenuAnchor)}
           onClose={handleHospitalMenuClose}
         >
+          {hospitalMenuAnchor && hospitalMetrics[hospitalMenuAnchor.hospitalId]?.peccUserId && (
+            <MenuItem disabled dense>
+              Full view target: {hospitalMetrics[hospitalMenuAnchor.hospitalId]?.peccDisplayName || 'PECC account'}
+            </MenuItem>
+          )}
           <MenuItem onClick={() => hospitalMenuAnchor && handleViewCRM(hospitalMenuAnchor.hospitalId)}>
             <BusinessIcon sx={{ mr: 1, fontSize: '1rem' }} />
             View in CRM
