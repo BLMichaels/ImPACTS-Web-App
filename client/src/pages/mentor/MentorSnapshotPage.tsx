@@ -29,12 +29,17 @@ import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import {
+  getActivityCategories,
+  isSimulationActivity,
+} from '../../utils/mentorActivityCategories';
+import {
   getUserData,
   batchGetHospitalDataForKey,
   mapSiteRefsToHospitalRowIds,
   shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
+import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import {
   contactMatchesPeccAtHospital,
   contactNameMatchesPecc,
@@ -59,7 +64,9 @@ interface PECCData {
   name: string;
   email: string;
   hospital: string;
-  hospitalId: string;
+  /** Mentor assignment row id — used for hospital toggles and metrics alignment */
+  hospitalRowId: string;
+  canonicalHospitalId: string;
   checklistProgress: number;
   activityCount: number;
   lastActivity: string | null;
@@ -70,37 +77,24 @@ interface PECCData {
 interface HospitalMetrics {
   hospitalId: string;
   hospitalName: string;
-  mentorActivities: number;
-  mentorHours: number;
+  siteActivityCount: number;
+  siteHours: number;
   simulations: number;
   peccCount: number;
 }
 
-const getActivityCategories = (activity: { categories?: unknown; category?: unknown }): string[] => {
-  if (Array.isArray(activity.categories)) {
-    const normalized = activity.categories
-      .map((entry) => String(entry || '').trim())
-      .filter(Boolean);
-    if (normalized.length > 0) return normalized;
-  }
-  const fallback = String(activity.category || '').trim();
-  return fallback ? [fallback] : [];
-};
-
-const hasActivityCategory = (activity: { categories?: unknown; category?: unknown }, category: string): boolean => {
-  return getActivityCategories(activity).includes(category);
-};
-
-const isSimulationActivity = (activity: MentorActivity): boolean => {
-  return hasActivityCategory(activity, 'SC') ||
-    hasActivityCategory(activity, 'Simulation Case Facilitation') ||
-    Boolean(activity.simulation);
-};
+const peccMatchesHospitalRefs = (pecc: PECCData, refs: Set<string>): boolean =>
+  [...refs].some(
+    (ref) =>
+      hospitalKeysMatch(ref, pecc.hospitalRowId) ||
+      hospitalKeysMatch(ref, pecc.canonicalHospitalId)
+  );
 
 const MentorSnapshotPage = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, effectiveUserId } = useUserProfile();
+  const mentorUserId = effectiveUserId ?? userProfile?.id;
   
   const [activities, setActivities] = useState<MentorActivity[]>([]);
   const [peccData, setPeccData] = useState<PECCData[]>([]);
@@ -109,22 +103,23 @@ const MentorSnapshotPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [selectedHospitals, setSelectedHospitals] = useState<string[]>([]);
+  const [siteActivities, setSiteActivities] = useState<MentorActivity[]>([]);
   const [retryCount, setRetryCount] = useState(0);
 
   // Load all data for mentor snapshot
   useEffect(() => {
     const loadData = async () => {
-      if (!userProfile?.id) return;
+      if (!mentorUserId) return;
       
       try {
         setIsLoading(true);
         setHasError(false);
 
         // Load mentor's own activities from Supabase (user_data)
-        const parsedMentorActivities = await getMentorActivitiesForUser(userProfile.id);
+        const parsedMentorActivities = await getMentorActivitiesForUser(mentorUserId);
         setActivities(parsedMentorActivities);
 
-        const mergedRows = await fetchMergedMentorHospitals(userProfile.id);
+        const mergedRows = await fetchMergedMentorHospitals(mentorUserId);
         const mergedHospitals = mergedRows.map((row) => ({
           id: row.id,
           hospital_id: row.hospital_id,
@@ -141,7 +136,7 @@ const MentorSnapshotPage = () => {
         }));
 
         setAssignedHospitals(mergedHospitals);
-        const mentorContacts = (await getUserData<MentorContactLike[]>(userProfile.id, 'mentorContacts')) || [];
+        const mentorContacts = (await getUserData<MentorContactLike[]>(mentorUserId, 'mentorContacts')) || [];
 
         if (mergedHospitals.length > 0) {
           const hospitalIds = Array.from(
@@ -175,7 +170,7 @@ const MentorSnapshotPage = () => {
               .from('users')
               .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
               .eq('role', 'pecc')
-              .eq('mentor_id', userProfile.id),
+              .eq('mentor_id', mentorUserId),
           ]);
           if (byHospitalError) throw byHospitalError;
           if (byMentorError) throw byMentorError;
@@ -196,11 +191,13 @@ const MentorSnapshotPage = () => {
               mentorLinkedPeccs,
               peccUsersByHospital: byHospPeccs,
               siteMemberPeccIds: [],
-              mentorId: userProfile.id,
+              mentorId: mentorUserId,
             });
             mergedPeccUsers.forEach((row) => peccsMap.set(row.id, row));
           }
           const peccs = [...peccsMap.values()];
+
+          const siteActivitiesByCanonical = new Map<string, MentorActivity[]>();
 
           // Load checklist progress for each PECC
           const peccDataPromises = (peccs || []).map(async (pecc) => {
@@ -218,26 +215,22 @@ const MentorSnapshotPage = () => {
               );
             });
 
-            // Get checklist progress from site_checklist_progress
-            const progressRefs = [
-              String(hospital?.hospital?.id || ''),
-              String(hospital?.hospital?.facility_id || ''),
-              String(peccHospitalId || ''),
-            ].filter((ref) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ref));
-            const progressOr = [...new Set(progressRefs)].map((ref) => `hospital_id.eq.${ref}`).join(',');
-            const { data: checklistData } = await supabase
-              .from('site_checklist_progress')
-              .select('completed')
-              .or(progressOr || 'hospital_id.eq.00000000-0000-0000-0000-000000000000');
-
-            const totalTasks = 100; // Approximate total from DEFAULT_STAGES
-            const completedTasks = (checklistData || []).filter(t => t.completed).length;
-            const checklistProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
             const canonicalHospitalId =
               (peccHospitalId ? hospitalRefToUuid.get(peccHospitalId) : undefined) ||
               (hospital?.hospital?.id ? hospitalRefToUuid.get(hospital.hospital.id) : undefined) ||
-              (hospital?.hospital?.facility_id ? hospitalRefToUuid.get(hospital.hospital.facility_id) : undefined);
+              (hospital?.hospital?.facility_id ? hospitalRefToUuid.get(hospital.hospital.facility_id) : undefined) ||
+              '';
+
+            let checklistProgress = 0;
+            if (canonicalHospitalId) {
+              const { data: checklistData } = await supabase
+                .from('site_checklist_progress')
+                .select('completed')
+                .eq('hospital_id', canonicalHospitalId);
+              const rows = checklistData || [];
+              const completedTasks = rows.filter((t) => t.completed).length;
+              checklistProgress = rows.length > 0 ? Math.round((completedTasks / rows.length) * 100) : 0;
+            }
 
             const hospitalActivities = canonicalHospitalId ? hospActivitiesMap.get(canonicalHospitalId) : null;
             const hospitalGapPlans = canonicalHospitalId ? hospGapPlansMap.get(canonicalHospitalId) : null;
@@ -254,6 +247,9 @@ const MentorSnapshotPage = () => {
             const activities = Array.isArray(hospitalActivities)
               ? hospitalActivities
               : (Array.isArray(peccActivitiesVal) ? peccActivitiesVal : []);
+            if (canonicalHospitalId && activities.length > 0) {
+              siteActivitiesByCanonical.set(canonicalHospitalId, activities as MentorActivity[]);
+            }
             const activityCount = activities.length;
             const lastActivity = activities.length > 0
               ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
@@ -271,12 +267,14 @@ const MentorSnapshotPage = () => {
               );
             if (scoresRaw.length > 0) readinessScores = scoresRaw as Array<{ id: string; score: number; date: string }>;
 
+            const hospitalRowId = String(hospital?.hospital?.id || '');
             return {
               id: pecc.id,
-              name: `${pecc.first_name} ${pecc.last_name}`,
+              name: `${pecc.first_name} ${pecc.last_name}`.trim() || 'PECC',
               email: String(pecc.email || ''),
-              hospital: hospital?.hospital?.name || 'Unknown Hospital',
-              hospitalId: canonicalHospitalId || String(hospital?.hospital?.id || peccHospitalId || ''),
+              hospital: normalizeHospitalOrOrgName(hospital?.hospital?.name || 'Unknown Hospital'),
+              hospitalRowId,
+              canonicalHospitalId,
               checklistProgress,
               activityCount,
               lastActivity,
@@ -287,11 +285,13 @@ const MentorSnapshotPage = () => {
 
           const resolvedPeccData = await Promise.all(peccDataPromises);
           setPeccData(resolvedPeccData);
-          
+          const flattenedSiteActivities = [...siteActivitiesByCanonical.values()].flat();
+          setSiteActivities(flattenedSiteActivities);
+
           // Calculate per-hospital metrics
           const metrics: HospitalMetrics[] = mergedHospitals.map(h => {
             const hospitalId = String(h.hospital?.id || '');
-            const hospitalName = h.hospital?.name || 'Unknown Hospital';
+            const hospitalName = normalizeHospitalOrOrgName(h.hospital?.name || 'Unknown Hospital');
             const hospitalFacilityId = String(h.hospital?.facility_id || hospitalId);
             const canonicalHospitalId =
               hospitalRefToUuid.get(hospitalId) ||
@@ -300,25 +300,28 @@ const MentorSnapshotPage = () => {
             const hospitalActivities = canonicalHospitalId
               ? (hospActivitiesMap.get(canonicalHospitalId) || [])
               : [];
-            const mentorHours = hospitalActivities.reduce((sum: number, a: any) => sum + (Number(a?.hours) || 0), 0);
+            const siteHours = hospitalActivities.reduce((sum: number, a: any) => sum + (Number(a?.hours) || 0), 0);
             const simulations = hospitalActivities.filter((a: any) => isSimulationActivity(a)).length;
             const hospitalRefSet = new Set([hospitalId, hospitalFacilityId, canonicalHospitalId].filter(Boolean));
-            const peccCount = resolvedPeccData.filter((p) => hospitalRefSet.has(String(p.hospitalId || ''))).length;
-            
+            const peccCount = resolvedPeccData.filter((p) => peccMatchesHospitalRefs(p, hospitalRefSet)).length;
+
             return {
               hospitalId,
               hospitalName,
-              mentorActivities: hospitalActivities.length,
-              mentorHours,
+              siteActivityCount: hospitalActivities.length,
+              siteHours,
               simulations,
               peccCount
             };
           });
-          
+
           setHospitalMetrics(metrics);
-          
-          // Initialize selected hospitals to all hospitals
-          setSelectedHospitals(metrics.map(m => m.hospitalId));
+
+          const prsHospitalIds = resolvedPeccData
+            .filter((p) => p.readinessScores.length > 0)
+            .map((p) => p.hospitalRowId)
+            .filter(Boolean);
+          setSelectedHospitals([...new Set(prsHospitalIds.length > 0 ? prsHospitalIds : metrics.map((m) => m.hospitalId))]);
         }
         
       } catch (err) {
@@ -330,7 +333,7 @@ const MentorSnapshotPage = () => {
     };
 
     loadData();
-  }, [currentUser?.uid, userProfile?.id, retryCount]);
+  }, [mentorUserId, retryCount]);
 
   // Calculate metrics
   const totalHours = useMemo(() => 
@@ -400,16 +403,30 @@ const MentorSnapshotPage = () => {
     return breakdown;
   }, [activities]);
 
-  // Calculate simulation breakdown across all activities
+  const uniqueSiteActivityTotals = useMemo(() => {
+    const seen = new Set<string>();
+    let activities = 0;
+    let gapPlans = 0;
+    for (const p of peccData) {
+      const key = p.canonicalHospitalId || p.hospitalRowId;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      activities += p.activityCount;
+      gapPlans += p.gapPlanCount;
+    }
+    return { activities, gapPlans };
+  }, [peccData]);
+
+  // Site simulation breakdown (hospital_data activities, not mentor log)
   const simulationBreakdown = useMemo(() => {
-    const simActivities = activities.filter((a) => isSimulationActivity(a));
+    const simActivities = siteActivities.filter((a) => isSimulationActivity(a));
     const breakdown: Record<string, number> = {};
     simActivities.forEach(a => {
       const simType = a.simulation || 'Other';
       breakdown[simType] = (breakdown[simType] || 0) + 1;
     });
     return breakdown;
-  }, [activities]);
+  }, [siteActivities]);
 
   // Toggle hospital selection for PRS chart
   const handleToggleHospital = (hospitalId: string) => {
@@ -430,7 +447,7 @@ const MentorSnapshotPage = () => {
 
   // Prepare PRS chart data
   const prsChartData = useMemo(() => {
-    const selectedPeccs = peccData.filter(p => selectedHospitals.includes(p.hospitalId));
+    const selectedPeccs = peccData.filter((p) => selectedHospitals.includes(p.hospitalRowId));
     return selectedPeccs.map(pecc => ({
       peccName: pecc.name,
       hospitalName: pecc.hospital,
@@ -498,9 +515,14 @@ const MentorSnapshotPage = () => {
           <Typography color="text.secondary" sx={{ mb: 2 }}>
             Your overview shows data for hospitals assigned to you. Add or link hospitals from the <strong>Hospitals</strong> page, or ask your manager to assign you in the CRM.
           </Typography>
-          <Button variant="contained" onClick={() => navigate('/mentor/hospitals')}>
-            Go to Hospitals
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Button variant="contained" onClick={() => navigate('/mentor/hospitals')}>
+              Go to Hospitals
+            </Button>
+            <Button variant="outlined" onClick={() => navigate('/mentor/dashboard')}>
+              Dashboard
+            </Button>
+          </Box>
         </Box>
       </Container>
     );
@@ -521,14 +543,19 @@ const MentorSnapshotPage = () => {
               Track your activities, monitor PECC progress, and measure engagement across all assigned hospitals
             </Typography>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<PictureAsPdfIcon />}
-            onClick={exportToPDF}
-            sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
-          >
-            Export PDF
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button size="small" variant="outlined" onClick={() => navigate('/mentor/dashboard')}>
+              Dashboard
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={exportToPDF}
+              sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
+            >
+              Export PDF
+            </Button>
+          </Box>
         </Box>
       </Box>
 
@@ -546,7 +573,7 @@ const MentorSnapshotPage = () => {
                   {peccData.length} PECCs • {assignedHospitals.length} Hospitals
                 </Typography>
                 <Typography variant="body2">
-                  Average PECC progress: {avgPECCProgress}% • {activePECCs} active this month
+                  Average checklist progress: {avgPECCProgress}% • {activePECCs} PECC{activePECCs === 1 ? '' : 's'} active in last 30 days
                 </Typography>
                 {hospitalsAwaitingPeccSetup.length > 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
@@ -676,7 +703,7 @@ const MentorSnapshotPage = () => {
                 Mentor Activity Breakdown
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Hours logged by activity category from mentor_activities table
+                Your logged mentoring hours by category (Activities tab)
               </Typography>
               <Box sx={{ mt: 2 }}>
                 {Object.keys(categoryBreakdown).length > 0 ? (
@@ -886,17 +913,20 @@ const MentorSnapshotPage = () => {
                 PECC Activity Engagement
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Total activities logged by PECCs across all sites
+                Site activities from hospital records (counted once per hospital)
               </Typography>
               <Box sx={{ textAlign: 'center', p: 3, bgcolor: 'primary.light', borderRadius: 2, mt: 2 }}>
                 <Typography variant="h2" color="white" sx={{ fontWeight: 'bold' }}>
-                  {peccData.reduce((sum, p) => sum + p.activityCount, 0)}
+                  {uniqueSiteActivityTotals.activities}
                 </Typography>
                 <Typography variant="body2" color="white">
-                  Total PECC Activities
+                  Total Site Activities
                 </Typography>
                 <Typography variant="caption" color="white" sx={{ mt: 1, display: 'block' }}>
-                  {peccData.length > 0 ? Math.round(peccData.reduce((sum, p) => sum + p.activityCount, 0) / peccData.length) : 0} avg per PECC
+                  {assignedHospitals.length > 0
+                    ? (uniqueSiteActivityTotals.activities / assignedHospitals.length).toFixed(1)
+                    : 0}{' '}
+                  avg per hospital
                 </Typography>
               </Box>
             </CardContent>
@@ -914,13 +944,16 @@ const MentorSnapshotPage = () => {
               </Typography>
               <Box sx={{ textAlign: 'center', p: 3, bgcolor: 'success.light', borderRadius: 2, mt: 2 }}>
                 <Typography variant="h2" color="white" sx={{ fontWeight: 'bold' }}>
-                  {peccData.reduce((sum, p) => sum + p.gapPlanCount, 0)}
+                  {uniqueSiteActivityTotals.gapPlans}
                 </Typography>
                 <Typography variant="body2" color="white">
                   Total Gap Plans
                 </Typography>
                 <Typography variant="caption" color="white" sx={{ mt: 1, display: 'block' }}>
-                  {peccData.length > 0 ? (peccData.reduce((sum, p) => sum + p.gapPlanCount, 0) / peccData.length).toFixed(1) : 0} avg per PECC
+                  {assignedHospitals.length > 0
+                    ? (uniqueSiteActivityTotals.gapPlans / assignedHospitals.length).toFixed(1)
+                    : 0}{' '}
+                  avg per hospital
                 </Typography>
               </Box>
             </CardContent>
@@ -958,10 +991,10 @@ const MentorSnapshotPage = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Hospital-Level Mentoring Metrics
+                Hospital Site Activity
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 3, display: 'block' }}>
-                Site-level activities, hours, and simulations breakdown by hospital
+                Activities logged at each site (hospital data), plus linked PECC count
               </Typography>
               <Box sx={{ mt: 2 }}>
                 {hospitalMetrics.length > 0 ? (
@@ -976,20 +1009,20 @@ const MentorSnapshotPage = () => {
                             <Grid item xs={6}>
                               <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
                                 <Typography variant="h6" color="primary.main">
-                                  {metric.mentorActivities}
+                                  {metric.siteActivityCount}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                  Activities
+                                  Site activities
                                 </Typography>
                               </Box>
                             </Grid>
                             <Grid item xs={6}>
                               <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
                                 <Typography variant="h6" color="primary.main">
-                                  {metric.mentorHours.toFixed(1)}
+                                  {metric.siteHours.toFixed(1)}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                  Hours
+                                  Site hours
                                 </Typography>
                               </Box>
                             </Grid>
@@ -1038,7 +1071,7 @@ const MentorSnapshotPage = () => {
                 Simulation Types Completed
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Breakdown of simulation cases facilitated across all hospitals
+                Simulation cases logged at your assigned sites
               </Typography>
               <Box sx={{ mt: 2 }}>
                 {Object.keys(simulationBreakdown).length > 0 ? (
@@ -1137,7 +1170,7 @@ const MentorSnapshotPage = () => {
                   Hospital Pediatric Readiness Score Trends
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                  PRS assessment progression from prsReadinessScores stored per PECC
+                  Pediatric readiness scores stored per hospital (hospital or PECC legacy data)
                 </Typography>
 
                 {/* Hospital Toggles */}
@@ -1163,8 +1196,8 @@ const MentorSnapshotPage = () => {
                           key={pecc.id}
                           control={
                             <Checkbox
-                              checked={selectedHospitals.includes(pecc.hospitalId)}
-                              onChange={() => handleToggleHospital(pecc.hospitalId)}
+                              checked={selectedHospitals.includes(pecc.hospitalRowId)}
+                              onChange={() => handleToggleHospital(pecc.hospitalRowId)}
                               size="small"
                             />
                           }

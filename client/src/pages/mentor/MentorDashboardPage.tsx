@@ -22,7 +22,6 @@ import {
   LocalHospital as HospitalIcon,
   Assignment as ActivityIcon,
   People as PeopleIcon,
-  TrendingUp as TrendingIcon,
   Close as CloseIcon,
   Email as EmailIcon,
   CalendarToday as CalendarIcon,
@@ -36,13 +35,25 @@ import { format } from 'date-fns';
 import { supabase } from '../../supabase';
 import { batchGetHospitalDataForKey, getUserData, mapSiteRefsToHospitalRowIds } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
+import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+import {
+  displayActivityCategories,
+  isSimulationActivity,
+} from '../../utils/mentorActivityCategories';
+import {
+  resolvePeccsForMentorHospital,
+  type MentorContactLike,
+  type PeccUserLike,
+} from '../../utils/mentorPeccHospitalMatch';
+import { hospitalKeysMatch } from '../../utils/hospitalId';
 import DashboardResources from '../../components/DashboardResources';
 
 interface DashboardStats {
   totalHospitals: number;
   totalPeccs: number;
-  activitiesThisMonth: number;
-  hoursThisMonth: number;
+  siteActivitiesThisMonth: number;
+  siteHoursThisMonth: number;
+  mentorHoursThisMonth: number;
   simulationsThisMonth: number;
 }
 
@@ -89,6 +100,7 @@ interface StoredActivity {
 
 interface HospitalSummary {
   id: string;
+  facilityId?: string;
   name: string;
   city?: string;
   state?: string;
@@ -98,31 +110,12 @@ interface HospitalSummary {
   notes?: string;
   peccName: string;
   peccEmail: string;
+  peccUserId: string | null;
   activityCount: number;
   totalHours: number;
   lastActivityAt: string | null;
   activities: StoredActivity[];
 }
-
-const getActivityCategories = (activity: { categories?: unknown; category?: unknown }): string[] => {
-  if (Array.isArray(activity.categories)) {
-    const normalized = activity.categories
-      .map((entry) => String(entry || '').trim())
-      .filter(Boolean);
-    if (normalized.length > 0) return normalized;
-  }
-  const fallback = String(activity.category || '').trim();
-  return fallback ? [fallback] : [];
-};
-
-const hasActivityCategory = (activity: { categories?: unknown; category?: unknown }, category: string): boolean => {
-  return getActivityCategories(activity).includes(category);
-};
-
-const displayActivityCategories = (activity: { categories?: unknown; category?: unknown }): string => {
-  const normalized = getActivityCategories(activity);
-  return normalized.length > 0 ? normalized.join(', ') : 'Uncategorized';
-};
 
 const MentorDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -134,8 +127,9 @@ const MentorDashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats>({
     totalHospitals: 0,
     totalPeccs: 0,
-    activitiesThisMonth: 0,
-    hoursThisMonth: 0,
+    siteActivitiesThisMonth: 0,
+    siteHoursThisMonth: 0,
+    mentorHoursThisMonth: 0,
     simulationsThisMonth: 0
   });
   const [hospitalSummaries, setHospitalSummaries] = useState<HospitalSummary[]>([]);
@@ -215,16 +209,66 @@ const MentorDashboardPage: React.FC = () => {
       ? await batchGetHospitalDataForKey<any[]>(canonicalHospitalIds, 'activities')
       : new Map<string, any[] | null>();
 
+    const mentorContacts: MentorContactLike[] = contacts.map((c) => ({
+      hospitalId: c.hospitalId,
+      email: c.email,
+      firstName: c.firstName,
+      lastName: c.lastName,
+      isPrimaryContact: c.isPrimaryContact,
+    }));
+
+    const [{ data: byHospital }, { data: byMentor }] = await Promise.all([
+      hospitalRefs.length > 0
+        ? supabase
+            .from('users')
+            .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
+            .eq('role', 'pecc')
+            .in('hospital_facility_id', hospitalRefs)
+        : Promise.resolve({ data: [] as PeccUserLike[], error: null }),
+      supabase
+        .from('users')
+        .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
+        .eq('role', 'pecc')
+        .eq('mentor_id', uid),
+    ]);
+    const mentorLinkedPeccs = (byMentor || []) as PeccUserLike[];
+    const peccsByHospital = (byHospital || []) as PeccUserLike[];
+
     const summaries: HospitalSummary[] = workingHospitals.map((h: StoredHospital) => {
-      const hContacts = contacts.filter((c: StoredContact) => c.hospitalId === h.id);
-      const primary = hContacts.find((c: StoredContact) => c.isPrimaryContact) || hContacts[0];
-      const peccName = primary ? `${primary.firstName} ${primary.lastName}`.trim() || '—' : '—';
-      const peccEmail = primary?.email?.trim() || '—';
+      const hospitalRefSet = new Set(
+        [h.id, h.facilityId].map((ref) => String(ref || '').trim()).filter(Boolean)
+      );
+      const hContacts = contacts.filter((c: StoredContact) =>
+        [...hospitalRefSet].some((ref) => hospitalKeysMatch(c.hospitalId, ref))
+      );
+      const primaryContact = hContacts.find((c: StoredContact) => c.isPrimaryContact) || hContacts[0];
 
       const canonicalHospitalId =
         hospitalRefToUuid.get(h.id) ||
         (h.facilityId ? hospitalRefToUuid.get(h.facilityId) : undefined) ||
         null;
+      if (canonicalHospitalId) hospitalRefSet.add(canonicalHospitalId);
+
+      const byHospPeccs = peccsByHospital.filter((p) =>
+        [...hospitalRefSet].some((ref) => hospitalKeysMatch(p.hospital_facility_id, ref))
+      );
+      const { mergedPeccUsers } = resolvePeccsForMentorHospital({
+        hospitalRefs: hospitalRefSet,
+        contacts: mentorContacts,
+        mentorLinkedPeccs,
+        peccUsersByHospital: byHospPeccs,
+        siteMemberPeccIds: [],
+        mentorId: uid,
+      });
+      const linkedPecc = mergedPeccUsers[0];
+      const peccName = linkedPecc
+        ? `${linkedPecc.first_name || ''} ${linkedPecc.last_name || ''}`.trim() || '—'
+        : primaryContact
+          ? `${primaryContact.firstName} ${primaryContact.lastName}`.trim() || '—'
+          : '—';
+      const peccEmail = linkedPecc?.email?.trim() || primaryContact?.email?.trim() || '—';
+      const peccUserId = linkedPecc?.id || null;
+
       const hospitalActivities = (canonicalHospitalId ? hospitalActivitiesMap.get(canonicalHospitalId) : null) || [];
       const sortedByDate = [...hospitalActivities].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -235,6 +279,7 @@ const MentorDashboardPage: React.FC = () => {
       const displayName = nameByKey[h.id] ?? normalizeHospitalOrOrgName(h.name ?? 'Unknown');
       return {
         id: h.id,
+        facilityId: h.facilityId,
         name: displayName,
         city: h.city,
         state: h.state,
@@ -244,6 +289,7 @@ const MentorDashboardPage: React.FC = () => {
         notes: h.notes,
         peccName,
         peccEmail,
+        peccUserId,
         activityCount: hospitalActivities.length,
         totalHours,
         lastActivityAt,
@@ -251,19 +297,34 @@ const MentorDashboardPage: React.FC = () => {
       };
     });
 
-    const distinctPeccEmails = new Set(
-      summaries.map(s => s.peccEmail).filter(e => e && e !== '—')
+    const distinctPeccIds = new Set(
+      summaries.map((s) => s.peccUserId).filter((id): id is string => Boolean(id))
     );
     const allHospitalActivities = summaries.flatMap((s) => s.activities);
+    const mentorActivities = await getMentorActivitiesForUser(uid);
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisMonthActivities = allHospitalActivities.filter((a: StoredActivity) => new Date(a.date) >= startOfMonth);
-    const simulationsThisMonth = thisMonthActivities.filter((a: StoredActivity) => hasActivityCategory(a, 'SC')).length;
+    const thisMonthSiteActivities = allHospitalActivities.filter(
+      (a: StoredActivity) => new Date(a.date) >= startOfMonth
+    );
+    const thisMonthMentorActivities = mentorActivities.filter(
+      (a: { date?: string }) => a.date && new Date(a.date) >= startOfMonth
+    );
+    const simulationsThisMonth = thisMonthSiteActivities.filter((a: StoredActivity) =>
+      isSimulationActivity(a)
+    ).length;
     setStats({
       totalHospitals: workingHospitals.length,
-      totalPeccs: distinctPeccEmails.size,
-      activitiesThisMonth: thisMonthActivities.length,
-      hoursThisMonth: thisMonthActivities.reduce((sum: number, a: StoredActivity) => sum + (Number(a.hours) || 0), 0),
+      totalPeccs: distinctPeccIds.size > 0 ? distinctPeccIds.size : summaries.filter((s) => s.peccEmail !== '—').length,
+      siteActivitiesThisMonth: thisMonthSiteActivities.length,
+      siteHoursThisMonth: thisMonthSiteActivities.reduce(
+        (sum: number, a: StoredActivity) => sum + (Number(a.hours) || 0),
+        0
+      ),
+      mentorHoursThisMonth: thisMonthMentorActivities.reduce(
+        (sum: number, a: { hours?: number }) => sum + (Number(a.hours) || 0),
+        0
+      ),
       simulationsThisMonth
     });
     setHospitalSummaries(summaries);
@@ -322,8 +383,11 @@ const MentorDashboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Box sx={{ py: 3 }}>
-        <LinearProgress />
+      <Box sx={{ py: 3 }} role="status" aria-live="polite">
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Loading your dashboard…
+        </Typography>
+        <LinearProgress aria-label="Loading dashboard" />
       </Box>
     );
   }
@@ -332,44 +396,69 @@ const MentorDashboardPage: React.FC = () => {
     <Box sx={{ py: 3 }}>
       {loadError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
-          {loadError} <Button size="small" onClick={() => loadDashboardData()}>Retry</Button>
+          {loadError} <Button size="small" onClick={() => { setLoading(true); loadDashboardData(); }}>Retry</Button>
         </Alert>
       )}
-      <Typography variant="h4" gutterBottom>
-        Welcome, {userProfile?.first_name || 'Mentor'}!
-      </Typography>
-      <Typography color="text.secondary" gutterBottom sx={{ mb: 2 }}>
-        Here's an overview of your mentorship activities
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Support your assigned hospitals and PECCs. Click a hospital to see details and your activity history there.
-      </Typography>
-
-      {/* How This Tool Works - compact */}
-      <Card elevation={0} sx={{ p: 2, mb: 4, border: 1, borderColor: 'divider', borderRadius: 2 }}>
-        <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-          <Typography variant="h6" gutterBottom color="primary">
-            How This Tool Works
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>
-            Manage hospitals and contacts, log activities and simulations, track site milestones, and participate in programs and cohorts. Use the menu to navigate.
-          </Typography>
-        </CardContent>
-      </Card>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" gutterBottom component="h1">
+          Welcome, {userProfile?.first_name || 'Mentor'}!
+        </Typography>
+        <Typography color="text.secondary" sx={{ maxWidth: 640 }}>
+          Your home base for assigned hospitals, linked PECCs, site activity, and your mentoring hours. Open a hospital card for site details and activity history.
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
+          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/overview')}>
+            Overview
+          </Button>
+          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/activities')}>
+            Log activity
+          </Button>
+          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/milestones')}>
+            Site milestones
+          </Button>
+        </Box>
+      </Box>
 
       {/* Stats */}
       <Grid container spacing={2} sx={{ mb: 4 }}>
         <Grid item xs={6} md={3}>
-          <StatCard title="My Hospitals" value={stats.totalHospitals} icon={<HospitalIcon />} color="#1976d2" />
+          <StatCard
+            title="Assigned Hospitals"
+            value={stats.totalHospitals}
+            icon={<HospitalIcon />}
+            color="#1976d2"
+          />
         </Grid>
         <Grid item xs={6} md={3}>
-          <StatCard title="Activities This Month" value={stats.activitiesThisMonth} icon={<ActivityIcon />} color="#f57c00" subtitle={`${stats.hoursThisMonth.toFixed(1)} hours`} />
+          <StatCard
+            title="Your Hours (Month)"
+            value={stats.mentorHoursThisMonth.toFixed(1)}
+            icon={<HoursIcon />}
+            color="#1565c0"
+            subtitle="Mentoring log"
+          />
         </Grid>
         <Grid item xs={6} md={3}>
-          <StatCard title="Simulations This Month" value={stats.simulationsThisMonth} icon={<TrendingIcon />} color="#7b1fa2" />
+          <StatCard
+            title="Site Activity (Month)"
+            value={stats.siteActivitiesThisMonth}
+            icon={<ActivityIcon />}
+            color="#f57c00"
+            subtitle={`${stats.siteHoursThisMonth.toFixed(1)} site hours`}
+          />
         </Grid>
         <Grid item xs={6} md={3}>
-          <StatCard title="PECC Contacts" value={stats.totalPeccs} icon={<PeopleIcon />} color="#388e3c" />
+          <StatCard
+            title="Linked PECCs"
+            value={stats.totalPeccs}
+            icon={<PeopleIcon />}
+            color="#388e3c"
+            subtitle={
+              stats.simulationsThisMonth > 0
+                ? `${stats.simulationsThisMonth} simulation${stats.simulationsThisMonth === 1 ? '' : 's'} this month`
+                : 'Accounts matched to sites'
+            }
+          />
         </Grid>
       </Grid>
 
@@ -396,18 +485,32 @@ const MentorDashboardPage: React.FC = () => {
             <Grid item xs={12} md={6} key={hospital.id}>
               <Card
                 elevation={0}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open ${normalizeHospitalOrOrgName(hospital.name)} details`}
+                onClick={() => handleHospitalClick(hospital)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleHospitalClick(hospital);
+                  }
+                }}
                 sx={{
                   border: 1,
                   borderColor: 'divider',
                   borderRadius: 2,
                   cursor: 'pointer',
-                  transition: 'all 0.2s',
+                  transition: 'border-color 0.2s, background-color 0.2s',
                   '&:hover': {
                     borderColor: 'primary.main',
                     bgcolor: 'action.hover'
+                  },
+                  '&:focus-visible': {
+                    outline: '2px solid',
+                    outlineColor: 'primary.main',
+                    outlineOffset: 2
                   }
                 }}
-                onClick={() => handleHospitalClick(hospital)}
               >
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
@@ -432,7 +535,7 @@ const MentorDashboardPage: React.FC = () => {
                         )}
                       </Box>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
-                        <Chip size="small" icon={<ActivityIcon sx={{ fontSize: 14 }} />} label={`${hospital.activityCount} activities`} variant="outlined" />
+                        <Chip size="small" icon={<ActivityIcon sx={{ fontSize: 14 }} />} label={`${hospital.activityCount} site activities`} variant="outlined" />
                         <Chip size="small" icon={<HoursIcon sx={{ fontSize: 14 }} />} label={`${hospital.totalHours.toFixed(1)} h`} variant="outlined" />
                         {hospital.lastActivityAt && (
                           <Chip size="small" icon={<CalendarIcon sx={{ fontSize: 14 }} />} label={`Last: ${format(new Date(hospital.lastActivityAt), 'MMM d, yyyy')}`} variant="outlined" />
@@ -551,9 +654,38 @@ const MentorDashboardPage: React.FC = () => {
                   ))}
                 </List>
               )}
-              <Button variant="outlined" fullWidth sx={{ mt: 2 }} onClick={() => { setHospitalDrawerOpen(false); navigate('/mentor/activities'); }}>
-                Log activity
-              </Button>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={() => {
+                    setHospitalDrawerOpen(false);
+                    navigate(`/mentor/milestones?hospital=${encodeURIComponent(selectedHospital.id)}`);
+                  }}
+                >
+                  Site milestones
+                </Button>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  onClick={() => {
+                    setHospitalDrawerOpen(false);
+                    navigate(`/mentor/hospitals?hospital=${encodeURIComponent(selectedHospital.id)}`);
+                  }}
+                >
+                  Hospital & contacts
+                </Button>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  onClick={() => {
+                    setHospitalDrawerOpen(false);
+                    navigate('/mentor/activities');
+                  }}
+                >
+                  Log mentoring activity
+                </Button>
+              </Box>
             </Box>
           </>
         )}
