@@ -52,6 +52,17 @@ import {
   isSimulationGapCompleted
 } from '../utils/snapshotGapStatus';
 import { parseActivityDate } from '../utils/snapshotActivityDate';
+import { isSimulationActivity } from '../utils/mentorActivityCategories';
+import {
+  computeChecklistMetrics,
+  computeWorkHours,
+  formatActivityDateLabel,
+  mergeReadinessScoreSources,
+  type ChecklistDbProgress,
+} from '../utils/snapshotMetrics';
+import { PeccReadinessTrendChart } from '../components/pecc/PeccReadinessTrendChart';
+import { SnapshotBarChart } from '../components/pecc/SnapshotBarChart';
+import { useNavigate } from 'react-router-dom';
 
 const metricCardSx = {
   height: '100%',
@@ -69,6 +80,7 @@ const metricCardSx = {
 
 const SnapshotPage = () => {
   useAuth();
+  const navigate = useNavigate();
   const { effectiveUserId, siteId } = useUserProfile();
   
   const [activities, setActivities] = useState<any[]>([]);
@@ -91,6 +103,7 @@ const SnapshotPage = () => {
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
   const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
   const [activitySubmitterById, setActivitySubmitterById] = useState<Record<string, string>>({});
+  const [checklistDbProgress, setChecklistDbProgress] = useState<ChecklistDbProgress | null>(null);
   const userId = effectiveUserId;
 
   useEffect(() => {
@@ -131,6 +144,56 @@ const SnapshotPage = () => {
   }, [prsQuestions]);
 
   const currentPRSScore = useMemo(() => calculateCurrentPRSScorePercent(prsQuestions), [prsQuestions]);
+  const checklistMetrics = useMemo(
+    () => computeChecklistMetrics(milestones, checklistDbProgress),
+    [milestones, checklistDbProgress]
+  );
+  const workHours = useMemo(() => computeWorkHours(activities), [activities]);
+  const simulationActivities = useMemo(
+    () => activities.filter((a) => isSimulationActivity(a)),
+    [activities]
+  );
+  const simulationTypeData = useMemo(() => {
+    const types = Array.from(
+      new Set(simulationActivities.map((a) => String(a.simulation || 'Other')))
+    );
+    return types.map((simType) => ({
+      label: simType === 'Other' ? 'Other' : simType,
+      value: simulationActivities.filter(
+        (a) =>
+          (a.simulation || 'Other') === simType ||
+          (!a.simulation && simType === 'Other')
+      ).length,
+    }));
+  }, [simulationActivities]);
+  const domainBarData = useMemo(() => {
+    if (!domainScores) return [];
+    return Object.entries(domainScores).map(([domain, data]) => ({
+      label: domain,
+      value: data.percentage,
+      sublabel: `${data.earned.toFixed(1)}/${data.total} pts`,
+    }));
+  }, [domainScores]);
+
+  const simulationParticipantData = useMemo(() => {
+    const types = Array.from(
+      new Set(simulationActivities.map((a) => String(a.simulation || 'Other')))
+    );
+    return types.map((simType) => {
+      const rows = simulationActivities.filter(
+        (a) =>
+          (a.simulation || 'Other') === simType ||
+          (!a.simulation && simType === 'Other')
+      );
+      const total = rows.reduce((sum, a) => sum + (Number(a.participants) || 0), 0);
+      const avg = rows.length > 0 ? Math.round(total / rows.length) : 0;
+      return {
+        label: simType === 'Other' ? 'Other' : simType,
+        value: total,
+        sublabel: `avg ${avg}`,
+      };
+    });
+  }, [simulationActivities]);
   const activityTime = (dateValue: unknown): number => {
     const parsed = parseActivityDate(dateValue);
     return parsed ? parsed.getTime() : 0;
@@ -156,14 +219,30 @@ const SnapshotPage = () => {
       try {
         setIsLoading(true);
         setHasError(false);
-        let [activitiesVal, milestonesVal, gapPlansVal, simulationGapsVal, scoresVal, questionsVal] = await Promise.all([
+        let [activitiesVal, milestonesVal, gapPlansVal, simulationGapsVal, scoresVal, questionsVal, prsScoresVal] =
+          await Promise.all([
           getContinuityData<any[]>(effectiveHospitalId, userId, 'activities'),
           getContinuityData<any[]>(effectiveHospitalId, userId, 'milestones'),
           getContinuityData<any[]>(effectiveHospitalId, userId, 'gapPlans'),
           getContinuityData<any[]>(effectiveHospitalId, userId, 'simulation_gaps'),
           showPrsSection ? getContinuityData<any[]>(effectiveHospitalId, userId, 'readinessScores') : Promise.resolve(null),
           showPrsSection ? getContinuityData<any[]>(effectiveHospitalId, userId, 'prsQuestions') : Promise.resolve(null),
+          showPrsSection ? getContinuityData<any[]>(effectiveHospitalId, userId, 'prsReadinessScores') : Promise.resolve(null),
         ]);
+
+        if (effectiveHospitalId) {
+          const { data: checklistRows } = await supabase
+            .from('site_checklist_progress')
+            .select('completed')
+            .eq('hospital_id', effectiveHospitalId);
+          const rows = checklistRows || [];
+          setChecklistDbProgress({
+            total: rows.length,
+            completed: rows.filter((r: { completed: boolean }) => r.completed).length,
+          });
+        } else {
+          setChecklistDbProgress(null);
+        }
 
         if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
         else if (!effectiveHospitalId) await migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
@@ -195,10 +274,18 @@ const SnapshotPage = () => {
           setReadinessScores([]);
           setPrsQuestions(null);
         } else {
-          if (scoresVal != null && Array.isArray(scoresVal)) setReadinessScores(scoresVal);
-          else if (!effectiveHospitalId) {
-            await migrateFromLocalStorage(userId, 'readinessScores', `readinessScores_${userId}`, (v) => setReadinessScores(Array.isArray(v) ? v : []));
-            await migrateFromLocalStorage(userId, 'prsReadinessScores', 'prsReadinessScores', (v) => setReadinessScores(Array.isArray(v) ? v : []));
+          const mergedScores = mergeReadinessScoreSources(scoresVal, prsScoresVal);
+          if (mergedScores.length > 0) {
+            setReadinessScores(mergedScores);
+          } else if (!effectiveHospitalId) {
+            await migrateFromLocalStorage(userId, 'readinessScores', `readinessScores_${userId}`, (v) =>
+              setReadinessScores(mergeReadinessScoreSources(Array.isArray(v) ? v : [], null))
+            );
+            await migrateFromLocalStorage(userId, 'prsReadinessScores', 'prsReadinessScores', (v) =>
+              setReadinessScores(mergeReadinessScoreSources(null, Array.isArray(v) ? v : []))
+            );
+          } else {
+            setReadinessScores([]);
           }
           if (questionsVal != null && Array.isArray(questionsVal)) setPrsQuestions(questionsVal);
           else if (!effectiveHospitalId) await migrateFromLocalStorage(userId, 'prsQuestions', 'prsQuestions', (v) => setPrsQuestions(Array.isArray(v) ? v : null));
@@ -423,9 +510,9 @@ const SnapshotPage = () => {
         
         // Calculate metrics exactly like the page does (no PRS data when section hidden)
         const currentScore = showPrsSection && readinessScores.length > 0 ? readinessScores[readinessScores.length - 1]?.score || 0 : 0;
-        const completedItems = milestones.filter(isMilestoneCompleted).length;
-        const totalItems = milestones.length;
-        const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+        const completionRate = checklistMetrics.overallPct;
+        const completedItems = checklistMetrics.completedTasks;
+        const totalItems = checklistMetrics.totalTasks;
         const completedGapPlans = gapPlans.filter(isGapPlanCompleted).length;
         const totalGapPlans = gapPlans.length;
         const gapCompletionRate = totalGapPlans > 0 ? Math.round((completedGapPlans / totalGapPlans) * 100) : 0;
@@ -640,7 +727,7 @@ const SnapshotPage = () => {
         });
         
         // Page 4: Simulation Analytics & Participant Data
-        if (activities.filter((a) => hasActivityCategory(a, 'Simulation Facilitation')).length > 0) {
+        if (activities.filter((a) => isSimulationActivity(a)).length > 0) {
           doc.addPage();
           currentY = titleY;
           
@@ -650,13 +737,13 @@ const SnapshotPage = () => {
           currentY = addSectionHeader('Simulations by Type', currentY + 10);
           
           const simulationTypes = Array.from(new Set(activities
-            .filter((a) => hasActivityCategory(a, 'Simulation Facilitation'))
+            .filter((a) => isSimulationActivity(a))
             .map(a => a.simulation || 'Other')));
           
           if (simulationTypes.length > 0) {
             const simTypeData = simulationTypes.map(simType => {
               const count = activities.filter(a => 
-                hasActivityCategory(a, 'Simulation Facilitation') &&
+                isSimulationActivity(a) &&
                 (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
               ).length;
               return {
@@ -676,7 +763,7 @@ const SnapshotPage = () => {
           if (simulationTypes.length > 0) {
             const participantData = simulationTypes.map(simType => {
               const simActivities = activities.filter(a => 
-                hasActivityCategory(a, 'Simulation Facilitation') &&
+                isSimulationActivity(a) &&
                 (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
               );
               const totalParticipants = simActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
@@ -695,7 +782,7 @@ const SnapshotPage = () => {
             
             simulationTypes.forEach(simType => {
               const simActivities = activities.filter(a => 
-                hasActivityCategory(a, 'Simulation Facilitation') &&
+                isSimulationActivity(a) &&
                 (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
               );
               const totalParticipants = simActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
@@ -999,10 +1086,10 @@ const SnapshotPage = () => {
     );
   }
 
-  // Calculate trend
-  const scoreTrend = readinessScores.length >= 2 
-    ? readinessScores[readinessScores.length - 1].score - readinessScores[0].score
-    : 0;
+  const scoreTrend =
+    readinessScores.length >= 2
+      ? readinessScores[readinessScores.length - 1].score - readinessScores[0].score
+      : 0;
 
   return (
     <>
@@ -1030,7 +1117,7 @@ const SnapshotPage = () => {
             }}
           >
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-              <Box sx={{ maxWidth: { md: 'min(100%, 640px)' } }}>
+              <Box sx={{ maxWidth: { md: 'min(100%, 560px)' } }}>
                 <Typography
                   variant="overline"
                   sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block', mb: 1 }}
@@ -1045,26 +1132,46 @@ const SnapshotPage = () => {
                   Export a PDF when you need to share progress offline.
                 </Typography>
               </Box>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<PictureAsPdfIcon />}
-                onClick={exportToComprehensivePDF}
-                sx={{
-                  px: 2.5,
-                  py: 1.25,
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  boxShadow: 'none',
-                  bgcolor: 'grey.900',
-                  '&:hover': { bgcolor: 'grey.800', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }
-                }}
-              >
-                Export PDF
-              </Button>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                <Button size="small" variant="outlined" onClick={() => navigate('/activities')}>
+                  Activities
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => navigate('/milestones')}>
+                  Checklist
+                </Button>
+                <Button
+                  variant="contained"
+                  size="medium"
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={exportToComprehensivePDF}
+                  sx={{
+                    px: 2,
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    boxShadow: 'none',
+                    bgcolor: 'grey.900',
+                    '&:hover': { bgcolor: 'grey.800', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }
+                  }}
+                >
+                  Export PDF
+                </Button>
+              </Stack>
             </Box>
           </Paper>
+
+          {!effectiveHospitalId && (
+            <Alert severity="warning" variant="outlined">
+              Your account is not linked to a hospital site yet. Some metrics use personal saved data only. Ask your
+              mentor or manager to confirm hospital assignment in the CRM, then refresh this page.
+            </Alert>
+          )}
+
+          {checklistMetrics.source === 'site_checklist' && (
+            <Alert severity="info" variant="outlined">
+              Checklist progress is synced from your site checklist (same data as the Checklist tab).
+            </Alert>
+          )}
 
           {/* Quick Stats Banner - Only show if PRS section is visible */}
           {showPrsSection && readinessScores.length > 0 && (
@@ -1130,7 +1237,7 @@ const SnapshotPage = () => {
             gridTemplateColumns: {
               xs: '1fr',
               sm: 'repeat(2, minmax(0, 1fr))',
-              md: 'repeat(5, minmax(0, 1fr))'
+              md: showPrsSection ? 'repeat(5, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))'
             }
           }}
         >
@@ -1178,19 +1285,15 @@ const SnapshotPage = () => {
                   <CheckCircleIcon sx={{ fontSize: 28, color: 'success.main' }} />
                 </Box>
                 <Typography variant="h3" color="success.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  {(() => {
-                    const completed = milestones.filter((m: any) => isMilestoneCompleted(m)).length;
-                    const total = milestones.length;
-                    return total > 0 ? `${completed}/${total}` : '0';
-                  })()}
+                  {checklistMetrics.totalTasks > 0 ? checklistMetrics.kpiLabel : '—'}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
                   Checklist Progress
                 </Typography>
-                {milestones.length > 0 && (
+                {checklistMetrics.totalTasks > 0 && (
                   <LinearProgress 
                     variant="determinate" 
-                    value={(milestones.filter((m: any) => isMilestoneCompleted(m)).length / milestones.length) * 100}
+                    value={checklistMetrics.overallPct}
                     sx={{ mt: 1, height: 6, borderRadius: 3 }}
                   />
                 )}
@@ -1289,36 +1392,27 @@ const SnapshotPage = () => {
                 Checklist Progress
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Milestone checklist completion. If your program uses stages with tasks, progress is counted by completed tasks.
+                {checklistMetrics.source === 'site_checklist'
+                  ? 'Progress from your site checklist tasks (matches the Checklist tab).'
+                  : 'Milestone checklist completion. If your program uses stages with tasks, progress is counted by completed tasks.'}
               </Typography>
               <Box sx={{ mt: 2 }}>
-                {milestones && milestones.length > 0 ? (
+                {checklistMetrics.totalTasks > 0 ? (
                   <>
-                    {(() => {
-                      const hasStages = milestones[0]?.tasks != null;
-                      const totalTasks = hasStages
-                        ? milestones.reduce((sum: number, s: any) => sum + (s.tasks?.length || 0), 0)
-                        : milestones.length;
-                      const completedTasks = hasStages
-                        ? milestones.reduce((sum: number, s: any) => sum + (s.tasks?.filter((t: any) => t.completed)?.length || 0), 0)
-                        : milestones.filter((m: any) => isMilestoneCompleted(m)).length;
-                      const overallPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                      return (
-                        <>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                            <Typography variant="body2">Overall Progress</Typography>
-                            <Typography variant="body2">{overallPct}%</Typography>
-                          </Box>
-                          <LinearProgress variant="determinate" value={overallPct} sx={{ height: 8, borderRadius: 4 }} />
-                          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
-                            <Typography variant="body2" color="text.secondary">
-                              {completedTasks} of {totalTasks} completed
-                            </Typography>
-                          </Box>
-                        </>
-                      );
-                    })()}
-                    {milestones[0]?.tasks != null && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2">Overall Progress</Typography>
+                      <Typography variant="body2">{checklistMetrics.overallPct}%</Typography>
+                    </Box>
+                    <LinearProgress variant="determinate" value={checklistMetrics.overallPct} sx={{ height: 8, borderRadius: 4 }} />
+                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {checklistMetrics.completedTasks} of {checklistMetrics.totalTasks} completed
+                      </Typography>
+                      <Button size="small" onClick={() => navigate('/milestones')}>
+                        Open checklist
+                      </Button>
+                    </Box>
+                    {checklistMetrics.source === 'milestones_staged' && milestones[0]?.tasks != null && (
                       <>
                         <Typography variant="subtitle2" sx={{ mt: 3, mb: 1.5, fontWeight: 600 }}>Progress by Stage</Typography>
                         <Grid container spacing={2}>
@@ -1349,9 +1443,14 @@ const SnapshotPage = () => {
                     )}
                   </>
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No checklist data available
-                  </Typography>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      No checklist progress recorded yet.
+                    </Typography>
+                    <Button size="small" variant="outlined" onClick={() => navigate('/milestones')}>
+                      Go to Checklist
+                    </Button>
+                  </Box>
                 )}
               </Box>
             </CardContent>
@@ -1421,7 +1520,7 @@ const SnapshotPage = () => {
                           {a.activity || a.title || 'Activity'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {a.date} • {displayActivityCategories(a)}
+                          {formatActivityDateLabel(a.date)} • {displayActivityCategories(a)}
                         </Typography>
                         {a.submitted_by && (
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -1451,187 +1550,35 @@ const SnapshotPage = () => {
 
       {/* Simulation Analytics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
+            <Grid item xs={12} md={6}>
+              <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
                     Simulations by Type
                   </Typography>
-                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', justifyContent: 'center', gap: 2, px: 2 }}>
-                    {activities.filter((a) => hasActivityCategory(a, 'Simulation Facilitation')).length > 0 ? (
-                      <>
-                        {Array.from(new Set(activities
-                          .filter((a) => hasActivityCategory(a, 'Simulation Facilitation'))
-                          .map(a => a.simulation || 'Other')))
-                          .map(simType => {
-                            const count = activities.filter(a => 
-                              hasActivityCategory(a, 'Simulation Facilitation') &&
-                              (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
-                            ).length;
-                            const totalSims = activities.filter((a) => hasActivityCategory(a, 'Simulation Facilitation')).length;
-                            const percentage = (count / totalSims) * 100;
-                            const maxHeight = 200; // Maximum height for the tallest bar
-                            const barHeight = (percentage / 100) * maxHeight;
-                            
-                            return (
-                              <Box
-                                key={simType}
-                                sx={{
-                                  flex: '1 1 140px',
-                                  maxWidth: 180,
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <Box
-                                  sx={{
-                                    width: '75%',
-                                    height: barHeight,
-                                    bgcolor: 'primary.main',
-                                    borderRadius: '4px 4px 0 0',
-                                    position: 'relative',
-                                    minHeight: '20px'
-                                  }}
-                                />
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    mt: 1, 
-                                    textAlign: 'center', 
-                                    fontSize: '0.7rem',
-                                    lineHeight: 1.2,
-                                    maxWidth: '100%',
-                                    wordBreak: 'break-word'
-                                  }}
-                                >
-                                  {simType === 'Other' ? 'Other' : simType}
-                                </Typography>
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    mt: 0.5, 
-                                    textAlign: 'center',
-                                    fontWeight: 'bold',
-                                    color: 'primary.main'
-                                  }}
-                                >
-                                  {count}
-                                </Typography>
-                              </Box>
-                            );
-                          })}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No simulation activities recorded
-                      </Typography>
-                    )}
-                  </Box>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                    Includes Simulation Facilitation and SC-tagged activities
+                  </Typography>
+                  <SnapshotBarChart
+                    data={simulationTypeData}
+                    valueLabel="Simulations"
+                    emptyMessage="No simulation activities recorded"
+                  />
                 </CardContent>
               </Card>
             </Grid>
-            
-            <Grid item xs={12}>
-              <Card>
+
+            <Grid item xs={12} md={6}>
+              <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
                     Simulation Participants
                   </Typography>
-                  <Box sx={{ mt: 2, height: 300, display: 'flex', alignItems: 'end', justifyContent: 'center', gap: 2, px: 2 }}>
-                    {activities.filter((a) => hasActivityCategory(a, 'Simulation Facilitation')).length > 0 ? (
-                      <>
-                        {Array.from(new Set(activities
-                          .filter((a) => hasActivityCategory(a, 'Simulation Facilitation'))
-                          .map(a => a.simulation || 'Other')))
-                          .map(simType => {
-                            const simActivities = activities.filter(a => 
-                              hasActivityCategory(a, 'Simulation Facilitation') &&
-                              (a.simulation === simType || (a.simulation === undefined && simType === 'Other'))
-                            );
-                            const totalParticipants = simActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
-                            const avgParticipants = simActivities.length > 0 ? Math.round(totalParticipants / simActivities.length) : 0;
-                            
-                            // Find the maximum participants to scale the bars appropriately
-                            const allSimTypes = Array.from(new Set(activities
-                              .filter((a) => hasActivityCategory(a, 'Simulation Facilitation'))
-                              .map(a => a.simulation || 'Other')));
-                            const maxParticipants = Math.max(...allSimTypes.map(type => {
-                              const typeActivities = activities.filter(a => 
-                                hasActivityCategory(a, 'Simulation Facilitation') &&
-                                (a.simulation === type || (a.simulation === undefined && type === 'Other'))
-                              );
-                              return typeActivities.reduce((sum, a) => sum + (a.participants || 0), 0);
-                            }));
-                            
-                            const maxHeight = 200;
-                            const barHeight = maxParticipants > 0 ? (totalParticipants / maxParticipants) * maxHeight : 0;
-                            
-                            return (
-                              <Box
-                                key={simType}
-                                sx={{
-                                  flex: '1 1 140px',
-                                  maxWidth: 180,
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <Box
-                                  sx={{
-                                    width: '75%',
-                                    height: barHeight,
-                                    bgcolor: 'secondary.main',
-                                    borderRadius: '4px 4px 0 0',
-                                    position: 'relative',
-                                    minHeight: '20px'
-                                  }}
-                                />
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    mt: 1, 
-                                    textAlign: 'center', 
-                                    fontSize: '0.7rem',
-                                    lineHeight: 1.2,
-                                    maxWidth: '100%',
-                                    wordBreak: 'break-word'
-                                  }}
-                                >
-                                  {simType === 'Other' ? 'Other' : simType}
-                                </Typography>
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    mt: 0.5, 
-                                    textAlign: 'center',
-                                    fontWeight: 'bold',
-                                    color: 'secondary.main'
-                                  }}
-                                >
-                                  {totalParticipants}
-                                </Typography>
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    textAlign: 'center',
-                                    fontSize: '0.65rem',
-                                    color: 'text.secondary'
-                                  }}
-                                >
-                                  avg: {avgParticipants}
-                                </Typography>
-                              </Box>
-                            );
-                          })}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No simulation activities recorded
-                      </Typography>
-                    )}
-                  </Box>
+                  <SnapshotBarChart
+                    data={simulationParticipantData}
+                    valueLabel="Participants"
+                    emptyMessage="No simulation activities recorded"
+                  />
                 </CardContent>
               </Card>
             </Grid>
@@ -1938,84 +1885,23 @@ const SnapshotPage = () => {
               <Box sx={{ mt: 2 }}>
                 {activities.length > 0 ? (
                   <Grid container spacing={2}>
-                    {(() => {
-                      const now = new Date();
-                      const currentMonth = now.getMonth();
-                      const currentYear = now.getFullYear();
-                      
-                      // Calculate hours for different time periods
-                      const thisMonthHours = activities
-                        .filter(a => {
-                          const activityDate = new Date(a.date);
-                          return activityDate.getMonth() === currentMonth && 
-                                 activityDate.getFullYear() === currentYear;
-                        })
-                        .reduce((sum, a) => sum + (a.hours || 0), 0);
-                      
-                      const lastMonthHours = activities
-                        .filter(a => {
-                          const activityDate = new Date(a.date);
-                          const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-                          const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-                          return activityDate.getMonth() === lastMonth && 
-                                 activityDate.getFullYear() === lastMonthYear;
-                        })
-                        .reduce((sum, a) => sum + (a.hours || 0), 0);
-                      
-                      const thisYearHours = activities
-                        .filter(a => {
-                          const activityDate = new Date(a.date);
-                          return activityDate.getFullYear() === currentYear;
-                        })
-                        .reduce((sum, a) => sum + (a.hours || 0), 0);
-                      
-                      const totalHours = activities.reduce((sum, a) => sum + (a.hours || 0), 0);
-                      
-                      return (
-                        <>
-                          <Grid item xs={6} sm={3}>
-                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'primary.light', borderRadius: 1 }}>
-                              <Typography variant="h4" color="white">
-                                {thisMonthHours}
-                              </Typography>
-                              <Typography variant="body2" color="white">
-                                This Month
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={6} sm={3}>
-                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'secondary.light', borderRadius: 1 }}>
-                              <Typography variant="h4" color="white">
-                                {lastMonthHours}
-                              </Typography>
-                              <Typography variant="body2" color="white">
-                                Last Month
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={6} sm={3}>
-                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
-                              <Typography variant="h4" color="white">
-                                {thisYearHours}
-                              </Typography>
-                              <Typography variant="body2" color="white">
-                                This Year
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={6} sm={3}>
-                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
-                              <Typography variant="h4" color="white">
-                                {totalHours}
-                              </Typography>
-                              <Typography variant="body2" color="white">
-                                Total Hours
-                              </Typography>
-                            </Box>
-                          </Grid>
-                        </>
-                      );
-                    })()}
+                    {[
+                      { label: 'This Month', value: workHours.thisMonthHours, bgcolor: 'primary.light' },
+                      { label: 'Last Month', value: workHours.lastMonthHours, bgcolor: 'secondary.light' },
+                      { label: 'This Year', value: workHours.thisYearHours, bgcolor: 'success.light' },
+                      { label: 'Total Hours', value: workHours.totalHours, bgcolor: 'warning.light' },
+                    ].map((tile) => (
+                      <Grid item xs={6} sm={3} key={tile.label}>
+                        <Box sx={{ textAlign: 'center', p: 2, bgcolor: tile.bgcolor, borderRadius: 1 }}>
+                          <Typography variant="h4" color="white">
+                            {Number(tile.value).toFixed(1)}
+                          </Typography>
+                          <Typography variant="body2" color="white">
+                            {tile.label}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    ))}
                   </Grid>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
@@ -2212,214 +2098,39 @@ const SnapshotPage = () => {
                   </Box>
                 )}
               
-              <Box sx={{ mt: 2, height: 400, position: 'relative' }}>
-                {readinessScores.length > 0 ? (
-                  <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
-                    {/* Chart Container */}
-                    <Box sx={{ 
-                      width: '100%', 
-                      height: '100%', 
-                      position: 'relative',
-                      p: 2
-                    }}>
-                      {/* Y-axis labels */}
-                      <Box sx={{ 
-                        position: 'absolute', 
-                        left: 0, 
-                        top: 0, 
-                        bottom: 0, 
-                        width: 40,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-end',
-                        pr: 1
-                      }}>
-                        {[100, 80, 60, 40, 20, 0].map((value) => (
-                          <Typography key={value} variant="caption" color="text.secondary">
-                            {value}%
-                          </Typography>
-                        ))}
-                      </Box>
-                      
-                      {/* Chart Area */}
-                      <Box sx={{ 
-                        position: 'absolute', 
-                        left: 40, 
-                        top: 0, 
-                        right: 0, 
-                        bottom: 0,
-                        borderLeft: '1px solid #e0e0e0',
-                        borderBottom: '1px solid #e0e0e0'
-                      }}>
-                        {/* Grid Lines are now rendered inside the SVG for proper layering */}
-                        
-                        {/* Data Points and Lines */}
-                        {(() => {
-                          // Prepare chart data including today's live PRS score
-                          const chartData = [...readinessScores];
-                          
-                          // Add today's live PRS score if we have current data
-                          const today = new Date().toISOString().split('T')[0];
-                          const hasTodayData = chartData.some(score => score.date === today);
-                          
-                          if (!hasTodayData && currentPRSScore !== null) {
-                            chartData.push({
-                              id: 'live-prs',
-                              date: today,
-                              score: currentPRSScore,
-                              isLive: true
-                            });
-                          }
-                          
-                          // Sort by date
-                          const sortedData = chartData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                          
-                          if (sortedData.length < 2) return null;
-                          
-                          const chartWidth = 800; // Fixed width for calculations
-                          const chartHeight = 300;
-                          const padding = 40;
-                          const availableWidth = chartWidth - (padding * 2);
-                          const availableHeight = chartHeight - (padding * 2);
-                          
-                          // Use a fixed range from 0 to 100 for consistent Y-axis scaling
-                          const scoreRange = 100;
-                          
-                          const xScale = (index: number) => {
-                            // Make all points equidistant regardless of actual dates
-                            return padding + (index / (sortedData.length - 1)) * availableWidth;
-                          };
-                          
-                          const yScale = (score: number) => {
-                            // Y-axis: 0% at bottom, 100% at top
-                            return padding + ((100 - score) / scoreRange) * availableHeight;
-                          };
-                          
-                          // Draw lines
-                          const points = sortedData.map((d, index) => ({
-                            x: xScale(index),
-                            y: yScale(d.score),
-                            score: d.score,
-                            date: d.date,
-                            isLive: d.isLive
-                          }));
-                          
-                          // Create SVG path for the line
-                          const linePath = points.map((point, index) => 
-                            `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`
-                          ).join(' ');
-                          
-                          return (
-                            <svg
-                              width="100%"
-                              height="100%"
-                              viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                              style={{ maxWidth: '100%', height: 'auto' }}
-                            >
-                              {/* Grid Lines - Render first (background) */}
-                              {[100, 80, 60, 40, 20, 0].map((value) => {
-                                const y = padding + ((100 - value) / 100) * availableHeight;
-                                return (
-                                  <line
-                                    key={value}
-                                    x1={padding}
-                                    y1={y}
-                                    x2={chartWidth - padding}
-                                    y2={y}
-                                    stroke="#f0f0f0"
-                                    strokeWidth="1"
-                                  />
-                                );
-                              })}
-                              
-                              {/* Line connecting points */}
-                              <path
-                                d={linePath}
-                                stroke="#1976d2"
-                                strokeWidth="3"
-                                fill="none"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                              
-                              {/* Data points and labels - Render last (foreground) */}
-                              {points.map((point, index) => (
-                                <g key={index}>
-                                  {/* Point circle */}
-                                  <circle
-                                    cx={point.x}
-                                    cy={point.y}
-                                    r={point.isLive ? "6" : "4"}
-                                    fill={point.isLive ? "#ff6b35" : "#1976d2"}
-                                    stroke="white"
-                                    strokeWidth="2"
-                                  />
-                                  
-                                  {/* Score label */}
-                                  <text
-                                    x={point.x}
-                                    y={point.y - 15}
-                                    textAnchor="middle"
-                                    fontSize="12"
-                                    fill={point.isLive ? "#ff6b35" : "#1976d2"}
-                                    fontWeight="bold"
-                                  >
-                                    {point.score}%
-                                  </text>
-                                  
-                                  {/* Date label */}
-                                  <text
-                                    x={point.x}
-                                    y={point.y + 25}
-                                    textAnchor="middle"
-                                    fontSize="10"
-                                    fill="#666"
-                                  >
-                                    {point.isLive ? 'Live PRS' : new Date(point.date).toLocaleDateString()}
-                                  </text>
-                                </g>
-                              ))}
-                            </svg>
-                          );
-                        })()}
-                      </Box>
-                    </Box>
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 4 }}>
-                    No readiness scores available to display chart
-                  </Typography>
-                )}
-              </Box>
+              <PeccReadinessTrendChart
+                scores={readinessScores}
+                liveScore={currentPRSScore}
+                height={400}
+              />
               {/* Assessment list - same card, below chart (no duplicate section) */}
               {readinessScores.length > 0 && (
                 <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Assessment History</Typography>
-                  {readinessScores
+                  {[...readinessScores]
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .map((score, index) => (
-                      <Box key={score.id} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    .map((score, index, sorted) => (
+                      <Box key={score.id || `${score.date}-${index}`} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                           <Typography variant="body2" sx={{ fontWeight: 500 }}>
                             Assessment #{index + 1}
                           </Typography>
                           <Typography variant="h6" color="primary.main">
-                            {score.score}
+                            {score.score}%
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <Typography variant="caption" color="text.secondary">
-                            {new Date(score.date).toLocaleDateString()}
+                            {formatActivityDateLabel(score.date)}
                           </Typography>
                           {index > 0 && (
                             <Typography
                               variant="caption"
-                              color={score.score > readinessScores[index - 1].score ? 'success.main' : 'error.main'}
+                              color={score.score > sorted[index - 1].score ? 'success.main' : 'error.main'}
                               sx={{ fontWeight: 500 }}
                             >
-                              {score.score > readinessScores[index - 1].score ? '↗' : '↘'}
-                              {Math.abs(score.score - readinessScores[index - 1].score).toFixed(1)} pts
+                              {score.score > sorted[index - 1].score ? '↗' : '↘'}
+                              {Math.abs(score.score - sorted[index - 1].score).toFixed(1)} pts
                             </Typography>
                           )}
                         </Box>
@@ -2568,187 +2279,23 @@ const SnapshotPage = () => {
           </Grid>
         )}
 
-        {/* Domain Performance Bar Chart - Only show if PRS section is visible */}
         {showPrsSection && domainScores && (
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
-              <Card>
+              <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2 }}>
                 <CardContent>
-                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
                     Domain Performance Visualization
                   </Typography>
-                  
-                  <Box sx={{ 
-                    position: 'relative', 
-                    height: 400, 
-                    display: 'flex', 
-                    alignItems: 'flex-end', 
-                    justifyContent: 'space-around', 
-                    px: { xs: 2, md: 4 },
-                    py: 3,
-                    borderLeft: '2px solid',
-                    borderBottom: '2px solid',
-                    borderColor: 'divider',
-                    minHeight: 350
-                  }}>
-                    {/* Y-axis labels */}
-                    <Box sx={{ 
-                      position: 'absolute', 
-                      left: -30, 
-                      top: 0, 
-                      bottom: 0,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-end',
-                      pr: 1
-                    }}>
-                      {[100, 80, 60, 40, 20, 0].map((percent) => (
-                        <Typography key={percent} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                          {percent}%
-                        </Typography>
-                      ))}
-                    </Box>
-                    
-                    {/* Grid lines */}
-                    {[100, 80, 60, 40, 20, 0].map((percent) => (
-                      <Box
-                        key={percent}
-                        sx={{
-                          position: 'absolute',
-                          left: 0,
-                          right: 0,
-                          bottom: `${(percent / 100) * 100}%`,
-                          height: '1px',
-                          bgcolor: 'divider',
-                          opacity: 0.3,
-                          zIndex: 0
-                        }}
-                      />
-                    ))}
-                    
-                    {/* Chart bars */}
-                    {Object.entries(domainScores).map(([domain, data], index) => {
-                      const getColorForPercentage = (pct: number) => {
-                        if (pct >= 80) return '#4caf50';
-                        if (pct >= 60) return '#ff9800';
-                        return '#f44336';
-                      };
-                      
-                      const barHeight = `${data.percentage}%`;
-                      
-                      return (
-                        <Box 
-                          key={domain}
-                          sx={{ 
-                            position: 'relative',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            flex: 1,
-                            maxWidth: { xs: '80px', md: '120px' },
-                            zIndex: 1
-                          }}
-                        >
-                          {/* Bar */}
-                          <Box
-                            sx={{
-                              width: { xs: '40px', md: '60px' },
-                              height: barHeight,
-                              minHeight: data.percentage > 0 ? '20px' : '4px',
-                              bgcolor: getColorForPercentage(data.percentage),
-                              borderRadius: '4px 4px 0 0',
-                              position: 'relative',
-                              transition: 'all 0.3s ease',
-                              '&:hover': {
-                                opacity: 0.8,
-                                transform: 'scaleY(1.05)',
-                                transformOrigin: 'bottom'
-                              },
-                              mb: 1
-                            }}
-                          >
-                            {/* Value label on bar */}
-                            {data.percentage > 5 && (
-                              <Box
-                                sx={{
-                                  position: 'absolute',
-                                  top: -20,
-                                  left: '50%',
-                                  transform: 'translateX(-50%)',
-                                  bgcolor: 'background.paper',
-                                  px: 0.5,
-                                  borderRadius: 1,
-                                  border: '1px solid',
-                                  borderColor: 'divider'
-                                }}
-                              >
-                                <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>
-                                  {data.percentage}%
-                                </Typography>
-                              </Box>
-                            )}
-                          </Box>
-                          
-                          {/* Domain label */}
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              textAlign: 'center',
-                              fontSize: { xs: '0.65rem', md: '0.75rem' },
-                              lineHeight: 1.2,
-                              mt: 0.5,
-                              fontWeight: 500,
-                              color: 'text.primary',
-                              wordBreak: 'break-word',
-                              maxWidth: '100%'
-                            }}
-                          >
-                            {domain.split(' ').map((word, i) => (
-                              <Box key={i} component="span" sx={{ display: 'block' }}>
-                                {word}
-                              </Box>
-                            ))}
-                          </Typography>
-                          
-                          {/* Points label */}
-                          <Typography 
-                            variant="caption" 
-                            color="text.secondary"
-                            sx={{ 
-                              fontSize: '0.65rem',
-                              mt: 0.5,
-                              textAlign: 'center'
-                            }}
-                          >
-                            {data.earned.toFixed(1)}/{data.total}
-                          </Typography>
-                        </Box>
-                      );
-                    })}
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Percentage score by PRS domain from your current assessment
+                  </Typography>
+                  <SnapshotBarChart data={domainBarData} valueLabel="%" height={360} />
+                  <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mt: 2, flexWrap: 'wrap' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      ≥80% excellent · 60–79% good · &lt;60% needs improvement
+                    </Typography>
                   </Box>
-                  
-                  {/* Legend */}
-                  <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mt: 3, flexWrap: 'wrap' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{ width: 16, height: 16, bgcolor: '#4caf50', borderRadius: 1 }} />
-                      <Typography variant="caption">Excellent (≥80%)</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{ width: 16, height: 16, bgcolor: '#ff9800', borderRadius: 1 }} />
-                      <Typography variant="caption">Good (60-79%)</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{ width: 16, height: 16, bgcolor: '#f44336', borderRadius: 1 }} />
-                      <Typography variant="caption">Needs Improvement (&lt;60%)</Typography>
-                    </Box>
-                  </Box>
-                  
-                  {!domainScores && (
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      Complete your PRS assessment to see domain performance visualization.
-                    </Alert>
-                  )}
                 </CardContent>
               </Card>
             </Grid>

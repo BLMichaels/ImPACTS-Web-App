@@ -34,4 +34,5 @@ export const isSimulationActivity = (activity: {
 }): boolean =>
   hasActivityCategory(activity, 'SC') ||
   hasActivityCategory(activity, 'Simulation Case Facilitation') ||
+  hasActivityCategory(activity, 'Simulation Facilitation') ||
   Boolean(activity.simulation);
