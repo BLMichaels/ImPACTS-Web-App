@@ -93,6 +93,11 @@ interface ReadinessScore {
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [readinessScoreDialogOpen, setReadinessScoreDialogOpen] = useState(false);
   const [readinessScoreForm, setReadinessScoreForm] = useState({ date: new Date(), score: '' });
+  const [editingReadinessScoreId, setEditingReadinessScoreId] = useState<string | null>(null);
+  const [readinessDeleteConfirm, setReadinessDeleteConfirm] = useState<{ open: boolean; scoreId: string | null }>({
+    open: false,
+    scoreId: null
+  });
 
   const [departmentContacts, setDepartmentContacts] = useState<DepartmentContact[]>([
     { id: '17', department: 'Pediatric Readiness Mentor', contactName: '', phone: '', email: '', notes: '' },
@@ -199,7 +204,39 @@ interface ReadinessScore {
   // Handle add readiness score
   const handleAddReadinessScore = () => {
     setReadinessScoreForm({ date: new Date(), score: '' });
+    setEditingReadinessScoreId(null);
     setReadinessScoreDialogOpen(true);
+  };
+
+  const handleEditReadinessScore = (score: ReadinessScore) => {
+    const parsedDate = (() => {
+      try {
+        return parseISO(score.date);
+      } catch {
+        return new Date(score.date);
+      }
+    })();
+    setReadinessScoreForm({
+      date: Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate,
+      score: String(score.score)
+    });
+    setEditingReadinessScoreId(score.id);
+    setReadinessScoreDialogOpen(true);
+  };
+
+  const handleDeleteReadinessScore = (scoreId: string) => {
+    setReadinessDeleteConfirm({ open: true, scoreId });
+  };
+
+  const confirmDeleteReadinessScore = () => {
+    const targetId = readinessDeleteConfirm.scoreId;
+    if (!targetId) {
+      setReadinessDeleteConfirm({ open: false, scoreId: null });
+      return;
+    }
+    const updated = readinessScores.filter((score) => score.id !== targetId);
+    void saveReadinessScores(updated);
+    setReadinessDeleteConfirm({ open: false, scoreId: null });
   };
 
   const handleSaveReadinessScore = () => {
@@ -207,17 +244,21 @@ interface ReadinessScore {
       return;
     }
 
-    const newScore: ReadinessScore = {
-      id: `score_${Date.now()}`,
+    const scorePayload: ReadinessScore = {
+      id: editingReadinessScoreId ?? `score_${Date.now()}`,
       date: format(readinessScoreForm.date, 'yyyy-MM-dd'),
       score: parseFloat(readinessScoreForm.score)
     };
 
-    const updated = [...readinessScores, newScore].sort((a, b) => 
+    const updated = editingReadinessScoreId
+      ? readinessScores.map((existing) => (existing.id === editingReadinessScoreId ? scorePayload : existing))
+      : [...readinessScores, scorePayload];
+    const sorted = updated.sort((a, b) => 
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
-    saveReadinessScores(updated);
+    void saveReadinessScores(sorted);
+    setEditingReadinessScoreId(null);
     setReadinessScoreDialogOpen(false);
   };
   
@@ -438,6 +479,14 @@ interface ReadinessScore {
                     <Grid item xs={12} sm={6} md={4} key={score.id}>
                       <Card variant="outlined">
                         <CardContent>
+                          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5, mb: 0.5 }}>
+                            <IconButton size="small" onClick={() => handleEditReadinessScore(score)} aria-label="Edit score">
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeleteReadinessScore(score.id)} aria-label="Delete score">
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
                           <Typography variant="h6" color="primary">
                             {score.score}
                           </Typography>
@@ -632,7 +681,7 @@ interface ReadinessScore {
       {/* Readiness Score Dialog */}
       <LocalizationProvider dateAdapter={AdapterDateFns}>
         <Dialog open={readinessScoreDialogOpen} onClose={() => setReadinessScoreDialogOpen(false)}>
-          <DialogTitle>Add Pediatric Readiness Score</DialogTitle>
+          <DialogTitle>{editingReadinessScoreId ? 'Edit Pediatric Readiness Score' : 'Add Pediatric Readiness Score'}</DialogTitle>
           <DialogContent>
             <DatePicker
               label="Assessment Date"
@@ -658,11 +707,33 @@ interface ReadinessScore {
               variant="contained"
               disabled={!readinessScoreForm.score || isNaN(parseFloat(readinessScoreForm.score))}
             >
-              Save
+              {editingReadinessScoreId ? 'Update' : 'Save'}
             </Button>
           </DialogActions>
         </Dialog>
       </LocalizationProvider>
+
+      {/* Readiness Score Delete Confirmation */}
+      <Dialog
+        open={readinessDeleteConfirm.open}
+        onClose={() => setReadinessDeleteConfirm({ open: false, scoreId: null })}
+        aria-labelledby="readiness-delete-dialog-title"
+      >
+        <DialogTitle id="readiness-delete-dialog-title">Delete readiness score?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            This will permanently remove the selected Pediatric Readiness Score entry.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReadinessDeleteConfirm({ open: false, scoreId: null })}>
+            Cancel
+          </Button>
+          <Button color="error" variant="contained" onClick={confirmDeleteReadinessScore}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog
