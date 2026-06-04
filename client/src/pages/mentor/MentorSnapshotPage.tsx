@@ -39,6 +39,7 @@ interface MentorActivity {
   id: string;
   date: string;
   category: string;
+  categories?: string[];
   hours: number;
   notes: string;
   hospital?: string;
@@ -66,6 +67,27 @@ interface HospitalMetrics {
   simulations: number;
   peccCount: number;
 }
+
+const getActivityCategories = (activity: { categories?: unknown; category?: unknown }): string[] => {
+  if (Array.isArray(activity.categories)) {
+    const normalized = activity.categories
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+    if (normalized.length > 0) return normalized;
+  }
+  const fallback = String(activity.category || '').trim();
+  return fallback ? [fallback] : [];
+};
+
+const hasActivityCategory = (activity: { categories?: unknown; category?: unknown }, category: string): boolean => {
+  return getActivityCategories(activity).includes(category);
+};
+
+const isSimulationActivity = (activity: MentorActivity): boolean => {
+  return hasActivityCategory(activity, 'SC') ||
+    hasActivityCategory(activity, 'Simulation Case Facilitation') ||
+    Boolean(activity.simulation);
+};
 
 const MentorSnapshotPage = () => {
   const navigate = useNavigate();
@@ -230,7 +252,7 @@ const MentorSnapshotPage = () => {
             const mentorHours = hospitalActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
             
             // Count simulations
-            const simulations = hospitalActivities.filter((a: any) => a.category === 'SC' || a.category === 'Simulation Case Facilitation').length;
+            const simulations = hospitalActivities.filter((a: MentorActivity) => isSimulationActivity(a)).length;
             
             // Count PECCs at this hospital
             const peccCount = resolvedPeccData.filter(p => p.hospitalId === hospitalId).length;
@@ -317,18 +339,22 @@ const MentorSnapshotPage = () => {
   const categoryBreakdown = useMemo(() => {
     const breakdown: Record<string, { count: number; hours: number }> = {};
     activities.forEach(a => {
-      if (!breakdown[a.category]) {
-        breakdown[a.category] = { count: 0, hours: 0 };
-      }
-      breakdown[a.category].count += 1;
-      breakdown[a.category].hours += a.hours || 0;
+      const categories = getActivityCategories(a);
+      const normalized = categories.length > 0 ? categories : ['Uncategorized'];
+      normalized.forEach((category) => {
+        if (!breakdown[category]) {
+          breakdown[category] = { count: 0, hours: 0 };
+        }
+        breakdown[category].count += 1;
+        breakdown[category].hours += a.hours || 0;
+      });
     });
     return breakdown;
   }, [activities]);
 
   // Calculate simulation breakdown across all activities
   const simulationBreakdown = useMemo(() => {
-    const simActivities = activities.filter(a => a.category === 'SC' || a.category === 'Simulation Case Facilitation' || a.simulation);
+    const simActivities = activities.filter((a) => isSimulationActivity(a));
     const breakdown: Record<string, number> = {};
     simActivities.forEach(a => {
       const simType = a.simulation || 'Other';

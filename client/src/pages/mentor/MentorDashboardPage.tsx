@@ -75,6 +75,7 @@ interface StoredActivity {
   date: string;
   activityName: string;
   category: string;
+  categories?: string[];
   hours: number;
   description?: string;
   hospitalIds?: string[];
@@ -96,6 +97,26 @@ interface HospitalSummary {
   lastActivityAt: string | null;
   activities: StoredActivity[];
 }
+
+const getActivityCategories = (activity: { categories?: unknown; category?: unknown }): string[] => {
+  if (Array.isArray(activity.categories)) {
+    const normalized = activity.categories
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+    if (normalized.length > 0) return normalized;
+  }
+  const fallback = String(activity.category || '').trim();
+  return fallback ? [fallback] : [];
+};
+
+const hasActivityCategory = (activity: { categories?: unknown; category?: unknown }, category: string): boolean => {
+  return getActivityCategories(activity).includes(category);
+};
+
+const displayActivityCategories = (activity: { categories?: unknown; category?: unknown }): string => {
+  const normalized = getActivityCategories(activity);
+  return normalized.length > 0 ? normalized.join(', ') : 'Uncategorized';
+};
 
 const MentorDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -176,7 +197,7 @@ const MentorDashboardPage: React.FC = () => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const thisMonthActivities = activities.filter((a: StoredActivity) => new Date(a.date) >= startOfMonth);
-    const simulationsThisMonth = thisMonthActivities.filter((a: StoredActivity) => a.category === 'SC').length;
+    const simulationsThisMonth = thisMonthActivities.filter((a: StoredActivity) => hasActivityCategory(a, 'SC')).length;
 
     const summaries: HospitalSummary[] = workingHospitals.map((h: StoredHospital) => {
       const hContacts = contacts.filter((c: StoredContact) => c.hospitalId === h.id);
@@ -491,7 +512,7 @@ const MentorDashboardPage: React.FC = () => {
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
-                        <Chip label={activity.category} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                        <Chip label={displayActivityCategories(activity)} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
                       </Box>
                       {activity.description?.trim() && (
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>

@@ -97,6 +97,22 @@ interface PECCData {
   gapPlans?: any[];
 }
 
+const getActivityCategories = (activity: { categories?: unknown; category?: unknown }): string[] => {
+  if (Array.isArray(activity.categories)) {
+    const normalized = activity.categories
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+    if (normalized.length > 0) return normalized;
+  }
+  const fallback = String(activity.category || '').trim();
+  return fallback ? [fallback] : [];
+};
+
+const displayActivityCategories = (activity: { categories?: unknown; category?: unknown }): string => {
+  const normalized = getActivityCategories(activity);
+  return normalized.length > 0 ? normalized.join(', ') : '-';
+};
+
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
@@ -573,7 +589,7 @@ const ManagerMentorsPage: React.FC = () => {
                   <TableRow key={index}>
                     <TableCell>{format(new Date(activity.date), 'MMM d, yyyy')}</TableCell>
                     <TableCell>{activity.activityName || '-'}</TableCell>
-                    <TableCell>{activity.category || '-'}</TableCell>
+                    <TableCell>{displayActivityCategories(activity)}</TableCell>
                     <TableCell>{activity.hours || 0}h</TableCell>
                   </TableRow>
                 ))
