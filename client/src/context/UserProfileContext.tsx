@@ -75,6 +75,7 @@ interface UserProfileContextType {
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
+const PECC_FULL_SITE_APPROVAL_KEY = 'pecc_allow_manager_mentor_full_view';
 
 export const useUserProfile = () => {
   const context = useContext(UserProfileContext);
@@ -385,7 +386,6 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   }, []);
 
   const currentUserUid = (currentUser as { uid?: string })?.uid;
-
   const enterViewAsUser = useCallback(async (userId: string): Promise<{ ok: boolean; dashboardPath?: string }> => {
     latestViewAsUserIdRef.current = userId;
     const me = userProfile;
@@ -404,6 +404,53 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       if (error || !profile) return { ok: false };
       const prof = profile as UserProfile & { hospital_facility_id?: string | null };
       const normalizedRole = normalizeUserRole(prof.role);
+      const actorId = currentUser?.id || currentUserUid || '';
+      if ((isManager || isMentor) && normalizedRole !== UserRole.PECC) {
+        return { ok: false };
+      }
+      if ((isManager || isMentor) && normalizedRole === UserRole.PECC) {
+        const approved = await getUserData<boolean>(userId, PECC_FULL_SITE_APPROVAL_KEY);
+        if (approved !== true) return { ok: false };
+        let hasRelationship = false;
+        const targetHospitalRef = String(prof.hospital_facility_id || '').trim();
+
+        if (isMentor && actorId) {
+          hasRelationship = String(prof.mentor_id || '').trim() === actorId;
+          if (!hasRelationship && targetHospitalRef) {
+            const { data: assignments } = await supabase
+              .from('mentor_hospital_assignments')
+              .select('hospital:hospital_id(id, facility_id)')
+              .eq('mentor_id', actorId)
+              .eq('is_active', true);
+            hasRelationship = (assignments || []).some((row: any) => {
+              const hospital = Array.isArray(row.hospital) ? row.hospital[0] : row.hospital;
+              const rowId = String(hospital?.id || '').trim();
+              const rowFacility = String(hospital?.facility_id || '').trim();
+              return targetHospitalRef === rowId || targetHospitalRef === rowFacility;
+            });
+          }
+        }
+
+        if (isManager && actorId) {
+          hasRelationship = String((profile as { manager_id_for_pecc?: string | null }).manager_id_for_pecc || '').trim() === actorId;
+          if (!hasRelationship) {
+            const additionalDirectManagerIds = await getUserData<string[]>(userId, 'pecc_direct_manager_ids');
+            hasRelationship = Array.isArray(additionalDirectManagerIds) && additionalDirectManagerIds.some((id) => String(id || '').trim() === actorId);
+          }
+          const targetMentorId = String(prof.mentor_id || '').trim();
+          if (!hasRelationship && targetMentorId) {
+            const [{ data: mentorRow }, mentorExtraManagerIds] = await Promise.all([
+              supabase.from('users').select('manager_id').eq('id', targetMentorId).maybeSingle(),
+              getUserData<string[]>(targetMentorId, 'mentor_manager_ids'),
+            ]);
+            const primaryManagerId = String((mentorRow as { manager_id?: string | null } | null)?.manager_id || '').trim();
+            const extraManagerIds = Array.isArray(mentorExtraManagerIds) ? mentorExtraManagerIds.map((id) => String(id || '').trim()) : [];
+            hasRelationship = primaryManagerId === actorId || extraManagerIds.includes(actorId);
+          }
+        }
+
+        if (!hasRelationship) return { ok: false };
+      }
       const profWithRole = { ...prof, role: normalizedRole };
       let sid: string | null = prof.hospital_facility_id ?? null;
       let tabs: string[] = [...PECC_TAB_KEYS];

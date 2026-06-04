@@ -83,6 +83,7 @@ interface HospitalMetrics {
   readinessScoreDate: string | null;
   simulationCount: number;
   peccUserId?: string;
+  fullSiteAccessApproved?: boolean;
 }
 
 interface StageCompletion {
@@ -339,7 +340,7 @@ const renderTaskText = (task: MilestoneTask) => {
 
 const MentorSiteMilestonesPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { effectiveUserId } = useUserProfile();
+  const { effectiveUserId, enterViewAsUser } = useUserProfile();
   const navigate = useNavigate();
   const { trackChecklist } = useUsageAnalytics();
 
@@ -363,6 +364,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
   });
 
   const uid = effectiveUserId ?? currentUser?.id;
+  const PECC_FULL_SITE_APPROVAL_KEY = 'pecc_allow_manager_mentor_full_view';
   const getChecklistIdFromKey = useCallback((checklistKey: string) => {
     return checklistKey.startsWith('program:') ? checklistKey.slice('program:'.length) : null;
   }, []);
@@ -639,6 +641,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
         };
 
         if (peccId) {
+          const fullSiteAccessApproved = (await getUserData<boolean>(peccId, PECC_FULL_SITE_APPROVAL_KEY)) === true;
           const hospitalUuid =
             hospitalRefToRowId.get(hospital.id) ||
             (hospital.facilityId ? hospitalRefToRowId.get(hospital.facilityId) : undefined) ||
@@ -691,7 +694,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
             readinessScore: latestScore?.score || null,
             readinessScoreDate: latestScore?.date || null,
             simulationCount: simulations,
-            peccUserId: peccId
+            peccUserId: peccId,
+            fullSiteAccessApproved
           };
         } else {
           metrics[hospital.id] = {
@@ -1013,14 +1017,20 @@ const MentorSiteMilestonesPage: React.FC = () => {
     navigate(`/mentor/hospitals`);
   };
 
-  const handleViewPECCAccount = (hospitalId: string) => {
+  const handleViewPECCAccount = async (hospitalId: string) => {
     const metrics = hospitalMetrics[hospitalId];
-    if (metrics?.peccUserId) {
-      handleHospitalMenuClose();
-      // View-as is done from CRM; managers/admins can use "View as this user" on the contact
-      const siteName = normalizeHospitalOrOrgName(hospitals.find(h => h.id === hospitalId)?.name);
-      alert(`To view the app as this site's PECC, open them in CRM (Team or Contacts) and click "View as this user." Site: ${siteName}`);
+    if (!metrics?.peccUserId) return;
+    handleHospitalMenuClose();
+    if (metrics.fullSiteAccessApproved !== true) {
+      alert('This PECC has not approved full-site sharing. You can continue using Site Milestones checklist view only.');
+      return;
     }
+    const result = await enterViewAsUser(metrics.peccUserId);
+    if (result.ok) {
+      navigate(result.dashboardPath || '/dashboard');
+      return;
+    }
+    alert('Unable to open PECC full-site view. Confirm that this PECC is assigned to you and has approved full-site sharing.');
   };
 
   // Match stage colors from PECC checklist page
@@ -1408,7 +1418,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
           {hospitalMenuAnchor && hospitalMetrics[hospitalMenuAnchor.hospitalId]?.peccUserId && (
             <MenuItem onClick={() => hospitalMenuAnchor && handleViewPECCAccount(hospitalMenuAnchor.hospitalId)}>
               <ViewIcon sx={{ mr: 1, fontSize: '1rem' }} />
-              View PECC Account
+              {hospitalMetrics[hospitalMenuAnchor.hospitalId]?.fullSiteAccessApproved
+                ? 'Open PECC Full Site (All Tabs)'
+                : 'Checklist Only (Full Site Not Approved)'}
             </MenuItem>
           )}
         </Menu>

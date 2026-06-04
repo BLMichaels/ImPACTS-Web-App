@@ -95,6 +95,7 @@ interface PECCData {
   lastActivity: string | null;
   activities?: any[];
   gapPlans?: any[];
+  fullSiteAccessApproved?: boolean;
 }
 
 const getActivityCategories = (activity: { categories?: unknown; category?: unknown }): string[] => {
@@ -120,6 +121,7 @@ interface TabPanelProps {
 }
 
 const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
+const USER_DATA_PECC_FULL_SITE_APPROVAL = 'pecc_allow_manager_mentor_full_view';
 
 function normalizeManagerIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -392,6 +394,7 @@ const ManagerMentorsPage: React.FC = () => {
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIds, 'activities'),
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIds, 'gapPlans'),
       ]);
+      const peccFullSiteApprovalMap = await batchGetUserDataForKey<boolean>(peccIds, USER_DATA_PECC_FULL_SITE_APPROVAL);
 
       const hospitalRefsByCanonical = new Map<string, Set<string>>();
       (hospitals || []).forEach((h: { id: string; facility_id?: string | null }) => {
@@ -460,7 +463,8 @@ const ManagerMentorsPage: React.FC = () => {
                     gapPlanCount,
                     lastActivity: lastPeccActivity,
                     activities,
-                    gapPlans: gapPlansList
+                    gapPlans: gapPlansList,
+                    fullSiteAccessApproved: peccFullSiteApprovalMap.get(pecc.id) === true
                   };
                 });
 
@@ -555,7 +559,7 @@ const ManagerMentorsPage: React.FC = () => {
 
   const handleViewPECCDetail = (pecc: PECCData) => {
     setViewingPECC(pecc);
-    setPeccDetailTab(0);
+    setPeccDetailTab(pecc.fullSiteAccessApproved ? 0 : 1);
   };
 
   const renderPECCActivities = (pecc: PECCData) => {
@@ -929,7 +933,7 @@ const ManagerMentorsPage: React.FC = () => {
                                             handleViewPECCDetail(pecc);
                                           }}
                                         >
-                                          View Details
+                                          {pecc.fullSiteAccessApproved ? 'Open Full Site' : 'Checklist Only'}
                                         </Button>
                                         <IconButton
                                           size="small"
@@ -1032,21 +1036,32 @@ const ManagerMentorsPage: React.FC = () => {
               </Box>
             </DialogTitle>
             <DialogContent>
-              <Tabs value={peccDetailTab} onChange={(e, v) => setPeccDetailTab(v)}>
-                <Tab icon={<ActivityIcon />} label="Activities" />
-                <Tab icon={<ChecklistIcon />} label="Checklist" />
-                <Tab icon={<GapPlanIcon />} label="Gap Plans" />
-              </Tabs>
+              {viewingPECC.fullSiteAccessApproved ? (
+                <>
+                  <Tabs value={peccDetailTab} onChange={(e, v) => setPeccDetailTab(v)}>
+                    <Tab icon={<ActivityIcon />} label="Activities" />
+                    <Tab icon={<ChecklistIcon />} label="Checklist" />
+                    <Tab icon={<GapPlanIcon />} label="Gap Plans" />
+                  </Tabs>
 
-              <TabPanel value={peccDetailTab} index={0}>
-                {renderPECCActivities(viewingPECC)}
-              </TabPanel>
-              <TabPanel value={peccDetailTab} index={1}>
-                {renderPECCChecklist(viewingPECC)}
-              </TabPanel>
-              <TabPanel value={peccDetailTab} index={2}>
-                {renderPECCGapPlans(viewingPECC)}
-              </TabPanel>
+                  <TabPanel value={peccDetailTab} index={0}>
+                    {renderPECCActivities(viewingPECC)}
+                  </TabPanel>
+                  <TabPanel value={peccDetailTab} index={1}>
+                    {renderPECCChecklist(viewingPECC)}
+                  </TabPanel>
+                  <TabPanel value={peccDetailTab} index={2}>
+                    {renderPECCGapPlans(viewingPECC)}
+                  </TabPanel>
+                </>
+              ) : (
+                <>
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    This PECC has not approved full-site sharing. Checklist view only.
+                  </Alert>
+                  {renderPECCChecklist(viewingPECC)}
+                </>
+              )}
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setViewingPECC(null)}>Close</Button>

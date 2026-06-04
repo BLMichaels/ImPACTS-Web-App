@@ -169,6 +169,7 @@ const AccountPage = () => {
       emailFrequency: userProfile?.gapPlanReminders?.emailFrequency ?? 'weekly' as 'daily' | 'weekly' | 'monthly'
     }
   });
+  const [peccFullSiteAccessApproved, setPeccFullSiteAccessApproved] = useState(false);
   useEffect(() => {
     if (userProfile?.gapPlanReminders) {
       setNotificationSettings(prev => ({
@@ -182,6 +183,18 @@ const AccountPage = () => {
       }));
     }
   }, [userProfile?.gapPlanReminders]);
+
+  useEffect(() => {
+    if (userProfile?.role !== UserRole.PECC || !accountUserId) return;
+    let cancelled = false;
+    (async () => {
+      const approved = await getUserData<boolean>(accountUserId, 'pecc_allow_manager_mentor_full_view');
+      if (!cancelled) setPeccFullSiteAccessApproved(approved === true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userProfile?.role, accountUserId]);
 
   // Load hospital and CRM contact data for Account (personal/hospital from CRM + registration)
   useEffect(() => {
@@ -289,6 +302,7 @@ const AccountPage = () => {
   const handleNotificationSave = async () => {
     if (userProfile?.role === 'pecc' && accountUserId) {
       await setUserData(accountUserId, 'gap_plan_reminders', notificationSettings.gapPlanReminders);
+      await setUserData(accountUserId, 'pecc_allow_manager_mentor_full_view', peccFullSiteAccessApproved);
       await refreshProfile();
     }
     setEditingNotifications(false);
@@ -1113,6 +1127,30 @@ const AccountPage = () => {
                           }
                         </Typography>
                       </Box>
+                    </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="h6" gutterBottom>
+                        PECC Site Sharing
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        If enabled, your assigned mentor/manager can open your full PECC site view (all tabs). If disabled, they can only view your Site Milestones checklist(s).
+                      </Typography>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={peccFullSiteAccessApproved}
+                            onChange={(e) => setPeccFullSiteAccessApproved(e.target.checked)}
+                            disabled={!editingNotifications}
+                          />
+                        }
+                        label="Allow mentor/manager full PECC site access"
+                      />
+                      <Alert severity={peccFullSiteAccessApproved ? 'success' : 'info'} sx={{ mt: 1.5 }}>
+                        {peccFullSiteAccessApproved
+                          ? 'Approved: mentor/manager may open your full PECC view.'
+                          : 'Not approved: mentor/manager can only access your checklist view.'}
+                      </Alert>
                     </Grid>
                     
                   </Grid>
