@@ -18,6 +18,7 @@ import {
 import { alpha } from '@mui/material/styles';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { supabase } from '../supabase';
 import {
   getUserData,
   setUserData,
@@ -89,6 +90,7 @@ const SnapshotPage = () => {
   const [snapshotReadinessChartsVisible, setSnapshotReadinessChartsVisible] = useState<boolean | null>(null);
   const [prsQuestions, setPrsQuestions] = useState<PRSQuestion[] | null>(null);
   const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
+  const [activitySubmitterById, setActivitySubmitterById] = useState<Record<string, string>>({});
   const userId = effectiveUserId;
 
   useEffect(() => {
@@ -129,6 +131,10 @@ const SnapshotPage = () => {
   }, [prsQuestions]);
 
   const currentPRSScore = useMemo(() => calculateCurrentPRSScorePercent(prsQuestions), [prsQuestions]);
+  const activityTime = (dateValue: unknown): number => {
+    const parsed = parseActivityDate(dateValue);
+    return parsed ? parsed.getTime() : 0;
+  };
 
   // Load all data for snapshot. When PRS section is hidden, do not load readiness scores or PRS questions.
   useEffect(() => {
@@ -194,6 +200,33 @@ const SnapshotPage = () => {
 
     loadData();
   }, [userId, showPrsSection, retryCount, effectiveHospitalId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const submitterIds = [...new Set(
+        activities.map((a) => String(a?.submitted_by || '').trim()).filter(Boolean)
+      )];
+      if (!submitterIds.length) {
+        if (!cancelled) setActivitySubmitterById({});
+        return;
+      }
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .in('id', submitterIds);
+      if (cancelled || error) return;
+      const next: Record<string, string> = {};
+      ((data || []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; email?: string | null }>).forEach((u) => {
+        const label = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || String(u.email || u.id);
+        next[u.id] = label;
+      });
+      if (!cancelled) setActivitySubmitterById(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activities]);
 
   const exportToComprehensivePDF = () => {
     try {
@@ -571,17 +604,19 @@ const SnapshotPage = () => {
         currentY += 10;
         currentY = addSectionHeader('Recent Activities', currentY);
         
-        const recentActivities = activities.slice(-10); // Last 10 activities
+        const recentActivities = [...activities]
+          .sort((a, b) => activityTime(b.date) - activityTime(a.date))
+          .slice(0, 10);
         recentActivities.forEach((activity, index) => {
           if (currentY < pageHeight - margin) {
             doc.setFontSize(10);
             doc.setTextColor(33, 37, 41);
-            doc.text(`${index + 1}. ${activity.title}`, margin, currentY);
+            doc.text(`${index + 1}. ${activity.activity || activity.title || 'Activity'}`, margin, currentY);
             doc.setFontSize(9);
             doc.setTextColor(108, 117, 125);
             
             // Wrap activity details to fit page width
-            const detailsText = `${activity.date} - ${activity.category}`;
+            const detailsText = `${activity.date} - ${activity.category || (Array.isArray(activity.categories) ? activity.categories.join(', ') : '')}${activity.submitted_by ? ` - Entered by: ${activitySubmitterById[activity.submitted_by] || activity.submitted_by}` : ''}`;
             const detailsY = addWrappedText(detailsText, margin + 10, currentY + 5, pageWidth - margin * 2 - 10, 9);
             currentY = detailsY + 5;
           }
@@ -1346,6 +1381,39 @@ const SnapshotPage = () => {
                   </Typography>
                 )}
               </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Recent Activities (with submitter)
+              </Typography>
+              {activities.length > 0 ? (
+                <Stack spacing={1}>
+                  {[...activities]
+                    .sort((a, b) => activityTime(b.date) - activityTime(a.date))
+                    .slice(0, 8)
+                    .map((a, idx) => (
+                      <Box key={`${a.id || idx}`} sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {a.activity || a.title || 'Activity'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {a.date} • {(a.category || (Array.isArray(a.categories) ? a.categories.join(', ') : 'Uncategorized'))}
+                        </Typography>
+                        {a.submitted_by && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            Entered by: {activitySubmitterById[a.submitted_by] || a.submitted_by}
+                          </Typography>
+                        )}
+                      </Box>
+                    ))}
+                </Stack>
+              ) : (
+                <Typography variant="body2" color="text.secondary">No activities recorded</Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>
