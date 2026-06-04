@@ -873,8 +873,9 @@ const AdminCRMPage: React.FC = () => {
             const role = normalizeUserRole(u.role);
             const roleKey = role as string;
             if (!roleToContactType[roleKey]) continue;
-            // Skip if we already have this user from crm_organizations
-            if (list.some(c => c.email === u.email && c.crmCreated)) continue;
+            // Skip if we already have this user from crm_organizations (case-insensitive email match).
+            const userEmailKey = String(u.email || '').trim().toLowerCase();
+            if (userEmailKey && list.some((c) => String(c.email || '').trim().toLowerCase() === userEmailKey && c.crmCreated)) continue;
             const type = roleToContactType[roleKey];
             const displayName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email || '—';
             const hospitalMeta = userHospitalMeta.get(u.id);
@@ -2604,17 +2605,55 @@ const AdminCRMPage: React.FC = () => {
           setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
         }
       } else {
-        // Insert new CRM contact
-        const { data: inserted, error } = await supabase
-          .from('crm_organizations')
-          .insert(payloadDb)
-          .select('id, created_at')
-          .single();
+        const emailTrim = formData.email?.trim() || '';
+        const emailKey = emailTrim.toLowerCase();
+        let inserted: { id: string; created_at?: string } | null = null;
+        let insertError: { message?: string } | null = null;
+
+        // Idempotent create for contacts with email: if same type+email exists (case-insensitive), update it instead of inserting.
+        if (emailTrim) {
+          const { data: existingByEmail } = await supabase
+            .from('crm_organizations')
+            .select('id, created_at')
+            .eq('contact_type', formData.type)
+            .ilike('email', emailTrim)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (existingByEmail?.id) {
+            const { error: updateError } = await supabase
+              .from('crm_organizations')
+              .update({ ...payloadDb, updated_at: new Date().toISOString() })
+              .eq('id', existingByEmail.id);
+            if (updateError) {
+              insertError = updateError;
+            } else {
+              inserted = { id: String(existingByEmail.id), created_at: existingByEmail.created_at ? String(existingByEmail.created_at) : undefined };
+            }
+          } else {
+            const { data, error } = await supabase
+              .from('crm_organizations')
+              .insert(payloadDb)
+              .select('id, created_at')
+              .single();
+            inserted = (data as { id: string; created_at?: string } | null) ?? null;
+            insertError = error;
+          }
+        } else {
+          const { data, error } = await supabase
+            .from('crm_organizations')
+            .insert(payloadDb)
+            .select('id, created_at')
+            .single();
+          inserted = (data as { id: string; created_at?: string } | null) ?? null;
+          insertError = error;
+        }
+
         setSaveInProgress(false);
-        if (error) {
-          console.error('Failed to insert contact:', error);
+        if (insertError) {
+          console.error('Failed to insert contact:', insertError);
           // Show error to user - DON'T add to local state since it wasn't saved
-          setSaveError(`Failed to save contact: ${error.message || 'Database error'}. Please check your RLS policies - run CRM_RLS_FIX.sql in Supabase.`);
+          setSaveError(`Failed to save contact: ${insertError.message || 'Database error'}. Please check your RLS policies - run CRM_RLS_FIX.sql in Supabase.`);
           return; // Don't close dialog or add to state
         }
         // If this person has a platform user (same email), sync users.role so list shows correct type on reload
@@ -2629,14 +2668,24 @@ const AdminCRMPage: React.FC = () => {
             }).eq('id', userRow.id);
           }
         }
-        if (inserted && typeof (inserted as { id?: string }).id === 'string') {
-          const id = (inserted as { id: string; created_at?: string }).id;
-          const createdAt = (inserted as { created_at?: string }).created_at ? String((inserted as { created_at: string }).created_at).split('T')[0] : payload.createdAt;
-          setContacts(prev => [...prev, { ...payload, id, createdAt, crmCreated: true }]);
+        if (inserted && typeof inserted.id === 'string') {
+          const id = inserted.id;
+          const createdAt = inserted.created_at ? String(inserted.created_at).split('T')[0] : payload.createdAt;
+          setContacts((prev) => {
+            const filtered = emailKey
+              ? prev.filter((c) => !(c.type === formData.type && String(c.email || '').trim().toLowerCase() === emailKey))
+              : prev;
+            return [...filtered, { ...payload, id, createdAt, crmCreated: true }];
+          });
           setSaveError(null);
         } else {
           // Insert succeeded but no data returned - still add to state
-          setContacts(prev => [...prev, { ...payload, crmCreated: true }]);
+          setContacts((prev) => {
+            const filtered = emailKey
+              ? prev.filter((c) => !(c.type === formData.type && String(c.email || '').trim().toLowerCase() === emailKey))
+              : prev;
+            return [...filtered, { ...payload, crmCreated: true }];
+          });
           setSaveError(null);
         }
       }
