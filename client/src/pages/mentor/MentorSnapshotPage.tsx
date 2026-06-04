@@ -48,6 +48,11 @@ import {
   type PeccUserLike,
 } from '../../utils/mentorPeccHospitalMatch';
 import { hospitalKeysMatch } from '../../utils/hospitalId';
+import { rollupMentorHoursByHospital, sumUnlinkedMentorHours } from '../../utils/mentorHoursByHospital';
+import { MentorPrsTrendChart, type MentorPrsSeries } from '../../components/mentor/MentorPrsTrendChart';
+import { MentorHoursByHospitalPanel } from '../../components/mentor/MentorHoursByHospitalPanel';
+import { REPORT_CHART_COLORS } from '../../components/admin/AdminReportCharts';
+
 interface MentorActivity {
   id: string;
   date: string;
@@ -56,6 +61,7 @@ interface MentorActivity {
   hours: number;
   notes: string;
   hospital?: string;
+  hospitalIds?: string[];
   simulation?: string;
 }
 
@@ -445,22 +451,34 @@ const MentorSnapshotPage = () => {
     setSelectedHospitals([]);
   };
 
-  // Prepare PRS chart data
-  const prsChartData = useMemo(() => {
-    const selectedPeccs = peccData.filter((p) => selectedHospitals.includes(p.hospitalRowId));
-    return selectedPeccs.map(pecc => ({
-      peccName: pecc.name,
-      hospitalName: pecc.hospital,
-      scores: pecc.readinessScores.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    }));
+  const hospitalRefsForRollup = useMemo(
+    () =>
+      assignedHospitals.map((h) => ({
+        id: String(h.hospital?.id || ''),
+        facilityId: String(h.hospital?.facility_id || ''),
+        name: normalizeHospitalOrOrgName(h.hospital?.name || 'Hospital'),
+      })),
+    [assignedHospitals]
+  );
+
+  const mentorHoursByHospital = useMemo(
+    () => rollupMentorHoursByHospital(activities, hospitalRefsForRollup),
+    [activities, hospitalRefsForRollup]
+  );
+
+  const unlinkedMentorHours = useMemo(() => sumUnlinkedMentorHours(activities), [activities]);
+
+  const prsChartSeries = useMemo((): MentorPrsSeries[] => {
+    return peccData
+      .filter((p) => selectedHospitals.includes(p.hospitalRowId) && p.readinessScores.length > 0)
+      .map((pecc, index) => ({
+        seriesKey: `hospital_${index}`,
+        label: pecc.hospital,
+        scores: [...pecc.readinessScores].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        ),
+      }));
   }, [peccData, selectedHospitals]);
-
-  // Determine chart x-axis mode
-  const useDateAxis = prsChartData.length === 1;
-  const maxAssessments = Math.max(...prsChartData.map(p => p.scores.length), 0);
-
-  // Generate colors for each PECC/hospital in the chart
-  const chartColors = ['#2196f3', '#f50057', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#795548'];
 
   const exportToPDF = () => {
     window.print();
@@ -742,7 +760,7 @@ const MentorSnapshotPage = () => {
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Card>
+          <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Mentoring Hours Overview
@@ -794,6 +812,20 @@ const MentorSnapshotPage = () => {
                   </Grid>
                 </Grid>
               </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Your Hours by Hospital
+              </Typography>
+              <MentorHoursByHospitalPanel
+                rollups={mentorHoursByHospital}
+                unlinkedHours={unlinkedMentorHours}
+              />
             </CardContent>
           </Card>
         </Grid>
@@ -1208,7 +1240,7 @@ const MentorSnapshotPage = () => {
                                   width: 12, 
                                   height: 12, 
                                   borderRadius: '50%', 
-                                  bgcolor: chartColors[index % chartColors.length] 
+                                  bgcolor: REPORT_CHART_COLORS[index % REPORT_CHART_COLORS.length] 
                                 }} 
                               />
                               <Typography variant="body2">
@@ -1221,183 +1253,9 @@ const MentorSnapshotPage = () => {
                   </Box>
                 </Box>
 
-                {/* PRS Chart */}
-                {prsChartData.length > 0 && selectedHospitals.length > 0 ? (
-                  <Box sx={{ mt: 3, position: 'relative', height: 400 }}>
-                    <svg width="100%" height="100%" style={{ overflow: 'visible' }}>
-                      {/* Define coordinate system */}
-                      {(() => {
-                        const padding = { top: 20, right: 60, bottom: 60, left: 60 };
-                        const chartWidth = 900;
-                        const chartHeight = 400;
-                        const innerWidth = chartWidth - padding.left - padding.right;
-                        const innerHeight = chartHeight - padding.top - padding.bottom;
-
-                        // Y-axis: 0-100 (PRS scores)
-                        const yScale = (score: number) => 
-                          padding.top + innerHeight - (score / 100) * innerHeight;
-
-                        // X-axis logic
-                        let xScale: (index: number) => number;
-                        let xLabels: string[];
-
-                        if (useDateAxis && prsChartData[0].scores.length > 0) {
-                          // Single hospital: use dates
-                          const dates = prsChartData[0].scores.map(s => new Date(s.date).getTime());
-                          const minDate = Math.min(...dates);
-                          const maxDate = Math.max(...dates);
-                          const dateRange = maxDate - minDate || 1;
-                          
-                          xScale = (index: number) => {
-                            const date = new Date(prsChartData[0].scores[index].date).getTime();
-                            return padding.left + ((date - minDate) / dateRange) * innerWidth;
-                          };
-                          
-                          xLabels = prsChartData[0].scores.map(s => format(new Date(s.date), 'MMM d, yyyy'));
-                        } else {
-                          // Multiple hospitals: use PRS 1, PRS 2, PRS 3
-                          xScale = (index: number) => 
-                            padding.left + (index / Math.max(1, maxAssessments - 1)) * innerWidth;
-                          
-                          xLabels = Array.from({ length: maxAssessments }, (_, i) => `PRS ${i + 1}`);
-                        }
-
-                        return (
-                          <>
-                            {/* Y-axis */}
-                            <line 
-                              x1={padding.left} 
-                              y1={padding.top} 
-                              x2={padding.left} 
-                              y2={chartHeight - padding.bottom} 
-                              stroke="#ccc" 
-                              strokeWidth="2"
-                            />
-                            {/* X-axis */}
-                            <line 
-                              x1={padding.left} 
-                              y1={chartHeight - padding.bottom} 
-                              x2={chartWidth - padding.right} 
-                              y2={chartHeight - padding.bottom} 
-                              stroke="#ccc" 
-                              strokeWidth="2"
-                            />
-
-                            {/* Y-axis labels (0, 25, 50, 75, 100) */}
-                            {[0, 25, 50, 75, 100].map(score => (
-                              <g key={score}>
-                                <text
-                                  x={padding.left - 10}
-                                  y={yScale(score) + 4}
-                                  textAnchor="end"
-                                  fontSize="12"
-                                  fill="#666"
-                                >
-                                  {score}
-                                </text>
-                                <line
-                                  x1={padding.left}
-                                  y1={yScale(score)}
-                                  x2={chartWidth - padding.right}
-                                  y2={yScale(score)}
-                                  stroke="#eee"
-                                  strokeWidth="1"
-                                  strokeDasharray="4,4"
-                                />
-                              </g>
-                            ))}
-
-                            {/* X-axis labels */}
-                            {xLabels.map((label, index) => (
-                              <text
-                                key={index}
-                                x={xScale(index)}
-                                y={chartHeight - padding.bottom + 20}
-                                textAnchor="middle"
-                                fontSize="11"
-                                fill="#666"
-                              >
-                                {label}
-                              </text>
-                            ))}
-
-                            {/* Plot data for each hospital/PECC */}
-                            {prsChartData.map((data, peccIndex) => {
-                              const color = chartColors[peccIndex % chartColors.length];
-                              
-                              return (
-                                <g key={peccIndex}>
-                                  {/* Line connecting dots */}
-                                  {data.scores.length > 1 && (
-                                    <polyline
-                                      points={data.scores
-                                        .map((score, index) => {
-                                          if (useDateAxis) {
-                                            return `${xScale(index)},${yScale(score.score)}`;
-                                          } else {
-                                            return `${xScale(index)},${yScale(score.score)}`;
-                                          }
-                                        })
-                                        .join(' ')}
-                                      fill="none"
-                                      stroke={color}
-                                      strokeWidth="2"
-                                    />
-                                  )}
-
-                                  {/* Dots for each data point */}
-                                  {data.scores.map((score, index) => (
-                                    <g key={index}>
-                                      <circle
-                                        cx={xScale(index)}
-                                        cy={yScale(score.score)}
-                                        r="5"
-                                        fill={color}
-                                      />
-                                      {/* Score label */}
-                                      <text
-                                        x={xScale(index)}
-                                        y={yScale(score.score) - 12}
-                                        textAnchor="middle"
-                                        fontSize="11"
-                                        fontWeight="bold"
-                                        fill={color}
-                                      >
-                                        {score.score}
-                                      </text>
-                                    </g>
-                                  ))}
-                                </g>
-                              );
-                            })}
-
-                            {/* Legend */}
-                            {prsChartData.length > 1 && (
-                              <g>
-                                {prsChartData.map((data, index) => (
-                                  <g key={index}>
-                                    <circle
-                                      cx={chartWidth - padding.right + 20}
-                                      cy={padding.top + index * 25}
-                                      r="5"
-                                      fill={chartColors[index % chartColors.length]}
-                                    />
-                                    <text
-                                      x={chartWidth - padding.right + 30}
-                                      y={padding.top + index * 25 + 4}
-                                      fontSize="11"
-                                      fill="#666"
-                                    >
-                                      {data.hospitalName.length > 15 ? data.hospitalName.substring(0, 15) + '...' : data.hospitalName}
-                                    </text>
-                                  </g>
-                                ))}
-                              </g>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </svg>
+                {prsChartSeries.length > 0 && selectedHospitals.length > 0 ? (
+                  <Box sx={{ mt: 2 }}>
+                    <MentorPrsTrendChart series={prsChartSeries} />
                   </Box>
                 ) : selectedHospitals.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 4 }}>

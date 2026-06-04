@@ -46,7 +46,11 @@ import {
   type PeccUserLike,
 } from '../../utils/mentorPeccHospitalMatch';
 import { hospitalKeysMatch } from '../../utils/hospitalId';
+import { rollupMentorHoursByHospital, sumUnlinkedMentorHours } from '../../utils/mentorHoursByHospital';
+import { MentorHoursByHospitalPanel } from '../../components/mentor/MentorHoursByHospitalPanel';
 import DashboardResources from '../../components/DashboardResources';
+
+export type PeccLinkStatus = 'linked' | 'contact_only' | 'none';
 
 interface DashboardStats {
   totalHospitals: number;
@@ -111,6 +115,10 @@ interface HospitalSummary {
   peccName: string;
   peccEmail: string;
   peccUserId: string | null;
+  peccLinkStatus: PeccLinkStatus;
+  mentorHours: number;
+  mentorHoursThisMonth: number;
+  mentorActivityCount: number;
   activityCount: number;
   totalHours: number;
   lastActivityAt: string | null;
@@ -137,6 +145,10 @@ const MentorDashboardPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedHospital, setSelectedHospital] = useState<HospitalSummary | null>(null);
   const [hospitalDrawerOpen, setHospitalDrawerOpen] = useState(false);
+  const [mentorHoursRollups, setMentorHoursRollups] = useState<
+    ReturnType<typeof rollupMentorHoursByHospital>
+  >([]);
+  const [unlinkedMentorHours, setUnlinkedMentorHours] = useState(0);
 
   const loadDashboardData = async () => {
     const uid = effectiveUserId ?? currentUser?.id;
@@ -234,6 +246,17 @@ const MentorDashboardPage: React.FC = () => {
     const mentorLinkedPeccs = (byMentor || []) as PeccUserLike[];
     const peccsByHospital = (byHospital || []) as PeccUserLike[];
 
+    const mentorActivities = await getMentorActivitiesForUser(uid);
+    const mentorHoursRollups = rollupMentorHoursByHospital(
+      mentorActivities,
+      workingHospitals.map((h: StoredHospital) => ({
+        id: h.id,
+        facilityId: h.facilityId,
+        name: nameByKey[h.id] ?? normalizeHospitalOrOrgName(h.name ?? 'Unknown'),
+      }))
+    );
+    const mentorHoursByHospitalId = new Map(mentorHoursRollups.map((r) => [r.hospitalId, r]));
+
     const summaries: HospitalSummary[] = workingHospitals.map((h: StoredHospital) => {
       const hospitalRefSet = new Set(
         [h.id, h.facilityId].map((ref) => String(ref || '').trim()).filter(Boolean)
@@ -268,6 +291,12 @@ const MentorDashboardPage: React.FC = () => {
           : '—';
       const peccEmail = linkedPecc?.email?.trim() || primaryContact?.email?.trim() || '—';
       const peccUserId = linkedPecc?.id || null;
+      const peccLinkStatus: PeccLinkStatus = linkedPecc
+        ? 'linked'
+        : primaryContact
+          ? 'contact_only'
+          : 'none';
+      const mentorRollup = mentorHoursByHospitalId.get(h.id);
 
       const hospitalActivities = (canonicalHospitalId ? hospitalActivitiesMap.get(canonicalHospitalId) : null) || [];
       const sortedByDate = [...hospitalActivities].sort(
@@ -290,6 +319,10 @@ const MentorDashboardPage: React.FC = () => {
         peccName,
         peccEmail,
         peccUserId,
+        peccLinkStatus,
+        mentorHours: mentorRollup?.totalHours ?? 0,
+        mentorHoursThisMonth: mentorRollup?.hoursThisMonth ?? 0,
+        mentorActivityCount: mentorRollup?.activityCount ?? 0,
         activityCount: hospitalActivities.length,
         totalHours,
         lastActivityAt,
@@ -301,7 +334,6 @@ const MentorDashboardPage: React.FC = () => {
       summaries.map((s) => s.peccUserId).filter((id): id is string => Boolean(id))
     );
     const allHospitalActivities = summaries.flatMap((s) => s.activities);
-    const mentorActivities = await getMentorActivitiesForUser(uid);
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const thisMonthSiteActivities = allHospitalActivities.filter(
@@ -328,6 +360,8 @@ const MentorDashboardPage: React.FC = () => {
       simulationsThisMonth
     });
     setHospitalSummaries(summaries);
+    setMentorHoursRollups(mentorHoursRollups);
+    setUnlinkedMentorHours(sumUnlinkedMentorHours(mentorActivities));
     } catch (err) {
       console.error('Mentor dashboard load error:', err);
       setLoadError(err instanceof Error ? err.message : 'Failed to load Support Tool. Try refreshing.');
@@ -518,12 +552,32 @@ const MentorDashboardPage: React.FC = () => {
                       <HospitalIcon />
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                        {normalizeHospitalOrOrgName(hospital.name)}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
+                        <Typography variant="subtitle1" fontWeight={600}>
+                          {normalizeHospitalOrOrgName(hospital.name)}
+                        </Typography>
+                        {hospital.peccLinkStatus === 'contact_only' && (
+                          <Chip
+                            label="Awaiting PECC account"
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            sx={{ flexShrink: 0, maxWidth: '55%' }}
+                          />
+                        )}
+                        {hospital.peccLinkStatus === 'none' && (
+                          <Chip
+                            label="No PECC linked"
+                            size="small"
+                            color="default"
+                            variant="outlined"
+                            sx={{ flexShrink: 0 }}
+                          />
+                        )}
+                      </Box>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
                         <Typography variant="body2" color="text.secondary">
-                          {hospital.peccName}
+                          {hospital.peccLinkStatus === 'linked' ? hospital.peccName : hospital.peccName !== '—' ? `${hospital.peccName} (contact)` : '—'}
                         </Typography>
                         {hospital.peccEmail !== '—' && (
                           <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -536,7 +590,15 @@ const MentorDashboardPage: React.FC = () => {
                       </Box>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
                         <Chip size="small" icon={<ActivityIcon sx={{ fontSize: 14 }} />} label={`${hospital.activityCount} site activities`} variant="outlined" />
-                        <Chip size="small" icon={<HoursIcon sx={{ fontSize: 14 }} />} label={`${hospital.totalHours.toFixed(1)} h`} variant="outlined" />
+                        <Chip size="small" icon={<HoursIcon sx={{ fontSize: 14 }} />} label={`${hospital.totalHours.toFixed(1)} site h`} variant="outlined" />
+                        {hospital.mentorHours > 0 && (
+                          <Chip
+                            size="small"
+                            label={`${hospital.mentorHours.toFixed(1)} your h`}
+                            variant="outlined"
+                            color="primary"
+                          />
+                        )}
                         {hospital.lastActivityAt && (
                           <Chip size="small" icon={<CalendarIcon sx={{ fontSize: 14 }} />} label={`Last: ${format(new Date(hospital.lastActivityAt), 'MMM d, yyyy')}`} variant="outlined" />
                         )}
@@ -606,11 +668,41 @@ const MentorDashboardPage: React.FC = () => {
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                 PECC contact
               </Typography>
-              <Box sx={{ mb: 3 }}>
+              <Box sx={{ mb: 2 }}>
+                {selectedHospital.peccLinkStatus === 'contact_only' && (
+                  <Alert severity="warning" sx={{ mb: 1.5 }} variant="outlined">
+                    CRM contact on file, but no PECC app account is linked yet. Invite them or confirm hospital assignment in the CRM.
+                  </Alert>
+                )}
+                {selectedHospital.peccLinkStatus === 'none' && (
+                  <Alert severity="info" sx={{ mb: 1.5 }} variant="outlined">
+                    No PECC contact or account linked to this site yet.
+                  </Alert>
+                )}
                 <Typography variant="body2">{selectedHospital.peccName}</Typography>
                 {selectedHospital.peccEmail !== '—' && (
                   <Typography variant="body2" color="primary" component="a" href={`mailto:${selectedHospital.peccEmail}`}>
                     {selectedHospital.peccEmail}
+                  </Typography>
+                )}
+              </Box>
+
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Your mentoring hours at this site
+              </Typography>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="body2">
+                  {selectedHospital.mentorHours.toFixed(1)}h total
+                  {selectedHospital.mentorHoursThisMonth > 0
+                    ? ` · ${selectedHospital.mentorHoursThisMonth.toFixed(1)}h this month`
+                    : ''}
+                  {selectedHospital.mentorActivityCount > 0
+                    ? ` · ${selectedHospital.mentorActivityCount} linked activit${selectedHospital.mentorActivityCount === 1 ? 'y' : 'ies'}`
+                    : ''}
+                </Typography>
+                {selectedHospital.mentorHours === 0 && (
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    Log an activity and assign this hospital to track your hours here.
                   </Typography>
                 )}
               </Box>
@@ -690,6 +782,17 @@ const MentorDashboardPage: React.FC = () => {
           </>
         )}
       </Drawer>
+
+      {mentorHoursRollups.some((r) => r.totalHours > 0) && (
+        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, mt: 4 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} gutterBottom>
+              Your mentoring hours by hospital
+            </Typography>
+            <MentorHoursByHospitalPanel rollups={mentorHoursRollups} unlinkedHours={unlinkedMentorHours} />
+          </CardContent>
+        </Card>
+      )}
 
       <DashboardResources userId={effectiveUserId ?? currentUser?.uid} />
     </Box>
