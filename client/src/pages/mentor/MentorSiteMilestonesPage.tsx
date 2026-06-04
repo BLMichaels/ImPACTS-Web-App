@@ -560,13 +560,31 @@ const MentorSiteMilestonesPage: React.FC = () => {
         const checklistStages: Record<string, { name: string; stages: MilestoneStage[] }> = {};
         if (peccUserIds.length > 0) {
           const uniquePeccIds = [...new Set(peccUserIds.map((id) => String(id || '').trim()).filter(Boolean))];
-          const [{ data: peccProfiles }, { data: programMemberships }] = await Promise.all([
+          const [{ data: peccProfiles }, { data: programMemberships }, { data: cohortMemberships }] = await Promise.all([
             supabase.from('users').select('id, primary_program_id').in('id', uniquePeccIds),
-            supabase.from('program_members').select('user_id, program_id').in('user_id', uniquePeccIds).eq('status', 'active')
+            supabase.from('program_members').select('user_id, program_id').in('user_id', uniquePeccIds).eq('status', 'active'),
+            supabase.from('cohort_members').select('user_id, cohort_id').in('user_id', uniquePeccIds).eq('status', 'active')
           ]);
+          const cohortIds = [...new Set(
+            ((cohortMemberships || []) as Array<{ cohort_id?: string | null }>)
+              .map((row) => String(row.cohort_id || '').trim())
+              .filter(Boolean)
+          )];
+          let cohortProgramIds: string[] = [];
+          if (cohortIds.length > 0) {
+            const { data: cohortRows } = await supabase
+              .from('cohorts')
+              .select('id, program_id')
+              .in('id', cohortIds)
+              .eq('is_active', true);
+            cohortProgramIds = ((cohortRows || []) as Array<{ program_id?: string | null }>)
+              .map((row) => String(row.program_id || '').trim())
+              .filter(Boolean);
+          }
           const programIds = [...new Set([
             ...((peccProfiles || []) as Array<{ primary_program_id?: string | null }>).map((row) => String(row.primary_program_id || '').trim()).filter(Boolean),
             ...((programMemberships || []) as Array<{ program_id?: string | null }>).map((row) => String(row.program_id || '').trim()).filter(Boolean),
+            ...cohortProgramIds,
           ])];
           if (programIds.length > 0) {
             const { data: list } = await supabase.from('program_checklists').select('*').in('program_id', programIds).order('sort_order');
