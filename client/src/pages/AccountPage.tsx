@@ -1039,25 +1039,6 @@ const AccountPage = () => {
                       {notificationSettings.gapPlanReminders.enabled && (
                         <>
                           <Box sx={{ mb: 2 }}>
-                            <FormControlLabel
-                              control={
-                                <Checkbox
-                                  checked={notificationSettings.gapPlanReminders.emailNotifications}
-                                  onChange={(e) => setNotificationSettings({
-                                    ...notificationSettings,
-                                    gapPlanReminders: {
-                                      ...notificationSettings.gapPlanReminders,
-                                      emailNotifications: e.target.checked
-                                    }
-                                  })}
-                                  disabled={!editingNotifications}
-                                />
-                              }
-                              label="Receive email notifications"
-                            />
-                          </Box>
-
-                          <Box sx={{ mb: 2 }}>
                             <TextField
                               fullWidth
                               type="number"
@@ -1075,28 +1056,6 @@ const AccountPage = () => {
                               InputProps={{ inputProps: { min: 1, max: 30 } }}
                               helperText="Show reminders 1-30 days before due date"
                             />
-                          </Box>
-
-                          <Box sx={{ mb: 2 }}>
-                            <FormControl fullWidth size="small">
-                              <InputLabel>Email Frequency</InputLabel>
-                              <Select
-                                value={notificationSettings.gapPlanReminders.emailFrequency}
-                                label="Email Frequency"
-                                onChange={(e) => setNotificationSettings({
-                                  ...notificationSettings,
-                                  gapPlanReminders: {
-                                    ...notificationSettings.gapPlanReminders,
-                                    emailFrequency: e.target.value as 'daily' | 'weekly' | 'monthly'
-                                  }
-                                })}
-                                disabled={!editingNotifications}
-                              >
-                                <MenuItem value="daily">Daily</MenuItem>
-                                <MenuItem value="weekly">Weekly</MenuItem>
-                                <MenuItem value="monthly">Monthly</MenuItem>
-                              </Select>
-                            </FormControl>
                           </Box>
                         </>
                       )}
@@ -1121,10 +1080,7 @@ const AccountPage = () => {
                           • Question 32: Staff Training - Due in {notificationSettings.gapPlanReminders.reminderDays} days
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {notificationSettings.gapPlanReminders.emailNotifications ? 
-                            `You'll receive ${notificationSettings.gapPlanReminders.emailFrequency} email reminders` : 
-                            'Email notifications are disabled'
-                          }
+                          Reminders appear in-app based on your selected lead time.
                         </Typography>
                       </Box>
                     </Grid>
