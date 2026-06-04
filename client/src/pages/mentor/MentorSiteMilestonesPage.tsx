@@ -100,6 +100,8 @@ interface HospitalMilestones {
 }
 
 const STIPEND_PER_STAGE = 200;
+const isUuidText = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
 // Full stages structure with links from MilestonesPage
 const DEFAULT_STAGES: MilestoneStage[] = [
@@ -491,6 +493,12 @@ const MentorSiteMilestonesPage: React.FC = () => {
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIdsForData, 'activities'),
         batchGetHospitalDataForKey<unknown[]>(canonHospitalIdsForData, 'readinessScores'),
       ]);
+      const { data: allPrograms } = await supabase.from('programs').select('id, name');
+      const programNameToId = new Map(
+        ((allPrograms || []) as Array<{ id: string; name?: string | null }>)
+          .map((p) => [String(p.name || '').trim().toLowerCase(), String(p.id || '').trim()] as [string, string])
+          .filter(([name, id]) => Boolean(name && id))
+      );
       const { data: visibilitySettings } = await supabase
         .from('app_settings')
         .select('value')
@@ -503,11 +511,21 @@ const MentorSiteMilestonesPage: React.FC = () => {
       };
 
       for (const hospital of hospitals) {
+        const canonicalHospitalUuid =
+          hospitalRefToRowId.get(hospital.id) ||
+          (hospital.facilityId ? hospitalRefToRowId.get(hospital.facilityId) : undefined) ||
+          null;
+        const userHospitalRefs = [...new Set(
+          [hospital.siteId, hospital.id, hospital.facilityId, canonicalHospitalUuid]
+            .map((v) => String(v || '').trim())
+            .filter(Boolean)
+        )];
+        const userHospitalOrClause = userHospitalRefs.map((ref) => `hospital_facility_id.eq.${ref}`).join(',');
         const { data: peccUsers } = await supabase
           .from('users')
           .select('id, first_name, last_name, mentor_id')
           .eq('role', 'pecc')
-          .or(`hospital_facility_id.eq.${hospital.siteId},hospital_facility_id.eq.${hospital.id}`);
+          .or(userHospitalOrClause);
 
         const { data: siteMembers } = await supabase
           .from('site_members')
@@ -607,10 +625,16 @@ const MentorSiteMilestonesPage: React.FC = () => {
           if (cohortIds.length > 0) {
             const { data: cohortRows } = await supabase
               .from('cohorts')
-              .select('id, program_id')
+              .select('id, name, program_id')
               .in('id', cohortIds);
-            cohortProgramIds = ((cohortRows || []) as Array<{ program_id?: string | null }>)
-              .map((row) => String(row.program_id || '').trim())
+            cohortProgramIds = ((cohortRows || []) as Array<{ name?: string | null; program_id?: string | null }>)
+              .map((row) => {
+                const rawProgramId = String(row.program_id || '').trim();
+                if (isUuidText(rawProgramId)) return rawProgramId;
+                // Some environments store cohorts.program_id as text name or null; resolve by program name.
+                const candidateName = rawProgramId || String(row.name || '').trim();
+                return programNameToId.get(candidateName.toLowerCase()) || '';
+              })
               .filter(Boolean);
           }
           const programIds = [...new Set([
@@ -727,10 +751,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
             uniquePeccUserIds[0] ||
             undefined;
           const fullSiteAccessApproved = Boolean(preferredPeccId && approvedById.get(preferredPeccId) === true);
-          const hospitalUuid =
-            hospitalRefToRowId.get(hospital.id) ||
-            (hospital.facilityId ? hospitalRefToRowId.get(hospital.facilityId) : undefined) ||
-            null;
+          const hospitalUuid = canonicalHospitalUuid;
           const hospActs = hospitalUuid ? hospitalActivitiesMap.get(hospitalUuid) : null;
           const hospReadiness = hospitalUuid ? hospitalReadinessMap.get(hospitalUuid) : null;
 
@@ -1509,11 +1530,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
           open={Boolean(hospitalMenuAnchor)}
           onClose={handleHospitalMenuClose}
         >
-          {hospitalMenuAnchor && hospitalMetrics[hospitalMenuAnchor.hospitalId]?.peccUserId && (
-            <MenuItem disabled dense>
-              Full view target: {hospitalMetrics[hospitalMenuAnchor.hospitalId]?.peccDisplayName || 'PECC account'}
-            </MenuItem>
-          )}
+          <MenuItem disabled dense>
+            Full view target: {hospitalMenuAnchor ? (hospitalMetrics[hospitalMenuAnchor.hospitalId]?.peccDisplayName || 'Unavailable') : 'Unavailable'}
+          </MenuItem>
           <MenuItem onClick={() => hospitalMenuAnchor && handleViewCRM(hospitalMenuAnchor.hospitalId)}>
             <BusinessIcon sx={{ mr: 1, fontSize: '1rem' }} />
             View in CRM
