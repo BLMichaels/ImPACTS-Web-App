@@ -57,8 +57,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
-import { getUserData, setUserData } from '../../utils/userData';
-import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+import { getHospitalData, getUserData, resolveHospitalUuid, setUserData } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -598,7 +597,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     }
   }, [hospitals, searchParams, setSearchParams, linkHospitalToCRM]);
 
-  // When hospital detail dialog opens, refetch notes_log from DB and load site activity stats
+  // When hospital detail dialog opens, refetch notes_log from DB and load hospital-scoped activity stats
   useEffect(() => {
     if (!hospitalDetailsDialogOpen || !selectedHospital?.id) return;
     setSiteStats(null);
@@ -609,9 +608,9 @@ const MentorHospitalContactsPage: React.FC = () => {
         ...(isUuid(hospitalId) ? [`id.eq.${hospitalId}`] : []),
         `facility_id.eq.${hospitalId}`,
       ];
-      const [{ data, error }, activities] = await Promise.all([
+      const [{ data, error }, hospitalUuid] = await Promise.all([
         supabase.from('hospitals').select('notes_log').or(hospitalOr.join(',')).limit(1).maybeSingle(),
-        dataUserId ? getMentorActivitiesForUser(dataUserId) : Promise.resolve([])
+        resolveHospitalUuid(hospitalId),
       ]);
       if (cancelled) return;
       if (!error && data) {
@@ -623,12 +622,15 @@ const MentorHospitalContactsPage: React.FC = () => {
           setSelectedHospital(prev => prev && prev.id === hospitalId ? { ...prev, notesLog: serverLog.sort((a, b) => b.date.localeCompare(a.date)) } : prev);
         }
       }
-      const atSite = Array.isArray(activities) ? activities.filter((a: any) => (a.hospitalIds || []).includes(hospitalId)) : [];
-      const hours = atSite.reduce((sum: number, a: any) => sum + (Number(a.hours) || 0), 0);
-      if (!cancelled) setSiteStats({ activities: atSite.length, hours });
+      const hospitalActivities = hospitalUuid
+        ? await getHospitalData<any[]>(hospitalUuid, 'activities')
+        : null;
+      const entries = Array.isArray(hospitalActivities) ? hospitalActivities : [];
+      const hours = entries.reduce((sum: number, a: any) => sum + (Number(a?.hours) || 0), 0);
+      if (!cancelled) setSiteStats({ activities: entries.length, hours });
     })();
     return () => { cancelled = true; };
-  }, [hospitalDetailsDialogOpen, selectedHospital?.id, dataUserId]);
+  }, [hospitalDetailsDialogOpen, selectedHospital?.id]);
 
   const handleAddDatedNote = async () => {
     if (!selectedHospital || !newNoteText.trim()) return;
@@ -1417,7 +1419,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                   )}
                 </Paper>
 
-                {/* Site activity summary (your activities at this hospital) */}
+                {/* Site activity summary (hospital-scoped activities) */}
                 <Paper sx={{ p: 2 }}>
                   <Typography variant="h6" gutterBottom>Site activity</Typography>
                   <Divider sx={{ mb: 2 }} />
@@ -1425,7 +1427,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                     <Typography variant="body2" color="textSecondary">Loading…</Typography>
                   ) : (
                     <Typography variant="body2">
-                      Your activities at this site: <strong>{siteStats.activities}</strong> activities, <strong>{siteStats.hours.toFixed(1)}</strong> hours logged.
+                      Activities logged for this site: <strong>{siteStats.activities}</strong> activities, <strong>{siteStats.hours.toFixed(1)}</strong> hours total.
                     </Typography>
                   )}
                 </Paper>

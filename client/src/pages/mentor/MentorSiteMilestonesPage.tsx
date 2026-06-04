@@ -504,7 +504,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
       for (const hospital of hospitals) {
         const { data: peccUsers } = await supabase
           .from('users')
-          .select('id, first_name, last_name')
+          .select('id, first_name, last_name, mentor_id')
           .eq('role', 'pecc')
           .or(`hospital_facility_id.eq.${hospital.siteId},hospital_facility_id.eq.${hospital.id}`);
 
@@ -527,8 +527,11 @@ const MentorSiteMilestonesPage: React.FC = () => {
           ...(peccUsers?.map(u => u.id) || []),
           ...siteMemberPeccIds
         ];
-        const peccId = peccUserIds.length > 0 ? peccUserIds[0] : undefined;
-        const checklistUserIds = [...new Set([...peccUserIds, ...siteMemberUserIds].map((id) => String(id || '').trim()).filter(Boolean))];
+        const uniquePeccUserIds = [...new Set(peccUserIds.map((id) => String(id || '').trim()).filter(Boolean))];
+        const directMentorPeccIds = ((peccUsers || []) as Array<{ id: string; mentor_id?: string | null }>)
+          .filter((u) => String(u.mentor_id || '').trim() === mentorDataUserId)
+          .map((u) => u.id);
+        const checklistUserIds = [...new Set([...uniquePeccUserIds, ...siteMemberUserIds].map((id) => String(id || '').trim()).filter(Boolean))];
 
         const progressHospitalUuid =
           hospitalRefToRowId.get(hospital.id) ||
@@ -691,8 +694,23 @@ const MentorSiteMilestonesPage: React.FC = () => {
           stageCompletions
         };
 
-        if (peccId) {
-          const fullSiteAccessApproved = (await getUserData<boolean>(peccId, PECC_FULL_SITE_APPROVAL_KEY)) === true;
+        if (uniquePeccUserIds.length > 0) {
+          const approvalRows = await Promise.all(
+            uniquePeccUserIds.map(async (id) => ({
+              id,
+              approved: (await getUserData<boolean>(id, PECC_FULL_SITE_APPROVAL_KEY)) === true,
+            }))
+          );
+          const approvedById = new Map(approvalRows.map((row) => [row.id, row.approved]));
+          const approvedDirectMentorPecc = directMentorPeccIds.find((id) => approvedById.get(id) === true) || null;
+          const approvedAnyPecc = uniquePeccUserIds.find((id) => approvedById.get(id) === true) || null;
+          const preferredPeccId =
+            approvedDirectMentorPecc ||
+            approvedAnyPecc ||
+            directMentorPeccIds[0] ||
+            uniquePeccUserIds[0] ||
+            undefined;
+          const fullSiteAccessApproved = Boolean(preferredPeccId && approvedById.get(preferredPeccId) === true);
           const hospitalUuid =
             hospitalRefToRowId.get(hospital.id) ||
             (hospital.facilityId ? hospitalRefToRowId.get(hospital.facilityId) : undefined) ||
@@ -702,10 +720,13 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
           const legacyPecc = shouldMirrorLegacyUserData();
           const [peccActivitiesVal, mentorActivitiesList, readinessPecc, readinessMentor] = await Promise.all([
-            legacyPecc && !Array.isArray(hospActs) ? getUserData<any[]>(peccId, 'activities') : Promise.resolve<any[] | null>(null),
+            legacyPecc && !Array.isArray(hospActs) && preferredPeccId
+              ? getUserData<any[]>(preferredPeccId, 'activities')
+              : Promise.resolve<any[] | null>(null),
             getMentorActivitiesForUser(mentorDataUserId),
             legacyPecc && !(Array.isArray(hospReadiness) && hospReadiness.length > 0)
-              ? getUserData<any[]>(peccId, 'readinessScores')
+              && preferredPeccId
+              ? getUserData<any[]>(preferredPeccId, 'readinessScores')
               : Promise.resolve<any[] | null>(null),
             Array.isArray(hospReadiness) && hospReadiness.length > 0
               ? Promise.resolve<any[] | null>(null)
@@ -745,7 +766,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
             readinessScore: latestScore?.score || null,
             readinessScoreDate: latestScore?.date || null,
             simulationCount: simulations,
-            peccUserId: peccId,
+            peccUserId: preferredPeccId,
             fullSiteAccessApproved
           };
         } else {
