@@ -59,17 +59,17 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getHospitalData, getUserData, resolveHospitalUuid, setUserData } from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
+import { buildPeccHospitalFacilityOrClause, ensureMentorHospitalAssignment } from '../../utils/mentorHospitalAssignments';
 import {
-  buildPeccHospitalFacilityOrClause,
-  ensureMentorHospitalAssignment,
-  expandHospitalRefsForPeccQuery,
-} from '../../utils/mentorHospitalAssignments';
+  assignedPeccToContact,
+  loadAssignedPeccsForHospital,
+  type AssignedHospitalPecc,
+} from '../../utils/mentorHospitalAssignedPeccs';
 import {
   buildHospitalsTableOrClause,
   hospitalIdOrFacilityOrClause,
   hospitalKeysMatch,
 } from '../../utils/hospitalId';
-import { resolvePeccsForMentorHospital, type PeccUserLike } from '../../utils/mentorPeccHospitalMatch';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -111,6 +111,7 @@ interface Contact {
   isActivelyEngaged: boolean;
   isWorkingWithMentor?: boolean; // true = actively working with this mentor; false = contact only for this mentor
   notes: string;
+  assignedPeccSource?: AssignedHospitalPecc['source'];
 }
 
 /** CRM hospital row from Supabase hospitals table */
@@ -157,13 +158,16 @@ const EMPTY_CONTACT_FORM = {
   notes: ''
 };
 
-const isPortalPeccContact = (contact: Contact) => contact.id.startsWith('pecc-');
+const isAutoAssignedContact = (contact: Contact) =>
+  Boolean(contact.assignedPeccSource) ||
+  contact.id.startsWith('pecc-') ||
+  contact.id.startsWith('hc-') ||
+  contact.id.startsWith('crm-');
 
 function mergeContactsForHospital(
   hospital: Hospital,
   storedContacts: Contact[],
-  mentorLinkedPeccs: PeccUserLike[],
-  peccsByHospital: PeccUserLike[],
+  assignedPeccs: AssignedHospitalPecc[],
   hospitalRefToUuid: Map<string, string>,
   mentorId: string
 ): Contact[] {
@@ -184,37 +188,25 @@ function mergeContactsForHospital(
   const stored = storedContacts.filter((contact) =>
     [...hospitalRefSet].some((ref) => hospitalKeysMatch(contact.hospitalId, ref))
   );
-  const byHospPeccs = peccsByHospital.filter((pecc) =>
-    [...hospitalRefSet].some((ref) => hospitalKeysMatch(pecc.hospital_facility_id, ref))
-  );
-  const { mergedPeccUsers } = resolvePeccsForMentorHospital({
-    hospitalRefs: hospitalRefSet,
-    contacts: stored,
-    mentorLinkedPeccs,
-    peccUsersByHospital: byHospPeccs,
-    siteMemberPeccIds: [],
-    mentorId,
-  });
-
   const storedEmails = new Set(stored.map((c) => c.email.trim().toLowerCase()).filter(Boolean));
-  const portalContacts: Contact[] = mergedPeccUsers
-    .filter((pecc) => !storedEmails.has((pecc.email || '').trim().toLowerCase()))
-    .map((pecc) => ({
-      id: `pecc-${pecc.id}`,
-      hospitalId: hospital.id,
-      firstName: pecc.first_name || '',
-      lastName: pecc.last_name || '',
-      email: pecc.email || '',
-      phone: '',
-      contactStatus: 'Portal account',
-      roleAtHospital: 'PECC',
-      isPrimaryContact: false,
-      isActivelyEngaged: true,
-      isWorkingWithMentor: String(pecc.mentor_id || '').trim() === mentorId,
-      notes: '',
-    }));
+  const autoContacts: Contact[] = assignedPeccs
+    .filter((pecc) => !storedEmails.has(pecc.email.trim().toLowerCase()))
+    .map((pecc) => assignedPeccToContact(pecc, hospital.id, mentorId));
 
-  return [...stored, ...portalContacts];
+  return [...stored, ...autoContacts];
+}
+
+function assignedContactChipLabel(contact: Contact): string {
+  switch (contact.assignedPeccSource) {
+    case 'portal':
+      return 'Portal PECC';
+    case 'hospital_contact':
+      return 'Hospital PECC';
+    case 'crm':
+      return 'CRM PECC';
+    default:
+      return contact.id.startsWith('pecc-') ? 'Portal PECC' : 'Assigned PECC';
+  }
 }
 
 const MentorHospitalContactsPage: React.FC = () => {
@@ -248,11 +240,8 @@ const MentorHospitalContactsPage: React.FC = () => {
   // State
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [portalPeccCache, setPortalPeccCache] = useState<{
-    mentorLinkedPeccs: PeccUserLike[];
-    peccsByHospital: PeccUserLike[];
-    hospitalRefToUuid: Map<string, string>;
-  }>({ mentorLinkedPeccs: [], peccsByHospital: [], hospitalRefToUuid: new Map() });
+  const [assignedPeccsByHospital, setAssignedPeccsByHospital] = useState<Map<string, AssignedHospitalPecc[]>>(new Map());
+  const [hospitalRefToUuid, setHospitalRefToUuid] = useState<Map<string, string>>(new Map());
   const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
   const [hospitalDetailsDialogOpen, setHospitalDetailsDialogOpen] = useState(false);
   
@@ -474,7 +463,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       }
     }
 
-    const hospitalRefToUuid = new Map<string, string>();
+    const refToUuid = new Map<string, string>();
     if (hospitals.length > 0) {
       const nameByKey: Record<string, string> = {};
       const ids = hospitals.map((h: Hospital) => h.id);
@@ -484,12 +473,12 @@ const MentorHospitalContactsPage: React.FC = () => {
         const name = r.name != null ? normalizeHospitalOrOrgName(r.name) : '';
         if (r.id) {
           nameByKey[r.id] = name;
-          hospitalRefToUuid.set(r.id, r.id);
+          refToUuid.set(r.id, r.id);
         }
         if (r.facility_id != null) {
           const fid = String(r.facility_id);
           nameByKey[fid] = name;
-          if (r.id) hospitalRefToUuid.set(fid, r.id);
+          if (r.id) refToUuid.set(fid, r.id);
         }
       });
       const facilityIdByUuid = new Map<string, string>();
@@ -504,31 +493,18 @@ const MentorHospitalContactsPage: React.FC = () => {
         name: nameByKey[h.id] ?? nameByKey[h.facilityId || ''] ?? normalizeHospitalOrOrgName(h.name),
       }));
       await setUserData(uid, 'mentorHospitals', hospitals);
+      setHospitalRefToUuid(refToUuid);
 
-      const { refs: peccQueryRefs, refToCanonicalId } = await expandHospitalRefsForPeccQuery(ids);
-      refToCanonicalId.forEach((uuid, ref) => hospitalRefToUuid.set(ref, uuid));
-      const peccHospitalOrClause = buildPeccHospitalFacilityOrClause(peccQueryRefs);
-      const [{ data: byHospital }, { data: byMentor }] = await Promise.all([
-        peccHospitalOrClause
-          ? supabase
-              .from('users')
-              .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
-              .eq('role', 'pecc')
-              .or(peccHospitalOrClause)
-          : Promise.resolve({ data: [] as PeccUserLike[], error: null }),
-        supabase
-          .from('users')
-          .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
-          .eq('role', 'pecc')
-          .eq('mentor_id', uid),
-      ]);
-      setPortalPeccCache({
-        mentorLinkedPeccs: (byMentor || []) as PeccUserLike[],
-        peccsByHospital: (byHospital || []) as PeccUserLike[],
-        hospitalRefToUuid,
-      });
+      const assignedEntries = await Promise.all(
+        hospitals.map(async (h) => {
+          const rows = await loadAssignedPeccsForHospital(h.id, h.facilityId);
+          return [h.id, rows] as const;
+        })
+      );
+      setAssignedPeccsByHospital(new Map(assignedEntries));
     } else {
-      setPortalPeccCache({ mentorLinkedPeccs: [], peccsByHospital: [], hospitalRefToUuid: new Map() });
+      setHospitalRefToUuid(new Map());
+      setAssignedPeccsByHospital(new Map());
     }
 
     setHospitals(hospitals);
@@ -749,13 +725,22 @@ const MentorHospitalContactsPage: React.FC = () => {
     }
   }, [hospitals, searchParams, setSearchParams, linkHospitalToCRM]);
 
-  // When hospital detail dialog opens, refetch notes_log from DB and load hospital-scoped activity stats
+  // When hospital detail dialog opens, refresh assigned PECCs and hospital-scoped stats
   useEffect(() => {
     if (!hospitalDetailsDialogOpen || !selectedHospital?.id) return;
     setSiteStats(null);
     let cancelled = false;
     const hospitalId = selectedHospital.id;
+    const hospitalFacilityId = selectedHospital.facilityId;
     (async () => {
+      const assigned = await loadAssignedPeccsForHospital(hospitalId, hospitalFacilityId);
+      if (!cancelled) {
+        setAssignedPeccsByHospital((prev) => {
+          const next = new Map(prev);
+          next.set(hospitalId, assigned);
+          return next;
+        });
+      }
       const [{ data, error }, hospitalUuid] = await Promise.all([
         supabase.from('hospitals').select('notes_log').or(hospitalIdOrFacilityOrClause(hospitalId)).limit(1).maybeSingle(),
         resolveHospitalUuid(hospitalId),
@@ -778,7 +763,7 @@ const MentorHospitalContactsPage: React.FC = () => {
       if (!cancelled) setSiteStats({ activities: entries.length, hours });
     })();
     return () => { cancelled = true; };
-  }, [hospitalDetailsDialogOpen, selectedHospital?.id]);
+  }, [hospitalDetailsDialogOpen, selectedHospital?.id, selectedHospital?.facilityId]);
 
   const handleAddDatedNote = async () => {
     if (!selectedHospital || !newNoteText.trim()) return;
@@ -984,16 +969,15 @@ const MentorHospitalContactsPage: React.FC = () => {
       mergeContactsForHospital(
         hospital,
         contacts,
-        portalPeccCache.mentorLinkedPeccs,
-        portalPeccCache.peccsByHospital,
-        portalPeccCache.hospitalRefToUuid,
+        assignedPeccsByHospital.get(hospital.id) || [],
+        hospitalRefToUuid,
         dataUserId || ''
       ),
-    [contacts, portalPeccCache, dataUserId]
+    [contacts, assignedPeccsByHospital, hospitalRefToUuid, dataUserId]
   );
 
   const handleToggleContactWorkingWith = (contact: Contact) => {
-    if (isPortalPeccContact(contact)) return;
+    if (isAutoAssignedContact(contact)) return;
     const next = contact.isWorkingWithMentor !== false ? false : true;
     const updated: Contact = { ...contact, isWorkingWithMentor: next };
     const newContacts = contacts.map(c => c.id === contact.id ? updated : c);
@@ -1534,8 +1518,13 @@ const MentorHospitalContactsPage: React.FC = () => {
                                   {contact.isActivelyEngaged && (
                                     <Chip label="Active" size="small" color="success" />
                                   )}
-                                  {isPortalPeccContact(contact) ? (
-                                    <Chip size="small" color="info" label="Portal PECC" />
+                                  {isAutoAssignedContact(contact) ? (
+                                    <>
+                                      <Chip size="small" color="info" label={assignedContactChipLabel(contact)} />
+                                      {contact.assignedPeccSource === 'portal' && contact.isWorkingWithMentor !== false && (
+                                        <Chip size="small" color="success" label="Working with me" />
+                                      )}
+                                    </>
                                   ) : (
                                     <Chip
                                       size="small"
@@ -1573,7 +1562,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                               }
                             />
                             <ListItemSecondaryAction>
-                              {!isPortalPeccContact(contact) && (
+                              {!isAutoAssignedContact(contact) && (
                                 <IconButton size="small" onClick={() => handleEditContact(contact)} aria-label="Edit contact">
                                   <EditIcon />
                                 </IconButton>
