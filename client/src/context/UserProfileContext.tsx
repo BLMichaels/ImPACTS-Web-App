@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { UserRole, normalizeUserRole, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } from '../types/database';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import { getUserData } from '../utils/userData';
+import { applyPeccHospitalFromLinkedIds } from '../utils/mentorHospitalAssignments';
 import { resolveNavbarProgramLogo } from '../utils/resolveNavbarProgramLogo';
 
 // Re-export UserRole as UserTier for backward compatibility
@@ -271,6 +272,21 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         // Only PECC_TAB_KEYS are used for nav; other keys (e.g. snapshot_prs_section) do not affect visibleTabs. Empty array = all tabs hidden.
         let sid: string | null = null;
         sid = prof.hospital_facility_id ?? null;
+        if (!sid && normalizedRole === UserRole.PECC && prof.email) {
+          const { data: crmRow } = await supabase
+            .from('crm_organizations')
+            .select('linked_hospital_ids')
+            .eq('contact_type', 'pecc')
+            .eq('email', String(prof.email).trim())
+            .maybeSingle();
+          const crmLinks = Array.isArray((crmRow as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)
+            ? ((crmRow as { linked_hospital_ids: string[] }).linked_hospital_ids)
+            : [];
+          if (crmLinks.length > 0) {
+            const facilityId = await applyPeccHospitalFromLinkedIds(currentUser.id, crmLinks);
+            if (facilityId) sid = facilityId;
+          }
+        }
         if (!sid) {
           const { data: memberRow, error: memErr } = await supabase
             .from('site_members')

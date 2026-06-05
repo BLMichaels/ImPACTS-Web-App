@@ -8,6 +8,10 @@
 import { supabase } from '../supabase';
 import { batchGetUserDataForKey, getUserData } from './userData';
 import { hospitalIdOrFacilityOrClause, normalizeHospitalKey } from './hospitalId';
+import {
+  buildPeccHospitalFacilityOrClause,
+  expandHospitalRefsForPeccQuery,
+} from './mentorHospitalAssignments';
 
 const PECC_MENTOR_IDS_KEY = 'pecc_mentor_ids';
 
@@ -229,6 +233,78 @@ export async function fetchMergedMentorHospitals(mentorId: string): Promise<Merg
   });
 
   return merged;
+}
+
+export interface MentorHospitalContext {
+  rowsByMentor: Map<string, MergedMentorHospitalRow[]>;
+  allHospitalUuids: string[];
+  allHospitalRefs: string[];
+  refToCanonicalId: Map<string, string>;
+  hospitalNameById: Map<string, string>;
+}
+
+/** Union merged mentor site lists (assignments + PECC-linked + CRM + stored). */
+export async function buildMentorHospitalContext(mentorIds: string[]): Promise<MentorHospitalContext> {
+  const rowsByMentor = new Map<string, MergedMentorHospitalRow[]>();
+  const uuidSet = new Set<string>();
+  const hospitalNameById = new Map<string, string>();
+
+  await Promise.all(
+    mentorIds.map(async (mentorId) => {
+      const rows = await fetchMergedMentorHospitals(mentorId);
+      rowsByMentor.set(mentorId, rows);
+      rows.forEach((row) => {
+        const id = normalizeHospitalKey(row.hospital.id);
+        if (!id) return;
+        uuidSet.add(id);
+        const name = row.hospital.name?.trim();
+        if (name) hospitalNameById.set(id, name);
+      });
+    })
+  );
+
+  const allHospitalUuids = [...uuidSet];
+  const { refs, refToCanonicalId } = await expandHospitalRefsForPeccQuery(allHospitalUuids);
+  return {
+    rowsByMentor,
+    allHospitalUuids,
+    allHospitalRefs: refs,
+    refToCanonicalId,
+    hospitalNameById,
+  };
+}
+
+/** Count portal PECCs per canonical hospital uuid (expanded id + facility_id refs). */
+export async function countPeccsByCanonicalHospital(
+  hospitalUuids: string[],
+  refToCanonicalId: Map<string, string>
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  hospitalUuids.forEach((id) => counts.set(id, 0));
+  if (hospitalUuids.length === 0) return counts;
+
+  const { refs } = await expandHospitalRefsForPeccQuery(hospitalUuids);
+  if (refs.length === 0) return counts;
+
+  const { data: peccs, error } = await supabase
+    .from('users')
+    .select('id, hospital_facility_id')
+    .eq('role', 'pecc')
+    .or(buildPeccHospitalFacilityOrClause(refs));
+  if (error) throw error;
+
+  const seen = new Map<string, Set<string>>();
+  (peccs || []).forEach((pecc: { id: string; hospital_facility_id?: string | null }) => {
+    const ref = normalizeHospitalKey(pecc.hospital_facility_id);
+    if (!ref) return;
+    const canonical = refToCanonicalId.get(ref) || ref;
+    if (!counts.has(canonical)) return;
+    const bucket = seen.get(canonical) || new Set<string>();
+    bucket.add(pecc.id);
+    seen.set(canonical, bucket);
+    counts.set(canonical, bucket.size);
+  });
+  return counts;
 }
 
 /** Dropdown row for activities / filters */

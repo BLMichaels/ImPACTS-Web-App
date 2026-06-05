@@ -791,11 +791,12 @@ const AdminCRMPage: React.FC = () => {
           hasMore = batch.length >= chunk;
           offset += chunk;
         }
+        const crmPeccLinkedByEmail = new Map<string, string[]>();
         // Load CRM contacts (organizations, other, and manually-added people types)
         {
           const { data: orgsData, error: orgsError } = await supabase
             .from('crm_organizations')
-            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, programs, cohorts, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, linked_system_ids, address, address2, city, county, zip, is_admin');
+            .select('id, name, first_name, last_name, organization, email, phone, region, state, status, notes, notes_log, activity_log, custom_fields, programs, cohorts, created_at, updated_at, contact_type, linked_organization_ids, linked_hospital_ids, linked_system_ids, address, address2, city, county, zip, is_admin, user_id');
           if (orgsError) {
             console.warn('CRM: could not load crm_organizations:', orgsError.message);
           } else if (orgsData && orgsData.length > 0) {
@@ -816,6 +817,11 @@ const AdminCRMPage: React.FC = () => {
               const activityLog: ActivityLogEntry[] = Array.isArray(rawActivityLog)
                 ? (rawActivityLog as unknown[]).filter((e): e is ActivityLogEntry => typeof e === 'object' && e != null && 'type' in e && 'date' in e && 'text' in e).map(e => ({ type: (e as ActivityLogEntry).type as ActivityLogType, date: String((e as ActivityLogEntry).date), text: String((e as ActivityLogEntry).text) }))
                 : [];
+              const linkedHospitalIds = Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [];
+              if (contactType === 'pecc' && row.email) {
+                crmPeccLinkedByEmail.set(String(row.email).trim().toLowerCase(), linkedHospitalIds);
+              }
+              const crmUserId = row.user_id != null && isUuid(String(row.user_id)) ? String(row.user_id) : undefined;
               list.push({
                 id,
                 type: contactType,
@@ -836,7 +842,7 @@ const AdminCRMPage: React.FC = () => {
                 programs: Array.isArray(row.programs) ? (row.programs as string[]) : [],
                 cohorts: Array.isArray(row.cohorts) ? (row.cohorts as string[]) : [],
                 linkedOrganizationIds: Array.isArray(row.linked_organization_ids) ? (row.linked_organization_ids as string[]) : [],
-                linkedHospitalIds: Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [],
+                linkedHospitalIds,
                 linkedSystemIds: Array.isArray(row.linked_system_ids) ? (row.linked_system_ids as string[]) : [],
                 address: row.address != null ? String(row.address) : undefined,
                 address2: row.address2 != null ? String(row.address2) : undefined,
@@ -844,6 +850,7 @@ const AdminCRMPage: React.FC = () => {
                 county: row.county != null ? String(row.county) : undefined,
                 zip: row.zip != null ? String(row.zip) : undefined,
                 is_admin: row.is_admin === true,
+                user_id: crmUserId,
                 crmCreated: true  // Mark as CRM-created to differentiate from users table
               });
             }
@@ -928,6 +935,8 @@ const AdminCRMPage: React.FC = () => {
                 const h = hospitalByRef.get(ref);
                 if (h?.hospitalId) linkedHospitalIds = [h.hospitalId];
               }
+              const crmLinked = crmPeccLinkedByEmail.get(String(u.email || '').trim().toLowerCase()) ?? [];
+              linkedHospitalIds = [...new Set([...linkedHospitalIds, ...crmLinked])];
             } else if (normalizedRole === 'mentor') {
               linkedHospitalIds = mentorHospitalIdsByMentor.get(u.id) ?? [];
             } else if (normalizedRole === 'manager') {
@@ -1017,13 +1026,13 @@ const AdminCRMPage: React.FC = () => {
                 list[i] = {
                   ...c,
                   type,
-                  user_id: user.id,
+                  user_id: (isUuid(c.user_id) ? c.user_id : user.id),
                   name: displayName,
                   firstName: firstName || undefined,
                   lastName: lastName || undefined,
                   organization: hospitalMeta?.organization ?? c.organization ?? '',
                   facilityId: hospitalMeta?.facilityId || c.facilityId,
-                  linkedHospitalIds: hospitalMeta?.linkedHospitalIds ?? c.linkedHospitalIds
+                  linkedHospitalIds: [...new Set([...(c.linkedHospitalIds ?? []), ...(hospitalMeta?.linkedHospitalIds ?? [])])],
                 };
               }
             }
@@ -1913,6 +1922,15 @@ const AdminCRMPage: React.FC = () => {
           row.email?.trim().toLowerCase() === emailKey && row.type === c.type ? { ...row, user_id: newId } : row
         )
       );
+      if (currentUser?.id) {
+        if (c.id && isUuid(c.id)) {
+          await supabase.from('crm_organizations').update({ user_id: newId }).eq('id', c.id);
+        }
+        if (c.type === 'pecc') {
+          const linkedHospitalIds = (c.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)));
+          await syncPeccHospitalAndMentorFromCrm(newId, linkedHospitalIds, currentUser.id);
+        }
+      }
       const result = await enterViewAsUser(newId);
       if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
     } finally {
@@ -1924,7 +1942,8 @@ const AdminCRMPage: React.FC = () => {
     canViewAsUser,
     personViewAsDisabled,
     enterViewAsUser,
-    navigate
+    navigate,
+    currentUser?.id,
   ]);
 
   const persistNotesAndActivity = useCallback(async (c: Contact) => {

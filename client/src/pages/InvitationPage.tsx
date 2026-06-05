@@ -27,7 +27,7 @@ import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
 import { resolvePeccFacilityId } from '../utils/hospitalId';
-import { syncMentorHospitalAssignmentsForPecc } from '../utils/mentorHospitalAssignments';
+import { syncMentorHospitalAssignmentsForPecc, syncPeccHospitalAndMentorFromCrm } from '../utils/mentorHospitalAssignments';
 import { ensureHospitalDataPlaceholder } from '../utils/userData';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
@@ -396,15 +396,16 @@ const InvitationPage: React.FC = () => {
           }
         }
 
-        if (
-          invitation.role === 'pecc' &&
-          invData?.mentor_id &&
-          updatePayload.hospital_facility_id
-        ) {
-          const actor = String(invData.invited_by || invData.mentor_id || '').trim();
+        if (invitation.role === 'pecc') {
+          const actor = String(invData?.invited_by || invData?.mentor_id || userId || '').trim();
           if (actor) {
             try {
-              await syncMentorHospitalAssignmentsForPecc(userId, actor);
+              const hospitalIds = invData?.hospital_id ? [String(invData.hospital_id)] : [];
+              if (hospitalIds.length > 0) {
+                await syncPeccHospitalAndMentorFromCrm(userId, hospitalIds, actor);
+              } else {
+                await syncMentorHospitalAssignmentsForPecc(userId, actor);
+              }
             } catch {
               // Non-fatal: registration should still complete.
             }

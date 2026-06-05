@@ -59,6 +59,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getHospitalData, getUserData, resolveHospitalUuid, setUserData } from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
+import { ensureMentorHospitalAssignment } from '../../utils/mentorHospitalAssignments';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -511,7 +512,7 @@ const MentorHospitalContactsPage: React.FC = () => {
     }
   }, [dataUserId]);
 
-  const handleSaveHospital = () => {
+  const handleSaveHospital = async () => {
     if (editingHospital) {
       // Edit flow: require name
       if (!hospitalForm.name.trim()) {
@@ -595,6 +596,13 @@ const MentorHospitalContactsPage: React.FC = () => {
     setHospitalDialogOpen(false);
     setSelectedHospital(targetHospital);
     linkHospitalToCRM(targetHospital);
+    if (dataUserId && addIsWorkingWith !== false) {
+      try {
+        await ensureMentorHospitalAssignment(dataUserId, targetHospital.id, dataUserId);
+      } catch (err) {
+        console.warn('[MentorHospitalContacts] assignment sync failed:', err);
+      }
+    }
     setSnackbar({ open: true, message: `${hospitalActionLabel} successfully`, severity: 'success' });
   };
 

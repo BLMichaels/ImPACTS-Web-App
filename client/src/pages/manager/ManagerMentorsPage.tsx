@@ -62,6 +62,8 @@ import {
   mapSiteRefsToHospitalRowIds,
   shouldMirrorLegacyUserData,
 } from '../../utils/userData';
+import { buildMentorHospitalContext } from '../../utils/mentorHospitalScope';
+import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
 import ManagerWagesExpensesPage from './ManagerWagesExpensesPage';
@@ -316,50 +318,21 @@ const ManagerMentorsPage: React.FC = () => {
         return;
       }
 
-      // Load mentor hospital assignments
       const scopedMentorIds = scopedMentors.map((m) => m.id);
-      const { data: assignments, error: assignmentError } = await supabase
-        .from('mentor_hospital_assignments')
-        .select(`
-          mentor_id,
-          hospital:hospital_id(id, name)
-        `)
-        .in('mentor_id', scopedMentorIds)
-        .eq('is_active', true);
+      const hospitalCtx = await buildMentorHospitalContext(scopedMentorIds);
+      const uniqueHospitalIds = hospitalCtx.allHospitalUuids;
+      const hospitals = uniqueHospitalIds.map((id) => ({
+        id,
+        name: hospitalCtx.hospitalNameById.get(id) || 'Unknown',
+        facility_id: null as string | null,
+      }));
 
-      if (assignmentError) throw assignmentError;
-
-      // Get all hospital IDs
-      const hospitalIds = (assignments || [])
-        .map((a: any) => Array.isArray(a.hospital) ? a.hospital[0]?.id : a.hospital?.id)
-        .filter(Boolean);
-      const uniqueHospitalIds = Array.from(new Set(hospitalIds));
-
-      // Load hospitals to get names + facility refs
-      const { data: hospitals, error: hospitalsError } = uniqueHospitalIds.length > 0
-        ? await supabase
-          .from('hospitals')
-          .select('id, name, facility_id')
-          .in('id', uniqueHospitalIds)
-        : { data: [], error: null };
-
-      if (hospitalsError) throw hospitalsError;
-      const hospitalRefs = [
-        ...new Set(
-          (hospitals || []).flatMap((h: { id: string; facility_id?: string | null }) => [
-            String(h.id),
-            h.facility_id != null ? String(h.facility_id) : null,
-          ]).filter(Boolean) as string[]
-        ),
-      ];
-
-      // Load PECCs for these hospitals (supports users keyed by either hospital UUID or facility ref).
-      const { data: peccs, error: peccsError } = hospitalRefs.length > 0
+      const { data: peccs, error: peccsError } = hospitalCtx.allHospitalRefs.length > 0
         ? await supabase
           .from('users')
           .select('id, first_name, last_name, email, hospital_facility_id')
           .eq('role', 'pecc')
-          .in('hospital_facility_id', hospitalRefs)
+          .or(buildPeccHospitalFacilityOrClause(hospitalCtx.allHospitalRefs))
         : { data: [], error: null };
 
       if (peccsError) throw peccsError;
@@ -397,16 +370,18 @@ const ManagerMentorsPage: React.FC = () => {
       const peccFullSiteApprovalMap = await batchGetUserDataForKey<boolean>(peccIds, USER_DATA_PECC_FULL_SITE_APPROVAL);
 
       const hospitalRefsByCanonical = new Map<string, Set<string>>();
-      (hospitals || []).forEach((h: { id: string; facility_id?: string | null }) => {
-        const refs = new Set<string>([String(h.id)]);
-        if (h.facility_id != null && String(h.facility_id).trim()) refs.add(String(h.facility_id).trim());
-        hospitalRefsByCanonical.set(String(h.id), refs);
+      uniqueHospitalIds.forEach((uuid) => {
+        const refs = new Set<string>([uuid]);
+        hospitalCtx.refToCanonicalId.forEach((canonical, ref) => {
+          if (canonical === uuid) refs.add(ref);
+        });
+        hospitalRefsByCanonical.set(uuid, refs);
       });
 
       // Build mentor data with PECCs
       const mentorData: MentorData[] = await Promise.all(
         scopedMentors.map(async (mentor) => {
-          const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
+          const mergedRows = hospitalCtx.rowsByMentor.get(mentor.id) || [];
           
           // Load mentor activities from Supabase (user_data)
           const activities = await getMentorActivitiesForUser(mentor.id);
@@ -423,9 +398,8 @@ const ManagerMentorsPage: React.FC = () => {
             ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
             : null;
 
-          const hospitalData = mentorAssignments.map((a: any) => {
-              const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-              const hospitalRefs = hospital?.id ? hospitalRefsByCanonical.get(String(hospital.id)) : undefined;
+          const hospitalData = mergedRows.map((row) => {
+              const hospitalRefs = hospitalRefsByCanonical.get(row.hospital.id);
               const hospitalPeccs = peccList.filter((p) => hospitalRefs?.has(String(p.hospital_facility_id)) ?? false);
 
               const peccData: PECCData[] = hospitalPeccs.map((pecc) => {
@@ -448,9 +422,7 @@ const ManagerMentorsPage: React.FC = () => {
                     : null;
 
                   const hospitalName =
-                    (hospitals || []).find((h: { id: string; facility_id?: string | null }) =>
-                      h.id === canonicalHospitalId || String(h.facility_id || '') === String(pecc.hospital_facility_id)
-                    )?.name || 'Unknown';
+                    (canonicalHospitalId ? hospitalCtx.hospitalNameById.get(canonicalHospitalId) : undefined) || 'Unknown';
 
                   return {
                     id: pecc.id,
@@ -469,8 +441,8 @@ const ManagerMentorsPage: React.FC = () => {
                 });
 
               return {
-                id: hospital?.id || '',
-                name: hospital?.name || 'Unknown',
+                id: row.hospital.id,
+                name: hospitalCtx.hospitalNameById.get(row.hospital.id) || row.hospital.name || 'Unknown',
                 peccs: peccData
               };
             });

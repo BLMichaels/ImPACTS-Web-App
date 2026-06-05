@@ -33,6 +33,7 @@ import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { batchGetUserDataForKey } from '../../utils/userData';
+import { buildMentorHospitalContext, countPeccsByCanonicalHospital } from '../../utils/mentorHospitalScope';
 
 interface MentorData {
   id: string;
@@ -143,73 +144,22 @@ const ManagerOverviewPage: React.FC = () => {
         return;
       }
 
-      // Load mentor hospital assignments
       const scopedMentorIds = scopedMentors.map((m) => m.id);
-      const { data: assignments, error: assignmentError } = await supabase
-        .from('mentor_hospital_assignments')
-        .select(`
-          mentor_id,
-          hospital:hospital_id(id, name)
-        `)
-        .in('mentor_id', scopedMentorIds)
-        .eq('is_active', true);
-
-      if (assignmentError) throw assignmentError;
-
-      // Get all hospital IDs to count PECCs
-      const hospitalIds = (assignments || [])
-        .map((a: any) => Array.isArray(a.hospital) ? a.hospital[0]?.id : a.hospital?.id)
-        .filter(Boolean);
-      const uniqueHospitalIds = Array.from(new Set(hospitalIds));
-
-      const { data: hospitalRows, error: hospitalsError } = uniqueHospitalIds.length > 0
-        ? await supabase
-          .from('hospitals')
-          .select('id, facility_id')
-          .in('id', uniqueHospitalIds)
-        : { data: [], error: null };
-      if (hospitalsError) throw hospitalsError;
-      const allHospitalRefs = new Set<string>();
-      const refToCanonicalHospitalId = new Map<string, string>();
-      (hospitalRows || []).forEach((h: { id: string; facility_id?: string | null }) => {
-        const refs = new Set<string>([String(h.id)]);
-        if (h.facility_id != null && String(h.facility_id).trim()) refs.add(String(h.facility_id).trim());
-        refs.forEach((r) => {
-          allHospitalRefs.add(r);
-          refToCanonicalHospitalId.set(r, String(h.id));
-        });
-      });
-
-      // Load PECCs for these hospitals (supports UUID and facility_id refs).
-      const { data: peccs, error: peccsError } = allHospitalRefs.size > 0
-        ? await supabase
-          .from('users')
-          .select('id, hospital_facility_id')
-          .eq('role', 'pecc')
-          .in('hospital_facility_id', [...allHospitalRefs])
-        : { data: [], error: null };
-
-      if (peccsError) throw peccsError;
-      const peccCountByHospital = new Map<string, number>();
-      (peccs || []).forEach((p: { hospital_facility_id: string }) => {
-        const canonicalHospitalId = refToCanonicalHospitalId.get(String(p.hospital_facility_id));
-        if (!canonicalHospitalId) return;
-        peccCountByHospital.set(canonicalHospitalId, (peccCountByHospital.get(canonicalHospitalId) || 0) + 1);
-      });
+      const hospitalCtx = await buildMentorHospitalContext(scopedMentorIds);
+      const peccCountByHospital = await countPeccsByCanonicalHospital(
+        hospitalCtx.allHospitalUuids,
+        hospitalCtx.refToCanonicalId
+      );
 
       // Build mentor data (load activities from Supabase per mentor)
       const mentorData: MentorData[] = await Promise.all(
         scopedMentors.map(async (mentor) => {
-          const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
-          const hospitals = mentorAssignments.map((a: any) => {
-            const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-            const peccCount = hospital?.id ? (peccCountByHospital.get(String(hospital.id)) || 0) : 0;
-            return {
-              id: hospital?.id || '',
-              name: hospital?.name || 'Unknown',
-              peccCount
-            };
-          });
+          const mergedRows = hospitalCtx.rowsByMentor.get(mentor.id) || [];
+          const hospitals = mergedRows.map((row) => ({
+            id: row.hospital.id,
+            name: hospitalCtx.hospitalNameById.get(row.hospital.id) || row.hospital.name || 'Unknown',
+            peccCount: peccCountByHospital.get(row.hospital.id) || 0,
+          }));
 
           const activities = await getMentorActivitiesForUser(mentor.id);
           const totalActivities = activities.length;

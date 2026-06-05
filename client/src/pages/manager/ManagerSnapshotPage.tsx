@@ -36,6 +36,8 @@ import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { batchGetUserDataForKey } from '../../utils/userData';
+import { buildMentorHospitalContext, countPeccsByCanonicalHospital } from '../../utils/mentorHospitalScope';
+import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 interface AssignedHospital {
   id: string;
   name: string;
@@ -143,61 +145,28 @@ const ManagerSnapshotPage: React.FC = () => {
         }
         const scopedMentorIds = scopedMentors.map((m) => m.id);
 
-        // Load mentor hospital assignments
-        const { data: assignments, error: assignmentError } = await supabase
-          .from('mentor_hospital_assignments')
-          .select('mentor_id, hospital:hospital_id(id, name)')
-          .in('mentor_id', scopedMentorIds)
-          .eq('is_active', true);
+        const hospitalCtx = await buildMentorHospitalContext(scopedMentorIds);
+        const uniqueHospitalIds = hospitalCtx.allHospitalUuids;
+        const refToCanonicalHospitalId = hospitalCtx.refToCanonicalId;
+        const peccCountByHospital = await countPeccsByCanonicalHospital(
+          uniqueHospitalIds,
+          refToCanonicalHospitalId
+        );
 
-        if (assignmentError) throw assignmentError;
-
-        const hospitalIds = (assignments || [])
-          .map((a: any) => (Array.isArray(a.hospital) ? a.hospital[0]?.id : a.hospital?.id))
-          .filter(Boolean);
-        const uniqueHospitalIds = Array.from(new Set(hospitalIds));
-
-        const { data: hospitalRows, error: hospitalsError } = uniqueHospitalIds.length > 0
-          ? await supabase
-            .from('hospitals')
-            .select('id, name, facility_id')
-            .in('id', uniqueHospitalIds)
-          : { data: [], error: null };
-        if (hospitalsError) throw hospitalsError;
-        const allHospitalRefs = new Set<string>();
-        const refToCanonicalHospitalId = new Map<string, string>();
-        (hospitalRows || []).forEach((h: { id: string; facility_id?: string | null }) => {
-          allHospitalRefs.add(String(h.id));
-          refToCanonicalHospitalId.set(String(h.id), String(h.id));
-          if (h.facility_id != null && String(h.facility_id).trim()) {
-            allHospitalRefs.add(String(h.facility_id).trim());
-            refToCanonicalHospitalId.set(String(h.facility_id).trim(), String(h.id));
-          }
-        });
-
-        // Load PECCs for these hospitals (supports UUID and facility refs).
-        const { data: peccs, error: peccsError } = allHospitalRefs.size > 0
+        const { data: peccs, error: peccsError } = hospitalCtx.allHospitalRefs.length > 0
           ? await supabase
             .from('users')
             .select('id, hospital_facility_id')
             .eq('role', 'pecc')
-            .in('hospital_facility_id', [...allHospitalRefs])
+            .or(buildPeccHospitalFacilityOrClause(hospitalCtx.allHospitalRefs))
           : { data: [], error: null };
-
         if (peccsError) throw peccsError;
-        const peccCountByHospital = new Map<string, number>();
-        (peccs || []).forEach((p: { hospital_facility_id: string }) => {
-          const canonicalHospitalId = refToCanonicalHospitalId.get(String(p.hospital_facility_id));
-          if (!canonicalHospitalId) return;
-          peccCountByHospital.set(canonicalHospitalId, (peccCountByHospital.get(canonicalHospitalId) || 0) + 1);
-        });
 
         if (cancelled) return;
         setTotalPeccs((peccs || []).length);
-        setTotalSites(new Set(hospitalIds).size);
+        setTotalSites(uniqueHospitalIds.length);
 
-        const hospitalMap = new Map<string, string>();
-        (hospitalRows || []).forEach((h: any) => hospitalMap.set(h.id, h.name || 'Unknown'));
+        const hospitalMap = hospitalCtx.hospitalNameById;
 
         // Checklist progress by hospital (avoid per-PECC N+1).
         const { data: checklistRows, error: checklistError } = uniqueHospitalIds.length > 0
@@ -239,17 +208,12 @@ const ManagerSnapshotPage: React.FC = () => {
 
         const mentorRows: MentorSnapshotRow[] = await Promise.all(
           scopedMentors.map(async (mentor: any) => {
-            const mentorAssignments = (assignments || []).filter((a: any) => a.mentor_id === mentor.id);
-            const assignedHospitals: AssignedHospital[] = mentorAssignments.map((a: any) => {
-              const h = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-              const hid = h?.id;
-              const peccCount = hid ? (peccCountByHospital.get(hid) || 0) : 0;
-              return {
-                id: hid || '',
-                name: hospitalMap.get(hid) || h?.name || 'Unknown',
-                peccCount
-              };
-            }).filter((h: AssignedHospital) => h.id);
+            const mergedRows = hospitalCtx.rowsByMentor.get(mentor.id) || [];
+            const assignedHospitals: AssignedHospital[] = mergedRows.map((row) => ({
+              id: row.hospital.id,
+              name: hospitalMap.get(row.hospital.id) || row.hospital.name || 'Unknown',
+              peccCount: peccCountByHospital.get(row.hospital.id) || 0,
+            })).filter((h: AssignedHospital) => h.id);
 
             const activities = await getMentorActivitiesForUser(mentor.id);
             const totalActivities = activities.length;

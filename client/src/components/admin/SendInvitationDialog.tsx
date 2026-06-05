@@ -26,6 +26,10 @@ import { provisionCrmPortalUser } from '../../utils/provisionCrmPortalUser';
 import { UserRole, normalizeUserRole } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
+import {
+  syncMentorHospitalAssignmentsFromMentorPeccLink,
+  syncPeccHospitalAndMentorFromCrm,
+} from '../../utils/mentorHospitalAssignments';
 
 interface SendInvitationDialogProps {
   open: boolean;
@@ -443,6 +447,29 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
             );
             if (upErr) console.warn('Cohort membership sync failed:', upErr.message);
           }
+        }
+
+        const actor = userProfile?.id || userId;
+        if (role === UserRole.PECC) {
+          const peccUpdates: Record<string, string | null> = { updated_at: new Date().toISOString() };
+          if (mentorUserId) peccUpdates.mentor_id = mentorUserId;
+          if (managerForPeccUserId) peccUpdates.manager_id_for_pecc = managerForPeccUserId;
+          if (Object.keys(peccUpdates).length > 1) {
+            await supabase.from('users').update(peccUpdates).eq('id', userId);
+          }
+          const hospitalUuid =
+            hospitalId && hospitals.some((h) => h.id === hospitalId) ? hospitalId : null;
+          if (hospitalUuid) {
+            await syncPeccHospitalAndMentorFromCrm(userId, [hospitalUuid], actor);
+          }
+          if (mentorUserId) {
+            await syncMentorHospitalAssignmentsFromMentorPeccLink(mentorUserId, [userId], actor);
+          }
+        } else if (role === UserRole.MENTOR && managerUserId) {
+          await supabase
+            .from('users')
+            .update({ manager_id: managerUserId, updated_at: new Date().toISOString() })
+            .eq('id', userId);
         }
 
         setSuccess(true);

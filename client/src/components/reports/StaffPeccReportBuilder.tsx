@@ -589,16 +589,26 @@ async function resolveHospitalIdsForScope(scope: StaffReportScope, userId: strin
     })
     .map((m) => m.id);
   const scopedMentorIds = [...new Set([...mentorIds, userId])];
-  for (const mentorPart of chunk(scopedMentorIds, 80)) {
-    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string }>((from, to) =>
-      supabase
-        .from('mentor_hospital_assignments')
-        .select('hospital_id')
-        .in('mentor_id', mentorPart)
-        .eq('is_active', true)
-        .range(from, to)
-    );
-    rows.forEach((r) => r.hospital_id && set.add(r.hospital_id));
+  for (const mentorId of scopedMentorIds) {
+    try {
+      const merged = await fetchMergedMentorHospitals(mentorId);
+      merged.forEach((m) => {
+        const id = String(m.hospital.id || '').trim();
+        if (id) set.add(id);
+        const fid = m.hospital.facility_id != null ? String(m.hospital.facility_id).trim() : '';
+        if (fid) set.add(fid);
+      });
+    } catch {
+      const rows = await fetchAllRowsOrEmpty<{ hospital_id: string }>((from, to) =>
+        supabase
+          .from('mentor_hospital_assignments')
+          .select('hospital_id')
+          .eq('mentor_id', mentorId)
+          .eq('is_active', true)
+          .range(from, to)
+      );
+      rows.forEach((r) => r.hospital_id && set.add(r.hospital_id));
+    }
   }
   return expandHospitalScopeKeys([...set]);
 }
