@@ -21,7 +21,12 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage, writeContinuityData } from '../utils/userData';
-import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
+import {
+  fetchSiteChecklistProgress,
+  resolveSiteChecklistHospitalUuid,
+  subscribeToSiteChecklistProgress,
+  upsertSiteChecklistTaskProgress,
+} from '../utils/siteChecklistProgress';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml, stripHtmlToText } from '../components/cohorts/RichTextEditor';
 import {
@@ -90,18 +95,21 @@ const MilestonesPage = () => {
   const hasProgramChecklistStages = programChecklists.some((c) => Array.isArray(c.stages) && c.stages.length > 0);
   const refreshChecklistProgress = useCallback(async (targetHospitalId: string) => {
     if (!targetHospitalId) return;
-    const { data: rows } = await supabase
-      .from('site_checklist_progress')
-      .select('task_id, completed')
-      .eq('hospital_id', targetHospitalId);
-    const completedByTask: Record<string, boolean> = {};
-    (rows || []).forEach((r: { task_id: string; completed: boolean }) => {
-      completedByTask[r.task_id] = r.completed;
-    });
-    setStages((prev) => prev.map((stage) => ({
-      ...stage,
-      tasks: stage.tasks.map((task) => ({ ...task, completed: completedByTask[task.id] ?? false }))
-    })));
+    try {
+      const rows = await fetchSiteChecklistProgress(targetHospitalId);
+      const completedByTask: Record<string, boolean> = {};
+      rows.forEach((r) => {
+        completedByTask[r.task_id] = r.completed;
+      });
+      setStages((prev) =>
+        prev.map((stage) => ({
+          ...stage,
+          tasks: stage.tasks.map((task) => ({ ...task, completed: completedByTask[task.id] ?? false })),
+        }))
+      );
+    } catch (err) {
+      console.error('[MilestonesPage] checklist progress refresh failed:', err);
+    }
   }, []);
 
   const exportToPDF = () => {
@@ -445,13 +453,8 @@ const MilestonesPage = () => {
       return;
     }
     (async () => {
-      const { data } = await supabase
-        .from('hospitals')
-        .select('id')
-        .or(hospitalIdOrFacilityOrClause(siteId))
-        .limit(1)
-        .maybeSingle();
-      setHospitalId(data?.id ?? null);
+      const resolved = await resolveSiteChecklistHospitalUuid(siteId);
+      setHospitalId(resolved);
     })();
   }, [siteId]);
 
@@ -571,19 +574,9 @@ const MilestonesPage = () => {
 
   useEffect(() => {
     if (!hospitalId) return;
-    const channel = supabase
-      .channel(`pecc-milestones-progress:${hospitalId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'site_checklist_progress', filter: `hospital_id=eq.${hospitalId}` },
-        () => {
-          void refreshChecklistProgress(hospitalId);
-        }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeToSiteChecklistProgress([hospitalId], () => {
+      void refreshChecklistProgress(hospitalId);
+    });
   }, [hospitalId, refreshChecklistProgress]);
 
   const milestonesUserId = effectiveUserId;
@@ -633,38 +626,50 @@ const MilestonesPage = () => {
   }, [milestonesUserId, hospitalId]);
 
 
-  const handleTaskToggle = (stageId: string, taskId: string) => {
-    const newCompleted = !stages.find(s => s.id === stageId)?.tasks.find(t => t.id === taskId)?.completed;
-    const stage = stages.find(s => s.id === stageId);
-    const task = stage?.tasks.find(t => t.id === taskId);
-    trackChecklist(newCompleted ? 'task_complete' : 'task_uncomplete', { checklist_id: 'milestones', stage_id: stageId, item_id: taskId, name: task?.text?.slice(0, 80) });
-    const newStages = stages.map(stage => 
-      stage.id === stageId 
-        ? {
-            ...stage,
-            tasks: stage.tasks.map(task => 
-              task.id === taskId 
-                ? { ...task, completed: newCompleted }
-                : task
-            )
-          }
-        : stage
+  const handleTaskToggle = async (stageId: string, taskId: string) => {
+    const previousCompleted = Boolean(
+      stages.find((s) => s.id === stageId)?.tasks.find((t) => t.id === taskId)?.completed
     );
-    
-    // Update state
+    const newCompleted = !previousCompleted;
+    const stage = stages.find((s) => s.id === stageId);
+    const task = stage?.tasks.find((t) => t.id === taskId);
+    trackChecklist(newCompleted ? 'task_complete' : 'task_uncomplete', {
+      checklist_id: 'milestones',
+      stage_id: stageId,
+      item_id: taskId,
+      name: task?.text?.slice(0, 80),
+    });
+    const newStages = stages.map((stageRow) =>
+      stageRow.id === stageId
+        ? {
+            ...stageRow,
+            tasks: stageRow.tasks.map((taskRow) =>
+              taskRow.id === taskId ? { ...taskRow, completed: newCompleted } : taskRow
+            ),
+          }
+        : stageRow
+    );
+
     setStages(newStages);
-    
+
     if (hospitalId) {
-      supabase
-        .from('site_checklist_progress')
-        .upsert({
-          hospital_id: hospitalId,
-          task_id: taskId,
-          completed: newCompleted,
-          completed_at: newCompleted ? new Date().toISOString() : null,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'hospital_id,task_id' })
-        .then(({ error }) => { if (error) console.error('Checklist save error:', error); });
+      const { error } = await upsertSiteChecklistTaskProgress(hospitalId, taskId, newCompleted);
+      if (error) {
+        console.error('Checklist save error:', error);
+        setStages((prev) =>
+          prev.map((stageRow) =>
+            stageRow.id === stageId
+              ? {
+                  ...stageRow,
+                  tasks: stageRow.tasks.map((taskRow) =>
+                    taskRow.id === taskId ? { ...taskRow, completed: previousCompleted } : taskRow
+                  ),
+                }
+              : stageRow
+          )
+        );
+        return;
+      }
       if (milestonesUserId) {
         void writeContinuityData(hospitalId, milestonesUserId, 'milestones', newStages);
       }

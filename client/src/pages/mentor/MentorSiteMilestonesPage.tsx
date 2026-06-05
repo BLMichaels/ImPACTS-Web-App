@@ -62,6 +62,13 @@ import {
   isValidHexColor,
   type ChecklistEntryType,
 } from '../../utils/checklistEntries';
+import {
+  completedByTaskMap,
+  fetchSiteChecklistProgress,
+  subscribeToSiteChecklistProgress,
+  upsertSiteChecklistTaskProgress,
+  upsertSiteChecklistTasksProgress,
+} from '../../utils/siteChecklistProgress';
 
 // Interfaces matching MilestonesPage
 interface MilestoneTask {
@@ -723,21 +730,15 @@ const MentorSiteMilestonesPage: React.FC = () => {
         if (progressHospitalUuid) {
           canonicalIdsByHospital[hospital.id] = progressHospitalUuid;
         }
-        let progressRows: Array<{ task_id: string; completed: boolean; completed_at: string | null }> = [];
+        let completedByTask: Record<string, { completed: boolean; completed_at: string | null }> = {};
         if (progressHospitalUuid) {
-          const progressRefs = [...new Set([progressHospitalUuid, ...userHospitalRefs].filter((ref) => isUuidText(ref)))];
-          const progressOrClause = progressRefs.map((ref) => `hospital_id.eq.${ref}`).join(',');
-          const { data } = await supabase
-            .from('site_checklist_progress')
-            .select('task_id, completed, completed_at')
-            .or(progressOrClause || `hospital_id.eq.${progressHospitalUuid}`);
-          progressRows = (data || []) as Array<{ task_id: string; completed: boolean; completed_at: string | null }>;
+          try {
+            const progressRows = await fetchSiteChecklistProgress(progressHospitalUuid);
+            completedByTask = completedByTaskMap(progressRows);
+          } catch (progressError) {
+            console.error('[MentorSiteMilestones] checklist progress load failed:', progressError);
+          }
         }
-
-        const completedByTask: Record<string, { completed: boolean; completed_at: string | null }> = {};
-        (progressRows || []).forEach((r: { task_id: string; completed: boolean; completed_at: string | null }) => {
-          completedByTask[r.task_id] = { completed: r.completed, completed_at: r.completed_at };
-        });
         const checklistIdsFromProgress = [...new Set(
           Object.keys(completedByTask)
             .map((taskId) => {
@@ -1046,14 +1047,17 @@ const MentorSiteMilestonesPage: React.FC = () => {
     }
   };
 
-  const handleTaskToggle = (hospitalId: string, stageId: string, taskId: string) => {
+  const handleTaskToggle = async (hospitalId: string, stageId: string, taskId: string) => {
     const hospital = hospitalMilestones[hospitalId];
     if (!hospital) return;
     const selectedChecklistId = getChecklistIdFromKey(selectedChecklistKey);
     const sourceStages = selectedChecklistId ? hospital.checklistStages[selectedChecklistId]?.stages : hospital.defaultStages;
     if (!sourceStages) return;
 
-    const newCompleted = !sourceStages.find(s => s.id === stageId)?.tasks.find(t => t.id === taskId)?.completed;
+    const previousCompleted = Boolean(
+      sourceStages.find((s) => s.id === stageId)?.tasks.find((t) => t.id === taskId)?.completed
+    );
+    const newCompleted = !previousCompleted;
     const updatedStages = sourceStages.map(stage =>
       stage.id === stageId
         ? {
@@ -1100,16 +1104,45 @@ const MentorSiteMilestonesPage: React.FC = () => {
     });
 
     const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
-    supabase
-      .from('site_checklist_progress')
-      .upsert({
-        hospital_id: canonicalHospitalId,
-        task_id: taskId,
-        completed: newCompleted,
-        completed_at: newCompleted ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'hospital_id,task_id' })
-      .then(({ error }) => { if (error) console.error('Checklist task save error:', error); });
+    const { error } = await upsertSiteChecklistTaskProgress(canonicalHospitalId, taskId, newCompleted);
+    if (error) {
+      console.error('Checklist task save error:', error);
+      setHospitalMilestones((prev) => {
+        const current = prev[hospitalId];
+        if (!current) return prev;
+        const revertStages = (stages: MilestoneStage[]) =>
+          stages.map((stage) =>
+            stage.id === stageId
+              ? {
+                  ...stage,
+                  tasks: stage.tasks.map((task) =>
+                    task.id === taskId ? { ...task, completed: previousCompleted } : task
+                  ),
+                }
+              : stage
+          );
+        if (selectedChecklistId) {
+          const currentChecklist = current.checklistStages[selectedChecklistId];
+          if (!currentChecklist) return prev;
+          return {
+            ...prev,
+            [hospitalId]: {
+              ...current,
+              checklistStages: {
+                ...current.checklistStages,
+                [selectedChecklistId]: { ...currentChecklist, stages: revertStages(currentChecklist.stages) },
+              },
+              stageCompletions: hospital.stageCompletions,
+            },
+          };
+        }
+        return {
+          ...prev,
+          [hospitalId]: { ...current, defaultStages: revertStages(current.defaultStages), stageCompletions: hospital.stageCompletions },
+        };
+      });
+      return;
+    }
 
     saveStageCompletions(hospitalId, newStageCompletions);
   };
@@ -1136,17 +1169,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const completedAt = newCompleted ? new Date().toISOString() : null;
 
     const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
-    taskIds.forEach(taskId => {
-      supabase
-        .from('site_checklist_progress')
-        .upsert({
-          hospital_id: canonicalHospitalId,
-          task_id: taskId,
-          completed: newCompleted,
-          completed_at: completedAt,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'hospital_id,task_id' })
-        .then(({ error }) => { if (error) console.error('Checklist stage save error:', error); });
+    void upsertSiteChecklistTasksProgress(canonicalHospitalId, taskIds, newCompleted).then(({ error }) => {
+      if (error) console.error('Checklist stage save error:', error);
     });
 
     const updatedStages = sourceStages.map(s =>
@@ -1203,17 +1227,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
     const stage = sourceStages.find(s => s.id === stageId);
     const taskIds = stage?.tasks.map(t => t.id) ?? [];
-    taskIds.forEach(taskId => {
-      supabase
-        .from('site_checklist_progress')
-        .upsert({
-          hospital_id: canonicalHospitalId,
-          task_id: taskId,
-          completed: true,
-          completed_at: completedAt,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'hospital_id,task_id' })
-        .then(({ error }) => { if (error) console.error('Checklist date save error:', error); });
+    void upsertSiteChecklistTasksProgress(canonicalHospitalId, taskIds, true).then(({ error }) => {
+      if (error) console.error('Checklist date save error:', error);
     });
 
     const updatedStages = sourceStages.map(s =>
@@ -1253,26 +1268,9 @@ const MentorSiteMilestonesPage: React.FC = () => {
   useEffect(() => {
     const watchedHospitalIds = [...new Set(Object.values(hospitalChecklistIds).filter(Boolean))];
     if (!watchedHospitalIds.length) return;
-    const channel = supabase
-      .channel(`mentor-site-milestones-progress:${watchedHospitalIds.join(',')}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'site_checklist_progress' },
-        (payload) => {
-          const changedHospitalId = String(
-            (payload.new as { hospital_id?: string } | null)?.hospital_id ||
-            (payload.old as { hospital_id?: string } | null)?.hospital_id ||
-            ''
-          ).trim();
-          if (!changedHospitalId) return;
-          if (!watchedHospitalIds.includes(changedHospitalId)) return;
-          setProgressVersion((prev) => prev + 1);
-        }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeToSiteChecklistProgress(watchedHospitalIds, () => {
+      setProgressVersion((prev) => prev + 1);
+    });
   }, [hospitalChecklistIds]);
 
   const handleHospitalMenuOpen = (event: React.MouseEvent<HTMLElement>, hospitalId: string) => {
