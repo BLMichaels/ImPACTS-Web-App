@@ -6,11 +6,6 @@ import {
   Paper,
   Button,
   List,
-  ListItem,
-  ListItemText,
-  ListItemAvatar,
-  ListItemSecondaryAction,
-  Avatar,
   Chip,
   Divider,
   Dialog,
@@ -40,9 +35,6 @@ import {
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
-  Person as PersonIcon,
-  Email as EmailIcon,
-  Phone as PhoneIcon,
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -72,6 +64,7 @@ import {
 } from '../../utils/hospitalId';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { createAndSendInvitation } from '../../utils/invitations';
+import { HospitalContactListItem } from '../../components/mentor/HospitalContactListItem';
 import { UserRole } from '../../types/database';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
@@ -158,12 +151,6 @@ const EMPTY_CONTACT_FORM = {
   notes: ''
 };
 
-const isAutoAssignedContact = (contact: Contact) =>
-  Boolean(contact.assignedPeccSource) ||
-  contact.id.startsWith('pecc-') ||
-  contact.id.startsWith('hc-') ||
-  contact.id.startsWith('crm-');
-
 function mergeContactsForHospital(
   hospital: Hospital,
   storedContacts: Contact[],
@@ -194,19 +181,6 @@ function mergeContactsForHospital(
     .map((pecc) => assignedPeccToContact(pecc, hospital.id, mentorId));
 
   return [...stored, ...autoContacts];
-}
-
-function assignedContactChipLabel(contact: Contact): string {
-  switch (contact.assignedPeccSource) {
-    case 'portal':
-      return 'Portal PECC';
-    case 'hospital_contact':
-      return 'Hospital PECC';
-    case 'crm':
-      return 'CRM PECC';
-    default:
-      return contact.id.startsWith('pecc-') ? 'Portal PECC' : 'Assigned PECC';
-  }
 }
 
 const MentorHospitalContactsPage: React.FC = () => {
@@ -977,7 +951,14 @@ const MentorHospitalContactsPage: React.FC = () => {
   );
 
   const handleToggleContactWorkingWith = (contact: Contact) => {
-    if (isAutoAssignedContact(contact)) return;
+    if (
+      contact.assignedPeccSource ||
+      contact.id.startsWith('pecc-') ||
+      contact.id.startsWith('hc-') ||
+      contact.id.startsWith('crm-')
+    ) {
+      return;
+    }
     const next = contact.isWorkingWithMentor !== false ? false : true;
     const updated: Contact = { ...contact, isWorkingWithMentor: next };
     const newContacts = contacts.map(c => c.id === contact.id ? updated : c);
@@ -1428,9 +1409,14 @@ const MentorHospitalContactsPage: React.FC = () => {
 
                 {/* 2. Contacts */}
                 <Paper sx={{ p: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6">Contacts</Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Box>
+                      <Typography variant="h6">Contacts</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 480 }}>
+                        PECCs assigned to this site appear here automatically. Add your own contacts for anyone not yet in ImPACTS.
+                      </Typography>
+                    </Box>
+                    <Box sx={{ flexShrink: 0 }}>
                       <Button 
                         startIcon={<SendIcon />} 
                         onClick={() => setInviteDialogOpen(true)}
@@ -1499,78 +1485,15 @@ const MentorHospitalContactsPage: React.FC = () => {
                       No contacts match the search. Try a different term.
                     </Typography>
                   ) : (
-                    <List>
+                    <List disablePadding>
                       {filteredAndSortedContacts.map((contact, index) => (
-                        <React.Fragment key={contact.id}>
-                          <ListItem>
-                            <ListItemAvatar>
-                              <Avatar sx={{ bgcolor: contact.isPrimaryContact ? 'primary.main' : 'grey.400' }}>
-                                <PersonIcon />
-                              </Avatar>
-                            </ListItemAvatar>
-                            <ListItemText
-                              primary={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                                  {contact.firstName} {contact.lastName}
-                                  {contact.isPrimaryContact && (
-                                    <Chip label="Primary" size="small" color="primary" />
-                                  )}
-                                  {contact.isActivelyEngaged && (
-                                    <Chip label="Active" size="small" color="success" />
-                                  )}
-                                  {isAutoAssignedContact(contact) ? (
-                                    <>
-                                      <Chip size="small" color="info" label={assignedContactChipLabel(contact)} />
-                                      {contact.assignedPeccSource === 'portal' && contact.isWorkingWithMentor !== false && (
-                                        <Chip size="small" color="success" label="Working with me" />
-                                      )}
-                                    </>
-                                  ) : (
-                                    <Chip
-                                      size="small"
-                                      variant={contact.isWorkingWithMentor !== false ? 'filled' : 'outlined'}
-                                      color={contact.isWorkingWithMentor !== false ? 'success' : 'default'}
-                                      label={contact.isWorkingWithMentor !== false ? 'Working with me' : 'Not actively working with me'}
-                                      onClick={(e) => { e.stopPropagation(); handleToggleContactWorkingWith(contact); }}
-                                      sx={{ cursor: 'pointer' }}
-                                    />
-                                  )}
-                                </Box>
-                              }
-                              secondary={
-                                <>
-                                  <Typography variant="body2" component="span">
-                                    {contact.roleAtHospital}
-                                  </Typography>
-                                  <br />
-                                  <Typography variant="caption" component="span">
-                                    <Chip label={contact.contactStatus} size="small" sx={{ mr: 1 }} />
-                                  </Typography>
-                                  <br />
-                                  <Typography variant="caption" component="span">
-                                    <EmailIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
-                                    {contact.email}
-                                    {contact.phone && (
-                                      <>
-                                        {' | '}
-                                        <PhoneIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
-                                        {contact.phone}
-                                      </>
-                                    )}
-                                  </Typography>
-                                </>
-                              }
-                            />
-                            <ListItemSecondaryAction>
-                              {!isAutoAssignedContact(contact) && (
-                                <IconButton size="small" onClick={() => handleEditContact(contact)} aria-label="Edit contact">
-                                  <EditIcon />
-                                </IconButton>
-                              )}
-                            </ListItemSecondaryAction>
-                          </ListItem>
-                          {index < filteredAndSortedContacts.length - 1 && <Divider variant="inset" component="li" />}
-                        </React.Fragment>
+                        <HospitalContactListItem
+                          key={contact.id}
+                          contact={contact}
+                          showDivider={index < filteredAndSortedContacts.length - 1}
+                          onEdit={() => handleEditContact(contact)}
+                          onToggleWorkingWith={() => handleToggleContactWorkingWith(contact)}
+                        />
                       ))}
                     </List>
                   )}

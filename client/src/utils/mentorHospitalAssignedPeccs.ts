@@ -122,7 +122,7 @@ export async function loadAssignedPeccsForHospital(
       email,
       phone: '',
       mentorId: pecc.mentor_id,
-      contactStatus: 'Portal account',
+      contactStatus: '',
       roleAtHospital: 'PECC',
     });
   }

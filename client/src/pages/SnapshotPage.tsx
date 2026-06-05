@@ -62,6 +62,15 @@ import {
 } from '../utils/snapshotMetrics';
 import { PeccReadinessTrendChart } from '../components/pecc/PeccReadinessTrendChart';
 import { SnapshotBarChart } from '../components/pecc/SnapshotBarChart';
+import { SnapshotHorizontalBarChart } from '../components/pecc/SnapshotHorizontalBarChart';
+import {
+  addPdfCategoryHoursTable,
+  addPdfCoverHeader,
+  addPdfHorizontalBarChart,
+  addPdfSectionHeader,
+  getSnapshotPdfLayout,
+  type CategoryHoursRow,
+} from '../utils/snapshotPdfExport';
 import { useNavigate } from 'react-router-dom';
 
 const metricCardSx = {
@@ -211,6 +220,22 @@ const SnapshotPage = () => {
   const hasActivityCategory = (activity: any, category: string): boolean => getActivityCategories(activity).includes(category);
   const displayActivityCategories = (activity: any): string =>
     getActivityCategories(activity).join(', ') || 'Uncategorized';
+  const activityCategoryStats = useMemo(() => {
+    const stats = new Map<string, { count: number; hours: number }>();
+    activities.forEach((activity) => {
+      const categories = getActivityCategories(activity);
+      const cats = categories.length > 0 ? categories : ['Uncategorized'];
+      cats.forEach((category) => {
+        const current = stats.get(category) || { count: 0, hours: 0 };
+        current.count += 1;
+        current.hours += Number(activity.hours) || 0;
+        stats.set(category, current);
+      });
+    });
+    return [...stats.entries()]
+      .map(([label, value]) => ({ label, count: value.count, hours: value.hours }))
+      .sort((a, b) => b.hours - a.hours || b.count - a.count);
+  }, [activities]);
 
   // Load all data for snapshot. When PRS section is hidden, do not load readiness scores or PRS questions.
   useEffect(() => {
@@ -493,17 +518,10 @@ const SnapshotPage = () => {
           return y + 25;
         };
         
+        const pdfLayout = getSnapshotPdfLayout(doc);
+
         // Page 1: Executive Summary & Key Performance Indicators
-        doc.setFontSize(24);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(33, 150, 243);
-        doc.text('Pediatric Readiness', pageWidth / 2, titleY, { align: 'center' });
-        doc.text('Comprehensive Snapshot Report', pageWidth / 2, titleY + 15, { align: 'center' });
-        
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(108, 117, 125);
-        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, pageWidth / 2, titleY + 35, { align: 'center' });
+        addPdfCoverHeader(doc, pdfLayout, 'Comprehensive site performance for leadership review');
         
         // Key Performance Indicators Section (like the KPI cards on the page)
         let currentY = addSectionHeader('Key Performance Indicators (KPIs) - Most Critical Metrics', sectionY + 40);
@@ -608,26 +626,14 @@ const SnapshotPage = () => {
         
         currentY = addSectionHeader('Activity Summary & Trends', currentY);
         
-        // Activity Category Distribution (like the chart on the page)
-        currentY = addSectionHeader('Activity Category Distribution', currentY + 10);
-        
-        const activityCategories = activities.reduce((acc, activity) => {
-          const categories = getActivityCategories(activity);
-          if (categories.length === 0) categories.push('Uncategorized');
-          categories.forEach((category) => {
-            acc[category] = (acc[category] || 0) + 1;
-          });
-          return acc;
-        }, {} as Record<string, number>);
-        
-        // Create chart data for activity categories
-        const chartData = Object.entries(activityCategories).map(([category, count]) => ({
-          label: category,
-          value: count as number,
-          color: '#4CAF50' // Green
-        }));
-        
-        currentY = addChartSection('Activity Distribution by Category', chartData, currentY);
+        currentY = addPdfSectionHeader(doc, pdfLayout, 'Activity Category Distribution', currentY + 10);
+        currentY = addPdfHorizontalBarChart(
+          doc,
+          pdfLayout,
+          'Activities logged by category',
+          activityCategoryStats.map((row) => ({ label: row.label, value: row.count })),
+          currentY
+        );
         
         // PECC Work Hours Analysis (like the work hours section on the page)
         currentY += 20;
@@ -930,40 +936,22 @@ const SnapshotPage = () => {
         
         currentY = addSectionHeader('Comprehensive Activity Analysis', currentY);
         
-        // Activity Category Distribution with Hours (like the detailed breakdown on the page)
-        currentY = addSectionHeader('Activity Category Distribution with Hours', currentY + 10);
-        
-        if (activities.length > 0) {
-          const categoryStats = activities.reduce((acc, activity) => {
-            const categories = getActivityCategories(activity);
-            if (categories.length === 0) categories.push('Uncategorized');
-            categories.forEach((category) => {
-              if (!acc[category]) {
-                acc[category] = { count: 0, hours: 0 };
-              }
-              acc[category].count += 1;
-              acc[category].hours += activity.hours || 0;
-            });
-            return acc;
-          }, {} as Record<string, { count: number; hours: number }>);
-          
-          const sortedCategories = Object.entries(categoryStats)
-            .sort(([, a], [, b]) => (b as { hours: number }).hours - (a as { hours: number }).hours);
-          
-          sortedCategories.forEach(([category, stats]) => {
-            if (currentY < pageHeight - margin) {
-              doc.setFontSize(11);
-              doc.setFont('helvetica', 'bold');
-              doc.setTextColor(33, 37, 41);
-              doc.text(category, margin, currentY);
-              doc.setFontSize(10);
-              doc.setFont('helvetica', 'normal');
-              doc.setTextColor(108, 117, 125);
-              doc.text(`Activities: ${(stats as { count: number }).count}`, margin + 80, currentY);
-              doc.text(`Hours: ${(stats as { hours: number }).hours}`, margin + 150, currentY);
-              currentY += 15;
-            }
-          });
+        currentY = addPdfSectionHeader(doc, pdfLayout, 'Activity Category Distribution with Hours', currentY + 10);
+        if (activityCategoryStats.length > 0) {
+          const categoryRows: CategoryHoursRow[] = activityCategoryStats.map((row) => ({
+            label: row.label,
+            count: row.count,
+            hours: row.hours,
+          }));
+          currentY = addPdfCategoryHoursTable(doc, pdfLayout, categoryRows, currentY);
+          currentY = addPdfHorizontalBarChart(
+            doc,
+            pdfLayout,
+            'Hours invested by category',
+            activityCategoryStats.map((row) => ({ label: row.label, value: row.hours })),
+            currentY + 6,
+            'h'
+          );
         }
         
         // Page 8: Recommendations & Next Steps
@@ -1828,54 +1816,79 @@ const SnapshotPage = () => {
 
       {/* Activity Analysis - Work Tracking and Insights */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Card>
+        <Grid item xs={12} lg={7}>
+          <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Activity Categories
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                Activity categories
               </Typography>
-              <Box sx={{ mt: 2 }}>
-                {activities.length > 0 ? (
-                  <>
-                    {Array.from(new Set(activities.flatMap((a) => {
-                      const categories = getActivityCategories(a);
-                      return categories.length > 0 ? categories : ['Uncategorized'];
-                    }))).map(category => {
-                      const count = activities.filter((a) => {
-                        const categories = getActivityCategories(a);
-                        if (categories.length === 0) return category === 'Uncategorized';
-                        return categories.includes(category);
-                      }).length;
-                      const percentage = (count / activities.length) * 100;
-                      return (
-                        <Box key={category} sx={{ mb: 2 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                            <Typography variant="body2">
-                              {category.length > 30 ? category.substring(0, 30) + '...' : category}
-                            </Typography>
-                            <Typography variant="body2">
-                              {`${count} (${Math.round(percentage)}%)`}
-                            </Typography>
-                          </Box>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={percentage}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                        </Box>
-                      );
-                    })}
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No activities data available
-                  </Typography>
-                )}
-              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Full category names with activity counts—optimized for leadership review and export.
+              </Typography>
+              {activityCategoryStats.length > 0 ? (
+                <SnapshotHorizontalBarChart
+                  data={activityCategoryStats.map((row) => ({
+                    label: row.label,
+                    value: row.count,
+                    sublabel: `${row.hours.toFixed(1)} hrs`,
+                  }))}
+                  valueLabel="Activities"
+                  minHeight={300}
+                />
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No activities data available
+                </Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>
-        
+
+        <Grid item xs={12} lg={5}>
+          <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                Hours by category
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Where PECC time is invested across readiness work.
+              </Typography>
+              {activityCategoryStats.length > 0 ? (
+                <Stack spacing={1.25}>
+                  {activityCategoryStats.map((row, index) => (
+                    <Box
+                      key={row.label}
+                      sx={{
+                        p: 1.25,
+                        borderRadius: 1.5,
+                        bgcolor: index % 2 === 0 ? 'grey.50' : 'background.paper',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.45, mb: 0.5 }}>
+                        {row.label}
+                      </Typography>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {row.count} {row.count === 1 ? 'activity' : 'activities'}
+                        </Typography>
+                        <Typography variant="caption" color="primary.main" sx={{ fontWeight: 700 }}>
+                          {row.hours.toFixed(1)} hrs
+                        </Typography>
+                      </Box>
+                    </Box>
+                  ))}
+                </Stack>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No activities recorded
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
@@ -2290,7 +2303,11 @@ const SnapshotPage = () => {
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     Percentage score by PRS domain from your current assessment
                   </Typography>
-                  <SnapshotBarChart data={domainBarData} valueLabel="%" height={360} />
+                  <SnapshotHorizontalBarChart
+                    data={domainBarData}
+                    valueLabel="%"
+                    minHeight={320}
+                  />
                   <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mt: 2, flexWrap: 'wrap' }}>
                     <Typography variant="caption" color="text.secondary">
                       ≥80% excellent · 60–79% good · &lt;60% needs improvement

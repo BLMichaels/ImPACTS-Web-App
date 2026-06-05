@@ -50,12 +50,21 @@ export function SnapshotBarChart({
     sublabel: d.sublabel,
   }));
 
+  const bottomMargin = Math.min(120, Math.max(56, Math.ceil(data.length / 3) * 18));
+
   return (
     <Box sx={{ width: '100%', height }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={chartRows} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#eee" vertical={false} />
-          <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-22} textAnchor="end" height={56} />
+        <BarChart data={chartRows} margin={{ top: 8, right: 16, left: 4, bottom: bottomMargin }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e8eaed" vertical={false} />
+          <XAxis
+            dataKey="name"
+            tick={{ fontSize: 10, fill: '#4b5563' }}
+            interval={0}
+            angle={-32}
+            textAnchor="end"
+            height={bottomMargin - 8}
+          />
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
           <Tooltip
             formatter={(value: number) => [value, valueLabel]}
