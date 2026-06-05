@@ -8,11 +8,15 @@ WITH pecc_crm AS (
   SELECT
     u.id AS pecc_user_id,
     u.mentor_id,
+    co.id AS crm_org_id,
     (co.linked_hospital_ids)[1]::text AS first_hospital_id
   FROM public.users u
   JOIN public.crm_organizations co
-    ON co.user_id = u.id
-   AND co.contact_type = 'pecc'
+    ON co.contact_type = 'pecc'
+   AND (
+     co.user_id = u.id
+     OR LOWER(TRIM(co.email)) = LOWER(TRIM(u.email))
+   )
   WHERE u.role = 'pecc'
     AND (u.hospital_facility_id IS NULL OR TRIM(u.hospital_facility_id) = '')
     AND co.linked_hospital_ids IS NOT NULL
@@ -33,6 +37,12 @@ SET
 FROM resolved r
 WHERE u.id = r.pecc_user_id
   AND (u.hospital_facility_id IS NULL OR TRIM(u.hospital_facility_id) = '');
+
+UPDATE public.crm_organizations co
+SET user_id = pc.pecc_user_id
+FROM pecc_crm pc
+WHERE co.id = pc.crm_org_id
+  AND (co.user_id IS NULL OR co.user_id <> pc.pecc_user_id);
 
 INSERT INTO public.mentor_hospital_assignments (mentor_id, hospital_id, assigned_by, is_active)
 SELECT DISTINCT

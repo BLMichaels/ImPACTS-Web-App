@@ -7,6 +7,8 @@ import { useAuth } from '../../context/AuthContext';
 import { batchGetUserDataForKey, getUserData, setUserData } from '../../utils/userData';
 import {
   applyPeccHospitalFromLinkedIds,
+  resolvePeccPortalUserId,
+  syncPeccHospitalAndMentorFromCrm,
   syncMentorHospitalAssignmentsForPecc,
   syncMentorHospitalAssignmentsFromMentorPeccLink,
 } from '../../utils/mentorHospitalAssignments';
@@ -1583,11 +1585,24 @@ const AdminCRMPage: React.FC = () => {
   const saveAssignments = useCallback(async () => {
     const c = detailContact;
     if (!c || (c.type !== 'mentor' && c.type !== 'pecc')) return;
-    const resolvedUserId =
+    let resolvedUserId =
       detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
         ? detailContactUserId
         : (isUuid(c.user_id) ? String(c.user_id) : null);
+    if (!resolvedUserId && c.type === 'pecc') {
+      resolvedUserId = await resolvePeccPortalUserId(c.user_id, c.email);
+    }
+    if (!resolvedUserId && c.email?.trim()) {
+      const { data: roleUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', c.email.trim())
+        .eq('role', c.type === 'pecc' ? 'pecc' : 'mentor')
+        .maybeSingle();
+      if (roleUser?.id) resolvedUserId = String(roleUser.id);
+    }
     if (!resolvedUserId) return;
+    const userId = resolvedUserId;
     setAssignmentSaving(true);
     const managerIds = [...new Set(assignmentManagerIds.map((id) => String(id || '').trim()).filter(Boolean))];
     const mentorIds = [...new Set(assignmentMentorIds.map((id) => String(id || '').trim()).filter(Boolean))];
@@ -1599,13 +1614,13 @@ const AdminCRMPage: React.FC = () => {
           manager_id: managerIds[0] || null,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', resolvedUserId);
+        .eq('id', userId);
       if (error) {
         setAssignmentSaving(false);
         setSaveError(`Failed to save managers: ${error.message}`);
         return;
       }
-      await setUserData(resolvedUserId, USER_DATA_MENTOR_MANAGER_IDS, managerIds);
+      await setUserData(userId, USER_DATA_MENTOR_MANAGER_IDS, managerIds);
       const { data: allPeccUsers } = await supabase.from('users').select('id, mentor_id').eq('role', 'pecc').eq('is_active', true);
       const allPeccRows = (allPeccUsers || []) as Array<{ id: string; mentor_id?: string | null }>;
       const allPeccIds = allPeccRows.map((row) => row.id);
@@ -1613,15 +1628,15 @@ const AdminCRMPage: React.FC = () => {
       const selectedPeccSet = new Set(peccIds);
       await Promise.all(allPeccRows.map(async (peccRow) => {
         const currentMentorIds = normalizeStringList(existingMentorLists.get(peccRow.id));
-        const currentlyAssigned = String(peccRow.mentor_id || '').trim() === resolvedUserId || currentMentorIds.includes(resolvedUserId);
+        const currentlyAssigned = String(peccRow.mentor_id || '').trim() === userId || currentMentorIds.includes(userId);
         const shouldAssign = selectedPeccSet.has(peccRow.id);
         if (currentlyAssigned === shouldAssign) return;
         const nextMentorIds = shouldAssign
-          ? [...new Set([resolvedUserId, ...currentMentorIds])]
-          : currentMentorIds.filter((id) => id !== resolvedUserId);
+          ? [...new Set([userId, ...currentMentorIds])]
+          : currentMentorIds.filter((id) => id !== userId);
         const nextPrimaryMentorId = shouldAssign
-          ? (String(peccRow.mentor_id || '').trim() || resolvedUserId)
-          : (String(peccRow.mentor_id || '').trim() === resolvedUserId ? (nextMentorIds[0] || null) : (String(peccRow.mentor_id || '').trim() || null));
+          ? (String(peccRow.mentor_id || '').trim() || userId)
+          : (String(peccRow.mentor_id || '').trim() === userId ? (nextMentorIds[0] || null) : (String(peccRow.mentor_id || '').trim() || null));
         if (String(peccRow.mentor_id || '').trim() !== String(nextPrimaryMentorId || '').trim()) {
           await supabase
             .from('users')
@@ -1636,7 +1651,7 @@ const AdminCRMPage: React.FC = () => {
         peccLinks: peccIds.map((id) => ({ id, label: assignmentPeccOptions.find((opt) => opt.id === id)?.label || id })),
       }));
       if (currentUser?.id) {
-        await syncMentorHospitalAssignmentsFromMentorPeccLink(resolvedUserId, peccIds, currentUser.id);
+        await syncMentorHospitalAssignmentsFromMentorPeccLink(userId, peccIds, currentUser.id);
       }
     } else {
       const { error } = await supabase
@@ -1646,15 +1661,15 @@ const AdminCRMPage: React.FC = () => {
           mentor_id: mentorIds[0] || null,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', resolvedUserId);
+        .eq('id', userId);
       if (error) {
         setAssignmentSaving(false);
         setSaveError(`Failed to save assignments: ${error.message}`);
         return;
       }
       await Promise.all([
-        setUserData(resolvedUserId, USER_DATA_PECC_DIRECT_MANAGER_IDS, managerIds),
-        setUserData(resolvedUserId, USER_DATA_PECC_MENTOR_IDS, mentorIds),
+        setUserData(userId, USER_DATA_PECC_DIRECT_MANAGER_IDS, managerIds),
+        setUserData(userId, USER_DATA_PECC_MENTOR_IDS, mentorIds),
       ]);
       setDetailSupervisorInfo({
         managerLinks: managerIds.map((id) => ({ id, label: assignmentManagerOptions.find((opt) => opt.id === id)?.label || id })),
@@ -1662,14 +1677,14 @@ const AdminCRMPage: React.FC = () => {
         peccLinks: [],
       });
       if (currentUser?.id) {
-        await applyPeccHospitalFromLinkedIds(
-          resolvedUserId,
-          (detailContact?.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)))
-        );
+        const linkedHospitalIds = (detailContact?.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)));
+        await syncPeccHospitalAndMentorFromCrm(userId, linkedHospitalIds, currentUser.id);
         for (const mentorId of mentorIds) {
-          await syncMentorHospitalAssignmentsFromMentorPeccLink(mentorId, [resolvedUserId], currentUser.id);
+          await syncMentorHospitalAssignmentsFromMentorPeccLink(mentorId, [userId], currentUser.id);
         }
-        await syncMentorHospitalAssignmentsForPecc(resolvedUserId, currentUser.id);
+        if (detailContact?.id && isUuid(detailContact.id)) {
+          await supabase.from('crm_organizations').update({ user_id: userId }).eq('id', detailContact.id);
+        }
       }
     }
     setAssignmentSaving(false);
@@ -3065,12 +3080,18 @@ const AdminCRMPage: React.FC = () => {
       await applyMentorPeccAssignments(formData.type, assignmentTargetUserId, selectedMentorIdsForSave, selectedPeccIdsForSave);
     }
 
-    if (formData.type === 'pecc' && assignmentTargetUserId && currentUser?.id) {
-      const peccHospitalIds = (formData.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)));
-      if (peccHospitalIds.length > 0) {
-        await applyPeccHospitalFromLinkedIds(assignmentTargetUserId, peccHospitalIds);
+    if (formData.type === 'pecc' && currentUser?.id) {
+      const peccUserId =
+        assignmentTargetUserId ||
+        (await resolvePeccPortalUserId(editingContact?.user_id, formData.email?.trim()));
+      if (peccUserId) {
+        const peccHospitalIds = (formData.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)));
+        await syncPeccHospitalAndMentorFromCrm(peccUserId, peccHospitalIds, currentUser.id);
+        const crmOrgId = editingContact?.id && isUuid(editingContact.id) ? editingContact.id : null;
+        if (crmOrgId) {
+          await supabase.from('crm_organizations').update({ user_id: peccUserId }).eq('id', crmOrgId);
+        }
       }
-      await syncMentorHospitalAssignmentsForPecc(assignmentTargetUserId, currentUser.id);
     }
 
     // When a person contact has cohort(s) assigned, sync cohort_members so they show in the cohort's Members list

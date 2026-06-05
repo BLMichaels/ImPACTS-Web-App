@@ -11,6 +11,31 @@ import { getUserData } from './userData';
 
 const PECC_MENTOR_IDS_KEY = 'pecc_mentor_ids';
 
+/** Resolve portal PECC user id from CRM user_id or matching email. */
+export async function resolvePeccPortalUserId(
+  userId?: string | null,
+  email?: string | null
+): Promise<string | null> {
+  const uid = normalizeHospitalKey(userId);
+  if (uid) return uid;
+  const em = String(email || '').trim();
+  if (!em) return null;
+  const { data } = await supabase.from('users').select('id').eq('role', 'pecc').eq('email', em).maybeSingle();
+  return data?.id ? String(data.id) : null;
+}
+
+/** Apply CRM linked hospitals to users + mentor assignment rows. */
+export async function syncPeccHospitalAndMentorFromCrm(
+  peccUserId: string,
+  linkedHospitalIds: string[],
+  assignedBy: string
+): Promise<void> {
+  if (linkedHospitalIds.length > 0) {
+    await applyPeccHospitalFromLinkedIds(peccUserId, linkedHospitalIds);
+  }
+  await syncMentorHospitalAssignmentsForPecc(peccUserId, assignedBy);
+}
+
 export async function resolveHospitalUuidFromRef(
   hospitalRef: string | null | undefined
 ): Promise<string | null> {
@@ -150,9 +175,43 @@ export async function syncMentorHospitalAssignmentsFromMentorPeccLink(
   ]);
 
   const refs = new Set<string>();
-  for (const row of [...(selectedPeccs || []), ...(mentorPeccs || [])]) {
+  const peccRows = [...(selectedPeccs || []), ...(mentorPeccs || [])];
+  for (const row of peccRows) {
     const ref = normalizeHospitalKey(row.hospital_facility_id);
     if (ref) refs.add(ref);
+  }
+
+  const missingHospitalPeccIds = peccRows
+    .filter((row) => !normalizeHospitalKey(row.hospital_facility_id))
+    .map((row) => row.id);
+  if (missingHospitalPeccIds.length > 0) {
+    const { data: peccProfiles } = await supabase
+      .from('users')
+      .select('id, email')
+      .in('id', missingHospitalPeccIds);
+    const emails = (peccProfiles || [])
+      .map((p) => String(p.email || '').trim().toLowerCase())
+      .filter(Boolean);
+    if (emails.length > 0) {
+      const { data: crmRows } = await supabase
+        .from('crm_organizations')
+        .select('email, linked_hospital_ids')
+        .eq('contact_type', 'pecc');
+      const emailSet = new Set(emails);
+      for (const crm of crmRows || []) {
+        const em = String(crm.email || '').trim().toLowerCase();
+        if (!emailSet.has(em)) continue;
+        const links = Array.isArray(crm.linked_hospital_ids) ? crm.linked_hospital_ids : [];
+        const hospitalIds = links.map((id) => normalizeHospitalKey(String(id))).filter(Boolean);
+        const peccProfile = (peccProfiles || []).find(
+          (p) => String(p.email || '').trim().toLowerCase() === em
+        );
+        if (peccProfile && hospitalIds.length > 0) {
+          await applyPeccHospitalFromLinkedIds(peccProfile.id, hospitalIds);
+        }
+        hospitalIds.forEach((ref) => refs.add(ref));
+      }
+    }
   }
 
   await Promise.all(

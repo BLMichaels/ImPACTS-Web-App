@@ -37,10 +37,37 @@ function hospitalRowMatchesRef(row: HospitalRowLite, ref: string): boolean {
   return key === normalizeHospitalKey(row.id) || key === normalizeHospitalKey(row.facility_id);
 }
 
+async function fetchCrmHospitalRefsForMentorPeccs(
+  mentorPeccs: Array<{ email?: string | null; hospital_facility_id?: string | null }>
+): Promise<string[]> {
+  const emailsNeedingCrm = mentorPeccs
+    .filter((p) => !normalizeHospitalKey(p.hospital_facility_id) && String(p.email || '').trim())
+    .map((p) => String(p.email).trim().toLowerCase());
+  if (emailsNeedingCrm.length === 0) return [];
+
+  const { data: crmRows, error: crmError } = await supabase
+    .from('crm_organizations')
+    .select('email, linked_hospital_ids')
+    .eq('contact_type', 'pecc');
+  if (crmError) throw crmError;
+
+  const emailSet = new Set(emailsNeedingCrm);
+  const refs = new Set<string>();
+  for (const row of crmRows || []) {
+    const em = String(row.email || '').trim().toLowerCase();
+    if (!emailSet.has(em)) continue;
+    for (const hid of Array.isArray(row.linked_hospital_ids) ? row.linked_hospital_ids : []) {
+      const ref = normalizeHospitalKey(String(hid));
+      if (ref) refs.add(ref);
+    }
+  }
+  return [...refs];
+}
+
 async function fetchPeccHospitalRefsForMentor(mentorId: string): Promise<string[]> {
   const { data: primaryPeccs, error: primaryError } = await supabase
     .from('users')
-    .select('id, hospital_facility_id')
+    .select('id, email, hospital_facility_id')
     .eq('role', 'pecc')
     .eq('mentor_id', mentorId);
   if (primaryError) throw primaryError;
@@ -49,6 +76,9 @@ async function fetchPeccHospitalRefsForMentor(mentorId: string): Promise<string[
   for (const row of primaryPeccs || []) {
     const ref = normalizeHospitalKey(row.hospital_facility_id);
     if (ref) refs.add(ref);
+  }
+  for (const ref of await fetchCrmHospitalRefsForMentorPeccs(primaryPeccs || [])) {
+    refs.add(ref);
   }
 
   const { data: allPeccs, error: allError } = await supabase
