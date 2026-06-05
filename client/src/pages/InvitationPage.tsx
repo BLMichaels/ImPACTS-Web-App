@@ -27,6 +27,7 @@ import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
 import { resolvePeccFacilityId } from '../utils/hospitalId';
+import { syncMentorHospitalAssignmentsForPecc } from '../utils/mentorHospitalAssignments';
 import { ensureHospitalDataPlaceholder } from '../utils/userData';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
@@ -392,6 +393,21 @@ const InvitationPage: React.FC = () => {
             }
           } catch {
             // Ignore bootstrap failures here; registration should still complete.
+          }
+        }
+
+        if (
+          invitation.role === 'pecc' &&
+          invData?.mentor_id &&
+          updatePayload.hospital_facility_id
+        ) {
+          const actor = String(invData.invited_by || invData.mentor_id || '').trim();
+          if (actor) {
+            try {
+              await syncMentorHospitalAssignmentsForPecc(userId, actor);
+            } catch {
+              // Non-fatal: registration should still complete.
+            }
           }
         }
 

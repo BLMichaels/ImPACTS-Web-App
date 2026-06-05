@@ -86,6 +86,10 @@ import {
 import { useUserProfile } from '../../context/UserProfileContext';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 import {
+  buildPeccHospitalFacilityOrClause,
+  expandHospitalRefsForPeccQuery,
+} from '../../utils/mentorHospitalAssignments';
+import {
   buildExportRowsForMode,
   exportModeDescription,
   type ReportExportMode,
@@ -2934,10 +2938,11 @@ async function loadPeccUserAccounts(hospitalScope: string[] | null): Promise<Pec
   const sel =
     'id, first_name, last_name, email, phone, last_login, hospital_facility_id, mentor_id, manager_id, created_at, is_active';
   if (hospitalScope && hospitalScope.length > 0) {
+    const { refs } = await expandHospitalRefsForPeccQuery(hospitalScope);
     const merged: PeccUserAccountRow[] = [];
-    for (const part of chunk(hospitalScope, 80)) {
+    for (const part of chunk(refs, 80)) {
       const partRows = await fetchAllRows<PeccUserAccountRow>((from, to) =>
-        supabase.from('users').select(sel).eq('role', 'pecc').in('hospital_facility_id', part).order('last_name').range(from, to)
+        supabase.from('users').select(sel).eq('role', 'pecc').or(buildPeccHospitalFacilityOrClause(part)).order('last_name').range(from, to)
       );
       merged.push(...partRows);
     }
@@ -3012,14 +3017,16 @@ async function loadPeccCountByHospital(hospitalIds: string[]): Promise<Map<strin
   if (!hospitalIds.length) return new Map();
 
   const hidAllow = new Set(hospitalIds);
+  const { refs, refToCanonicalId } = await expandHospitalRefsForPeccQuery(hospitalIds);
 
-  for (const part of chunk(hospitalIds, 80)) {
+  for (const part of chunk(refs, 80)) {
     const users = await fetchAllRows<{ id: string; email: string; hospital_facility_id: string | null }>((from, to) =>
-      supabase.from('users').select('id, email, hospital_facility_id').eq('role', 'pecc').in('hospital_facility_id', part).range(from, to)
+      supabase.from('users').select('id, email, hospital_facility_id').eq('role', 'pecc').or(buildPeccHospitalFacilityOrClause(part)).range(from, to)
     );
     users.forEach((u) => {
       if (!u.hospital_facility_id) return;
-      const s = sets.get(u.hospital_facility_id);
+      const canonicalId = refToCanonicalId.get(u.hospital_facility_id) || u.hospital_facility_id;
+      const s = sets.get(canonicalId);
       if (s) s.add(peccDedupeKey('user', u.id, u.email));
     });
   }
@@ -4190,9 +4197,10 @@ async function loadPlatformUsersByRoles(params: {
     const hs = hospitalScope || [];
     const peccIdSet = new Set<string>();
     if (hs.length > 0) {
-      for (const hpart of chunk(hs, 80)) {
+      const { refs } = await expandHospitalRefsForPeccQuery(hs);
+      for (const hpart of chunk(refs, 80)) {
         const rows = await fetchAllRowsOrEmpty<{ id: string }>((from, to) =>
-          supabase.from('users').select('id').eq('role', 'pecc').in('hospital_facility_id', hpart).range(from, to)
+          supabase.from('users').select('id').eq('role', 'pecc').or(buildPeccHospitalFacilityOrClause(hpart)).range(from, to)
         );
         rows.forEach((r) => peccIdSet.add(r.id));
       }
@@ -4203,9 +4211,10 @@ async function loadPlatformUsersByRoles(params: {
     const hs = hospitalScope || [];
     const peccIdSet = new Set<string>();
     if (hs.length > 0) {
-      for (const hpart of chunk(hs, 80)) {
+      const { refs } = await expandHospitalRefsForPeccQuery(hs);
+      for (const hpart of chunk(refs, 80)) {
         const rows = await fetchAllRowsOrEmpty<{ id: string }>((from, to) =>
-          supabase.from('users').select('id').eq('role', 'pecc').in('hospital_facility_id', hpart).range(from, to)
+          supabase.from('users').select('id').eq('role', 'pecc').or(buildPeccHospitalFacilityOrClause(hpart)).range(from, to)
         );
         rows.forEach((r) => peccIdSet.add(r.id));
       }

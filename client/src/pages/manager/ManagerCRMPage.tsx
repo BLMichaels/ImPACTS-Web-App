@@ -65,6 +65,11 @@ import { getRoleLabel } from '../../utils/roleUtils';
 import { PECC_TAB_KEYS } from '../../types/database';
 import { TypeDeleteConfirmDialog } from '../../components/crm/TypeDeleteConfirmDialog';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import {
+  buildPeccHospitalFacilityOrClause,
+  expandHospitalRefsForPeccQuery,
+} from '../../utils/mentorHospitalAssignments';
+import { hospitalKeysMatch } from '../../utils/hospitalId';
 
 const CONTACT_STATUSES = [
   'ED Employee (general contact)',
@@ -134,12 +139,14 @@ async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<Set<str
     .eq('is_active', true);
   const hospitalIds = [...new Set((assignments || []).map((r: { hospital_id: string }) => r.hospital_id))];
   if (hospitalIds.length === 0) return ids;
+  const { refs: peccHospitalRefs } = await expandHospitalRefsForPeccQuery(hospitalIds);
+  if (peccHospitalRefs.length === 0) return ids;
   const { data: peccs } = await supabase
     .from('users')
     .select('id')
     .eq('role', 'pecc')
     .eq('is_active', true)
-    .in('hospital_facility_id', hospitalIds);
+    .or(buildPeccHospitalFacilityOrClause(peccHospitalRefs));
   (peccs || []).forEach((p: { id: string }) => ids.add(p.id));
   return ids;
 }
@@ -439,7 +446,7 @@ const ManagerCRMPage: React.FC = () => {
           .from('users')
           .select('id, hospital_facility_id')
           .eq('role', 'pecc')
-          .in('hospital_facility_id', hospitalRefs),
+          .or(buildPeccHospitalFacilityOrClause(hospitalRefs)),
         supabase
           .from('hospital_contacts')
           .select('id, hospital_id')
@@ -638,7 +645,11 @@ const ManagerCRMPage: React.FC = () => {
 
   const userPreviewHospitalName = useMemo(() => {
     if (!userPreviewUser?.hospital_facility_id) return '';
-    const h = hospitals.find((x) => x.id === userPreviewUser.hospital_facility_id);
+    const h = hospitals.find(
+      (x) =>
+        hospitalKeysMatch(x.id, userPreviewUser.hospital_facility_id) ||
+        hospitalKeysMatch(x.facilityId, userPreviewUser.hospital_facility_id)
+    );
     return h?.name || '';
   }, [userPreviewUser, hospitals]);
 
@@ -676,11 +687,14 @@ const ManagerCRMPage: React.FC = () => {
       const managedHospitalIds = hospitals.map((h) => h.id);
       let managedPeccIds: string[] = [];
       if (managedHospitalIds.length > 0) {
-        const { data: managedPeccs, error: managedPeccErr } = await supabase
-          .from('users')
-          .select('id')
-          .eq('role', 'pecc')
-          .in('hospital_facility_id', managedHospitalIds);
+        const { refs: peccHospitalRefs } = await expandHospitalRefsForPeccQuery(managedHospitalIds);
+        const { data: managedPeccs, error: managedPeccErr } = peccHospitalRefs.length > 0
+          ? await supabase
+              .from('users')
+              .select('id')
+              .eq('role', 'pecc')
+              .or(buildPeccHospitalFacilityOrClause(peccHospitalRefs))
+          : { data: [], error: null };
         if (managedPeccErr) throw managedPeccErr;
         managedPeccIds = (managedPeccs || []).map((p: { id: string }) => p.id);
       }
@@ -801,11 +815,13 @@ const ManagerCRMPage: React.FC = () => {
         return;
       }
 
+      const assignedBy = userProfile?.id || assignToMentorId;
       const { error: assignError } = await supabase
         .from('mentor_hospital_assignments')
         .insert({
           mentor_id: assignToMentorId,
           hospital_id: hospitalId,
+          assigned_by: assignedBy,
           is_active: true
         });
       if (assignError) throw assignError;

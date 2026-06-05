@@ -48,6 +48,7 @@ import {
   shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
+import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 import {
   resolvePeccsForMentorHospital,
   type MentorContactLike,
@@ -662,13 +663,13 @@ const MentorSiteMilestonesPage: React.FC = () => {
             .filter(Boolean)
         )];
         const userHospitalRefSet = new Set(userHospitalRefs);
-        const userHospitalOrClause = userHospitalRefs.map((ref) => `hospital_facility_id.eq.${ref}`).join(',');
-        const { data: peccUsers } = userHospitalOrClause
+        const peccHospitalOrClause = buildPeccHospitalFacilityOrClause([...userHospitalRefs]);
+        const { data: peccUsers } = peccHospitalOrClause
           ? await supabase
               .from('users')
               .select('id, first_name, last_name, email, mentor_id, hospital_facility_id')
               .eq('role', 'pecc')
-              .or(userHospitalOrClause)
+              .or(peccHospitalOrClause)
           : { data: [] as PeccUserLike[] };
 
         const { data: siteMembers } = await supabase

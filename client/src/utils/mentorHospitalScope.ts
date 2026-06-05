@@ -1,12 +1,79 @@
 /**
  * Canonical merge for mentor site lists:
  * 1) Active rows from mentor_hospital_assignments (authoritative for ops/admin assignments)
- * 2) mentorHospitals in user_data (Hospitals page / legacy; fills gaps before PECC accounts exist)
- * Order: assignment rows first, then stored-only sites not already represented by hospital id.
+ * 2) Hospitals from PECCs linked to this mentor (users.mentor_id + pecc_mentor_ids)
+ * 3) mentorHospitals in user_data (Hospitals page / legacy; fills gaps before PECC accounts exist)
+ * Order: assignment rows first, then PECC-linked, then stored-only sites not already represented.
  */
 import { supabase } from '../supabase';
-import { getUserData } from './userData';
-import { normalizeHospitalKey } from './hospitalId';
+import { batchGetUserDataForKey, getUserData } from './userData';
+import { hospitalIdOrFacilityOrClause, normalizeHospitalKey } from './hospitalId';
+
+const PECC_MENTOR_IDS_KEY = 'pecc_mentor_ids';
+
+type HospitalRowLite = { id: string; name?: string; facility_id?: string | null };
+
+async function resolveHospitalRowsByRefs(refs: string[]): Promise<Map<string, HospitalRowLite>> {
+  const unique = [...new Set(refs.map((r) => normalizeHospitalKey(r)).filter(Boolean))];
+  const byRef = new Map<string, HospitalRowLite>();
+  if (unique.length === 0) return byRef;
+
+  const orClause = unique.map((r) => hospitalIdOrFacilityOrClause(r)).join(',');
+  const { data, error } = await supabase.from('hospitals').select('id, name, facility_id').or(orClause);
+  if (error) throw error;
+
+  for (const row of (data || []) as HospitalRowLite[]) {
+    const id = normalizeHospitalKey(row.id);
+    const fid = row.facility_id != null ? normalizeHospitalKey(String(row.facility_id)) : '';
+    if (id) byRef.set(id, row);
+    if (fid) byRef.set(fid, row);
+  }
+  return byRef;
+}
+
+function hospitalRowMatchesRef(row: HospitalRowLite, ref: string): boolean {
+  const key = normalizeHospitalKey(ref);
+  if (!key) return false;
+  return key === normalizeHospitalKey(row.id) || key === normalizeHospitalKey(row.facility_id);
+}
+
+async function fetchPeccHospitalRefsForMentor(mentorId: string): Promise<string[]> {
+  const { data: primaryPeccs, error: primaryError } = await supabase
+    .from('users')
+    .select('id, hospital_facility_id')
+    .eq('role', 'pecc')
+    .eq('mentor_id', mentorId);
+  if (primaryError) throw primaryError;
+
+  const refs = new Set<string>();
+  for (const row of primaryPeccs || []) {
+    const ref = normalizeHospitalKey(row.hospital_facility_id);
+    if (ref) refs.add(ref);
+  }
+
+  const { data: allPeccs, error: allError } = await supabase
+    .from('users')
+    .select('id, hospital_facility_id')
+    .eq('role', 'pecc')
+    .eq('is_active', true);
+  if (allError) throw allError;
+
+  const peccIds = (allPeccs || []).map((row) => row.id);
+  const mentorLists = peccIds.length > 0
+    ? await batchGetUserDataForKey<string[]>(peccIds, PECC_MENTOR_IDS_KEY)
+    : new Map<string, string[] | null>();
+
+  for (const pecc of allPeccs || []) {
+    const extraMentors = mentorLists.get(pecc.id);
+    const linkedToMentor =
+      Array.isArray(extraMentors) && extraMentors.map((id) => normalizeHospitalKey(id)).includes(mentorId);
+    if (!linkedToMentor) continue;
+    const ref = normalizeHospitalKey(pecc.hospital_facility_id);
+    if (ref) refs.add(ref);
+  }
+
+  return [...refs];
+}
 
 export interface MentorStoredHospitalLite {
   id: string;
@@ -27,12 +94,18 @@ export interface MergedMentorHospitalRow {
     name?: string;
     facility_id?: string | null;
   };
-  source: 'assignment' | 'stored';
+  source: 'assignment' | 'pecc_linked' | 'stored';
   storedHospital?: { city?: string; state?: string };
 }
 
+function rowSeenKey(row: MergedMentorHospitalRow): string {
+  const id = normalizeHospitalKey(row.hospital.id);
+  const fid = normalizeHospitalKey(row.hospital.facility_id);
+  return id || fid;
+}
+
 export async function fetchMergedMentorHospitals(mentorId: string): Promise<MergedMentorHospitalRow[]> {
-  const [assignmentRes, storedMentorHospitals] = await Promise.all([
+  const [assignmentRes, storedMentorHospitals, peccHospitalRefs] = await Promise.all([
     supabase
       .from('mentor_hospital_assignments')
       .select(`
@@ -41,7 +114,8 @@ export async function fetchMergedMentorHospitals(mentorId: string): Promise<Merg
       `)
       .eq('mentor_id', mentorId)
       .eq('is_active', true),
-    getUserData<MentorStoredHospitalLite[]>(mentorId, 'mentorHospitals')
+    getUserData<MentorStoredHospitalLite[]>(mentorId, 'mentorHospitals'),
+    fetchPeccHospitalRefsForMentor(mentorId),
   ]);
 
   if (assignmentRes.error) throw assignmentRes.error;
@@ -68,21 +142,56 @@ export async function fetchMergedMentorHospitals(mentorId: string): Promise<Merg
     };
   });
 
-  const seen = new Set(merged.map((m) => normalizeHospitalKey(m.hospital.id)).filter(Boolean));
+  const seen = new Set(merged.map((m) => rowSeenKey(m)).filter(Boolean));
 
-  (Array.isArray(storedMentorHospitals) ? storedMentorHospitals : []).forEach((h) => {
-    const hid = normalizeHospitalKey(h?.id);
-    if (!hid || seen.has(hid)) return;
-    seen.add(hid);
+  const peccRowsByRef = await resolveHospitalRowsByRefs(peccHospitalRefs);
+  for (const ref of peccHospitalRefs) {
+    const resolved = peccRowsByRef.get(ref);
+    if (!resolved) continue;
+    const hid = normalizeHospitalKey(resolved.id);
+    const key = hid || ref;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const fid = resolved.facility_id != null ? normalizeHospitalKey(String(resolved.facility_id)) : null;
+    if (fid) seen.add(fid);
     merged.push({
-      id: `stored-${hid}`,
+      id: `pecc-${hid}`,
       hospital_id: hid,
       mentor_id: mentorId,
       is_active: true,
       hospital: {
         id: hid,
-        name: h?.name || 'Assigned Hospital',
-        facility_id: hid
+        name: resolved.name || 'Assigned Hospital',
+        facility_id: fid,
+      },
+      source: 'pecc_linked',
+    });
+  }
+
+  const storedList = Array.isArray(storedMentorHospitals) ? storedMentorHospitals : [];
+  const storedRefs = storedList.map((h) => normalizeHospitalKey(h?.id)).filter(Boolean);
+  const storedRowsByRef = await resolveHospitalRowsByRefs(storedRefs);
+
+  storedList.forEach((h) => {
+    const hid = normalizeHospitalKey(h?.id);
+    if (!hid) return;
+    const resolved = [...storedRowsByRef.values()].find((row) => hospitalRowMatchesRef(row, hid));
+    const canonicalId = normalizeHospitalKey(resolved?.id ?? hid);
+    const canonicalFid =
+      resolved?.facility_id != null ? normalizeHospitalKey(String(resolved.facility_id)) : null;
+    const key = canonicalId || hid;
+    if (seen.has(key) || (canonicalFid && seen.has(canonicalFid))) return;
+    seen.add(key);
+    if (canonicalFid) seen.add(canonicalFid);
+    merged.push({
+      id: `stored-${canonicalId}`,
+      hospital_id: canonicalId,
+      mentor_id: mentorId,
+      is_active: true,
+      hospital: {
+        id: canonicalId,
+        name: h?.name || resolved?.name || 'Assigned Hospital',
+        facility_id: canonicalFid,
       },
       source: 'stored',
       storedHospital: { city: h?.city, state: h?.state }

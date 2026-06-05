@@ -46,6 +46,7 @@ import {
   type PeccUserLike,
 } from '../../utils/mentorPeccHospitalMatch';
 import { hospitalKeysMatch } from '../../utils/hospitalId';
+import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 import { rollupMentorHoursByHospital, sumUnlinkedMentorHours } from '../../utils/mentorHoursByHospital';
 import { MentorHoursByHospitalPanel } from '../../components/mentor/MentorHoursByHospitalPanel';
 import DashboardResources from '../../components/DashboardResources';
@@ -229,13 +230,14 @@ const MentorDashboardPage: React.FC = () => {
       isPrimaryContact: c.isPrimaryContact,
     }));
 
+    const peccHospitalOrClause = buildPeccHospitalFacilityOrClause(hospitalRefs);
     const [{ data: byHospital }, { data: byMentor }] = await Promise.all([
       hospitalRefs.length > 0
         ? supabase
             .from('users')
             .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
             .eq('role', 'pecc')
-            .in('hospital_facility_id', hospitalRefs)
+            .or(peccHospitalOrClause)
         : Promise.resolve({ data: [] as PeccUserLike[], error: null }),
       supabase
         .from('users')

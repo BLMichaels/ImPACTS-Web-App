@@ -5,6 +5,11 @@ import { supabase } from '../../supabase';
 import { provisionCrmPortalUser } from '../../utils/provisionCrmPortalUser';
 import { useAuth } from '../../context/AuthContext';
 import { batchGetUserDataForKey, getUserData, setUserData } from '../../utils/userData';
+import {
+  applyPeccHospitalFromLinkedIds,
+  syncMentorHospitalAssignmentsForPecc,
+  syncMentorHospitalAssignmentsFromMentorPeccLink,
+} from '../../utils/mentorHospitalAssignments';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database';
@@ -1630,6 +1635,9 @@ const AdminCRMPage: React.FC = () => {
         managerLinks: managerIds.map((id) => ({ id, label: assignmentManagerOptions.find((opt) => opt.id === id)?.label || id })),
         peccLinks: peccIds.map((id) => ({ id, label: assignmentPeccOptions.find((opt) => opt.id === id)?.label || id })),
       }));
+      if (currentUser?.id) {
+        await syncMentorHospitalAssignmentsFromMentorPeccLink(resolvedUserId, peccIds, currentUser.id);
+      }
     } else {
       const { error } = await supabase
         .from('users')
@@ -1653,10 +1661,20 @@ const AdminCRMPage: React.FC = () => {
         mentorLinks: mentorIds.map((id) => ({ id, label: assignmentMentorOptions.find((opt) => opt.id === id)?.label || id })),
         peccLinks: [],
       });
+      if (currentUser?.id) {
+        await applyPeccHospitalFromLinkedIds(
+          resolvedUserId,
+          (detailContact?.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)))
+        );
+        for (const mentorId of mentorIds) {
+          await syncMentorHospitalAssignmentsFromMentorPeccLink(mentorId, [resolvedUserId], currentUser.id);
+        }
+        await syncMentorHospitalAssignmentsForPecc(resolvedUserId, currentUser.id);
+      }
     }
     setAssignmentSaving(false);
     setAssignmentDialogOpen(false);
-  }, [detailContact, detailContactUserId, assignmentManagerIds, assignmentMentorIds, assignmentPeccIds, assignmentManagerOptions, assignmentMentorOptions, assignmentPeccOptions]);
+  }, [detailContact, detailContactUserId, assignmentManagerIds, assignmentMentorIds, assignmentPeccIds, assignmentManagerOptions, assignmentMentorOptions, assignmentPeccOptions, currentUser?.id]);
 
   const reassignManagerReferences = useCallback(async (removedManagerUserId: string, replacementManagerUserId: string | null) => {
     const removedId = String(removedManagerUserId || '').trim();
@@ -2393,6 +2411,12 @@ const AdminCRMPage: React.FC = () => {
         .update({ mentor_id: mentorIds[0] || null, updated_at: new Date().toISOString() })
         .eq('id', resolvedUserId);
       await setUserData(resolvedUserId, USER_DATA_PECC_MENTOR_IDS, mentorIds);
+      if (currentUser?.id) {
+        for (const mentorId of mentorIds) {
+          await syncMentorHospitalAssignmentsFromMentorPeccLink(mentorId, [resolvedUserId], currentUser.id);
+        }
+        await syncMentorHospitalAssignmentsForPecc(resolvedUserId, currentUser.id);
+      }
       return;
     }
 
@@ -2422,8 +2446,11 @@ const AdminCRMPage: React.FC = () => {
         }
         await setUserData(peccRow.id, USER_DATA_PECC_MENTOR_IDS, nextMentorIds);
       }));
+      if (currentUser?.id) {
+        await syncMentorHospitalAssignmentsFromMentorPeccLink(resolvedUserId, peccIds, currentUser.id);
+      }
     }
-  }, []);
+  }, [currentUser?.id]);
 
   const applyManagerAssignments = useCallback(async (
     contactType: ContactType,
@@ -3036,6 +3063,14 @@ const AdminCRMPage: React.FC = () => {
       }
       await applyManagerAssignments(formData.type, assignmentTargetUserId, selectedManagerIdsForSave);
       await applyMentorPeccAssignments(formData.type, assignmentTargetUserId, selectedMentorIdsForSave, selectedPeccIdsForSave);
+    }
+
+    if (formData.type === 'pecc' && assignmentTargetUserId && currentUser?.id) {
+      const peccHospitalIds = (formData.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)));
+      if (peccHospitalIds.length > 0) {
+        await applyPeccHospitalFromLinkedIds(assignmentTargetUserId, peccHospitalIds);
+      }
+      await syncMentorHospitalAssignmentsForPecc(assignmentTargetUserId, currentUser.id);
     }
 
     // When a person contact has cohort(s) assigned, sync cohort_members so they show in the cohort's Members list

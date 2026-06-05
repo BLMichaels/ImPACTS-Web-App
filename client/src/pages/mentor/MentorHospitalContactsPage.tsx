@@ -58,6 +58,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getHospitalData, getUserData, resolveHospitalUuid, setUserData } from '../../utils/userData';
+import { fetchMergedMentorHospitals } from '../../utils/mentorHospitalScope';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -342,18 +343,49 @@ const MentorHospitalContactsPage: React.FC = () => {
         }
       } catch {}
     }
+    const storedHospitals: Hospital[] = [];
     if (hospitalsVal != null && Array.isArray(hospitalsVal)) {
       if (hospitalsVal.some((h: Hospital) => isOldMockHospital(h?.name || ''))) {
-        hospitals = [];
         await setUserData(uid, 'mentorHospitals', []);
         await setUserData(uid, 'mentorContacts', []);
       } else {
-        hospitals = hospitalsVal.map((h: Hospital) => ({
-          ...h,
-          isWorkingWith: h.isWorkingWith ?? true,
-          notesLog: Array.isArray((h as Hospital & { notesLog?: DatedNote[] }).notesLog) ? (h as Hospital & { notesLog: DatedNote[] }).notesLog : []
-        }));
+        hospitalsVal.forEach((h: Hospital) => {
+          storedHospitals.push({
+            ...h,
+            isWorkingWith: h.isWorkingWith ?? true,
+            notesLog: Array.isArray((h as Hospital & { notesLog?: DatedNote[] }).notesLog)
+              ? (h as Hospital & { notesLog: DatedNote[] }).notesLog
+              : [],
+          });
+        });
       }
+    }
+
+    const storedById = new Map(storedHospitals.map((h) => [String(h.id), h]));
+    try {
+      const mergedRows = await fetchMergedMentorHospitals(uid);
+      if (mergedRows.length > 0) {
+        hospitals = mergedRows.map((m) => {
+          const s = storedById.get(m.hospital.id);
+          return {
+            id: m.hospital.id,
+            name: s?.name || m.hospital.name || 'Hospital',
+            address: s?.address || '',
+            city: m.storedHospital?.city || s?.city || '',
+            state: m.storedHospital?.state || s?.state || '',
+            phone: s?.phone || '',
+            traumaLevel: s?.traumaLevel || '',
+            edSize: s?.edSize || '',
+            notes: s?.notes || '',
+            notesLog: s?.notesLog || [],
+            isWorkingWith: s?.isWorkingWith !== false,
+          };
+        });
+      } else {
+        hospitals = storedHospitals;
+      }
+    } catch {
+      hospitals = storedHospitals;
     }
     if (contactsVal != null && Array.isArray(contactsVal)) {
       if (contactsVal.some((c: any) => isOldMockContact(c?.firstName || '', c?.lastName || ''))) {

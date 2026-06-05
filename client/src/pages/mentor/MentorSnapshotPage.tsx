@@ -48,6 +48,7 @@ import {
   type PeccUserLike,
 } from '../../utils/mentorPeccHospitalMatch';
 import { hospitalKeysMatch } from '../../utils/hospitalId';
+import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 import { rollupMentorHoursByHospital, sumUnlinkedMentorHours } from '../../utils/mentorHoursByHospital';
 import { MentorPrsTrendChart, type MentorPrsSeries } from '../../components/mentor/MentorPrsTrendChart';
 import { MentorHoursByHospitalPanel } from '../../components/mentor/MentorHoursByHospitalPanel';
@@ -126,7 +127,15 @@ const MentorSnapshotPage = () => {
         setActivities(parsedMentorActivities);
 
         const mergedRows = await fetchMergedMentorHospitals(mentorUserId);
-        const mergedHospitals = mergedRows.map((row) => ({
+        const storedMentorHospitals =
+          (await getUserData<Array<{ id: string; isWorkingWith?: boolean }>>(mentorUserId, 'mentorHospitals')) || [];
+        const storedById = new Map(storedMentorHospitals.map((h) => [String(h.id), h]));
+        const mergedHospitals = mergedRows
+          .filter((row) => {
+            const stored = storedById.get(row.hospital.id);
+            return !(stored && stored.isWorkingWith === false);
+          })
+          .map((row) => ({
           id: row.id,
           hospital_id: row.hospital_id,
           mentor_id: row.mentor_id,
@@ -164,13 +173,14 @@ const MentorSnapshotPage = () => {
           ]);
 
           // Load PECCs assigned to these hospitals
+          const peccHospitalOrClause = buildPeccHospitalFacilityOrClause(hospitalIds);
           const [{ data: byHospital, error: byHospitalError }, { data: byMentor, error: byMentorError }] = await Promise.all([
             hospitalIds.length > 0
               ? supabase
                   .from('users')
                   .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')
                   .eq('role', 'pecc')
-                  .in('hospital_facility_id', hospitalIds)
+                  .or(peccHospitalOrClause)
               : Promise.resolve({ data: [] as PeccUserLike[], error: null }),
             supabase
               .from('users')
