@@ -46,6 +46,7 @@ import { UserRole } from '../types/database';
 import { useNavigate } from 'react-router-dom';
 import TermsOfService from '../components/TermsOfService';
 import { supabase } from '../supabase';
+import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 
 interface HospitalInfo {
   name: string;
@@ -207,7 +208,7 @@ const AccountPage = () => {
         const { data: hospital } = await supabase
           .from('hospitals')
           .select('id, name, address, city, state, zip, phone, trauma_level, ed_size, region')
-          .or(`id.eq.${hid},facility_id.eq.${hid}`)
+          .or(hospitalIdOrFacilityOrClause(hid))
           .maybeSingle();
         if (hospital) {
           setHospitalLoadId((hospital as { id: string }).id);

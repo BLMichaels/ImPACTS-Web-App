@@ -21,6 +21,7 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage, writeContinuityData } from '../utils/userData';
+import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml, stripHtmlToText } from '../components/cohorts/RichTextEditor';
 import {
@@ -447,7 +448,7 @@ const MilestonesPage = () => {
       const { data } = await supabase
         .from('hospitals')
         .select('id')
-        .or(`id.eq.${siteId},facility_id.eq.${siteId}`)
+        .or(hospitalIdOrFacilityOrClause(siteId))
         .limit(1)
         .maybeSingle();
       setHospitalId(data?.id ?? null);

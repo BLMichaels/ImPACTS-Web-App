@@ -19,6 +19,7 @@ import AdminTeamTab from './AdminTeamTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { buildCrmExportCsv } from '../../utils/crmExport';
+import { buildHospitalsTableOrClause, hospitalIdOrFacilityOrClause } from '../../utils/hospitalId';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
 import { CRM_CONTACT_TYPE_LABELS as TYPE_LABELS, CRM_CONTACT_TYPE_COLORS as TYPE_COLORS } from '../../utils/crmLabels';
@@ -2115,7 +2116,7 @@ const AdminCRMPage: React.FC = () => {
         if (prof) {
           setSiteMembers(prev => [...prev, { user_id: (prof as { id: string }).id, email: (prof as { email?: string }).email, first_name: (prof as { first_name?: string }).first_name, last_name: (prof as { last_name?: string }).last_name }]);
           // Add this person to the CRM as a contact associated with this hospital
-          const { data: hosp } = await supabase.from('hospitals').select('id').or(`id.eq.${siteId},facility_id.eq.${siteId}`).limit(1).maybeSingle();
+          const { data: hosp } = await supabase.from('hospitals').select('id').or(hospitalIdOrFacilityOrClause(siteId)).limit(1).maybeSingle();
           const hospitalId = hosp && typeof (hosp as { id?: string }).id === 'string' ? (hosp as { id: string }).id : null;
           if (hospitalId) {
             await supabase.from('hospital_contacts').upsert(
@@ -3356,15 +3357,13 @@ const AdminCRMPage: React.FC = () => {
     if (!c || c.type !== 'hospital') return;
     const hospitalId = c.hospitalId ?? c.id;
     const facilityId = c.facilityId ?? (c.id !== hospitalId ? c.id : null);
-    const orParts = [`id.eq.${hospitalId}`];
-    if (facilityId) orParts.push(`facility_id.eq.${facilityId}`);
-    if (c.id && c.id !== hospitalId) orParts.push(`id.eq.${c.id}`);
+    const lookupRefs = [hospitalId, facilityId, c.id !== hospitalId ? c.id : null].filter(Boolean) as string[];
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
         .from('hospitals')
         .select('notes_log, activity_log')
-        .or(orParts.join(','))
+        .or(buildHospitalsTableOrClause(lookupRefs))
         .limit(1)
         .maybeSingle();
       if (cancelled || error || !data) return;

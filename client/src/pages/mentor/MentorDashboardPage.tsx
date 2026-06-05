@@ -45,8 +45,8 @@ import {
   type MentorContactLike,
   type PeccUserLike,
 } from '../../utils/mentorPeccHospitalMatch';
-import { hospitalKeysMatch } from '../../utils/hospitalId';
-import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
+import { buildHospitalsTableOrClause, hospitalKeysMatch } from '../../utils/hospitalId';
+import { buildPeccHospitalFacilityOrClause, expandHospitalRefsForPeccQuery } from '../../utils/mentorHospitalAssignments';
 import { rollupMentorHoursByHospital, sumUnlinkedMentorHours } from '../../utils/mentorHoursByHospital';
 import { MentorHoursByHospitalPanel } from '../../components/mentor/MentorHoursByHospitalPanel';
 import DashboardResources from '../../components/DashboardResources';
@@ -201,9 +201,13 @@ const MentorDashboardPage: React.FC = () => {
     // Sync hospital names from CRM (Supabase) so updates in CRM appear in tabs
     const nameByKey: Record<string, string> = {};
     if (workingHospitals.length > 0) {
-      const ids = workingHospitals.map((h: StoredHospital) => h.id);
-      const orParts = ids.flatMap((id: string) => [`id.eq.${id}`, `facility_id.eq.${id}`]);
-      const { data: rows } = await supabase.from('hospitals').select('id, facility_id, name').or(orParts.join(','));
+      const ids = workingHospitals.flatMap((h: StoredHospital) =>
+        [h.id, h.facilityId].map((ref) => String(ref || '').trim()).filter(Boolean)
+      );
+      const { data: rows } = await supabase
+        .from('hospitals')
+        .select('id, facility_id, name')
+        .or(buildHospitalsTableOrClause(ids));
       (rows || []).forEach((r: { id?: string; facility_id?: string; name?: string }) => {
         const name = r.name != null ? normalizeHospitalOrOrgName(r.name) : '';
         if (r.id) nameByKey[r.id] = name;
@@ -230,9 +234,10 @@ const MentorDashboardPage: React.FC = () => {
       isPrimaryContact: c.isPrimaryContact,
     }));
 
-    const peccHospitalOrClause = buildPeccHospitalFacilityOrClause(hospitalRefs);
+    const { refs: expandedPeccRefs } = await expandHospitalRefsForPeccQuery(hospitalRefs);
+    const peccHospitalOrClause = buildPeccHospitalFacilityOrClause(expandedPeccRefs);
     const [{ data: byHospital }, { data: byMentor }] = await Promise.all([
-      hospitalRefs.length > 0
+      peccHospitalOrClause
         ? supabase
             .from('users')
             .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')

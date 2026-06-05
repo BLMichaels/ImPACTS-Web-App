@@ -5,6 +5,7 @@ import { UserRole, normalizeUserRole, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } 
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import { getUserData } from '../utils/userData';
 import { applyPeccHospitalFromLinkedIds } from '../utils/mentorHospitalAssignments';
+import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 import { resolveNavbarProgramLogo } from '../utils/resolveNavbarProgramLogo';
 
 // Re-export UserRole as UserTier for backward compatibility
@@ -348,7 +349,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           const { data: hospitalRow } = await supabase
             .from('hospitals')
             .select('name')
-            .or(`id.eq.${siteIdToResolve},facility_id.eq.${siteIdToResolve}`)
+            .or(hospitalIdOrFacilityOrClause(siteIdToResolve))
             .limit(1)
             .maybeSingle();
           const hospitalName = (hospitalRow as { name?: string } | null)?.name;

@@ -26,7 +26,7 @@ import { supabase } from '../supabase';
 import { getInvitationByCode, acceptInvitation } from '../utils/invitations';
 import { UserRole } from '../types/database';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
-import { resolvePeccFacilityId } from '../utils/hospitalId';
+import { hospitalIdOrFacilityOrClause, resolvePeccFacilityId } from '../utils/hospitalId';
 import { syncMentorHospitalAssignmentsForPecc, syncPeccHospitalAndMentorFromCrm } from '../utils/mentorHospitalAssignments';
 import { ensureHospitalDataPlaceholder } from '../utils/userData';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
@@ -106,7 +106,7 @@ const InvitationPage: React.FC = () => {
         const { data: hospital } = await supabase
           .from('hospitals')
           .select('name')
-          .or(`id.eq.${hid},facility_id.eq.${hid}`)
+          .or(hospitalIdOrFacilityOrClause(hid))
           .maybeSingle();
         if (cancelled) return;
         if (hospital && typeof (hospital as { name?: string }).name === 'string') {
@@ -371,7 +371,7 @@ const InvitationPage: React.FC = () => {
             const { data: hospital } = await supabase
               .from('hospitals')
               .select('id')
-              .or(`id.eq.${hid},facility_id.eq.${hid}`)
+              .or(hospitalIdOrFacilityOrClause(hid))
               .maybeSingle();
             const hospitalId = String((hospital as { id?: string } | null)?.id ?? '');
             if (hospitalId) {

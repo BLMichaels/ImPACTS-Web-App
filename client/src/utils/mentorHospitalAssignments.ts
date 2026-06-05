@@ -3,6 +3,7 @@
  */
 import { supabase } from '../supabase';
 import {
+  buildHospitalsTableOrClause,
   hospitalIdOrFacilityOrClause,
   normalizeHospitalKey,
   resolvePeccFacilityId,
@@ -222,7 +223,7 @@ export async function syncMentorHospitalAssignmentsFromMentorPeccLink(
 /** PostgREST .or() for matching PECC hospital_facility_id against multiple id/facility refs. */
 export function buildPeccHospitalFacilityOrClause(refs: string[]): string {
   const unique = [...new Set(refs.map((r) => normalizeHospitalKey(r)).filter(Boolean))];
-  if (unique.length === 0) return 'hospital_facility_id.eq.__none__';
+  if (unique.length === 0) return '';
   return unique.map((r) => `hospital_facility_id.eq.${r}`).join(',');
 }
 
@@ -235,7 +236,7 @@ export async function expandHospitalRefsForPeccQuery(
   const refs = new Set<string>();
   if (seeds.length === 0) return { refs: [], refToCanonicalId };
 
-  const orClause = seeds.map((r) => hospitalIdOrFacilityOrClause(r)).join(',');
+  const orClause = buildHospitalsTableOrClause(seeds);
   const { data, error } = await supabase.from('hospitals').select('id, facility_id').or(orClause);
   if (error) throw error;
 

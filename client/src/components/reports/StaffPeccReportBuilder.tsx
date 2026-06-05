@@ -66,6 +66,7 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
 import { mapSiteRefsToHospitalRowIds, shouldMirrorLegacyUserData } from '../../utils/userData';
+import { buildHospitalsTableOrClause } from '../../utils/hospitalId';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { getCrmContactTypeLabel } from '../../utils/crmLabels';
 import {
@@ -3590,13 +3591,13 @@ async function loadHospitalDataset(params: {
   if (hospitalScope && hospitalScope.length) {
     const seenRowIds = new Set<string>();
     for (const part of chunk(hospitalScope, 40)) {
-      const orParts = part.filter(Boolean).flatMap((id) => [`id.eq.${id}`, `facility_id.eq.${id}`]);
-      if (!orParts.length) continue;
+      const orClause = buildHospitalsTableOrClause(part.filter(Boolean));
+      if (!orClause || orClause.includes('__no_match__')) continue;
       const partRows = await fetchAllRows<Record<string, unknown>>((from, to) =>
         supabase
           .from('hospitals')
           .select(hospitalSelect)
-          .or(orParts.join(','))
+          .or(orClause)
           .eq('is_active', true)
           .order('name')
           .range(from, to)

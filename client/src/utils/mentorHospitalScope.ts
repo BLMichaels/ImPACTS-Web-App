@@ -7,7 +7,7 @@
  */
 import { supabase } from '../supabase';
 import { batchGetUserDataForKey, getUserData } from './userData';
-import { hospitalIdOrFacilityOrClause, normalizeHospitalKey } from './hospitalId';
+import { buildHospitalsTableOrClause, normalizeHospitalKey } from './hospitalId';
 import {
   buildPeccHospitalFacilityOrClause,
   expandHospitalRefsForPeccQuery,
@@ -22,7 +22,7 @@ async function resolveHospitalRowsByRefs(refs: string[]): Promise<Map<string, Ho
   const byRef = new Map<string, HospitalRowLite>();
   if (unique.length === 0) return byRef;
 
-  const orClause = unique.map((r) => hospitalIdOrFacilityOrClause(r)).join(',');
+  const orClause = buildHospitalsTableOrClause(unique);
   const { data, error } = await supabase.from('hospitals').select('id, name, facility_id').or(orClause);
   if (error) throw error;
 

@@ -48,7 +48,7 @@ import {
   type PeccUserLike,
 } from '../../utils/mentorPeccHospitalMatch';
 import { hospitalKeysMatch } from '../../utils/hospitalId';
-import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
+import { buildPeccHospitalFacilityOrClause, expandHospitalRefsForPeccQuery } from '../../utils/mentorHospitalAssignments';
 import { rollupMentorHoursByHospital, sumUnlinkedMentorHours } from '../../utils/mentorHoursByHospital';
 import { MentorPrsTrendChart, type MentorPrsSeries } from '../../components/mentor/MentorPrsTrendChart';
 import { MentorHoursByHospitalPanel } from '../../components/mentor/MentorHoursByHospitalPanel';
@@ -173,9 +173,10 @@ const MentorSnapshotPage = () => {
           ]);
 
           // Load PECCs assigned to these hospitals
-          const peccHospitalOrClause = buildPeccHospitalFacilityOrClause(hospitalIds);
+          const { refs: expandedPeccRefs } = await expandHospitalRefsForPeccQuery(hospitalIds);
+          const peccHospitalOrClause = buildPeccHospitalFacilityOrClause(expandedPeccRefs);
           const [{ data: byHospital, error: byHospitalError }, { data: byMentor, error: byMentorError }] = await Promise.all([
-            hospitalIds.length > 0
+            peccHospitalOrClause
               ? supabase
                   .from('users')
                   .select('id, first_name, last_name, email, hospital_facility_id, mentor_id')

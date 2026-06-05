@@ -24,6 +24,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
+import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 import TermsOfService from '../components/TermsOfService';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../types/database';
 
@@ -324,7 +325,7 @@ export default function RegisterPage() {
         const { data: hosp } = await supabase
           .from('hospitals')
           .select('id')
-          .or(`id.eq.${hospitalFacilityId},facility_id.eq.${hospitalFacilityId}`)
+          .or(hospitalIdOrFacilityOrClause(hospitalFacilityId))
           .limit(1)
           .maybeSingle();
         const hospitalId = hosp && typeof (hosp as { id?: string }).id === 'string' ? (hosp as { id: string }).id : null;
