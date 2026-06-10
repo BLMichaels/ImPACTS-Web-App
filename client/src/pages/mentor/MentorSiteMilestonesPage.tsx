@@ -38,6 +38,7 @@ import { format, parseISO } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { useNavigate } from 'react-router-dom';
+import { useMentorWorkRoutes } from '../../hooks/useMentorWorkRoutes';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { supabase } from '../../supabase';
 import {
@@ -465,6 +466,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { effectiveUserId, enterViewAsUser } = useUserProfile();
   const navigate = useNavigate();
+  const mentorRoutes = useMentorWorkRoutes();
   const { trackChecklist } = useUsageAnalytics();
 
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
@@ -1284,7 +1286,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
   const handleViewCRM = (hospitalId: string) => {
     handleHospitalMenuClose();
-    navigate(`/mentor/hospitals?hospital=${encodeURIComponent(hospitalId)}`);
+    navigate(mentorRoutes.hospitalsWithHospital(hospitalId));
   };
 
   const handleViewPECCAccount = async (hospitalId: string) => {
@@ -1309,7 +1311,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
       await handleViewPECCAccount(hospitalId);
       return;
     }
-    navigate(`/mentor/hospitals?hospital=${encodeURIComponent(hospitalId)}`);
+    navigate(mentorRoutes.hospitalsWithHospital(hospitalId));
   };
 
   const getStageColor = (stageId: string, stage?: MilestoneStage) => {
@@ -1396,7 +1398,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
         {hospitals.length === 0 ? (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
             <Typography color="textSecondary" gutterBottom>No hospitals yet. Add hospitals from the Hospitals page so you can track checklist progress and mentor hours per site.</Typography>
-            <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate('/mentor/hospitals')}>
+            <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate(mentorRoutes.hospitals)}>
               Go to Hospitals
             </Button>
           </Paper>

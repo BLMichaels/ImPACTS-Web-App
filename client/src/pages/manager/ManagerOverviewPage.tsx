@@ -32,8 +32,8 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
-import { batchGetUserDataForKey } from '../../utils/userData';
 import { buildMentorHospitalContext, countPeccsByCanonicalHospital } from '../../utils/mentorHospitalScope';
+import { getScopedMentorUsersForManager } from '../../utils/managerTeamScope';
 
 interface MentorData {
   id: string;
@@ -46,6 +46,7 @@ interface MentorData {
     peccCount: number;
   }>;
   totalActivities: number;
+  activitiesThisMonth: number;
   hoursThisMonth: number;
   lastActivity: string | null;
 }
@@ -56,13 +57,6 @@ interface DashboardStats {
   totalPeccs: number;
   activitiesThisMonth: number;
   hoursThisMonth: number;
-}
-
-const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
-
-function normalizeManagerIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
 }
 
 const ManagerOverviewPage: React.FC = () => {
@@ -120,25 +114,7 @@ const ManagerOverviewPage: React.FC = () => {
         setLoadError(null);
       }
 
-      // Load all mentors and include both primary and additional manager assignments.
-      const { data: mentorUsers, error: mentorError } = await supabase
-        .from('users')
-        .select('id, first_name, last_name, email, manager_id')
-        .eq('role', 'mentor');
-
-      if (mentorError) throw mentorError;
-      if (!mentorUsers || mentorUsers.length === 0) {
-        if (isMountedRef.current) setMentors([]);
-        return;
-      }
-
-      const mentorIds = mentorUsers.map((m) => m.id);
-      const extraManagerMap = await batchGetUserDataForKey<string[]>(mentorIds, USER_DATA_MENTOR_MANAGER_IDS);
-      const scopedMentors = mentorUsers.filter((mentor) => {
-        if (mentor.manager_id === userProfile.id) return true;
-        const additional = normalizeManagerIds(extraManagerMap.get(mentor.id));
-        return additional.includes(userProfile.id);
-      });
+      const scopedMentors = await getScopedMentorUsersForManager(userProfile.id);
       if (scopedMentors.length === 0) {
         if (isMountedRef.current) setMentors([]);
         return;
@@ -164,12 +140,11 @@ const ManagerOverviewPage: React.FC = () => {
           const activities = await getMentorActivitiesForUser(mentor.id);
           const totalActivities = activities.length;
 
-        // Calculate hours this month
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        const hoursThisMonth = activities
-          .filter((a: any) => new Date(a.date) >= monthStart)
-          .reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
+        const monthActivities = activities.filter((a: any) => new Date(a.date) >= monthStart);
+        const activitiesThisMonth = monthActivities.length;
+        const hoursThisMonth = monthActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
 
         // Get last activity date
         const lastActivity = activities.length > 0
@@ -183,6 +158,7 @@ const ManagerOverviewPage: React.FC = () => {
             email: mentor.email,
             assignedHospitals: hospitals,
             totalActivities,
+            activitiesThisMonth,
             hoursThisMonth,
             lastActivity
           };
@@ -203,7 +179,7 @@ const ManagerOverviewPage: React.FC = () => {
       totalMentors: mentors.length,
       totalSites: Array.from(new Set(mentors.flatMap(m => m.assignedHospitals.map(h => h.id)))).length,
       totalPeccs: mentors.reduce((sum, m) => sum + m.assignedHospitals.reduce((s, h) => s + h.peccCount, 0), 0),
-      activitiesThisMonth: mentors.reduce((sum, m) => sum + m.totalActivities, 0),
+      activitiesThisMonth: mentors.reduce((sum, m) => sum + m.activitiesThisMonth, 0),
       hoursThisMonth: mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0)
     };
   }, [mentors]);
@@ -268,9 +244,29 @@ const ManagerOverviewPage: React.FC = () => {
           </Button>
         </Alert>
       )}
-      <Typography variant="h4" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 3 }}>
-        Manager Overview
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+        <Typography variant="h4" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 0 }}>
+          Manager Overview
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button variant="outlined" size="small" onClick={() => navigate('/manager/reports')}>
+            Reports
+          </Button>
+          <Button variant="outlined" size="small" onClick={() => navigate('/manager/snapshot')}>
+            Team snapshot
+          </Button>
+        </Box>
+      </Box>
+
+      {userProfile?.has_hospital_assignments && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          You are also assigned as a mentor to hospitals. Use{' '}
+          <Button size="small" onClick={() => navigate('/manager/activities')}>My Activities</Button>
+          {' '}and{' '}
+          <Button size="small" onClick={() => navigate('/manager/hospitals')}>My Hospitals</Button>
+          {' '}for your direct mentoring work.
+        </Alert>
+      )}
 
       {selectedHospitalId && (
         <Card sx={{ mb: 3 }}>

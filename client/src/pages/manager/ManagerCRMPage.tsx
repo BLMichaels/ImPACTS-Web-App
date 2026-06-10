@@ -70,6 +70,10 @@ import {
   expandHospitalRefsForPeccQuery,
 } from '../../utils/mentorHospitalAssignments';
 import { hospitalKeysMatch } from '../../utils/hospitalId';
+import {
+  fetchManagerVisibleUserIdsSet,
+  getManagedMentorIdsForManager,
+} from '../../utils/managerTeamScope';
 
 const CONTACT_STATUSES = [
   'ED Employee (general contact)',
@@ -118,37 +122,6 @@ interface MentorOption {
   first_name: string;
   last_name: string;
   email: string;
-}
-
-/** Users a manager may see in reports: self, managed mentors, and PECCs at assigned hospitals. */
-async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<Set<string>> {
-  const ids = new Set<string>();
-  ids.add(managerId);
-  const { data: mentors } = await supabase
-    .from('users')
-    .select('id')
-    .eq('manager_id', managerId)
-    .eq('role', 'mentor')
-    .eq('is_active', true);
-  (mentors || []).forEach((m: { id: string }) => ids.add(m.id));
-  const mentorIds = [...ids];
-  const { data: assignments } = await supabase
-    .from('mentor_hospital_assignments')
-    .select('hospital_id')
-    .in('mentor_id', mentorIds)
-    .eq('is_active', true);
-  const hospitalIds = [...new Set((assignments || []).map((r: { hospital_id: string }) => r.hospital_id))];
-  if (hospitalIds.length === 0) return ids;
-  const { refs: peccHospitalRefs } = await expandHospitalRefsForPeccQuery(hospitalIds);
-  if (peccHospitalRefs.length === 0) return ids;
-  const { data: peccs } = await supabase
-    .from('users')
-    .select('id')
-    .eq('role', 'pecc')
-    .eq('is_active', true)
-    .or(buildPeccHospitalFacilityOrClause(peccHospitalRefs));
-  (peccs || []).forEach((p: { id: string }) => ids.add(p.id));
-  return ids;
 }
 
 /** Tab keys match PECC_TAB_KEYS so Manager saves to view_tabs (source of truth for Navbar). */
@@ -369,16 +342,7 @@ const ManagerCRMPage: React.FC = () => {
 
   const getManagedMentorIds = async (): Promise<string[]> => {
     if (!userProfile?.id) return [];
-    const { data, error } = await supabase
-      .from('users')
-      .select('id')
-      .eq('role', 'mentor')
-      .eq('manager_id', userProfile.id);
-    if (error) throw error;
-    const ids = (data || []).map((r: { id: string }) => r.id);
-    // If the manager also mentors directly, include self.
-    if (!ids.includes(userProfile.id)) ids.push(userProfile.id);
-    return ids;
+    return getManagedMentorIdsForManager(userProfile.id);
   };
 
   const loadHospitals = async () => {

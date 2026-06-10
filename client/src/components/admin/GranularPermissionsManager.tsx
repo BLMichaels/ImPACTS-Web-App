@@ -37,6 +37,7 @@ import { crmContactTypeToListRole } from '../../utils/crmLabels';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { UserRole, normalizeUserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User, DEFAULT_ROLE_PERMISSIONS } from '../../types/database';
 import { formatPermissionLabel } from '../../utils/permissionsUi';
+import { fetchUsersForManagerPermissions } from '../../utils/managerTeamScope';
 
 const PENDING_USER_PREFIX = 'pending:';
 
@@ -255,12 +256,14 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           }
         }
       } else {
-        let usersQuery = supabase.from('users').select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id');
         if (mode === 'manager' && userProfile?.id) {
-          usersQuery = usersQuery.or(`manager_id.eq.${userProfile.id},manager_id_for_pecc.eq.${userProfile.id}`);
+          usersData = await fetchUsersForManagerPermissions(userProfile.id);
+        } else {
+          const { data } = await supabase
+            .from('users')
+            .select('id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id');
+          usersData = data;
         }
-        const { data } = await usersQuery;
-        usersData = data;
       }
       if (usersData) {
         setUsers(usersData.map((u: {

@@ -34,7 +34,8 @@ import {
   AttachMoney as MoneyIcon,
   Settings as SettingsIcon,
   AccountTree as PipelineIcon,
-  Groups as CohortsIcon
+  Groups as CohortsIcon,
+  Assessment as AssessmentIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -130,7 +131,7 @@ const Navbar: React.FC = () => {
         const managerItems: NavItem[] = [
           { path: '/manager/overview', label: 'Overview', icon: <DashboardIcon /> },
           { path: '/manager/reports', label: 'Reports', icon: <TimelineIcon /> },
-          { path: '/manager/snapshot', label: 'Team snapshot', icon: <TimelineIcon /> },
+          { path: '/manager/snapshot', label: 'Team snapshot', icon: <AssessmentIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
@@ -138,7 +139,7 @@ const Navbar: React.FC = () => {
         ];
         
         // If manager has hospital assignments (working as mentor), add mentor-like tabs
-        if (userProfile && (userProfile as any).has_hospital_assignments) {
+        if (userProfile?.has_hospital_assignments) {
           managerItems.splice(1, 0, 
             { path: '/manager/activities', label: 'My Activities', icon: <WorkIcon /> },
             { path: '/manager/hospitals', label: 'My Hospitals', icon: <HospitalIcon /> },

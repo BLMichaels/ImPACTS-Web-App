@@ -35,8 +35,8 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
-import { batchGetUserDataForKey } from '../../utils/userData';
 import { buildMentorHospitalContext, countPeccsByCanonicalHospital } from '../../utils/mentorHospitalScope';
+import { getScopedMentorUsersForManager } from '../../utils/managerTeamScope';
 import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 interface AssignedHospital {
   id: string;
@@ -65,13 +65,6 @@ interface ManagerOwnMentoring {
   hoursTotal: number;
   hoursThisMonth: number;
   lastMonthHours: number;
-}
-
-const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
-
-function normalizeManagerIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
 }
 
 const ManagerSnapshotPage: React.FC = () => {
@@ -108,31 +101,7 @@ const ManagerSnapshotPage: React.FC = () => {
           setHasError(false);
         }
 
-        // Load all mentors and include both primary and additional manager assignments.
-        const { data: mentorUsers, error: mentorError } = await supabase
-          .from('users')
-          .select('id, first_name, last_name, email, manager_id')
-          .eq('role', 'mentor');
-
-        if (mentorError) throw mentorError;
-        if (!mentorUsers || mentorUsers.length === 0) {
-          if (!cancelled) {
-            setMentors([]);
-            setTotalPeccs(0);
-            setTotalSites(0);
-            setPeccProgressSum(0);
-            setPeccProgressCount(0);
-          }
-          return;
-        }
-
-        const mentorIds = mentorUsers.map((m) => m.id);
-        const extraManagerMap = await batchGetUserDataForKey<string[]>(mentorIds, USER_DATA_MENTOR_MANAGER_IDS);
-        const scopedMentors = mentorUsers.filter((mentor) => {
-          if (mentor.manager_id === userProfile.id) return true;
-          const additional = normalizeManagerIds(extraManagerMap.get(mentor.id));
-          return additional.includes(userProfile.id);
-        });
+        const scopedMentors = await getScopedMentorUsersForManager(userProfile.id);
         if (scopedMentors.length === 0) {
           if (!cancelled) {
             setMentors([]);
@@ -356,20 +325,25 @@ const ManagerSnapshotPage: React.FC = () => {
               Team snapshot
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              Team-wide mentoring metrics (advanced data reports are in Admin → Reports)
+              Team-wide mentoring metrics — use Reports for CSV exports and longitudinal datasets
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Track your team’s mentors, sites, PECCs, and hours. If you also mentor, your own activity is included below.
             </Typography>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<PictureAsPdfIcon />}
-            onClick={exportToPDF}
-            sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
-          >
-            Export PDF
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button variant="outlined" onClick={() => navigate('/manager/reports')}>
+              Open Reports
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={exportToPDF}
+              sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
+            >
+              Print snapshot
+            </Button>
+          </Box>
         </Box>
       </Box>
 

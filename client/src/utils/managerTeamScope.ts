@@ -1,0 +1,156 @@
+/**
+ * Shared manager team scoping: primary manager_id, secondary mentor_manager_ids,
+ * and manager-as-mentor (self) hospital assignments.
+ */
+import { supabase } from '../supabase';
+import { batchGetUserDataForKey } from './userData';
+import {
+  buildPeccHospitalFacilityOrClause,
+  expandHospitalRefsForPeccQuery,
+} from './mentorHospitalAssignments';
+
+export const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
+
+const PERMISSIONS_USER_SELECT =
+  'id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id';
+
+export function normalizeManagerIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
+}
+
+export type ManagedMentorUser = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  manager_id: string | null;
+};
+
+export async function managerHasHospitalAssignments(managerId: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('mentor_hospital_assignments')
+    .select('id', { count: 'exact', head: true })
+    .eq('mentor_id', managerId)
+    .eq('is_active', true);
+  if (error) {
+    console.warn('[managerTeamScope] hospital assignment check failed', error);
+    return false;
+  }
+  return (count ?? 0) > 0;
+}
+
+/** Mentor user IDs this manager oversees (primary, secondary, and self when mentoring). */
+export async function getManagedMentorIdsForManager(managerId: string): Promise<string[]> {
+  const { data: mentorUsers, error } = await supabase
+    .from('users')
+    .select('id, manager_id')
+    .eq('role', 'mentor')
+    .eq('is_active', true);
+
+  if (error) throw error;
+
+  const scoped: string[] = [];
+  if (mentorUsers?.length) {
+    const mentorIds = mentorUsers.map((m) => m.id);
+    const extraManagerMap = await batchGetUserDataForKey<string[]>(mentorIds, USER_DATA_MENTOR_MANAGER_IDS);
+    mentorUsers.forEach((mentor) => {
+      if (mentor.manager_id === managerId) {
+        scoped.push(mentor.id);
+        return;
+      }
+      const additional = normalizeManagerIds(extraManagerMap.get(mentor.id));
+      if (additional.includes(managerId)) scoped.push(mentor.id);
+    });
+  }
+
+  if (!scoped.includes(managerId) && (await managerHasHospitalAssignments(managerId))) {
+    scoped.push(managerId);
+  }
+
+  return scoped;
+}
+
+/** Mentor rows scoped to this manager (includes self when manager mentors directly). */
+export async function getScopedMentorUsersForManager(managerId: string): Promise<ManagedMentorUser[]> {
+  const { data: mentorUsers, error } = await supabase
+    .from('users')
+    .select('id, first_name, last_name, email, manager_id')
+    .eq('role', 'mentor');
+
+  if (error) throw error;
+  if (!mentorUsers?.length) return [];
+
+  const mentorIds = mentorUsers.map((m) => m.id);
+  const extraManagerMap = await batchGetUserDataForKey<string[]>(mentorIds, USER_DATA_MENTOR_MANAGER_IDS);
+  const scoped = mentorUsers.filter((mentor) => {
+    if (mentor.manager_id === managerId) return true;
+    const additional = normalizeManagerIds(extraManagerMap.get(mentor.id));
+    return additional.includes(managerId);
+  }) as ManagedMentorUser[];
+
+  if (!scoped.some((m) => m.id === managerId) && (await managerHasHospitalAssignments(managerId))) {
+    const { data: self } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, email, manager_id')
+      .eq('id', managerId)
+      .maybeSingle();
+    if (self) scoped.push(self as ManagedMentorUser);
+  }
+
+  return scoped;
+}
+
+/** Users a manager may see in CRM previews and reports. */
+export async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  ids.add(managerId);
+
+  const mentorIds = await getManagedMentorIdsForManager(managerId);
+  mentorIds.forEach((id) => ids.add(id));
+
+  if (mentorIds.length === 0) return ids;
+
+  const { data: assignments } = await supabase
+    .from('mentor_hospital_assignments')
+    .select('hospital_id')
+    .in('mentor_id', mentorIds)
+    .eq('is_active', true);
+
+  const hospitalIds = [...new Set((assignments || []).map((r: { hospital_id: string }) => r.hospital_id))];
+  if (hospitalIds.length === 0) return ids;
+
+  const { refs: peccHospitalRefs } = await expandHospitalRefsForPeccQuery(hospitalIds);
+  if (peccHospitalRefs.length === 0) return ids;
+
+  const { data: peccs } = await supabase
+    .from('users')
+    .select('id')
+    .eq('role', 'pecc')
+    .eq('is_active', true)
+    .or(buildPeccHospitalFacilityOrClause(peccHospitalRefs));
+
+  (peccs || []).forEach((p: { id: string }) => ids.add(p.id));
+
+  const { data: directPeccs } = await supabase
+    .from('users')
+    .select('id')
+    .eq('role', 'pecc')
+    .eq('is_active', true)
+    .eq('manager_id_for_pecc', managerId);
+
+  (directPeccs || []).forEach((p: { id: string }) => ids.add(p.id));
+
+  return ids;
+}
+
+/** Team users a manager can configure in Team Permissions. */
+export async function fetchUsersForManagerPermissions(managerId: string) {
+  const visibleIds = await fetchManagerVisibleUserIdsSet(managerId);
+  const idList = [...visibleIds];
+  if (idList.length === 0) return [];
+
+  const { data, error } = await supabase.from('users').select(PERMISSIONS_USER_SELECT).in('id', idList);
+  if (error) throw error;
+  return data || [];
+}

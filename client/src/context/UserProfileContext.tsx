@@ -7,6 +7,7 @@ import { getUserData } from '../utils/userData';
 import { applyPeccHospitalFromLinkedIds } from '../utils/mentorHospitalAssignments';
 import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 import { resolveNavbarProgramLogo } from '../utils/resolveNavbarProgramLogo';
+import { managerHasHospitalAssignments } from '../utils/managerTeamScope';
 
 // Re-export UserRole as UserTier for backward compatibility
 export { UserRole as UserTier } from '../types/database';
@@ -35,6 +36,8 @@ export interface UserProfile {
   
   // Mentor-specific fields
   wages_enabled?: boolean;  // If true, mentor can see wages tab (admin-controlled)
+  /** Manager also assigned as mentor to hospitals (shows My Activities / Hospitals nav). */
+  has_hospital_assignments?: boolean;
   primary_program_id?: string | null;  // Which program's logo to show in navbar
   // From user_data (Account page): gap plan reminder preferences for PECCs
   gapPlanReminders?: { enabled?: boolean; emailNotifications?: boolean; reminderDays?: number; emailFrequency?: string };
@@ -333,14 +336,16 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         setMentorPeccVisibleTabs(resolvedTabs);
 
         // Load from user_data: gap plan reminders (Account page), wages_enabled (mentors, admin-controlled)
-        const [gapPlanReminders, wagesEnabled] = await Promise.all([
+        const [gapPlanReminders, wagesEnabled, hasHospitalAssignments] = await Promise.all([
           getUserData<{ enabled?: boolean; emailNotifications?: boolean; reminderDays?: number; emailFrequency?: string }>(currentUser.id, 'gap_plan_reminders'),
-          normalizedRole === UserRole.MENTOR ? getUserData<boolean>(currentUser.id, 'wages_enabled') : Promise.resolve(null)
+          normalizedRole === UserRole.MENTOR ? getUserData<boolean>(currentUser.id, 'wages_enabled') : Promise.resolve(null),
+          normalizedRole === UserRole.MANAGER ? managerHasHospitalAssignments(currentUser.id) : Promise.resolve(false),
         ]);
         const profWithUserData = {
           ...prof,
           ...(gapPlanReminders != null ? { gapPlanReminders } : {}),
-          ...(wagesEnabled !== undefined && wagesEnabled !== null ? { wages_enabled: !!wagesEnabled } : {})
+          ...(wagesEnabled !== undefined && wagesEnabled !== null ? { wages_enabled: !!wagesEnabled } : {}),
+          ...(normalizedRole === UserRole.MANAGER ? { has_hospital_assignments: hasHospitalAssignments } : {}),
         };
 
         // Resolve hospital/site name from CRM (hospitals table) so tabs and UI show current name after CRM updates

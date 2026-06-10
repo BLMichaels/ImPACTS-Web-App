@@ -63,6 +63,7 @@ import {
   shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 import { buildMentorHospitalContext } from '../../utils/mentorHospitalScope';
+import { getScopedMentorUsersForManager } from '../../utils/managerTeamScope';
 import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -122,13 +123,7 @@ interface TabPanelProps {
   value: number;
 }
 
-const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
 const USER_DATA_PECC_FULL_SITE_APPROVAL = 'pecc_allow_manager_mentor_full_view';
-
-function normalizeManagerIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
-}
 
 const TabPanel = (props: TabPanelProps) => {
   const { children, value, index, ...other } = props;
@@ -294,29 +289,24 @@ const ManagerMentorsPage: React.FC = () => {
         setLoadError(null);
       }
 
-      // Load all mentors and include both primary and additional manager assignments.
-      const { data: mentorUsers, error: mentorError } = await supabase
+      const scopedMentorsRaw = await getScopedMentorUsersForManager(userProfile.id);
+      if (scopedMentorsRaw.length === 0) {
+        if (isMountedRef.current) setMentors([]);
+        return;
+      }
+
+      const { data: mentorStatusRows } = await supabase
         .from('users')
-        .select('id, first_name, last_name, email, phone, is_active, manager_id')
-        .eq('role', 'mentor');
-
-      if (mentorError) throw mentorError;
-      if (!mentorUsers || mentorUsers.length === 0) {
-        if (isMountedRef.current) setMentors([]);
-        return;
-      }
-
-      const mentorIds = mentorUsers.map((m) => m.id);
-      const extraManagerMap = await batchGetUserDataForKey<string[]>(mentorIds, USER_DATA_MENTOR_MANAGER_IDS);
-      const scopedMentors = mentorUsers.filter((mentor) => {
-        if (mentor.manager_id === userProfile.id) return true;
-        const additional = normalizeManagerIds(extraManagerMap.get(mentor.id));
-        return additional.includes(userProfile.id);
-      });
-      if (scopedMentors.length === 0) {
-        if (isMountedRef.current) setMentors([]);
-        return;
-      }
+        .select('id, phone, is_active')
+        .in('id', scopedMentorsRaw.map((m) => m.id));
+      const statusById = new Map(
+        (mentorStatusRows || []).map((r: { id: string; phone: string | null; is_active: boolean }) => [r.id, r])
+      );
+      const scopedMentors = scopedMentorsRaw.map((m) => ({
+        ...m,
+        phone: statusById.get(m.id)?.phone ?? null,
+        is_active: statusById.get(m.id)?.is_active ?? true,
+      }));
 
       const scopedMentorIds = scopedMentors.map((m) => m.id);
       const hospitalCtx = await buildMentorHospitalContext(scopedMentorIds);

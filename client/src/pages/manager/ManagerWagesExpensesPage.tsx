@@ -38,9 +38,9 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO, getYear, getMonth } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../supabase';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { getUserData } from '../../utils/userData';
+import { getScopedMentorUsersForManager } from '../../utils/managerTeamScope';
 
 // Constants (same as mentor page)
 const HOURLY_RATE = 30;
@@ -127,23 +127,15 @@ const ManagerWagesExpensesPage: React.FC = () => {
       
       try {
         setMentorLoadError(null);
-        // Load mentors from Supabase where manager_id matches current user
-        const { data, error } = await supabase
-          .from('users')
-          .select('id, first_name, last_name, email')
-          .eq('role', 'mentor')
-          .eq('manager_id', currentUser.id);
-        
-        if (error) throw error;
-        
-        if (data) {
-          setMentors(data.map(u => ({
+        const scoped = await getScopedMentorUsersForManager(currentUser.id);
+        setMentors(
+          scoped.map((u) => ({
             id: u.id,
             firstName: u.first_name || '',
             lastName: u.last_name || '',
-            email: u.email || ''
-          })));
-        }
+            email: u.email || '',
+          }))
+        );
       } catch (err) {
         console.error('Error loading mentors:', err);
         setMentorLoadError('Failed to load mentors. Please try again.');

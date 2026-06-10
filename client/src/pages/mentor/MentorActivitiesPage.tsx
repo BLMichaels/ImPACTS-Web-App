@@ -44,6 +44,7 @@ import { format, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { useMentorWorkRoutes } from '../../hooks/useMentorWorkRoutes';
 import { fetchMergedMentorHospitals, mergedRowsToHospitalOptions } from '../../utils/mentorHospitalScope';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../../utils/userData';
@@ -104,6 +105,7 @@ const MentorActivitiesPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { effectiveUserId } = useUserProfile();
   const navigate = useNavigate();
+  const mentorRoutes = useMentorWorkRoutes();
   
   // State
   const [activities, setActivities] = useState<MentorActivity[]>([]);
@@ -513,7 +515,7 @@ const MentorActivitiesPage: React.FC = () => {
             <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddNew} sx={{ mr: 1 }}>
               Add your first activity
             </Button>
-            <Button variant="outlined" onClick={() => navigate('/mentor/hospitals')}>
+            <Button variant="outlined" onClick={() => navigate(mentorRoutes.hospitals)}>
               Go to Hospitals
             </Button>
           </Paper>

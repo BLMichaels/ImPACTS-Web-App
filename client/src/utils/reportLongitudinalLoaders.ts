@@ -13,6 +13,7 @@ import {
   shouldMirrorLegacyUserData,
 } from './userData';
 import { isSupabaseMissingRelationError } from './supabaseErrors';
+import { getManagedMentorIdsForManager } from './managerTeamScope';
 
 const POSTGREST_PAGE = 1000;
 
@@ -577,10 +578,7 @@ async function loadMentorIdsForScope(ctx: LongitudinalLoadContext): Promise<stri
     return mentors.map((m) => m.id);
   }
   if (ctx.scope === 'manager') {
-    const mentors = await fetchAllRows<{ id: string; manager_id: string | null }>((from, to) =>
-      supabase.from('users').select('id, manager_id').eq('role', 'mentor').eq('is_active', true).range(from, to)
-    );
-    return mentors.filter((m) => m.manager_id === ctx.actorUserId).map((m) => m.id);
+    return getManagedMentorIdsForManager(ctx.actorUserId);
   }
   return [ctx.actorUserId];
 }
