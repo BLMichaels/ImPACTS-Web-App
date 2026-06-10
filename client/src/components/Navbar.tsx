@@ -34,8 +34,7 @@ import {
   AttachMoney as MoneyIcon,
   Settings as SettingsIcon,
   AccountTree as PipelineIcon,
-  Groups as CohortsIcon,
-  Assessment as AssessmentIcon
+  Groups as CohortsIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -131,7 +130,6 @@ const Navbar: React.FC = () => {
         const managerItems: NavItem[] = [
           { path: '/manager/overview', label: 'Overview', icon: <DashboardIcon /> },
           { path: '/manager/reports', label: 'Reports', icon: <TimelineIcon /> },
-          { path: '/manager/snapshot', label: 'Team snapshot', icon: <AssessmentIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },

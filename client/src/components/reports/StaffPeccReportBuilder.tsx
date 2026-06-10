@@ -105,6 +105,10 @@ import {
   exportModeDescription,
   type ReportExportMode,
 } from '../../utils/reportExportHelpers';
+import {
+  getManagedHospitalScopeKeysForManager,
+  getManagedMentorIdsForManager,
+} from '../../utils/managerTeamScope';
 
 export type StaffReportScope = 'admin' | 'manager' | 'mentor';
 
@@ -635,41 +639,7 @@ async function resolveHospitalIdsForScope(scope: StaffReportScope, userId: strin
     }
     return expandHospitalScopeKeys([...set]);
   }
-  const mentorRows = await fetchAllRows<{ id: string; manager_id: string | null; is_active: boolean | null }>((from, to) =>
-    supabase.from('users').select('id, manager_id, is_active').eq('role', 'mentor').eq('is_active', true).range(from, to)
-  );
-  const mentorIdsAll = mentorRows.map((m) => m.id);
-  const mentorManagerMap = await fetchUserDataBatch(mentorIdsAll, [USER_DATA_MENTOR_MANAGER_IDS]);
-  const mentorIds = mentorRows
-    .filter((mentor) => {
-      if (mentor.manager_id === userId) return true;
-      const extra = normalizeIdList(mentorManagerMap.get(mentor.id)?.[USER_DATA_MENTOR_MANAGER_IDS]);
-      return extra.includes(userId);
-    })
-    .map((m) => m.id);
-  const scopedMentorIds = [...new Set([...mentorIds, userId])];
-  for (const mentorId of scopedMentorIds) {
-    try {
-      const merged = await fetchMergedMentorHospitals(mentorId);
-      merged.forEach((m) => {
-        const id = String(m.hospital.id || '').trim();
-        if (id) set.add(id);
-        const fid = m.hospital.facility_id != null ? String(m.hospital.facility_id).trim() : '';
-        if (fid) set.add(fid);
-      });
-    } catch {
-      const rows = await fetchAllRowsOrEmpty<{ hospital_id: string }>((from, to) =>
-        supabase
-          .from('mentor_hospital_assignments')
-          .select('hospital_id')
-          .eq('mentor_id', mentorId)
-          .eq('is_active', true)
-          .range(from, to)
-      );
-      rows.forEach((r) => r.hospital_id && set.add(r.hospital_id));
-    }
-  }
-  return expandHospitalScopeKeys([...set]);
+  return expandHospitalScopeKeys(await getManagedHospitalScopeKeysForManager(userId));
 }
 
 /** Build column list for drawer + exports (order preserved). */
@@ -4494,17 +4464,7 @@ async function loadPlatformUsersByRoles(params: {
   if (scope === 'admin') {
     allowedIds = null;
   } else if (scope === 'manager') {
-    const mentorRows = await fetchAllRows<{ id: string; manager_id: string | null; is_active: boolean | null }>((from, to) =>
-      supabase.from('users').select('id, manager_id, is_active').eq('role', 'mentor').eq('is_active', true).range(from, to)
-    );
-    const mentorManagerMap = await fetchUserDataBatch(mentorRows.map((m) => m.id), [USER_DATA_MENTOR_MANAGER_IDS]);
-    const mentorIds = mentorRows
-      .filter((mentor) => {
-        if (mentor.manager_id === actorUserId) return true;
-        const extra = normalizeIdList(mentorManagerMap.get(mentor.id)?.[USER_DATA_MENTOR_MANAGER_IDS]);
-        return extra.includes(actorUserId);
-      })
-      .map((m) => m.id);
+    const mentorIds = await getManagedMentorIdsForManager(actorUserId);
     const hs = hospitalScope || [];
     const peccIdSet = new Set<string>();
     if (hs.length > 0) {

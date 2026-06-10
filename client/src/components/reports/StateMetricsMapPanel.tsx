@@ -213,7 +213,18 @@ const calcLatestAndImprovement = (scores: ReadinessScoreLike[]): { latest: numbe
   return { latest, improvement };
 };
 
-const StateMetricsMapPanel: React.FC = () => {
+export interface StateMetricsMapPanelProps {
+  /** When set, only hospitals in this manager/mentor scope appear on the map. */
+  hospitalScopeKeys?: string[] | null;
+  title?: string;
+  subtitle?: string;
+}
+
+const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
+  hospitalScopeKeys = null,
+  title = 'State Metrics Map',
+  subtitle = 'Hover a state for quick metrics. Click a state to zoom and review the full state metric list.',
+}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stateMetrics, setStateMetrics] = useState<StateMetrics[]>([]);
@@ -325,16 +336,35 @@ const StateMetricsMapPanel: React.FC = () => {
           });
         }
       });
-      const mergedHospitals = Array.from(byUniqueHospitalKey.values());
+      let mergedHospitals = Array.from(byUniqueHospitalKey.values());
+      let scopedValidHospitals = validHospitals;
 
-      const hospitalIds = validHospitals.map((h) => h.id);
+      if (hospitalScopeKeys && hospitalScopeKeys.length > 0) {
+        const scope = new Set(hospitalScopeKeys.map(String));
+        const inScope = (id: string, canonicalId?: string) =>
+          scope.has(id) || Boolean(canonicalId && scope.has(canonicalId));
+        mergedHospitals = mergedHospitals.filter((h) => inScope(h.id, h.canonicalHospitalId));
+        scopedValidHospitals = validHospitals.filter((h) => scope.has(h.id));
+      }
+
+      const scopedHospitalIdSet = new Set<string>();
+      mergedHospitals.forEach((h) => {
+        scopedHospitalIdSet.add(h.id);
+        if (h.canonicalHospitalId) scopedHospitalIdSet.add(h.canonicalHospitalId);
+      });
+      const scopedMentorAssignments =
+        hospitalScopeKeys && hospitalScopeKeys.length > 0
+          ? mentorAssignmentsRows.filter((a) => scopedHospitalIdSet.has(String(a.hospital_id)))
+          : mentorAssignmentsRows;
+
+      const hospitalIds = scopedValidHospitals.map((h) => h.id);
       const [simulationMap, gapPlansMap, readinessMap] = await Promise.all([
         batchGetHospitalDataForKey<SimulationSessionLike[]>(hospitalIds, 'simulation_sessions'),
         batchGetHospitalDataForKey<GapPlanLike[]>(hospitalIds, 'gapPlans'),
         batchGetHospitalDataForKey<ReadinessScoreLike[]>(hospitalIds, 'readinessScores'),
       ]);
 
-      const hospitalById = new Map(validHospitals.map((h) => [h.id, h]));
+      const hospitalById = new Map(scopedValidHospitals.map((h) => [h.id, h]));
       const userHospitalRefs = [
         ...new Set(
           peccRows.map((r) => String(r.hospital_facility_id ?? '').trim()).filter(Boolean)
@@ -395,7 +425,7 @@ const StateMetricsMapPanel: React.FC = () => {
       };
 
       const mentorStateById = new Map<string, Set<string>>();
-      mentorAssignmentsRows.forEach((assignment) => {
+      scopedMentorAssignments.forEach((assignment) => {
         if (!assignment.mentor_id || !assignment.hospital_id) return;
         const h = hospitalById.get(assignment.hospital_id);
         const stateCode = h?.stateCode || null;
@@ -556,7 +586,7 @@ const StateMetricsMapPanel: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hospitalScopeKeys]);
 
   useEffect(() => {
     void loadStateMetrics();
@@ -706,10 +736,10 @@ const StateMetricsMapPanel: React.FC = () => {
           <Box>
             <Typography variant="h6" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <PublicIcon fontSize="small" />
-              State Metrics Map
+              {title}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Hover a state for quick metrics. Click a state to zoom and review the full state metric list.
+              {subtitle}
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>

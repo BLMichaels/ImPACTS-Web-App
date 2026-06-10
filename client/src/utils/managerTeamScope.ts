@@ -8,6 +8,7 @@ import {
   buildPeccHospitalFacilityOrClause,
   expandHospitalRefsForPeccQuery,
 } from './mentorHospitalAssignments';
+import { fetchMergedMentorHospitals } from './mentorHospitalScope';
 
 export const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
 
@@ -99,6 +100,35 @@ export async function getScopedMentorUsersForManager(managerId: string): Promise
   }
 
   return scoped;
+}
+
+/** Hospital id/facility keys for manager-scoped reports and maps. */
+export async function getManagedHospitalScopeKeysForManager(managerId: string): Promise<string[]> {
+  const mentorIds = await getManagedMentorIdsForManager(managerId);
+  const keys = new Set<string>();
+
+  for (const mentorId of mentorIds) {
+    try {
+      const merged = await fetchMergedMentorHospitals(mentorId);
+      merged.forEach((m) => {
+        const id = String(m.hospital.id || '').trim();
+        if (id) keys.add(id);
+        const fid = m.hospital.facility_id != null ? String(m.hospital.facility_id).trim() : '';
+        if (fid) keys.add(fid);
+      });
+    } catch {
+      const { data } = await supabase
+        .from('mentor_hospital_assignments')
+        .select('hospital_id')
+        .eq('mentor_id', mentorId)
+        .eq('is_active', true);
+      (data || []).forEach((r: { hospital_id: string }) => {
+        if (r.hospital_id) keys.add(r.hospital_id);
+      });
+    }
+  }
+
+  return [...keys];
 }
 
 /** Users a manager may see in CRM previews and reports. */
