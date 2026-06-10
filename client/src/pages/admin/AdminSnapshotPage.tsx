@@ -170,6 +170,11 @@ interface AggregatedPlatformData {
   siteMilestonesCompleted: number;
   peccHoursThisMonth: number;
   peccActivitiesThisMonth: number;
+  simulationsTotal: number;
+  simulationParticipants: number;
+  gapPlansTotal: number;
+  gapPlansCompleted: number;
+  avgPrsLatest: number;
 }
 
 export default function AdminSnapshotPage() {
@@ -243,15 +248,8 @@ export default function AdminSnapshotPage() {
         if (err) {
           setError(err.message);
           setEvents([]);
-          // #region agent log
-          fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'AdminSnapshotPage.tsx:usage:error',message:'Usage events load failed',data:{error:err.message,period:periodValue},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
         } else {
-          const loaded = (data as UsageEvent[]) || [];
-          setEvents(loaded);
-          // #region agent log
-          fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'AdminSnapshotPage.tsx:usage:success',message:'Usage events loaded',data:{count:loaded.length,capped:loaded.length>=40000,period:periodValue},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
+          setEvents((data as UsageEvent[]) || []);
         }
         setLoading(false);
       });
@@ -449,6 +447,53 @@ export default function AdminSnapshotPage() {
           peccProgressByPecc[p.id] = pct;
         }
         const avgPeccProgress = progressCount > 0 ? Math.round(progressSum / progressCount) : 0;
+        const platformHospitalIds = [...new Set([...hospitalIds, ...uniqueHospIds])];
+        const [simDataMap, gapDataMap, prsDataMap] = await Promise.all([
+          batchGetHospitalDataForKey<unknown[]>(platformHospitalIds, 'simulation_sessions'),
+          batchGetHospitalDataForKey<unknown[]>(platformHospitalIds, 'gapPlans'),
+          batchGetHospitalDataForKey<unknown[]>(platformHospitalIds, 'readinessScores'),
+        ]);
+        let simulationsTotal = 0;
+        let simulationParticipants = 0;
+        let gapPlansTotal = 0;
+        let gapPlansCompleted = 0;
+        const prsLatestScores: number[] = [];
+        for (const hid of platformHospitalIds) {
+          const sessions = simDataMap.get(hid);
+          if (Array.isArray(sessions)) {
+            simulationsTotal += sessions.length;
+            sessions.forEach((s) => {
+              const p = (s as { participants?: unknown[] })?.participants;
+              if (Array.isArray(p)) simulationParticipants += p.length;
+            });
+          }
+          const gaps = gapDataMap.get(hid);
+          if (Array.isArray(gaps)) {
+            gapPlansTotal += gaps.length;
+            gaps.forEach((g) => {
+              if (String((g as { status?: string })?.status ?? '').trim().toLowerCase() === 'completed') {
+                gapPlansCompleted += 1;
+              }
+            });
+          }
+          const prs = prsDataMap.get(hid);
+          if (Array.isArray(prs) && prs.length > 0) {
+            const parsed = prs
+              .map((entry) => {
+                const score = Number((entry as { score?: unknown })?.score);
+                const date = String((entry as { date?: unknown })?.date || '');
+                if (!Number.isFinite(score) || !date) return null;
+                return { score, date };
+              })
+              .filter((x): x is { score: number; date: string } => Boolean(x))
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            if (parsed.length) prsLatestScores.push(parsed[parsed.length - 1].score);
+          }
+        }
+        const avgPrsLatest =
+          prsLatestScores.length > 0
+            ? Math.round((prsLatestScores.reduce((s, v) => s + v, 0) / prsLatestScores.length) * 10) / 10
+            : 0;
         const mentorIds = mentorUsers.map((m) => m.id);
         const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
         let mentorHoursThisMonth = 0;
@@ -536,9 +581,6 @@ export default function AdminSnapshotPage() {
 
         setProgramBreakdowns(progBreakdowns);
         setCohortBreakdowns(cohortBreakdowns);
-        // #region agent log
-        fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'AdminSnapshotPage.tsx:aggregated:success',message:'Platform overview loaded',data:{managers,mentors,peccs,sites,programs:programsList.length,cohorts:cohortsList.length,avgPeccProgress,peccActivitiesThisMonth},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         setAggregated({
           managers,
           mentors,
@@ -560,14 +602,16 @@ export default function AdminSnapshotPage() {
           siteMilestonesTotal,
           siteMilestonesCompleted,
           peccHoursThisMonth,
-          peccActivitiesThisMonth
+          peccActivitiesThisMonth,
+          simulationsTotal,
+          simulationParticipants,
+          gapPlansTotal,
+          gapPlansCompleted,
+          avgPrsLatest,
         });
       } catch (e: unknown) {
         if (!mounted) return;
         const errMsg = e instanceof Error ? e.message : 'Failed to load platform data';
-        // #region agent log
-        fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'AdminSnapshotPage.tsx:aggregated:error',message:'Platform overview load failed',data:{error:errMsg},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         setAggregatedError(errMsg);
       } finally {
         if (mounted) setAggregatedLoading(false);
@@ -1113,6 +1157,51 @@ export default function AdminSnapshotPage() {
                         </Box>
                         <Typography variant="h4" color="secondary.main">{aggregated.peccHoursThisMonth.toFixed(1)}h</Typography>
                         <Typography variant="caption" color="text.secondary">{aggregated.peccActivitiesThisMonth} activities</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <AssignmentIcon color="info" />
+                          <Typography variant="subtitle1" fontWeight={600}>Simulations</Typography>
+                        </Box>
+                        <Typography variant="h4" color="info.main">{aggregated.simulationsTotal}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {aggregated.simulationParticipants} participants logged
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'success.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <FlagIcon color="success" />
+                          <Typography variant="subtitle1" fontWeight={600}>Gap plans completed</Typography>
+                        </Box>
+                        <Typography variant="h4" color="success.main">{aggregated.gapPlansCompleted}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          of {aggregated.gapPlansTotal} total
+                          {aggregated.gapPlansTotal > 0
+                            ? ` (${Math.round((aggregated.gapPlansCompleted / aggregated.gapPlansTotal) * 100)}%)`
+                            : ''}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <AssessmentIcon color="primary" />
+                          <Typography variant="subtitle1" fontWeight={600}>Avg latest PRS</Typography>
+                        </Box>
+                        <Typography variant="h4" color="primary.main">
+                          {aggregated.avgPrsLatest > 0 ? aggregated.avgPrsLatest : '—'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">Across sites with assessments</Typography>
                       </CardContent>
                     </Card>
                   </Grid>

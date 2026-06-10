@@ -434,8 +434,17 @@ function summarizeActivityMetrics(value: unknown): {
   return { count: value.length, hours, byCategory, last30Count, last30Hours };
 }
 
-function summarizeReadinessScores(value: unknown): { latest: string; delta: string; count: number; lastDate: string } {
-  if (!Array.isArray(value) || value.length === 0) return { latest: '', delta: '', count: 0, lastDate: '' };
+function summarizeReadinessScores(value: unknown): {
+  latest: string;
+  first: string;
+  delta: string;
+  count: number;
+  lastDate: string;
+  firstDate: string;
+} {
+  if (!Array.isArray(value) || value.length === 0) {
+    return { latest: '', first: '', delta: '', count: 0, lastDate: '', firstDate: '' };
+  }
   const parsed = value
     .map((entry) => {
       const score = Number((entry as { score?: unknown })?.score);
@@ -445,15 +454,41 @@ function summarizeReadinessScores(value: unknown): { latest: string; delta: stri
     })
     .filter((x): x is { score: number; date: string } => Boolean(x))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  if (!parsed.length) return { latest: '', delta: '', count: 0, lastDate: '' };
+  if (!parsed.length) {
+    return { latest: '', first: '', delta: '', count: 0, lastDate: '', firstDate: '' };
+  }
   const latestScore = parsed[parsed.length - 1].score;
   const firstScore = parsed[0].score;
   return {
     latest: latestScore.toFixed(2),
+    first: firstScore.toFixed(2),
     delta: parsed.length > 1 ? (latestScore - firstScore).toFixed(2) : '0.00',
     count: parsed.length,
     lastDate: parsed[parsed.length - 1].date,
+    firstDate: parsed[0].date,
   };
+}
+
+function summarizeSimulations(sessions: unknown): { count: number; participants: number } {
+  if (!Array.isArray(sessions)) return { count: 0, participants: 0 };
+  let participants = 0;
+  sessions.forEach((s) => {
+    const p = (s as { participants?: unknown[] })?.participants;
+    if (Array.isArray(p)) participants += p.length;
+  });
+  return { count: sessions.length, participants };
+}
+
+function milestoneCompletionRate(stats: { total: number; completed: number } | undefined): string {
+  if (!stats || stats.total === 0) return '';
+  return `${((stats.completed / stats.total) * 100).toFixed(1)}%`;
+}
+
+function daysSinceDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return String(Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000)));
 }
 
 function stageKeyFromTaskId(taskId: string): string {
@@ -650,9 +685,17 @@ function buildColumnList(
     { id: 'checklistItemsTotal', label: 'Checklist items total', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'checklistByStage', label: 'Checklist by stage', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessLatest', label: 'Latest PRS score', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'readinessFirst', label: 'Baseline PRS score', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessDelta', label: 'PRS delta (first to latest)', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessAssessmentsCount', label: 'PRS assessments recorded', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessLastDate', label: 'PRS latest assessment date', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'readinessFirstDate', label: 'PRS baseline assessment date', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'simulationCount', label: 'Simulations logged', defaultOn: false, group: 'Simulations & milestones' },
+    { id: 'simulationParticipants', label: 'Simulation participants', defaultOn: false, group: 'Simulations & milestones' },
+    { id: 'siteMilestonesTotal', label: 'Site milestones (total)', defaultOn: false, group: 'Simulations & milestones' },
+    { id: 'siteMilestonesCompleted', label: 'Site milestones (completed)', defaultOn: false, group: 'Simulations & milestones' },
+    { id: 'siteMilestonesCompletionRate', label: 'Site milestones completion %', defaultOn: false, group: 'Simulations & milestones' },
+    { id: 'daysSinceLogin', label: 'Days since last login', defaultOn: false, group: 'Engagement' },
     { id: 'activitiesCount', label: 'Activities logged', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'activitiesHours', label: 'Activity hours (total)', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'activitiesLast30Count', label: 'Activities (last 30 days)', defaultOn: false, group: 'Checklist & gaps' },
@@ -705,7 +748,18 @@ function buildColumnList(
     { id: 'traumaLevel', label: 'Trauma level', defaultOn: false, group: 'Site' },
     { id: 'edSize', label: 'ED size', defaultOn: false, group: 'Site' },
     { id: 'peccCount', label: 'PECCs at site (all sources, deduped)', defaultOn: true, group: 'Metrics' },
+    { id: 'mentorAssignments', label: 'Assigned mentors', defaultOn: false, group: 'Metrics' },
     { id: 'checklistProgress', label: 'Site checklist %', defaultOn: true, group: 'Metrics' },
+    { id: 'readinessLatest', label: 'Latest PRS score', defaultOn: false, group: 'Metrics' },
+    { id: 'readinessDelta', label: 'PRS improvement (delta)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansTotal', label: 'Gap plans (total)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansCompleted', label: 'Gap plans (completed)', defaultOn: false, group: 'Metrics' },
+    { id: 'gapPlansCompletionRate', label: 'Gap plans completion %', defaultOn: false, group: 'Metrics' },
+    { id: 'simulationCount', label: 'Simulations logged', defaultOn: false, group: 'Metrics' },
+    { id: 'simulationParticipants', label: 'Simulation participants', defaultOn: false, group: 'Metrics' },
+    { id: 'siteMilestonesTotal', label: 'Site milestones (total)', defaultOn: false, group: 'Metrics' },
+    { id: 'siteMilestonesCompleted', label: 'Site milestones (completed)', defaultOn: false, group: 'Metrics' },
+    { id: 'siteMilestonesCompletionRate', label: 'Site milestones completion %', defaultOn: false, group: 'Metrics' },
     { id: 'hospitalPrograms', label: 'Programs (site)', defaultOn: false, group: 'Programs' },
     { id: 'hospitalCohorts', label: 'Cohorts (site)', defaultOn: false, group: 'Programs' },
   ];
@@ -1177,15 +1231,9 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           setRows,
         });
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'StaffPeccReportBuilder.tsx:load:success',message:'Report dataset loaded',data:{dataset,scope,hospitalScopeSize:hospitalScope?.length??null},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
     } catch (e: unknown) {
       console.error(e);
       const errMsg = e instanceof Error ? e.message : 'Failed to load report data';
-      // #region agent log
-      fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'StaffPeccReportBuilder.tsx:load:error',message:'Report dataset load failed',data:{dataset,scope,error:errMsg},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       setError(errMsg);
       setRows([]);
       setPeccAudit(null);
@@ -1526,9 +1574,6 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             .from('hospitals')
             .update(payload)
             .or(hospitalIdOrFacilityOrClause(hospitalRef));
-          // #region agent log
-          fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'StaffPeccReportBuilder.tsx:handleSaveEdit:hospital',message:'Hospital inline edit',data:{hospitalRef,isUuid:isHospitalUuid(hospitalRef),ok:!err,error:err?.message??null},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           if (err) throw err;
         }
       }
@@ -2917,6 +2962,50 @@ async function loadChecklistForHospitals(hospitalIds: string[]): Promise<Map<str
   return map;
 }
 
+async function loadSiteMilestonesForHospitals(
+  hospitalIds: string[]
+): Promise<Map<string, { total: number; completed: number }>> {
+  const map = new Map<string, { total: number; completed: number }>();
+  const uuids = hospitalIds.filter(isHospitalUuid);
+  if (!uuids.length) return map;
+  for (const part of chunk(uuids, 80)) {
+    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string; status: string | null }>((from, to) =>
+      supabase.from('site_milestones').select('hospital_id, status').in('hospital_id', part).range(from, to)
+    );
+    rows.forEach((row) => {
+      const prev = map.get(row.hospital_id) || { total: 0, completed: 0 };
+      prev.total += 1;
+      if (String(row.status ?? '').trim().toLowerCase() === 'completed') prev.completed += 1;
+      map.set(row.hospital_id, prev);
+    });
+  }
+  return map;
+}
+
+async function loadMentorCountByHospital(hospitalIds: string[]): Promise<Map<string, number>> {
+  const byHospital = new Map<string, Set<string>>();
+  const uuids = hospitalIds.filter(isHospitalUuid);
+  if (!uuids.length) return new Map();
+  for (const part of chunk(uuids, 80)) {
+    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string; mentor_id: string }>((from, to) =>
+      supabase
+        .from('mentor_hospital_assignments')
+        .select('hospital_id, mentor_id')
+        .eq('is_active', true)
+        .in('hospital_id', part)
+        .range(from, to)
+    );
+    rows.forEach((row) => {
+      const set = byHospital.get(row.hospital_id) || new Set<string>();
+      if (row.mentor_id) set.add(row.mentor_id);
+      byHospital.set(row.hospital_id, set);
+    });
+  }
+  const out = new Map<string, number>();
+  byHospital.forEach((set, hid) => out.set(hid, set.size));
+  return out;
+}
+
 async function loadChecklistDetailsForHospitals(
   hospitalIds: string[]
 ): Promise<Map<string, { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> }>> {
@@ -3313,18 +3402,30 @@ async function loadPeccDataset(params: {
       .filter(Boolean) as string[]
   )];
 
-  const [pm, cm, checklistByHospital, checklistDetailsByHospital, udMap, hdMap, usageInWindow, discussionByUser] = await Promise.all([
-    fetchActiveProgramMembersForUsers(peccIds),
-    fetchActiveCohortMembersForUsers(peccIds),
-    loadChecklistForHospitals(hidSet),
-    loadChecklistDetailsForHospitals(hidSet),
-    shouldMirrorLegacyUserData()
-      ? fetchUserDataBatch(peccIds, ['gapPlans', 'activities', 'readinessScores', 'prsReadinessScores', USER_DATA_PECC_DIRECT_MANAGER_IDS, USER_DATA_PECC_MENTOR_IDS])
-      : Promise.resolve(new Map<string, Record<string, unknown>>()),
-    fetchHospitalDataBatch(hospitalIdsForUsers, ['gapPlans', 'activities', 'readinessScores', 'prsReadinessScores']),
-    loadUsageActivityPeccSet(peccIds, activityPreset),
-    loadDiscussionCountsByUser(peccIds),
-  ]);
+  const hospitalUuidSet = [
+    ...new Set([...hospitalIdsForUsers, ...[...hidSet].filter(isHospitalUuid)]),
+  ];
+
+  const [pm, cm, checklistByHospital, checklistDetailsByHospital, udMap, hdMap, usageInWindow, discussionByUser, milestonesByHospital] =
+    await Promise.all([
+      fetchActiveProgramMembersForUsers(peccIds),
+      fetchActiveCohortMembersForUsers(peccIds),
+      loadChecklistForHospitals(hidSet),
+      loadChecklistDetailsForHospitals(hidSet),
+      shouldMirrorLegacyUserData()
+        ? fetchUserDataBatch(peccIds, ['gapPlans', 'activities', 'readinessScores', 'prsReadinessScores', USER_DATA_PECC_DIRECT_MANAGER_IDS, USER_DATA_PECC_MENTOR_IDS])
+        : Promise.resolve(new Map<string, Record<string, unknown>>()),
+      fetchHospitalDataBatch(hospitalIdsForUsers, [
+        'gapPlans',
+        'activities',
+        'readinessScores',
+        'prsReadinessScores',
+        'simulation_sessions',
+      ]),
+      loadUsageActivityPeccSet(peccIds, activityPreset),
+      loadDiscussionCountsByUser(peccIds),
+      loadSiteMilestonesForHospitals(hospitalUuidSet),
+    ]);
 
   const additionalManagerIds = new Set<string>();
   const additionalMentorIds = new Set<string>();
@@ -3403,6 +3504,8 @@ async function loadPeccDataset(params: {
     const activitySummary = summarizeActivityMetrics(continuity?.activities ?? udMap.get(p.id)?.activities);
     const readinessRaw = continuity?.readinessScores ?? continuity?.prsReadinessScores ?? udMap.get(p.id)?.readinessScores ?? udMap.get(p.id)?.prsReadinessScores;
     const readiness = summarizeReadinessScores(readinessRaw);
+    const simulations = summarizeSimulations(continuity?.simulation_sessions);
+    const siteMilestones = h?.id ? milestonesByHospital.get(h.id) : undefined;
     const assignedManagerIds = [...new Set([p.manager_id, ...normalizeIdList(udMap.get(p.id)?.[USER_DATA_PECC_DIRECT_MANAGER_IDS])].filter(Boolean) as string[])];
     const assignedMentorIds = [...new Set([p.mentor_id, ...normalizeIdList(udMap.get(p.id)?.[USER_DATA_PECC_MENTOR_IDS])].filter(Boolean) as string[])];
     const assignedManagerNames = assignedManagerIds.map((id) => staffName(id)).filter(Boolean).join('; ');
@@ -3434,15 +3537,23 @@ async function loadPeccDataset(params: {
       traumaLevel: h?.trauma_level || '',
       edSize: h?.ed_size || '',
       lastLogin: p.last_login ? format(new Date(p.last_login), 'yyyy-MM-dd') : '',
+      daysSinceLogin: daysSinceDate(p.last_login),
       activeWindow: activeInWindow ? 'Yes' : 'No',
       checklistProgress: checklistPercent(chk) + (chk && chk.total > 0 ? '%' : ''),
       checklistItemsCompleted: String(checklistDetail?.completed ?? 0),
       checklistItemsTotal: String(checklistDetail?.total ?? 0),
       checklistByStage: loadChecklistStageSummaryText(checklistDetail),
       readinessLatest: readiness.latest,
+      readinessFirst: readiness.first,
       readinessDelta: readiness.delta,
       readinessAssessmentsCount: String(readiness.count),
       readinessLastDate: readiness.lastDate,
+      readinessFirstDate: readiness.firstDate,
+      simulationCount: String(simulations.count),
+      simulationParticipants: String(simulations.participants),
+      siteMilestonesTotal: String(siteMilestones?.total ?? 0),
+      siteMilestonesCompleted: String(siteMilestones?.completed ?? 0),
+      siteMilestonesCompletionRate: milestoneCompletionRate(siteMilestones),
       activitiesCount: String(activitySummary.count),
       activitiesHours: activitySummary.hours.toFixed(1),
       activitiesLast30Count: String(activitySummary.last30Count),
@@ -3481,8 +3592,11 @@ async function loadPeccDataset(params: {
     const h = hospById.get(c.hospital_id);
     const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
     const checklistDetail = c.hospital_id ? checklistDetailsByHospital.get(c.hospital_id) : undefined;
-    const readinessRaw = h?.id ? hdMap.get(h.id)?.readinessScores ?? hdMap.get(h.id)?.prsReadinessScores : undefined;
+    const continuity = h?.id ? hdMap.get(h.id) : undefined;
+    const readinessRaw = continuity?.readinessScores ?? continuity?.prsReadinessScores;
     const readiness = summarizeReadinessScores(readinessRaw);
+    const simulations = summarizeSimulations(continuity?.simulation_sessions);
+    const siteMilestones = c.hospital_id ? milestonesByHospital.get(c.hospital_id) : undefined;
     const cf = h?.custom_fields || {};
 
     const cells: Record<string, string> = {
@@ -3514,9 +3628,16 @@ async function loadPeccDataset(params: {
       checklistItemsTotal: String(checklistDetail?.total ?? 0),
       checklistByStage: loadChecklistStageSummaryText(checklistDetail),
       readinessLatest: readiness.latest,
+      readinessFirst: readiness.first,
       readinessDelta: readiness.delta,
       readinessAssessmentsCount: String(readiness.count),
       readinessLastDate: readiness.lastDate,
+      readinessFirstDate: readiness.firstDate,
+      simulationCount: String(simulations.count),
+      simulationParticipants: String(simulations.participants),
+      siteMilestonesTotal: String(siteMilestones?.total ?? 0),
+      siteMilestonesCompleted: String(siteMilestones?.completed ?? 0),
+      siteMilestonesCompletionRate: milestoneCompletionRate(siteMilestones),
       activitiesCount: '0',
       activitiesHours: '0.0',
       activitiesLast30Count: '0',
@@ -3555,8 +3676,11 @@ async function loadPeccDataset(params: {
     const h = c.hospital_id ? hospById.get(c.hospital_id) : null;
     const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
     const checklistDetail = c.hospital_id ? checklistDetailsByHospital.get(c.hospital_id) : undefined;
-    const readinessRaw = h?.id ? hdMap.get(h.id)?.readinessScores ?? hdMap.get(h.id)?.prsReadinessScores : undefined;
+    const continuity = h?.id ? hdMap.get(h.id) : undefined;
+    const readinessRaw = continuity?.readinessScores ?? continuity?.prsReadinessScores;
     const readiness = summarizeReadinessScores(readinessRaw);
+    const simulations = summarizeSimulations(continuity?.simulation_sessions);
+    const siteMilestones = c.hospital_id ? milestonesByHospital.get(c.hospital_id) : undefined;
     const cf = h?.custom_fields || {};
 
     const cells: Record<string, string> = {
@@ -3588,9 +3712,16 @@ async function loadPeccDataset(params: {
       checklistItemsTotal: String(checklistDetail?.total ?? 0),
       checklistByStage: loadChecklistStageSummaryText(checklistDetail),
       readinessLatest: readiness.latest,
+      readinessFirst: readiness.first,
       readinessDelta: readiness.delta,
       readinessAssessmentsCount: String(readiness.count),
       readinessLastDate: readiness.lastDate,
+      readinessFirstDate: readiness.firstDate,
+      simulationCount: String(simulations.count),
+      simulationParticipants: String(simulations.participants),
+      siteMilestonesTotal: String(siteMilestones?.total ?? 0),
+      siteMilestonesCompleted: String(siteMilestones?.completed ?? 0),
+      siteMilestonesCompletionRate: milestoneCompletionRate(siteMilestones),
       activitiesCount: '0',
       activitiesHours: '0.0',
       activitiesLast30Count: '0',
@@ -3687,15 +3818,23 @@ async function loadHospitalDataset(params: {
   }
 
   const ids = hospitals.map((h) => String(h.id));
-  const [peccCounts, checklistByHospital] = await Promise.all([
+  const [peccCounts, checklistByHospital, hdMap, milestonesByHospital, mentorCounts] = await Promise.all([
     ids.length ? loadPeccCountByHospital(ids) : Promise.resolve(new Map<string, number>()),
     loadChecklistForHospitals(ids),
+    fetchHospitalDataBatch(ids, ['gapPlans', 'readinessScores', 'prsReadinessScores', 'simulation_sessions']),
+    loadSiteMilestonesForHospitals(ids),
+    loadMentorCountByHospital(ids),
   ]);
 
   const rows: ReportDataRow[] = hospitals.map((h: Record<string, unknown>) => {
     const id = String(h.id);
     const custom = (h.custom_fields && typeof h.custom_fields === 'object' ? h.custom_fields : {}) as Record<string, string>;
     const stats = checklistByHospital.get(id);
+    const continuity = hdMap.get(id);
+    const gapDetail = countGapPlansDetailed(continuity?.gapPlans);
+    const readiness = summarizeReadinessScores(continuity?.readinessScores ?? continuity?.prsReadinessScores);
+    const simulations = summarizeSimulations(continuity?.simulation_sessions);
+    const siteMilestones = milestonesByHospital.get(id);
     const cells: Record<string, string> = {
       hospitalName: String(h.name ?? ''),
       facilityId: h.facility_id != null ? String(h.facility_id) : '',
@@ -3713,7 +3852,18 @@ async function loadHospitalDataset(params: {
       traumaLevel: h.trauma_level != null ? String(h.trauma_level) : '',
       edSize: h.ed_size != null ? String(h.ed_size) : '',
       peccCount: String(peccCounts.get(id) ?? 0),
+      mentorAssignments: String(mentorCounts.get(id) ?? 0),
       checklistProgress: checklistPercent(stats) + (stats && stats.total > 0 ? '%' : ''),
+      readinessLatest: readiness.latest,
+      readinessDelta: readiness.delta,
+      gapPlansTotal: String(gapDetail.total),
+      gapPlansCompleted: String(gapDetail.completed),
+      gapPlansCompletionRate: gapDetail.total > 0 ? ((gapDetail.completed / gapDetail.total) * 100).toFixed(1) : '0.0',
+      simulationCount: String(simulations.count),
+      simulationParticipants: String(simulations.participants),
+      siteMilestonesTotal: String(siteMilestones?.total ?? 0),
+      siteMilestonesCompleted: String(siteMilestones?.completed ?? 0),
+      siteMilestonesCompletionRate: milestoneCompletionRate(siteMilestones),
       hospitalPrograms: (Array.isArray(h.programs) ? h.programs : []).map((x: string) => progMap.get(x) || x).join('; '),
       hospitalCohorts: (Array.isArray(h.cohorts) ? h.cohorts : []).map((x: string) => cohortMap.get(x) || x).join('; '),
     };
@@ -3844,9 +3994,6 @@ async function loadContactsDataset(params: {
   let contacts: HcRow[] = [];
   if (hospitalScope && hospitalScope.length > 0) {
     const hospitalUuids = await resolveScopeRefsToHospitalUuids(hospitalScope);
-    // #region agent log
-    fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'StaffPeccReportBuilder.tsx:loadContactsDataset',message:'Contacts scope resolved',data:{scopeRefs:hospitalScope.length,resolvedUuids:hospitalUuids.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     if (hospitalUuids.length === 0) {
       setRows([]);
       return;
