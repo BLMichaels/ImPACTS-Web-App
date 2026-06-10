@@ -35,9 +35,11 @@ const MentorHospitalContactsPage = lazy(() => import('./pages/mentor/MentorHospi
 const MentorSiteMilestonesPage = lazy(() => import('./pages/mentor/MentorSiteMilestonesPage'));
 const MentorWagesExpensesPage = lazy(() => import('./pages/mentor/MentorWagesExpensesPage'));
 const MentorSnapshotPage = lazy(() => import('./pages/mentor/MentorSnapshotPage'));
+const MentorReportsPage = lazy(() => import('./pages/mentor/MentorReportsPage'));
 
 // Manager Pages (lazy loaded)
 const ManagerSnapshotPage = lazy(() => import('./pages/manager/ManagerSnapshotPage'));
+const ManagerReportsPage = lazy(() => import('./pages/manager/ManagerReportsPage'));
 const ManagerOverviewPage = lazy(() => import('./pages/manager/ManagerOverviewPage'));
 const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
 const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
@@ -249,14 +251,14 @@ function App() {
                   <Route path="/mentor/milestones" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSiteMilestonesPage /></ProtectedRoute>} />
                   <Route path="/mentor/wages" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorWagesExpensesPage /></ProtectedRoute>} />
                   <Route path="/mentor/overview" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSnapshotPage /></ProtectedRoute>} />
-                  <Route path="/mentor/reports" element={<Navigate to="/mentor/overview" replace />} />
+                  <Route path="/mentor/reports" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorReportsPage /></ProtectedRoute>} />
                   <Route path="/mentor/snapshot" element={<Navigate to="/mentor/overview" replace />} />
                   <Route path="/mentor/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><CohortsPage /></ProtectedRoute>} />
                   <Route path="/mentor/programs" element={<Navigate to="/mentor/dashboard" replace />} />
                   
                   {/* Manager Routes */}
                   <Route path="/manager/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerSnapshotPage /></ProtectedRoute>} />
-                  <Route path="/manager/reports" element={<Navigate to="/manager/snapshot" replace />} />
+                  <Route path="/manager/reports" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerReportsPage /></ProtectedRoute>} />
                   <Route path="/manager/overview" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerOverviewPage /></ProtectedRoute>} />
                   <Route path="/manager/dashboard" element={<Navigate to="/manager/overview" replace />} />
                   <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />

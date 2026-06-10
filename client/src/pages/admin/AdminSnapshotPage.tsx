@@ -1133,7 +1133,7 @@ export default function AdminSnapshotPage() {
                 </Grid>
 
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Milestones & PECC activities
+                  Outcomes & clinical readiness
                 </Typography>
                 <Grid container spacing={2} sx={{ mb: 3 }}>
                   <Grid item xs={12} sm={6} md={3}>

@@ -23,7 +23,16 @@ export type ReportDatasetKey =
   | 'mentors'
   | 'user_hospital_system'
   | 'user_hiring_group'
-  | 'platform_users';
+  | 'platform_users'
+  | 'prs_longitudinal'
+  | 'activities_longitudinal'
+  | 'gap_plans_longitudinal'
+  | 'simulations_longitudinal'
+  | 'mentor_hours'
+  | 'invitations'
+  | 'wages'
+  | 'cohort_discussions'
+  | 'site_milestones_detail';
 
 export type ColumnFilterOp = 'contains' | 'equals' | 'not_contains' | 'starts_with' | 'empty' | 'not_empty';
 

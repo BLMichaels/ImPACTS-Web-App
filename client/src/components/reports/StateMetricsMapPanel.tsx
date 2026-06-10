@@ -24,6 +24,8 @@ import {
 } from '@mui/material';
 import PublicIcon from '@mui/icons-material/Public';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import { downloadTableCsv } from '../../utils/reportCsvExport';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
 import { geoCentroid } from 'd3-geo';
 import statesTopo from 'us-atlas/states-10m.json';
@@ -616,6 +618,87 @@ const StateMetricsMapPanel: React.FC = () => {
     setMapZoom(1);
   };
 
+  const exportStateMetricsCsv = () => {
+    const headers = [
+      'Section',
+      'State',
+      'State code',
+      'Hospitals',
+      'Active hospitals',
+      'PECCs',
+      'Active PECCs',
+      'Mentors',
+      'Managers',
+      'Staff',
+      'Simulations',
+      'Simulation participants',
+      'Gaps completed',
+      'Avg PRS',
+      'Avg PRS improvement',
+      'Hospital name',
+      'Hospital active',
+      'Hospital PECCs',
+      'Hospital sims',
+      'Hospital gaps completed',
+      'Hospital latest PRS',
+      'Hospital PRS delta',
+    ];
+    const rows: Array<Array<string | number>> = [];
+    stateMetrics.forEach((s) => {
+      rows.push([
+        'State summary',
+        s.name,
+        s.code,
+        s.hospitals,
+        s.activeHospitals,
+        s.peccs,
+        s.activePeccs,
+        s.mentors,
+        s.managers,
+        s.staff,
+        s.simulations,
+        s.simulationParticipants,
+        s.completedGaps,
+        s.avgPrs.toFixed(1),
+        s.prsImprovement.toFixed(1),
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ]);
+      s.hospitalsList.forEach((h) => {
+        rows.push([
+          'Hospital',
+          s.name,
+          s.code,
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          h.name,
+          h.isActive ? 'Yes' : 'No',
+          h.peccs,
+          h.simulations,
+          h.completedGaps,
+          h.latestPrs == null ? '' : h.latestPrs.toFixed(1),
+          h.prsImprovement == null ? '' : h.prsImprovement.toFixed(1),
+        ]);
+      });
+    });
+    downloadTableCsv(`impacts-state-metrics-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
   return (
     <Paper variant="outlined" sx={{ mb: 3, overflow: 'hidden' }}>
       <Box sx={{ px: 3, py: 2, borderBottom: 1, borderColor: 'divider', bgcolor: (t) => alpha(t.palette.primary.main, 0.04) }}>
@@ -642,6 +725,14 @@ const StateMetricsMapPanel: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={exportStateMetricsCsv}
+              disabled={loading || stateMetrics.length === 0}
+            >
+              Export CSV
+            </Button>
             <Button
               variant="outlined"
               startIcon={<RestartAltIcon />}

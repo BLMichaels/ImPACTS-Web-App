@@ -129,6 +129,7 @@ const Navbar: React.FC = () => {
       case UserRole.MANAGER: {
         const managerItems: NavItem[] = [
           { path: '/manager/overview', label: 'Overview', icon: <DashboardIcon /> },
+          { path: '/manager/reports', label: 'Reports', icon: <TimelineIcon /> },
           { path: '/manager/snapshot', label: 'Team snapshot', icon: <TimelineIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
@@ -151,6 +152,7 @@ const Navbar: React.FC = () => {
       case UserRole.MENTOR: {
         const mentorItems: NavItem[] = [
           { path: '/mentor/overview', label: 'Overview', icon: <DashboardIcon /> },
+          { path: '/mentor/reports', label: 'Reports', icon: <TimelineIcon /> },
           { path: '/mentor/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/mentor/hospitals', label: 'Hospitals', icon: <HospitalIcon /> },
           { path: '/mentor/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> },

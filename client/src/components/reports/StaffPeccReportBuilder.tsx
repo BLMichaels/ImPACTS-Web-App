@@ -68,6 +68,15 @@ import { format, subDays } from 'date-fns';
 import { mapSiteRefsToHospitalRowIds, shouldMirrorLegacyUserData } from '../../utils/userData';
 import { buildHospitalsTableOrClause, hospitalIdOrFacilityOrClause, isHospitalUuid } from '../../utils/hospitalId';
 import { buildReportCsvContent, downloadReportCsv } from '../../utils/reportCsvExport';
+import {
+  buildLongitudinalColumnList,
+  formatPrsTimeline,
+  isLongitudinalReportDataset,
+  loadLongitudinalReportDataset,
+  longitudinalDatasetSlug,
+  longitudinalDatasetTitle,
+  type LongitudinalReportDataset,
+} from '../../utils/reportLongitudinalLoaders';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { getCrmContactTypeLabel } from '../../utils/crmLabels';
 import {
@@ -111,7 +120,8 @@ export type ReportDataset =
   | 'mentors'
   | 'user_hospital_system'
   | 'user_hiring_group'
-  | 'platform_users';
+  | 'platform_users'
+  | LongitudinalReportDataset;
 
 /** PostgREST returns at most 1000 rows per request unless we paginate. */
 const POSTGREST_PAGE = 1000;
@@ -160,6 +170,18 @@ const REPORT_DATASET_CRM_OPTIONS: { value: ReportDataset; label: string }[] = (
     { value: 'organization', label: 'Organizations' },
   ] as { value: ReportDataset; label: string }[]
 ).sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
+
+const REPORT_DATASET_LONGITUDINAL_OPTIONS: { value: LongitudinalReportDataset; label: string }[] = [
+  { value: 'prs_longitudinal', label: 'PRS assessments (one row per score)' },
+  { value: 'activities_longitudinal', label: 'PECC activities (one row per log)' },
+  { value: 'gap_plans_longitudinal', label: 'Gap plans (one row per plan)' },
+  { value: 'simulations_longitudinal', label: 'Simulations (one row per session)' },
+  { value: 'mentor_hours', label: 'Mentor hours (one row per activity)' },
+  { value: 'invitations', label: 'Invitations funnel' },
+  { value: 'wages', label: 'Wages & payroll entries' },
+  { value: 'cohort_discussions', label: 'Cohort discussions (topics & replies)' },
+  { value: 'site_milestones_detail', label: 'Site milestones (detail)' },
+];
 
 /** Shared sizing for Advanced reports header actions (single line, aligned grid). */
 const REPORT_HEADER_ACTION_SX = {
@@ -656,6 +678,14 @@ function buildColumnList(
   hospitalFieldDefs: { id: string; label: string }[],
   orgFieldDefs: { id: string; label: string }[]
 ): ColumnMeta[] {
+  if (isLongitudinalReportDataset(dataset)) {
+    return buildLongitudinalColumnList(dataset).map((c) => ({
+      id: c.id,
+      label: c.label,
+      defaultOn: c.defaultOn,
+      group: c.group,
+    }));
+  }
   const pecc: ColumnMeta[] = [
     { id: 'accountSource', label: 'Record source', defaultOn: true, group: 'PECC' },
     { id: 'registrationStatus', label: 'Account status', defaultOn: true, group: 'PECC' },
@@ -690,6 +720,7 @@ function buildColumnList(
     { id: 'readinessAssessmentsCount', label: 'PRS assessments recorded', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessLastDate', label: 'PRS latest assessment date', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessFirstDate', label: 'PRS baseline assessment date', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'prsTimeline', label: 'PRS timeline (all scores)', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'simulationCount', label: 'Simulations logged', defaultOn: false, group: 'Simulations & milestones' },
     { id: 'simulationParticipants', label: 'Simulation participants', defaultOn: false, group: 'Simulations & milestones' },
     { id: 'siteMilestonesTotal', label: 'Site milestones (total)', defaultOn: false, group: 'Simulations & milestones' },
@@ -1067,7 +1098,15 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       skipSortResetRef.current = false;
       return;
     }
-    if (dataset === 'organization' || dataset === 'crm_system' || dataset === 'crm_hiring_group') setSortBy('orgName');
+    if (isLongitudinalReportDataset(dataset)) {
+      if (dataset === 'prs_longitudinal') setSortBy('assessmentDate');
+      else if (dataset === 'activities_longitudinal' || dataset === 'mentor_hours') setSortBy('activityDate');
+      else if (dataset === 'invitations') setSortBy('createdAt');
+      else if (dataset === 'wages') setSortBy('payPeriodStart');
+      else if (dataset === 'cohort_discussions') setSortBy('createdAt');
+      else if (dataset === 'site_milestones_detail') setSortBy('hospitalName');
+      else setSortBy('hospitalName');
+    } else if (dataset === 'organization' || dataset === 'crm_system' || dataset === 'crm_hiring_group') setSortBy('orgName');
     else if (dataset === 'contacts') setSortBy('contactName');
     else if (dataset === 'hospital') setSortBy('hospitalName');
     else setSortBy('name');
@@ -1116,7 +1155,13 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       const hospitalScope = await resolveHospitalIdsForScope(scope, actorUserId);
       const adminGlobalDataset =
         dataset === 'internal_staff' || dataset === 'user_hospital_system' || dataset === 'user_hiring_group';
-      if (hospitalScope && hospitalScope.length === 0 && !adminGlobalDataset) {
+      const longitudinalNoHospitalRequired =
+        isLongitudinalReportDataset(dataset) &&
+        (dataset === 'mentor_hours' ||
+          dataset === 'invitations' ||
+          dataset === 'wages' ||
+          dataset === 'cohort_discussions');
+      if (hospitalScope && hospitalScope.length === 0 && !adminGlobalDataset && !longitudinalNoHospitalRequired) {
         setRows([]);
         setPeccAudit(null);
         setLoading(false);
@@ -1221,6 +1266,13 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           setRows,
           adminGlobal: true,
         });
+      } else if (isLongitudinalReportDataset(dataset)) {
+        const longitudinalRows = await loadLongitudinalReportDataset(dataset, {
+          scope,
+          actorUserId,
+          hospitalScope,
+        });
+        setRows(longitudinalRows);
       } else {
         await loadPlatformUsersByRoles({
           scope,
@@ -2206,6 +2258,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                       {label}
                     </MenuItem>
                   ))}
+                  <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
+                    Longitudinal &amp; operations
+                  </ListSubheader>
+                  {REPORT_DATASET_LONGITUDINAL_OPTIONS.map(({ value, label }) => (
+                    <MenuItem key={value} value={value}>
+                      {label}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -2909,6 +2969,7 @@ function datasetReportTitle(d: ReportDataset): string {
     case 'platform_users':
       return 'People records';
     default:
+      if (isLongitudinalReportDataset(d)) return longitudinalDatasetTitle(d);
       return 'Report';
   }
 }
@@ -2941,6 +3002,7 @@ function exportSlugForDataset(d: ReportDataset): string {
     case 'platform_users':
       return 'people-records';
     default:
+      if (isLongitudinalReportDataset(d)) return longitudinalDatasetSlug(d);
       return 'report';
   }
 }
@@ -3549,6 +3611,7 @@ async function loadPeccDataset(params: {
       readinessAssessmentsCount: String(readiness.count),
       readinessLastDate: readiness.lastDate,
       readinessFirstDate: readiness.firstDate,
+      prsTimeline: formatPrsTimeline(readinessRaw),
       simulationCount: String(simulations.count),
       simulationParticipants: String(simulations.participants),
       siteMilestonesTotal: String(siteMilestones?.total ?? 0),
