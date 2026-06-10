@@ -310,6 +310,7 @@ const ManagerMentorsPage: React.FC = () => {
 
       const scopedMentorIds = scopedMentors.map((m) => m.id);
       const hospitalCtx = await buildMentorHospitalContext(scopedMentorIds);
+      const uniqueHospitalIds = hospitalCtx.allHospitalUuids;
       const { data: peccs, error: peccsError } = hospitalCtx.allHospitalRefs.length > 0
         ? await supabase
           .from('users')
