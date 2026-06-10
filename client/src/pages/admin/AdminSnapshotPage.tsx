@@ -76,6 +76,7 @@ import {
   mapSiteRefsToHospitalRowIds,
   shouldMirrorLegacyUserData,
 } from '../../utils/userData';
+import { downloadTableCsv } from '../../utils/reportCsvExport';
 
 const AdminPlatformOverviewCharts = React.lazy(() => import('../../components/admin/AdminPlatformOverviewCharts'));
 
@@ -242,8 +243,15 @@ export default function AdminSnapshotPage() {
         if (err) {
           setError(err.message);
           setEvents([]);
+          // #region agent log
+          fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'AdminSnapshotPage.tsx:usage:error',message:'Usage events load failed',data:{error:err.message,period:periodValue},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
         } else {
-          setEvents((data as UsageEvent[]) || []);
+          const loaded = (data as UsageEvent[]) || [];
+          setEvents(loaded);
+          // #region agent log
+          fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'AdminSnapshotPage.tsx:usage:success',message:'Usage events loaded',data:{count:loaded.length,capped:loaded.length>=40000,period:periodValue},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
         }
         setLoading(false);
       });
@@ -528,6 +536,9 @@ export default function AdminSnapshotPage() {
 
         setProgramBreakdowns(progBreakdowns);
         setCohortBreakdowns(cohortBreakdowns);
+        // #region agent log
+        fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'AdminSnapshotPage.tsx:aggregated:success',message:'Platform overview loaded',data:{managers,mentors,peccs,sites,programs:programsList.length,cohorts:cohortsList.length,avgPeccProgress,peccActivitiesThisMonth},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         setAggregated({
           managers,
           mentors,
@@ -553,7 +564,11 @@ export default function AdminSnapshotPage() {
         });
       } catch (e: unknown) {
         if (!mounted) return;
-        setAggregatedError(e instanceof Error ? e.message : 'Failed to load platform data');
+        const errMsg = e instanceof Error ? e.message : 'Failed to load platform data';
+        // #region agent log
+        fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'AdminSnapshotPage.tsx:aggregated:error',message:'Platform overview load failed',data:{error:errMsg},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        setAggregatedError(errMsg);
       } finally {
         if (mounted) setAggregatedLoading(false);
       }
@@ -761,6 +776,37 @@ export default function AdminSnapshotPage() {
     return list;
   }, [cohortBreakdowns, breakdownSearch, breakdownFilterProgram]);
 
+  const downloadBreakdownCsv = useCallback(() => {
+    downloadTableCsv(
+      `impacts-program-cohort-breakdown-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Section', 'Name', 'Program', 'Mentors', 'PECCs', 'Sites', 'Mentor hours (mo)', 'Activities (mo)', 'Avg PECC progress %'],
+      [
+        ...filteredProgramBreakdowns.map((p) => [
+          'Program',
+          p.name,
+          '',
+          p.mentorCount,
+          p.peccCount,
+          p.sites,
+          p.mentorHoursThisMonth.toFixed(1),
+          p.mentorActivitiesThisMonth,
+          p.avgPeccProgress,
+        ]),
+        ...filteredCohortBreakdowns.map((c) => [
+          'Cohort',
+          c.name,
+          c.programName || '',
+          c.mentorCount,
+          c.peccCount,
+          c.sites,
+          c.mentorHoursThisMonth.toFixed(1),
+          c.mentorActivitiesThisMonth,
+          c.avgPeccProgress,
+        ]),
+      ]
+    );
+  }, [filteredProgramBreakdowns, filteredCohortBreakdowns]);
+
   const filterUsageTable = <T extends { path?: string; target?: string; label?: string; action?: string }>(rows: T[], search: string): T[] => {
     if (!search.trim()) return rows;
     const q = search.trim().toLowerCase();
@@ -774,16 +820,47 @@ export default function AdminSnapshotPage() {
 
   return (
     <Box sx={{ py: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
-        <Box>
-          <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <TimelineIcon fontSize="large" />
-            Reports
-          </Typography>
-          <Typography color="text.secondary">
-            Custom PECC reports, platform overview, program &amp; cohort breakdowns, and usage analytics.
-          </Typography>
-        </Box>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <TimelineIcon fontSize="large" />
+          Reports
+        </Typography>
+        <Typography color="text.secondary" sx={{ maxWidth: 720, mb: 2 }}>
+          One place for program improvement, platform health, and research-ready exports — custom datasets, KPIs,
+          cohort breakdowns, and usage analytics.
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="subtitle2" fontWeight={700} gutterBottom>Program improvement</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  PECC progress, mentor hours, site milestones, gap plans, and cohort comparisons.
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="subtitle2" fontWeight={700} gutterBottom>Software improvement</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Usage analytics, page flows, login patterns, and feature adoption by role.
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'secondary.main' }}>
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="subtitle2" fontWeight={700} gutterBottom>Research &amp; journals</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  CSV exports with optional de-identification, PRS metrics, and activity aggregates.
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       </Box>
 
       <Tabs
@@ -798,10 +875,10 @@ export default function AdminSnapshotPage() {
       </Tabs>
 
       {activeTab === 0 && currentUser?.id && (
-        <>
+        <Stack spacing={3}>
           <StateMetricsMapPanel />
           <StaffPeccReportBuilder scope="admin" actorUserId={currentUser.id} />
-        </>
+        </Stack>
       )}
 
       {activeTab === 1 && (
@@ -1132,6 +1209,14 @@ export default function AdminSnapshotPage() {
               </FormControl>
               <Button
                 size="small"
+                startIcon={<FileDownloadIcon />}
+                onClick={downloadBreakdownCsv}
+                disabled={aggregatedLoading || (filteredProgramBreakdowns.length === 0 && filteredCohortBreakdowns.length === 0)}
+              >
+                Export CSV
+              </Button>
+              <Button
+                size="small"
                 startIcon={<RefreshIcon />}
                 onClick={() => setRetryCount((c) => c + 1)}
                 disabled={aggregatedLoading}
@@ -1337,6 +1422,11 @@ export default function AdminSnapshotPage() {
                 </Button>
               }>
                 {error}
+              </Alert>
+            )}
+            {!loading && !error && events.length >= 40000 && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Showing the most recent 40,000 events for this period. Use a shorter date range for complete counts in high-traffic windows.
               </Alert>
             )}
             {loading ? (

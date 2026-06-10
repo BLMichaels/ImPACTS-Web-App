@@ -66,7 +66,8 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
 import { mapSiteRefsToHospitalRowIds, shouldMirrorLegacyUserData } from '../../utils/userData';
-import { buildHospitalsTableOrClause } from '../../utils/hospitalId';
+import { buildHospitalsTableOrClause, hospitalIdOrFacilityOrClause, isHospitalUuid } from '../../utils/hospitalId';
+import { buildReportCsvContent, downloadReportCsv } from '../../utils/reportCsvExport';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { getCrmContactTypeLabel } from '../../utils/crmLabels';
 import {
@@ -938,6 +939,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccessOpen, setEditSuccessOpen] = useState(false);
   const [exportMode, setExportMode] = useState<ReportExportMode>('filtered');
+  const [deidentifyExport, setDeidentifyExport] = useState(false);
   const [sortBy, setSortBy] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [peccAudit, setPeccAudit] = useState<PeccAuditSnapshot | null>(null);
@@ -1175,9 +1177,16 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           setRows,
         });
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'StaffPeccReportBuilder.tsx:load:success',message:'Report dataset loaded',data:{dataset,scope,hospitalScopeSize:hospitalScope?.length??null},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     } catch (e: unknown) {
       console.error(e);
-      setError(e instanceof Error ? e.message : 'Failed to load report data');
+      const errMsg = e instanceof Error ? e.message : 'Failed to load report data';
+      // #region agent log
+      fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'StaffPeccReportBuilder.tsx:load:error',message:'Report dataset load failed',data:{dataset,scope,error:errMsg},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      setError(errMsg);
       setRows([]);
       setPeccAudit(null);
     } finally {
@@ -1506,13 +1515,20 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         }
       }
 
-      // Update hospitals/sites.
+      // Update hospitals/sites (hospitalId may be UUID or facility_id).
       if (hints.hospitalId) {
         const payload: { email?: string; phone?: string | null } = {};
         if (editDraft.hospitalEmail !== undefined) payload.email = editDraft.hospitalEmail.trim();
         if (editDraft.hospitalPhone !== undefined) payload.phone = normalizePhoneDraftForDb(editDraft.hospitalPhone);
         if (Object.keys(payload).length) {
-          const { error: err } = await supabase.from('hospitals').update(payload).eq('id', hints.hospitalId);
+          const hospitalRef = String(hints.hospitalId).trim();
+          const { error: err } = await supabase
+            .from('hospitals')
+            .update(payload)
+            .or(hospitalIdOrFacilityOrClause(hospitalRef));
+          // #region agent log
+          fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'StaffPeccReportBuilder.tsx:handleSaveEdit:hospital',message:'Hospital inline edit',data:{hospitalRef,isUuid:isHospitalUuid(hospitalRef),ok:!err,error:err?.message??null},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
           if (err) throw err;
         }
       }
@@ -1670,6 +1686,29 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, datasetReportTitle(dataset).slice(0, 28));
     XLSX.writeFile(wb, `impacts-${exportSlugForDataset(dataset)}-${scope}-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+  };
+
+  const exportCsv = () => {
+    const columnLabels = visibleColumnIds.map((id) => columnMetas.find((c) => c.id === id)?.label || id);
+    const modeLine = exportModeDescription(exportMode, {
+      filtered: sorted.length,
+      visible: displayRows.length,
+      selected: selectedRowIds.length,
+    });
+    const content = buildReportCsvContent({
+      title: datasetReportTitle(dataset),
+      scope,
+      exportMode: modeLine,
+      deidentified: deidentifyExport,
+      columnLabels,
+      columnIds: visibleColumnIds,
+      rows: exportRows,
+    });
+    const suffix = deidentifyExport ? '-deidentified' : '';
+    downloadReportCsv(
+      `impacts-${exportSlugForDataset(dataset)}-${scope}${suffix}-${format(new Date(), 'yyyy-MM-dd')}.csv`,
+      content
+    );
   };
 
   const columnsByGroup = useMemo(() => {
@@ -1835,12 +1874,16 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             <Typography variant="h6" fontWeight={700}>
               Advanced reports
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 900 }}>
-              PECCs (including CRM contacts without accounts), sites, organizations, hospital contacts, and staff — CRM fields, checklists, gap plans, activities, and custom columns. Exports respect your role scope.
+            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 920 }}>
+              Build exports for program operations, platform analytics, and research — PECCs, sites, staff, checklists,
+              gap plans, activities, PRS, and CRM custom fields. PDF, Excel, and CSV; enable de-identified export for
+              manuscripts and IRB submissions.
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-              Use Search and State for quick narrowing; open Filters to target specific columns. Column rules combine with AND.
-            </Typography>
+            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1} sx={{ mt: 1 }}>
+              <Chip size="small" variant="outlined" label="Program improvement" />
+              <Chip size="small" variant="outlined" label="Software analytics" />
+              <Chip size="small" variant="outlined" label="Research / journal data" />
+            </Stack>
           </Box>
           <Stack spacing={1.25} sx={{ width: '100%', alignItems: 'flex-start' }}>
             <Stack
@@ -1991,6 +2034,20 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   </MenuItem>
                 </Select>
               </FormControl>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={deidentifyExport}
+                    onChange={(_, v) => setDeidentifyExport(v)}
+                    size="small"
+                  />
+                }
+                label={
+                  <Tooltip title="Removes direct identifiers (names, emails, phones) from CSV exports for research use.">
+                    <span>De-identify CSV</span>
+                  </Tooltip>
+                }
+              />
               <Button
                 size="small"
                 variant="contained"
@@ -2009,6 +2066,15 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                 onClick={exportExcel}
               >
                 Excel
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                sx={REPORT_HEADER_ACTION_SX}
+                startIcon={<FileDownloadIcon />}
+                onClick={exportCsv}
+              >
+                CSV
               </Button>
             </Stack>
           </Stack>
@@ -3737,6 +3803,20 @@ async function loadOrganizationDataset(params: {
   setRows(rows);
 }
 
+/** Resolve mixed facility_id / UUID scope refs to canonical hospitals.id for FK queries. */
+async function resolveScopeRefsToHospitalUuids(refs: string[]): Promise<string[]> {
+  const trimmed = refs.map((r) => String(r || '').trim()).filter(Boolean);
+  if (!trimmed.length) return [];
+  const refMap = await mapSiteRefsToHospitalRowIds(trimmed);
+  const uuids = new Set<string>();
+  for (const ref of trimmed) {
+    const canonical = refMap.get(ref);
+    if (canonical) uuids.add(canonical);
+    else if (isHospitalUuid(ref)) uuids.add(ref);
+  }
+  return [...uuids];
+}
+
 async function loadContactsDataset(params: {
   hospitalScope: string[] | null;
   setRows: (r: ReportDataRow[]) => void;
@@ -3763,7 +3843,15 @@ async function loadContactsDataset(params: {
 
   let contacts: HcRow[] = [];
   if (hospitalScope && hospitalScope.length > 0) {
-    for (const hidPart of chunk(hospitalScope, 80)) {
+    const hospitalUuids = await resolveScopeRefsToHospitalUuids(hospitalScope);
+    // #region agent log
+    fetch('http://127.0.0.1:7847/ingest/c7fbd57a-de79-4a49-8553-fe7c7e2d17ef',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7a9cfe'},body:JSON.stringify({sessionId:'7a9cfe',location:'StaffPeccReportBuilder.tsx:loadContactsDataset',message:'Contacts scope resolved',data:{scopeRefs:hospitalScope.length,resolvedUuids:hospitalUuids.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    if (hospitalUuids.length === 0) {
+      setRows([]);
+      return;
+    }
+    for (const hidPart of chunk(hospitalUuids, 80)) {
       const part = await fetchAllRowsOrEmpty<HcRow>((from, to) =>
         supabase.from('hospital_contacts').select(hcSelect).in('hospital_id', hidPart).order('last_name').range(from, to)
       );
@@ -3781,7 +3869,9 @@ async function loadContactsDataset(params: {
   const hospitalIds = [...new Set(contacts.map((c) => c.hospital_id))];
   const hospById = new Map<string, { name: string; state: string | null }>();
   for (const hidPart of chunk(hospitalIds, 80)) {
-    const { data: hospChunk, error } = await supabase.from('hospitals').select('id, name, state').in('id', hidPart);
+    const orClause = buildHospitalsTableOrClause(hidPart);
+    if (!orClause || orClause.includes('__no_match__')) continue;
+    const { data: hospChunk, error } = await supabase.from('hospitals').select('id, name, state').or(orClause);
     if (error) throw error;
     (hospChunk || []).forEach((h: { id: string; name: string; state: string | null }) => {
       hospById.set(h.id, { name: h.name, state: h.state });
