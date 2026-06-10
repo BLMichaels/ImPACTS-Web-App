@@ -39,7 +39,6 @@ const MentorReportsPage = lazy(() => import('./pages/mentor/MentorReportsPage'))
 
 // Manager Pages (lazy loaded)
 const ManagerSnapshotPage = lazy(() => import('./pages/manager/ManagerSnapshotPage'));
-const ManagerReportsPage = lazy(() => import('./pages/manager/ManagerReportsPage'));
 const ManagerOverviewPage = lazy(() => import('./pages/manager/ManagerOverviewPage'));
 const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
 const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
@@ -258,7 +257,7 @@ function App() {
                   
                   {/* Manager Routes */}
                   <Route path="/manager/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerSnapshotPage /></ProtectedRoute>} />
-                  <Route path="/manager/reports" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerReportsPage /></ProtectedRoute>} />
+                  <Route path="/manager/reports" element={<Navigate to="/manager/overview" replace />} />
                   <Route path="/manager/overview" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerOverviewPage /></ProtectedRoute>} />
                   <Route path="/manager/dashboard" element={<Navigate to="/manager/overview" replace />} />
                   <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />

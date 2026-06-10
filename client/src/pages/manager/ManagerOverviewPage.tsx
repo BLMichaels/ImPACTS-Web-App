@@ -146,13 +146,10 @@ const ManagerOverviewPage: React.FC = () => {
             Manager Overview
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 560 }}>
-            Team mentoring metrics, sites, and PECC progress. Export a PDF snapshot or open Reports for CSV and longitudinal data.
+            Team mentoring metrics, sites, and PECC progress. Export a PDF snapshot for grant or program reporting.
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Button variant="outlined" size="small" onClick={() => navigate('/manager/reports')}>
-            Reports
-          </Button>
           <Button variant="outlined" size="small" onClick={() => navigate('/manager/crm')}>
             CRM
           </Button>

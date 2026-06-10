@@ -129,7 +129,6 @@ const Navbar: React.FC = () => {
       case UserRole.MANAGER: {
         const managerItems: NavItem[] = [
           { path: '/manager/overview', label: 'Overview', icon: <DashboardIcon /> },
-          { path: '/manager/reports', label: 'Reports', icon: <TimelineIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
