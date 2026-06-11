@@ -27,6 +27,7 @@ import {
   syncCohortManagersForUser,
   syncCohortManagersForMentorSupervisors,
 } from '../../utils/cohortMembershipSync';
+import { buildCanonicalEmailToUserMap } from '../../utils/canonicalUserByEmail';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
 import { CRM_CONTACT_TYPE_LABELS as TYPE_LABELS, CRM_CONTACT_TYPE_COLORS as TYPE_COLORS } from '../../utils/crmLabels';
@@ -884,7 +885,7 @@ const AdminCRMPage: React.FC = () => {
         {
           const { data: usersData, error: usersError } = await supabase
             .from('users')
-            .select('id, email, first_name, last_name, phone, role, is_active, created_at, hospital_facility_id, manager_id')
+            .select('id, email, first_name, last_name, phone, role, is_active, created_at, last_login, hospital_facility_id, manager_id')
             .eq('is_active', true);
           if (usersError) {
             console.warn('CRM: could not load users for contacts:', usersError.message, usersError.code);
@@ -899,6 +900,7 @@ const AdminCRMPage: React.FC = () => {
             role: string;
             is_active: boolean;
             created_at: string;
+            last_login?: string | null;
             hospital_facility_id?: string | null;
             manager_id?: string | null;
           }[];
@@ -1003,7 +1005,7 @@ const AdminCRMPage: React.FC = () => {
           }
           // Critical: for any contact that matches a user by email, use the user's current role for type AND set user_id (so "view as" and recategorization are correct).
           // Use the user's name when present; otherwise keep the contact's existing names so we don't overwrite good CRM data with empty user fields.
-          const emailToUser = new Map(userRows.map((u) => [u.email?.trim().toLowerCase() ?? '', u]));
+          const emailToUser = buildCanonicalEmailToUserMap(userRows);
           const usersByRoleAndName = new Map<string, typeof userRows>();
           userRows.forEach((u) => {
             const role = normalizeUserRole(u.role);
