@@ -55,6 +55,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole, normalizeUserRole } from '../../types/database';
 import { batchGetUserDataForKey, setUserData } from '../../utils/userData';
+import { syncCohortManagersForMentorSupervisors } from '../../utils/cohortMembershipSync';
 
 interface User {
   id: string;
@@ -465,6 +466,9 @@ const AdminTeamTab: React.FC = () => {
       setUserData(selectedUser.id, USER_DATA_MENTOR_MANAGER_IDS, mentorManagerIdsToSave),
       setUserData(selectedUser.id, USER_DATA_PECC_DIRECT_MANAGER_IDS, peccDirectManagerIdsToSave),
     ]);
+    if (profileForm.role === 'mentor' && userProfile?.id && mentorManagerIdsToSave.length > 0) {
+      await syncCohortManagersForMentorSupervisors(selectedUser.id, mentorManagerIdsToSave, userProfile.id);
+    }
     setProfileSaving(false);
     setUsers(prev => prev.map(u => {
       if (u.id !== selectedUser.id) return u;

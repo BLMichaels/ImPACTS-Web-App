@@ -20,6 +20,13 @@ import { SendInvitationDialog } from '../../components/admin/SendInvitationDialo
 import { createAndSendInvitation } from '../../utils/invitations';
 import { buildCrmExportCsv } from '../../utils/crmExport';
 import { buildHospitalsTableOrClause, hospitalIdOrFacilityOrClause } from '../../utils/hospitalId';
+import { normalizeManagerIds } from '../../utils/managerTeamScope';
+import {
+  resolveCohortIdsByNames,
+  syncCohortMembersForUser,
+  syncCohortManagersForUser,
+  syncCohortManagersForMentorSupervisors,
+} from '../../utils/cohortMembershipSync';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
 import { CRM_CONTACT_TYPE_LABELS as TYPE_LABELS, CRM_CONTACT_TYPE_COLORS as TYPE_COLORS } from '../../utils/crmLabels';
@@ -914,6 +921,9 @@ const AdminCRMPage: React.FC = () => {
             .filter((u) => normalizeUserRole(u.role) === 'mentor')
             .map((u) => u.id);
           const mentorHospitalIdsByMentor = new Map<string, string[]>();
+          const mentorManagerIdsByMentor = mentorIds.length > 0
+            ? await batchGetUserDataForKey<string[]>(mentorIds, USER_DATA_MENTOR_MANAGER_IDS)
+            : new Map<string, string[]>();
           if (mentorIds.length > 0) {
             const { data: mentorAssignments } = await supabase
               .from('mentor_hospital_assignments')
@@ -942,7 +952,12 @@ const AdminCRMPage: React.FC = () => {
               linkedHospitalIds = mentorHospitalIdsByMentor.get(u.id) ?? [];
             } else if (normalizedRole === 'manager') {
               const managerMentorIds = userRows
-                .filter((x) => normalizeUserRole(x.role) === 'mentor' && x.manager_id === u.id)
+                .filter((x) => {
+                  if (normalizeUserRole(x.role) !== 'mentor') return false;
+                  if (x.manager_id === u.id) return true;
+                  const additional = normalizeManagerIds(mentorManagerIdsByMentor.get(x.id));
+                  return additional.includes(u.id);
+                })
                 .map((x) => x.id);
               linkedHospitalIds = [...new Set(managerMentorIds.flatMap((mentorId) => mentorHospitalIdsByMentor.get(mentorId) ?? []))];
             }
@@ -1483,16 +1498,23 @@ const AdminCRMPage: React.FC = () => {
       ]);
       if (cancelled) return;
       const userRole = normalizeUserRole((userRow as { role?: string | null }).role || '');
-      const managerIds = [...new Set(
-        [
-          userRow.manager_id,
-          userRow.manager_id_for_pecc,
-          ...(Array.isArray(mentorManagerIdsRaw) ? mentorManagerIdsRaw : []),
-          ...(Array.isArray(peccManagerIdsRaw) ? peccManagerIdsRaw : []),
-        ]
-          .map((id) => String(id || '').trim())
-          .filter(Boolean)
-      )];
+      const managerIds = userRole === 'mentor'
+        ? [...new Set(
+            [userRow.manager_id, ...(Array.isArray(mentorManagerIdsRaw) ? mentorManagerIdsRaw : [])]
+              .map((id) => String(id || '').trim())
+              .filter(Boolean)
+          )]
+        : userRole === 'pecc'
+          ? [...new Set(
+              [userRow.manager_id_for_pecc, ...(Array.isArray(peccManagerIdsRaw) ? peccManagerIdsRaw : [])]
+                .map((id) => String(id || '').trim())
+                .filter(Boolean)
+            )]
+          : [...new Set(
+              [userRow.manager_id, userRow.manager_id_for_pecc]
+                .map((id) => String(id || '').trim())
+                .filter(Boolean)
+            )];
       const mentorIds = [...new Set(
         [
           userRow.mentor_id,
@@ -1631,6 +1653,9 @@ const AdminCRMPage: React.FC = () => {
         return;
       }
       await setUserData(userId, USER_DATA_MENTOR_MANAGER_IDS, managerIds);
+      if (currentUser?.id) {
+        await syncCohortManagersForMentorSupervisors(userId, managerIds, currentUser.id);
+      }
       const { data: allPeccUsers } = await supabase.from('users').select('id, mentor_id').eq('role', 'pecc').eq('is_active', true);
       const allPeccRows = (allPeccUsers || []) as Array<{ id: string; mentor_id?: string | null }>;
       const allPeccIds = allPeccRows.map((row) => row.id);
@@ -2500,6 +2525,9 @@ const AdminCRMPage: React.FC = () => {
         .update({ manager_id: managerIds[0] || null, updated_at: new Date().toISOString() })
         .eq('id', resolvedUserId);
       await setUserData(resolvedUserId, USER_DATA_MENTOR_MANAGER_IDS, managerIds);
+      if (currentUser?.id) {
+        await syncCohortManagersForMentorSupervisors(resolvedUserId, managerIds, currentUser.id);
+      }
       return;
     }
     if (contactType === 'pecc') {
@@ -2509,7 +2537,7 @@ const AdminCRMPage: React.FC = () => {
         .eq('id', resolvedUserId);
       await setUserData(resolvedUserId, USER_DATA_PECC_DIRECT_MANAGER_IDS, managerIds);
     }
-  }, []);
+  }, [currentUser?.id]);
 
   const handleSaveContact = async (fromFullScreen = false) => {
     trackClick?.(editingContact ? 'CRM - Save contact (edit)' : 'CRM - Save contact (add)');
@@ -3114,38 +3142,28 @@ const AdminCRMPage: React.FC = () => {
       }
     }
 
-    // When a person contact has cohort(s) assigned, sync cohort_members so they show in the cohort's Members list
+    // When a person contact has cohort(s) assigned, sync cohort_members (and cohort_managers for managers)
     if (isPersonType(formData.type) && availableCohorts.length > 0) {
       const cohortNames = (formData.cohorts ?? []).map((n: string) => (n || '').trim()).filter(Boolean);
       const emailNorm = formData.email?.trim().toLowerCase() || '';
       const contactUserId = editingContact?.user_id ?? (emailNorm ? (await supabase.from('users').select('id').eq('email', emailNorm).maybeSingle()).data?.id : null);
       if (contactUserId) {
-        const cohortIds = cohortNames
-          .map((name: string) => availableCohorts.find(c => (c.name || '').trim().toLowerCase() === name.toLowerCase())?.id)
-          .filter(Boolean) as string[];
-        const { data: existing, error: existingErr } = await supabase.from('cohort_members').select('cohort_id').eq('user_id', contactUserId);
-        if (existingErr) {
-          setSaveError(`Cohort sync failed: ${existingErr.message}. Contact saved; fix and re-save to update cohort membership.`);
+        const cohortIds = resolveCohortIdsByNames(cohortNames, availableCohorts);
+        const addedBy = currentUser?.id ?? contactUserId;
+        const memberSyncErr = await syncCohortMembersForUser(contactUserId, cohortIds, addedBy);
+        if (memberSyncErr) {
+          setSaveError(`Cohort sync failed: ${memberSyncErr}. Contact saved; fix and re-save to update cohort membership.`);
           return;
         }
-        const existingIds = (existing ?? []).map((r: { cohort_id: string }) => r.cohort_id);
-        for (const cid of existingIds) {
-          if (!cohortIds.includes(cid)) {
-            const { error: delErr } = await supabase.from('cohort_members').delete().eq('user_id', contactUserId).eq('cohort_id', cid);
-            if (delErr) {
-              setSaveError(`Could not remove from cohort: ${delErr.message}. Contact saved.`);
-              return;
-            }
-          }
-        }
-        for (const cid of cohortIds) {
-          const { error: upsertErr } = await supabase
-            .from('cohort_members')
-            .upsert({ cohort_id: cid, user_id: contactUserId, added_by: currentUser?.id ?? contactUserId, status: 'active' }, { onConflict: 'cohort_id,user_id' });
-          if (upsertErr) {
-            setSaveError(`Could not add to cohort: ${upsertErr.message}. Contact saved; fix and re-save to add to cohort.`);
+        if (formData.type === 'manager') {
+          const managerSyncErr = await syncCohortManagersForUser(contactUserId, cohortIds, addedBy);
+          if (managerSyncErr) {
+            setSaveError(`Cohort manager sync failed: ${managerSyncErr}. Contact saved; re-save to grant cohort management access.`);
             return;
           }
+        }
+        if (formData.type === 'mentor' && selectedManagerIdsForSave.length > 0 && currentUser?.id) {
+          await syncCohortManagersForMentorSupervisors(contactUserId, selectedManagerIdsForSave, currentUser.id);
         }
       } else if (cohortNames.length > 0 && !contactUserId && emailNorm) {
         const cohortIds = cohortNames
@@ -3296,7 +3314,9 @@ const AdminCRMPage: React.FC = () => {
   }, [prepareModalOpen]);
 
   const openContactByUserId = useCallback((userId: string) => {
-    const target = contacts.find((c) => isPersonType(c.type) && c.user_id === userId);
+    const target = contacts.find(
+      (c) => isPersonType(c.type) && (c.user_id === userId || c.id === userId)
+    );
     if (!target) return;
     setFullScreenOpen(false);
     openDetail(target);
