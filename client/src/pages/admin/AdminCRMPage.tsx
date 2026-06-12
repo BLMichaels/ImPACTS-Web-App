@@ -26,6 +26,8 @@ import {
   syncCohortMembersForUser,
   syncCohortManagersForUser,
   syncCohortManagersForMentorSupervisors,
+  syncProgramManagersForUser,
+  syncProgramManagersForMentorSupervisors,
 } from '../../utils/cohortMembershipSync';
 import { buildCanonicalEmailToUserMap } from '../../utils/canonicalUserByEmail';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
@@ -1657,6 +1659,7 @@ const AdminCRMPage: React.FC = () => {
       await setUserData(userId, USER_DATA_MENTOR_MANAGER_IDS, managerIds);
       if (currentUser?.id) {
         await syncCohortManagersForMentorSupervisors(userId, managerIds, currentUser.id);
+        await syncProgramManagersForMentorSupervisors(userId, managerIds, currentUser.id);
       }
       const { data: allPeccUsers } = await supabase.from('users').select('id, mentor_id').eq('role', 'pecc').eq('is_active', true);
       const allPeccRows = (allPeccUsers || []) as Array<{ id: string; mentor_id?: string | null }>;
@@ -2529,6 +2532,7 @@ const AdminCRMPage: React.FC = () => {
       await setUserData(resolvedUserId, USER_DATA_MENTOR_MANAGER_IDS, managerIds);
       if (currentUser?.id) {
         await syncCohortManagersForMentorSupervisors(resolvedUserId, managerIds, currentUser.id);
+        await syncProgramManagersForMentorSupervisors(resolvedUserId, managerIds, currentUser.id);
       }
       return;
     }
@@ -3287,6 +3291,25 @@ const AdminCRMPage: React.FC = () => {
             setSaveError(`Primary program sync failed: ${primaryErr.message}. Contact saved; fix permissions and re-save.`);
             return;
           }
+        }
+
+        if (formData.type === 'manager') {
+          const managerSyncErr = await syncProgramManagersForUser(
+            contactUserIdForPrograms,
+            programIds,
+            currentUser?.id ?? contactUserIdForPrograms
+          );
+          if (managerSyncErr) {
+            setSaveError(`Program manager sync failed: ${managerSyncErr}. Contact saved; re-save to grant program management access.`);
+            return;
+          }
+        }
+        if (formData.type === 'mentor' && selectedManagerIdsForSave.length > 0 && currentUser?.id) {
+          await syncProgramManagersForMentorSupervisors(
+            contactUserIdForPrograms,
+            selectedManagerIdsForSave,
+            currentUser.id
+          );
         }
 
         if (viewAsUserId === contactUserIdForPrograms) {

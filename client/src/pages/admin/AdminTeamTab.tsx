@@ -55,7 +55,10 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole, normalizeUserRole } from '../../types/database';
 import { batchGetUserDataForKey, setUserData } from '../../utils/userData';
-import { syncCohortManagersForMentorSupervisors } from '../../utils/cohortMembershipSync';
+import {
+  syncCohortManagersForMentorSupervisors,
+  syncProgramManagersForMentorSupervisors,
+} from '../../utils/cohortMembershipSync';
 
 interface User {
   id: string;
@@ -468,6 +471,7 @@ const AdminTeamTab: React.FC = () => {
     ]);
     if (profileForm.role === 'mentor' && userProfile?.id && mentorManagerIdsToSave.length > 0) {
       await syncCohortManagersForMentorSupervisors(selectedUser.id, mentorManagerIdsToSave, userProfile.id);
+      await syncProgramManagersForMentorSupervisors(selectedUser.id, mentorManagerIdsToSave, userProfile.id);
     }
     setProfileSaving(false);
     setUsers(prev => prev.map(u => {
