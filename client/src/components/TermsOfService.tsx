@@ -14,9 +14,7 @@ import {
   Link
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
-
-/** Update this date when the Terms of Service and User Agreement content is substantively revised. */
-const TERMS_LAST_UPDATED = 'February 14, 2026';
+import { CURRENT_TERMS_VERSION, TERMS_LAST_UPDATED_LABEL } from '../utils/termsOfService';
 
 interface TermsOfServiceProps {
   open: boolean;
@@ -73,7 +71,9 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
             ImPACTS PECC Support Tool
           </Typography>
           <Typography variant="body2" color="text.secondary" paragraph>
-            <strong>Last Updated:</strong> {TERMS_LAST_UPDATED}
+            <strong>Last Updated:</strong> {TERMS_LAST_UPDATED_LABEL}
+            <br />
+            <strong>Version:</strong> {CURRENT_TERMS_VERSION}
           </Typography>
         </Paper>
 
@@ -250,6 +250,53 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
           <li><strong>International Transfers:</strong> Data may be transferred to and processed in countries other than your own</li>
           <li><strong>Regulatory Compliance:</strong> You must ensure your use complies with all applicable data protection laws, including GDPR, CCPA, and state privacy laws</li>
         </Typography>
+        <Typography variant="body1" paragraph>
+          <strong>Password and Session Security:</strong> To protect accounts and facility data, ImPACTS
+          enforces technical access controls that may include:
+        </Typography>
+        <Typography component="ul" sx={{ pl: 2, mb: 2 }}>
+          <li><strong>Minimum password length:</strong> Passwords must meet the minimum length and strength requirements displayed in the Tool (currently at least 15 characters). Requirements may be strengthened over time; you may be required to update legacy passwords before continuing to use the Tool.</li>
+          <li><strong>Password changes:</strong> Changing your password may require your current password or recent re-authentication.</li>
+          <li><strong>Idle session timeout:</strong> For shared-workstation safety, inactive sessions may be signed out automatically after a period of inactivity (currently approximately 30 minutes).</li>
+        </Typography>
+        <Typography variant="body1" paragraph>
+          <strong>Security and Audit Logging:</strong> ImPACTS maintains operational logs to detect abuse,
+          support incident response, and meet program security expectations. These may include:
+        </Typography>
+        <Typography component="ul" sx={{ pl: 2, mb: 2 }}>
+          <li>Failed sign-in attempts and password-reset requests</li>
+          <li>Password update events and mandatory password-upgrade prompts</li>
+          <li>Idle-timeout sign-outs and related session activity metadata</li>
+          <li>Administrative changes to sensitive records (for example, user roles, hospital contacts, and CRM data), where audit logging is enabled</li>
+        </Typography>
+        <Typography variant="body1" paragraph>
+          Logs may include your account email, user identifier, timestamps, browser or device user-agent
+          strings, and limited technical metadata. They are not intended to contain patient data. Logs are
+          retained for security and compliance purposes for a reasonable period and are accessible to
+          authorized ImPACTS administrators only, subject to applicable law.
+        </Typography>
+        <Typography variant="body1" paragraph>
+          <strong>Administrative Access Reviews:</strong> Organization administrators and authorized ImPACTS
+          staff may view user roles, entitlements, and contact information needed to operate the program.
+          Administrators may export user access reports for compliance and entitlement reviews. By using
+          the Tool, you acknowledge that your organization&apos;s administrators may manage your access
+          accordingly.
+        </Typography>
+        <Typography variant="body1" paragraph>
+          <strong>Infrastructure Providers (Subprocessors):</strong> ImPACTS uses reputable third-party
+          providers to host and operate the Tool, including but not limited to:
+        </Typography>
+        <Typography component="ul" sx={{ pl: 2, mb: 2 }}>
+          <li><strong>Supabase</strong> — authentication, database, and serverless functions</li>
+          <li><strong>Vercel</strong> — web application hosting and delivery</li>
+          <li><strong>Email delivery providers</strong> (for example, Resend) — transactional messages such as invitations and password resets, when configured</li>
+        </Typography>
+        <Typography variant="body1" paragraph>
+          These providers process account, facility, and operational data only as needed to provide the
+          Service. ImPACTS does not authorize subprocessors to use Tool data for their own marketing
+          purposes. Hospital or institutional agreements (including Business Associate Agreements, where
+          applicable) are handled separately from this user Agreement.
+        </Typography>
 
         <Typography variant="h6" gutterBottom>
           8. Termination and Suspension
@@ -306,8 +353,8 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
             Email: <Link href="mailto:impactscollaborative@gmail.com" target="_blank">
               impactscollaborative@gmail.com
             </Link><br />
-            Website: <Link href="https://impacts-tracker.web.app" target="_blank">
-              https://impacts-tracker.web.app
+            Website: <Link href="https://impacts.vercel.app" target="_blank" rel="noopener noreferrer">
+              https://impacts.vercel.app
             </Link>
           </Typography>
         </Box>
@@ -326,9 +373,16 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
           your account or any other breach of security.
         </Typography>
         <Typography variant="body1" paragraph>
-          <strong>Account Security:</strong> You must use strong passwords and keep your login 
-          credentials confidential. ImPACTS is not liable for any loss or damage arising from 
-          your failure to protect your account.
+          <strong>Account Security:</strong> You must use passwords that meet the Tool&apos;s current
+          requirements (including the displayed minimum length), keep credentials confidential, sign out
+          on shared devices, and not share accounts. You are responsible for activity under your account
+          until you report unauthorized access. ImPACTS is not liable for loss or damage arising from
+          your failure to protect your account, including weak or reused passwords.
+        </Typography>
+        <Typography variant="body1" paragraph>
+          <strong>Session Use:</strong> You acknowledge that inactive sessions may be terminated
+          automatically and that you may be prompted to accept updated terms or upgrade your password
+          when security requirements change.
         </Typography>
 
         <Typography variant="h6" gutterBottom>
@@ -355,10 +409,10 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
         </Typography>
         <Typography variant="body1" paragraph>
           <strong>Agreement Changes:</strong> ImPACTS reserves the right to modify this Agreement 
-          at any time. The "Last Updated" date at the top of this document reflects the date of 
-          the most recent substantive revision. We will notify users of material changes via email 
-          or through the Tool. Your continued use of the Tool after such modifications constitutes 
-          acceptance of the updated Agreement.
+          at any time. The &quot;Last Updated&quot; date and version at the top reflect the most recent
+          substantive revision. We will notify users of material changes via email or through the Tool,
+          and may require you to review and accept the updated Agreement before continued use. If you do
+          not agree to updated terms, you must stop using the Tool and may request account closure.
         </Typography>
         <Typography variant="body1" paragraph>
           <strong>Tool Updates:</strong> ImPACTS may update, modify, or discontinue the Tool at 

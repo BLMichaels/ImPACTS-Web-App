@@ -16,6 +16,7 @@ import ScrollToTop from './components/ScrollToTop';
 import ErrorBoundary from './components/ErrorBoundary';
 import IdleTimeout from './components/IdleTimeout';
 import ForcePasswordUpdateDialog from './components/ForcePasswordUpdateDialog';
+import TermsReacceptanceDialog from './components/TermsReacceptanceDialog';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -206,6 +207,7 @@ function App() {
               <ScrollToTop />
               <IdleTimeout />
               <ForcePasswordUpdateDialog />
+              <TermsReacceptanceDialog />
               <Box
                 component="a"
                 href="#main-content"

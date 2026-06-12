@@ -27,6 +27,7 @@ import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 import TermsOfService from '../components/TermsOfService';
 import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
+import { recordTermsAcceptance } from '../utils/termsOfService';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface HospitalOption {
@@ -354,8 +355,7 @@ export default function RegisterPage() {
         }
       }
 
-      const { setUserData } = await import('../utils/userData');
-      await setUserData(userId, 'terms_accepted_at', new Date().toISOString());
+      await recordTermsAcceptance(userId);
       navigate('/', { replace: true });
     } catch (err: unknown) {
       try {

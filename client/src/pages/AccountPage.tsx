@@ -49,6 +49,11 @@ import { supabase } from '../supabase';
 import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 import { validateNewPassword } from '../utils/passwordPolicy';
 import PasswordPolicyChecklist, { passwordFieldHelperText } from '../components/PasswordPolicyChecklist';
+import {
+  CURRENT_TERMS_VERSION,
+  TERMS_LAST_UPDATED_LABEL,
+  TERMS_VERSION_KEY,
+} from '../utils/termsOfService';
 
 interface HospitalInfo {
   name: string;
@@ -97,6 +102,7 @@ const AccountPage = () => {
   const accountUserId =
     effectiveUserId ?? currentUser?.uid ?? (currentUser as { id?: string })?.id;
   const [termsAcceptedAt, setTermsAcceptedAt] = useState<string | null>(null);
+  const [termsAcceptedVersion, setTermsAcceptedVersion] = useState<string | null>(null);
   useEffect(() => {
     if (!accountUserId) return;
     getUserData<string>(accountUserId, 'terms_accepted_at').then((v) => {
@@ -107,6 +113,9 @@ const AccountPage = () => {
           if (ls) setTermsAcceptedAt(ls);
         } catch {}
       }
+    });
+    getUserData<string>(accountUserId, TERMS_VERSION_KEY).then((v) => {
+      if (v) setTermsAcceptedVersion(v);
     });
   }, [accountUserId]);
   const navigate = useNavigate();
@@ -664,12 +673,16 @@ const AccountPage = () => {
                   using the ImPACTS PECC Support Tool.
                 </Typography>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mb: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Terms accepted on: {termsAcceptedAt 
+                    Terms accepted on:{' '}
+                    {termsAcceptedAt
                       ? new Date(termsAcceptedAt).toLocaleDateString()
-                      : 'Not available'
-                    }
+                      : 'Not available'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Terms version: {termsAcceptedVersion || 'Prior to versioning'} (current:{' '}
+                    {CURRENT_TERMS_VERSION}, updated {TERMS_LAST_UPDATED_LABEL})
                   </Typography>
                 </Box>
 
