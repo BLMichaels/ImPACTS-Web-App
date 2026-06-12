@@ -647,22 +647,13 @@ const ManagerCRMPage: React.FC = () => {
 
   const loadTabVisibilitySettings = async () => {
     try {
-      const managedMentorIds = await getManagedMentorIds();
-      const managedHospitalIds = hospitals.map((h) => h.id);
-      let managedPeccIds: string[] = [];
-      if (managedHospitalIds.length > 0) {
-        const { refs: peccHospitalRefs } = await expandHospitalRefsForPeccQuery(managedHospitalIds);
-        const { data: managedPeccs, error: managedPeccErr } = peccHospitalRefs.length > 0
-          ? await supabase
-              .from('users')
-              .select('id')
-              .eq('role', 'pecc')
-              .or(buildPeccHospitalFacilityOrClause(peccHospitalRefs))
-          : { data: [], error: null };
-        if (managedPeccErr) throw managedPeccErr;
-        managedPeccIds = (managedPeccs || []).map((p: { id: string }) => p.id);
+      if (!userProfile?.id) {
+        setVisibilitySettings([]);
+        return;
       }
-      const targetUserIds = [...new Set([...managedMentorIds, ...managedPeccIds])];
+      const visibleIds = await fetchManagerVisibleUserIdsSet(userProfile.id);
+      visibleIds.delete(userProfile.id);
+      const targetUserIds = [...visibleIds];
       if (targetUserIds.length === 0) {
         setVisibilitySettings([]);
         return;

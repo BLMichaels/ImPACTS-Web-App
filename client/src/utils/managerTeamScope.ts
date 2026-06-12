@@ -3,7 +3,11 @@
  * and manager-as-mentor (self) hospital assignments.
  */
 import { supabase } from '../supabase';
-import { batchGetUserDataForKey } from './userData';
+import { batchGetUserDataForKey, setUserData } from './userData';
+import {
+  syncCohortManagersForMentorSupervisors,
+  syncProgramManagersForMentorSupervisors,
+} from './cohortMembershipSync';
 import {
   buildPeccHospitalFacilityOrClause,
   expandHospitalRefsForPeccQuery,
@@ -11,6 +15,7 @@ import {
 import { fetchMergedMentorHospitals } from './mentorHospitalScope';
 
 export const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
+export const USER_DATA_PECC_DIRECT_MANAGER_IDS = 'pecc_direct_manager_ids';
 
 const PERMISSIONS_USER_SELECT =
   'id, email, first_name, last_name, phone, role, is_admin, is_active, created_at, updated_at, last_login, manager_id, mentor_id, manager_id_for_pecc, primary_program_id';
@@ -131,6 +136,24 @@ export async function getManagedHospitalScopeKeysForManager(managerId: string): 
   return [...keys];
 }
 
+/** PECCs directly supervised by this manager (primary or secondary). */
+async function addDirectlyManagedPeccIds(managerId: string, ids: Set<string>): Promise<void> {
+  const { data: peccRows } = await supabase
+    .from('users')
+    .select('id, manager_id_for_pecc')
+    .eq('role', 'pecc')
+    .eq('is_active', true);
+  if (!peccRows?.length) return;
+
+  const peccIds = peccRows.map((p) => p.id);
+  const extraManagerMap = await batchGetUserDataForKey<string[]>(peccIds, USER_DATA_PECC_DIRECT_MANAGER_IDS);
+  peccRows.forEach((pecc) => {
+    if (pecc.manager_id_for_pecc === managerId) ids.add(pecc.id);
+    const additional = normalizeManagerIds(extraManagerMap.get(pecc.id));
+    if (additional.includes(managerId)) ids.add(pecc.id);
+  });
+}
+
 /** Users a manager may see in CRM previews and reports. */
 export async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<Set<string>> {
   const ids = new Set<string>();
@@ -138,6 +161,8 @@ export async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<
 
   const mentorIds = await getManagedMentorIdsForManager(managerId);
   mentorIds.forEach((id) => ids.add(id));
+
+  await addDirectlyManagedPeccIds(managerId, ids);
 
   if (mentorIds.length === 0) return ids;
 
@@ -162,15 +187,6 @@ export async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<
 
   (peccs || []).forEach((p: { id: string }) => ids.add(p.id));
 
-  const { data: directPeccs } = await supabase
-    .from('users')
-    .select('id')
-    .eq('role', 'pecc')
-    .eq('is_active', true)
-    .eq('manager_id_for_pecc', managerId);
-
-  (directPeccs || []).forEach((p: { id: string }) => ids.add(p.id));
-
   return ids;
 }
 
@@ -183,4 +199,37 @@ export async function fetchUsersForManagerPermissions(managerId: string) {
   const { data, error } = await supabase.from('users').select(PERMISSIONS_USER_SELECT).in('id', idList);
   if (error) throw error;
   return data || [];
+}
+
+/** Persist full mentor supervisor list (primary + secondary) and sync cohort/program managers. */
+export async function applyMentorSupervisorAssignment(
+  mentorUserId: string,
+  managerUserIds: string[],
+  assignedBy: string
+): Promise<void> {
+  const managers = normalizeManagerIds(managerUserIds);
+  if (managers.length === 0) return;
+  const { error } = await supabase
+    .from('users')
+    .update({ manager_id: managers[0], updated_at: new Date().toISOString() })
+    .eq('id', mentorUserId);
+  if (error) throw error;
+  await setUserData(mentorUserId, USER_DATA_MENTOR_MANAGER_IDS, managers);
+  await syncCohortManagersForMentorSupervisors(mentorUserId, managers, assignedBy);
+  await syncProgramManagersForMentorSupervisors(mentorUserId, managers, assignedBy);
+}
+
+/** Persist full PECC direct-manager list (primary + secondary). */
+export async function applyPeccDirectManagerAssignment(
+  peccUserId: string,
+  managerUserIds: string[]
+): Promise<void> {
+  const managers = normalizeManagerIds(managerUserIds);
+  if (managers.length === 0) return;
+  const { error } = await supabase
+    .from('users')
+    .update({ manager_id_for_pecc: managers[0], updated_at: new Date().toISOString() })
+    .eq('id', peccUserId);
+  if (error) throw error;
+  await setUserData(peccUserId, USER_DATA_PECC_DIRECT_MANAGER_IDS, managers);
 }

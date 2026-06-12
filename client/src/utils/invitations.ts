@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { UserRole, InvitationStatus } from '../types/database';
+import { normalizeManagerIds } from './managerTeamScope';
 
 export interface CreateInvitationParams {
   email: string;
@@ -8,10 +9,17 @@ export interface CreateInvitationParams {
   hospitalId?: string | null;
   mentorId?: string | null;
   managerId?: string | null;
+  managerIds?: string[] | null;
   managerIdForPECC?: string | null;  // For direct Manager-PECC assignment
+  managerIdsForPECC?: string[] | null;
   cohortIds?: string[];   // Pre-designate cohorts for PECC (added on accept)
   programIds?: string[];  // Pre-designate programs for invitee (added on accept)
   customMessage?: string | null;  // Optional message from inviter
+}
+
+function resolveInvitationManagerIds(primary?: string | null, all?: string[] | null): string[] {
+  const merged = normalizeManagerIds([...(all || []), primary || '']);
+  return merged;
 }
 
 /**
@@ -40,15 +48,30 @@ export interface CreateInvitationResult {
  * If the Edge Function is not deployed or fails, invitation is still created; emailSent will be false.
  */
 export async function createAndSendInvitation(params: CreateInvitationParams): Promise<CreateInvitationResult> {
-  const { email, role, invitedBy, hospitalId, mentorId, managerId, managerIdForPECC, cohortIds, programIds, customMessage } = params;
+  const {
+    email,
+    role,
+    invitedBy,
+    hospitalId,
+    mentorId,
+    managerId,
+    managerIds,
+    managerIdForPECC,
+    managerIdsForPECC,
+    cohortIds,
+    programIds,
+    customMessage,
+  } = params;
   // Reuse existing pending invitation when possible to avoid duplicates.
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
   
-  // For PECC with direct manager (bypassing mentor), store manager_id
-  // For Mentor, store manager_id
-  // For PECC with mentor, store mentor_id
-  const finalManagerId = role === 'pecc' && managerIdForPECC ? managerIdForPECC : (role === 'mentor' ? managerId : null);
+  const mentorManagerIds =
+    role === 'mentor' ? resolveInvitationManagerIds(managerId, managerIds) : [];
+  const peccManagerIds =
+    role === 'pecc' ? resolveInvitationManagerIds(managerIdForPECC, managerIdsForPECC) : [];
+  const finalManagerIds = role === 'mentor' ? mentorManagerIds : role === 'pecc' ? peccManagerIds : [];
+  const finalManagerId = finalManagerIds[0] ?? null;
   const finalMentorId = role === 'pecc' && mentorId ? mentorId : null;
   
   const emailNorm = email.trim().toLowerCase();
@@ -81,6 +104,7 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
       hospital_id: hospitalId || null,
       mentor_id: finalMentorId,
       manager_id: finalManagerId,
+      manager_ids: finalManagerIds,
       invited_by: invitedBy,
       expires_at: expiresAt.toISOString(),
     };
@@ -110,6 +134,7 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
         hospital_id: hospitalId || null,
         mentor_id: finalMentorId,
         manager_id: finalManagerId,
+        manager_ids: finalManagerIds,
         invited_by: invitedBy,
         expires_at: expiresAt.toISOString()
       };

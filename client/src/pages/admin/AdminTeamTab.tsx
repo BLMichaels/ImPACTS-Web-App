@@ -317,7 +317,16 @@ const AdminTeamTab: React.FC = () => {
           hospitalId: formData.role === 'pecc' && formData.assignedHospitalId ? formData.assignedHospitalId : null,
           mentorId: formData.role === 'pecc' && formData.assignedMentorId ? formData.assignedMentorId : null,
           managerId: formData.role === 'mentor' && formData.assignedManagerId ? formData.assignedManagerId : null,
-          managerIdForPECC: formData.role === 'pecc' && formData.assignedManagerIdForPECC ? formData.assignedManagerIdForPECC : null
+          managerIds:
+            formData.role === 'mentor'
+              ? uniqueIds([formData.assignedManagerId, ...formData.assignedManagerIds])
+              : undefined,
+          managerIdForPECC:
+            formData.role === 'pecc' && formData.assignedManagerIdForPECC ? formData.assignedManagerIdForPECC : null,
+          managerIdsForPECC:
+            formData.role === 'pecc'
+              ? uniqueIds([formData.assignedManagerIdForPECC, ...formData.assignedManagerIdsForPECC])
+              : undefined,
         });
         const inviteUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/invite/${code}`;
         setSnackbar({

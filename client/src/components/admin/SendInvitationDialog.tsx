@@ -30,6 +30,10 @@ import {
   syncMentorHospitalAssignmentsFromMentorPeccLink,
   syncPeccHospitalAndMentorFromCrm,
 } from '../../utils/mentorHospitalAssignments';
+import {
+  applyMentorSupervisorAssignment,
+  applyPeccDirectManagerAssignment,
+} from '../../utils/managerTeamScope';
 
 interface SendInvitationDialogProps {
   open: boolean;
@@ -453,9 +457,11 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         if (role === UserRole.PECC) {
           const peccUpdates: Record<string, string | null> = { updated_at: new Date().toISOString() };
           if (mentorUserId) peccUpdates.mentor_id = mentorUserId;
-          if (managerForPeccUserId) peccUpdates.manager_id_for_pecc = managerForPeccUserId;
           if (Object.keys(peccUpdates).length > 1) {
             await supabase.from('users').update(peccUpdates).eq('id', userId);
+          }
+          if (!mentorUserId && managerForPeccUserId) {
+            await applyPeccDirectManagerAssignment(userId, [managerForPeccUserId]);
           }
           const hospitalUuid =
             hospitalId && hospitals.some((h) => h.id === hospitalId) ? hospitalId : null;
@@ -466,10 +472,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
             await syncMentorHospitalAssignmentsFromMentorPeccLink(mentorUserId, [userId], actor);
           }
         } else if (role === UserRole.MENTOR && managerUserId) {
-          await supabase
-            .from('users')
-            .update({ manager_id: managerUserId, updated_at: new Date().toISOString() })
-            .eq('id', userId);
+          await applyMentorSupervisorAssignment(userId, [managerUserId], actor);
         }
 
         setSuccess(true);

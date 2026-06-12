@@ -29,6 +29,13 @@ import { getRoleMuiColor, getRoleLabel } from '../../utils/roleUtils';
 import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
+import { getUserData, setUserData } from '../../utils/userData';
+import {
+  normalizeManagerIds,
+  USER_DATA_MENTOR_MANAGER_IDS,
+  USER_DATA_PECC_DIRECT_MANAGER_IDS,
+} from '../../utils/managerTeamScope';
+import { syncCohortManagersForMentorSupervisors } from '../../utils/cohortMembershipSync';
 import InviteMemberDialog from './InviteMemberDialog';
 import { format } from 'date-fns';
 
@@ -89,12 +96,16 @@ const MemberList: React.FC<MemberListProps> = ({
 
   const canClaimMember = (member: CohortMember) => {
     const role = member.user?.role;
-    if (!role) return false;
-    if (role === UserRole.MENTOR) return !Boolean((member.user as any).manager_id);
+    if (!role || userProfile?.role !== UserRole.MANAGER) return false;
+    if (role === UserRole.MENTOR) {
+      const primary = String((member.user as { manager_id?: string | null }).manager_id || '').trim();
+      if (primary === userProfile.id) return false;
+      return true;
+    }
     if (role === UserRole.PECC) {
-      const hasMentor = Boolean((member.user as any).mentor_id);
-      const hasDirectManager = Boolean((member.user as any).manager_id_for_pecc);
-      return !hasMentor && !hasDirectManager;
+      const primary = String((member.user as { manager_id_for_pecc?: string | null }).manager_id_for_pecc || '').trim();
+      if (primary === userProfile.id) return false;
+      return true;
     }
     return false;
   };
@@ -104,19 +115,58 @@ const MemberList: React.FC<MemberListProps> = ({
     setAssigningMemberId(member.id);
     try {
       const role = member.user?.role;
-      const payload =
-        role === UserRole.MENTOR
-          ? { manager_id: userProfile.id }
-          : { manager_id_for_pecc: userProfile.id };
-      const { error } = await supabase.from('users').update(payload).eq('id', member.user_id);
-      if (error) throw error;
-      onMemberUpdated?.(member.id, {
-        user: {
-          ...(member.user as any),
-          ...(role === UserRole.MENTOR ? { manager_id: userProfile.id } : { manager_id_for_pecc: userProfile.id })
-        } as any
-      });
-      return true;
+      if (role === UserRole.MENTOR) {
+        const existingPrimary = String((member.user as { manager_id?: string | null }).manager_id || '').trim();
+        const existingLists = await getUserData<string[]>(member.user_id, USER_DATA_MENTOR_MANAGER_IDS);
+        const currentManagers = normalizeManagerIds([
+          existingPrimary,
+          ...(Array.isArray(existingLists) ? existingLists : []),
+        ]);
+        if (currentManagers.includes(userProfile.id)) return true;
+        const nextManagers = [...new Set([...currentManagers, userProfile.id])];
+        if (!existingPrimary) {
+          const { error } = await supabase
+            .from('users')
+            .update({ manager_id: userProfile.id, updated_at: new Date().toISOString() })
+            .eq('id', member.user_id);
+          if (error) throw error;
+        }
+        await setUserData(member.user_id, USER_DATA_MENTOR_MANAGER_IDS, nextManagers);
+        await syncCohortManagersForMentorSupervisors(member.user_id, nextManagers, userProfile.id);
+        onMemberUpdated?.(member.id, {
+          user: {
+            ...(member.user as any),
+            manager_id: existingPrimary || userProfile.id,
+          } as any,
+        });
+        return true;
+      }
+      if (role === UserRole.PECC) {
+        const existingPrimary = String((member.user as { manager_id_for_pecc?: string | null }).manager_id_for_pecc || '').trim();
+        const existingLists = await getUserData<string[]>(member.user_id, USER_DATA_PECC_DIRECT_MANAGER_IDS);
+        const currentManagers = normalizeManagerIds([
+          existingPrimary,
+          ...(Array.isArray(existingLists) ? existingLists : []),
+        ]);
+        if (currentManagers.includes(userProfile.id)) return true;
+        const nextManagers = [...new Set([...currentManagers, userProfile.id])];
+        if (!existingPrimary) {
+          const { error } = await supabase
+            .from('users')
+            .update({ manager_id_for_pecc: userProfile.id, updated_at: new Date().toISOString() })
+            .eq('id', member.user_id);
+          if (error) throw error;
+        }
+        await setUserData(member.user_id, USER_DATA_PECC_DIRECT_MANAGER_IDS, nextManagers);
+        onMemberUpdated?.(member.id, {
+          user: {
+            ...(member.user as any),
+            manager_id_for_pecc: existingPrimary || userProfile.id,
+          } as any,
+        });
+        return true;
+      }
+      return false;
     } catch (err) {
       console.error('Error assigning member to manager:', err);
       return false;

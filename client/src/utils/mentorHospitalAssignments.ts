@@ -9,6 +9,7 @@ import {
   resolvePeccFacilityId,
 } from './hospitalId';
 import { getUserData } from './userData';
+import { pickCanonicalUserByEmail } from './canonicalUserByEmail';
 
 const PECC_MENTOR_IDS_KEY = 'pecc_mentor_ids';
 
@@ -21,8 +22,13 @@ export async function resolvePeccPortalUserId(
   if (uid) return uid;
   const em = String(email || '').trim();
   if (!em) return null;
-  const { data } = await supabase.from('users').select('id').eq('role', 'pecc').eq('email', em).maybeSingle();
-  return data?.id ? String(data.id) : null;
+  const { data: rows } = await supabase
+    .from('users')
+    .select('id, email, last_login, created_at, is_active')
+    .eq('role', 'pecc')
+    .ilike('email', em);
+  const picked = pickCanonicalUserByEmail(rows ?? []);
+  return picked?.id ? String(picked.id) : null;
 }
 
 /** Apply CRM linked hospitals to users + mentor assignment rows. */

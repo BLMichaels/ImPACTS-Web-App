@@ -29,6 +29,11 @@ import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/display
 import { hospitalIdOrFacilityOrClause, resolvePeccFacilityId } from '../utils/hospitalId';
 import { syncMentorHospitalAssignmentsForPecc, syncPeccHospitalAndMentorFromCrm } from '../utils/mentorHospitalAssignments';
 import { ensureHospitalDataPlaceholder } from '../utils/userData';
+import {
+  applyMentorSupervisorAssignment,
+  applyPeccDirectManagerAssignment,
+  normalizeManagerIds,
+} from '../utils/managerTeamScope';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface InvitationData {
@@ -315,9 +320,15 @@ const InvitationPage: React.FC = () => {
 
         const { data: invData } = await supabase
           .from('invitations')
-          .select('mentor_id, manager_id, hospital_id, cohort_ids, invited_by')
+          .select('mentor_id, manager_id, manager_ids, hospital_id, cohort_ids, invited_by')
           .eq('code', code)
           .single();
+
+        const invitedBy = (invData as { invited_by?: string } | null)?.invited_by || userId;
+        const invitationManagerIds = normalizeManagerIds([
+          invData?.manager_id,
+          ...((invData as { manager_ids?: string[] } | null)?.manager_ids || []),
+        ]);
 
         if (invitation.role === 'pecc') {
           if (invData?.hospital_id) {
@@ -326,11 +337,11 @@ const InvitationPage: React.FC = () => {
           }
           if (invData?.mentor_id) {
             updatePayload.mentor_id = invData.mentor_id;
-          } else if (invData?.manager_id) {
-            updatePayload.manager_id_for_pecc = invData.manager_id;
+          } else if (invitationManagerIds[0]) {
+            updatePayload.manager_id_for_pecc = invitationManagerIds[0];
           }
-        } else if (invitation.role === 'mentor' && invData?.manager_id) {
-          updatePayload.manager_id = invData.manager_id;
+        } else if (invitation.role === 'mentor' && invitationManagerIds[0]) {
+          updatePayload.manager_id = invitationManagerIds[0];
         }
 
         const { error: updateError } = await supabase.from('users').update(updatePayload).eq('id', userId);
@@ -339,8 +350,17 @@ const InvitationPage: React.FC = () => {
           throw new Error(`Failed to finalize profile: ${updateError.message}`);
         }
 
+        if (invitation.role === 'mentor' && invitationManagerIds.length > 0) {
+          await applyMentorSupervisorAssignment(userId, invitationManagerIds, invitedBy);
+        } else if (
+          invitation.role === 'pecc' &&
+          !invData?.mentor_id &&
+          invitationManagerIds.length > 0
+        ) {
+          await applyPeccDirectManagerAssignment(userId, invitationManagerIds);
+        }
+
         const cohortIds = (invData as { cohort_ids?: string[] } | null)?.cohort_ids;
-        const invitedBy = (invData as { invited_by?: string } | null)?.invited_by;
         if (invitation.role === 'pecc' && Array.isArray(cohortIds) && cohortIds.length > 0 && invitedBy) {
           for (const cohortId of cohortIds) {
             const { error: cohortMemberError } = await supabase.from('cohort_members').upsert(

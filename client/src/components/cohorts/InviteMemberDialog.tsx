@@ -19,6 +19,7 @@ import { getRoleMuiColor, getRoleLabel } from '../../utils/roleUtils';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { createAndSendInvitation } from '../../utils/invitations';
+import { fetchManagerVisibleUserIdsSet } from '../../utils/managerTeamScope';
 
 interface InviteMemberDialogProps {
   open: boolean;
@@ -190,14 +191,41 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
             .order('first_name');
           if (userRole === UserRole.MENTOR && !canAddDirectly) {
             query = query.eq('mentor_id', userProfile?.id);
-          } else if (userRole === UserRole.MANAGER) {
-            const { data: mentors } = await supabase.from('users').select('id').eq('manager_id', userProfile?.id);
-            const mentorIds = mentors?.map(m => m.id) || [];
-            if (mentorIds.length > 0) {
-              query = query.or(`manager_id.eq.${userProfile?.id},mentor_id.in.(${mentorIds.join(',')})`);
-            } else {
-              query = query.eq('manager_id', userProfile?.id);
+          } else if (userRole === UserRole.MANAGER && userProfile?.id) {
+            const visibleIds = await fetchManagerVisibleUserIdsSet(userProfile.id);
+            visibleIds.delete(userProfile.id);
+            const idList = [...visibleIds];
+            if (idList.length === 0) {
+              setOptions([]);
+              return;
             }
+            const { data: queryData, error: fetchError } = await supabase
+              .from('users')
+              .select('id, first_name, last_name, email, role')
+              .eq('is_active', true)
+              .in('id', idList)
+              .order('first_name');
+            if (fetchError) throw fetchError;
+            const list = (queryData || []).map((row: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; role?: string | null }) => ({
+              type: 'user' as const,
+              id: row.id,
+              first_name: row.first_name ?? '',
+              last_name: row.last_name ?? '',
+              email: (row.email ?? '').trim(),
+              role: (row.role as UserRole) || UserRole.PECC
+            }));
+            const filteredList = list.filter(u => !existingMemberIds.includes(u.id) && !existingEmailsLower.has((u.email || '').toLowerCase()));
+            filteredList.sort((a, b) => {
+              const lastA = (a.last_name ?? '').toLowerCase();
+              const lastB = (b.last_name ?? '').toLowerCase();
+              if (lastA !== lastB) return lastA.localeCompare(lastB);
+              const firstA = (a.first_name ?? '').toLowerCase();
+              const firstB = (b.first_name ?? '').toLowerCase();
+              if (firstA !== firstB) return firstA.localeCompare(firstB);
+              return (a.email ?? '').toLowerCase().localeCompare((b.email ?? '').toLowerCase());
+            });
+            setOptions(filteredList);
+            return;
           }
           const { data: queryData, error: fetchError } = await query;
           if (fetchError) throw fetchError;
