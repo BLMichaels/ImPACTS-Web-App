@@ -15,6 +15,11 @@ import {
   Theme,
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
+import {
+  IMPACTS_CONTACT_EMAIL,
+  IMPACTS_ORG_URL,
+  PECC_TOOL_ACCOUNT_URL,
+} from '../config/appUrls';
 import { CURRENT_TERMS_VERSION, TERMS_LAST_UPDATED_LABEL } from '../utils/termsOfService';
 
 interface TermsOfServiceProps {
@@ -254,8 +259,8 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
         <TermsList>
           <li>
             <strong>Withdrawal Process:</strong> To opt out, you must send a written request to{' '}
-            <Link href="mailto:impactscollaborative@gmail.com" sx={termsLinkSx}>
-              impactscollaborative@gmail.com
+            <Link href={`mailto:${IMPACTS_CONTACT_EMAIL}`} sx={termsLinkSx}>
+              {IMPACTS_CONTACT_EMAIL}
             </Link>{' '}
             with your facility name, contact information, and explicit request for data removal
           </li>
@@ -430,13 +435,18 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
             <strong>ImPACTS Collaborative</strong>
             <br />
             Email:{' '}
-            <Link href="mailto:impactscollaborative@gmail.com" sx={termsLinkSx}>
-              impactscollaborative@gmail.com
+            <Link href={`mailto:${IMPACTS_CONTACT_EMAIL}`} sx={termsLinkSx}>
+              {IMPACTS_CONTACT_EMAIL}
             </Link>
             <br />
-            Website:{' '}
-            <Link href="https://impacts.vercel.app" target="_blank" rel="noopener noreferrer" sx={termsLinkSx}>
-              https://impacts.vercel.app
+            Organization website:{' '}
+            <Link href={IMPACTS_ORG_URL} target="_blank" rel="noopener noreferrer" sx={termsLinkSx}>
+              {IMPACTS_ORG_URL}
+            </Link>
+            <br />
+            PECC Support Tool:{' '}
+            <Link href={PECC_TOOL_ACCOUNT_URL} target="_blank" rel="noopener noreferrer" sx={termsLinkSx}>
+              {PECC_TOOL_ACCOUNT_URL}
             </Link>
           </TermsP>
         </Box>
