@@ -15,9 +15,17 @@ Apply scripts in the **Supabase SQL editor** for production. Track what you ran 
 1. `HIPAA_AUDIT_LOG_MIGRATION.sql` — audit triggers on users, hospitals, contacts, CRM
 2. `SECURITY_EVENTS_AND_AUDIT_HARDENING.sql` — `security_events` table (failed logins, password changes, idle timeouts) + makes `audit_log` append-only
 
-Password policy is 15+ characters, enforced client-side (`client/src/utils/passwordPolicy.ts`) and in the
-`complete-invitation-registration` / `provision-crm-portal-user` edge functions (redeploy both after updating).
-Users with shorter legacy passwords are flagged at login and forced to update. Idle sessions sign out after 30 minutes.
+Password policy is **15+ characters**, enforced at four layers:
+
+1. **Supabase Auth** — `minimum_password_length = 15` in `supabase/config.toml`; push with  
+   `npx supabase config push --project-ref ftpifgzzfwpujlvbqqhu --yes`  
+   (keep production `site_url` / redirect URLs in that file; do not push local dev defaults).
+2. **Client** — `client/src/utils/passwordPolicy.ts` on register, invite, account, and admin provision flows.
+3. **Edge functions** — `complete-invitation-registration`, `provision-crm-portal-user`.
+4. **Legacy users** — flagged at login (`password_update_required` in `user_data`); `ForcePasswordUpdateDialog` blocks the app until updated.  
+   Apply `PASSWORD_UPDATE_REQUIRED_GUARD.sql` so users cannot clear the flag without `clear_password_update_required()` RPC (after a successful password change).
+
+Idle sessions sign out after 30 minutes.
 
 ## Feature-specific (apply if you use the feature)
 

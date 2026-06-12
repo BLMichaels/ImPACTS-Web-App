@@ -63,12 +63,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (data.user) setCurrentUser(extendUser(data.user));
     if (data.session) setSession(data.session);
     markSessionActive();
-    // Legacy passwords created before the 15-char policy: flag the account so the
-    // app prompts for a password update on this and subsequent logins.
-    if (data.user && !meetsPasswordPolicy(password)) {
-      void setUserData(data.user.id, PASSWORD_UPDATE_REQUIRED_KEY, true)
-        .then(() => logSecurityEvent('password_update_required', { email, userId: data.user!.id }))
-        .catch((err) => console.warn('[Auth] failed to flag legacy password', err));
+    // Legacy / weak passwords: flag before navigation so ForcePasswordUpdateDialog opens.
+    const weakReasons = (data as { weakPassword?: { reasons?: string[] } })?.weakPassword?.reasons;
+    const needsPasswordUpdate =
+      !!data.user && (!meetsPasswordPolicy(password) || (weakReasons?.length ?? 0) > 0);
+    if (needsPasswordUpdate && data.user) {
+      await setUserData(data.user.id, PASSWORD_UPDATE_REQUIRED_KEY, true);
+      void logSecurityEvent('password_update_required', {
+        email,
+        userId: data.user.id,
+        metadata: {
+          source: weakReasons?.length ? 'supabase_weak_password' : 'legacy_length',
+          reasons: weakReasons,
+        },
+      });
     }
   };
 
@@ -108,9 +116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
     const userId = data.user?.id ?? currentUser?.id;
     if (userId) {
-      await setUserData(userId, PASSWORD_UPDATE_REQUIRED_KEY, false).catch((err) =>
-        console.warn('[Auth] failed to clear password update flag', err)
-      );
+      const { error: clearError } = await supabase.rpc('clear_password_update_required');
+      if (clearError) {
+        console.warn('[Auth] failed to clear password update flag', clearError.message);
+      }
       void logSecurityEvent('password_updated', {
         email: data.user?.email ?? currentUser?.email,
         userId,
@@ -139,6 +148,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setAuthLifecycleNote(null);
       } else if (event === 'SIGNED_OUT') {
         setAuthLifecycleNote(null);
+        clearSessionActivity();
+      } else if (event === 'SIGNED_IN') {
+        markSessionActive();
       } else if (event === 'USER_UPDATED') {
         setAuthLifecycleNote(null);
       }
