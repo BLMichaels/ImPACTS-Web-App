@@ -16,6 +16,7 @@ import {
   PASSWORD_REQUIREMENT_TEXT,
   validateNewPassword,
 } from '../utils/passwordPolicy';
+import PasswordPolicyChecklist, { passwordFieldHelperText } from './PasswordPolicyChecklist';
 
 /**
  * Shown when the signed-in user's password predates the 15-character policy
@@ -28,6 +29,7 @@ const ForcePasswordUpdateDialog: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [showValidation, setShowValidation] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -48,6 +50,7 @@ const ForcePasswordUpdateDialog: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setShowValidation(true);
     setError('');
     const policyError = validateNewPassword(newPassword);
     if (policyError) {
@@ -64,6 +67,7 @@ const ForcePasswordUpdateDialog: React.FC = () => {
       setOpen(false);
       setNewPassword('');
       setConfirmPassword('');
+      setShowValidation(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update password. Please try again.');
     } finally {
@@ -82,6 +86,11 @@ const ForcePasswordUpdateDialog: React.FC = () => {
 
   if (!currentUser) return null;
 
+  const confirmMismatch =
+    showValidation &&
+    confirmPassword.length > 0 &&
+    newPassword !== confirmPassword;
+
   return (
     <Dialog open={open} disableEscapeKeyDown maxWidth="sm" fullWidth>
       <DialogTitle>Password update required</DialogTitle>
@@ -91,11 +100,11 @@ const ForcePasswordUpdateDialog: React.FC = () => {
             Our password requirements have been strengthened. Please set a new password to
             continue using ImPACTS.
           </Alert>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             {PASSWORD_REQUIREMENT_TEXT}
           </Typography>
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert severity="error" sx={{ mb: 2 }} role="alert">
               {error}
             </Alert>
           )}
@@ -108,8 +117,21 @@ const ForcePasswordUpdateDialog: React.FC = () => {
             autoComplete="new-password"
             autoFocus
             value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
+            onChange={(e) => {
+              setNewPassword(e.target.value);
+              if (error) setError('');
+            }}
+            onBlur={() => setShowValidation(true)}
+            error={showValidation && !!validateNewPassword(newPassword) && newPassword.length > 0}
+            helperText={passwordFieldHelperText(newPassword, showValidation)}
+            FormHelperTextProps={{
+              sx: {
+                color:
+                  showValidation && validateNewPassword(newPassword) ? 'error.main' : 'text.secondary',
+              },
+            }}
           />
+          <PasswordPolicyChecklist password={newPassword} showValidation={showValidation} compact />
           <TextField
             margin="normal"
             required
@@ -118,7 +140,12 @@ const ForcePasswordUpdateDialog: React.FC = () => {
             type="password"
             autoComplete="new-password"
             value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
+            onChange={(e) => {
+              setConfirmPassword(e.target.value);
+              if (error) setError('');
+            }}
+            error={confirmMismatch}
+            helperText={confirmMismatch ? 'Passwords do not match.' : undefined}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

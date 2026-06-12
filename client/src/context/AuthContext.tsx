@@ -26,7 +26,7 @@ interface AuthContextType {
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPasswordForEmail: (email: string, redirectTo?: string) => Promise<void>;
-  updatePassword: (newPassword: string) => Promise<void>;
+  updatePassword: (newPassword: string, currentPassword?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -109,10 +109,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     void logSecurityEvent('password_reset_requested', { email });
   };
 
-  const updatePassword = async (newPassword: string) => {
+  const updatePassword = async (newPassword: string, currentPassword?: string) => {
     const policyError = validateNewPassword(newPassword);
     if (policyError) throw new Error(policyError);
-    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+      ...(currentPassword ? { current_password: currentPassword } : {}),
+    });
     if (error) throw error;
     const userId = data.user?.id ?? currentUser?.id;
     if (userId) {

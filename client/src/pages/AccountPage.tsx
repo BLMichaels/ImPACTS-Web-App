@@ -47,7 +47,8 @@ import { useNavigate } from 'react-router-dom';
 import TermsOfService from '../components/TermsOfService';
 import { supabase } from '../supabase';
 import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
-import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
+import { validateNewPassword } from '../utils/passwordPolicy';
+import PasswordPolicyChecklist, { passwordFieldHelperText } from '../components/PasswordPolicyChecklist';
 
 interface HospitalInfo {
   name: string;
@@ -155,6 +156,8 @@ const AccountPage = () => {
     newPassword: '',
     confirmPassword: ''
   });
+  const [passwordDialogError, setPasswordDialogError] = useState('');
+  const [passwordValidationShown, setPasswordValidationShown] = useState(false);
   const [showPasswords, setShowPasswords] = useState({
     current: false,
     new: false,
@@ -314,29 +317,42 @@ const AccountPage = () => {
     setTimeout(() => setAlert(null), 3000);
   };
 
+  const resetPasswordDialogState = () => {
+    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    setPasswordDialogError('');
+    setPasswordValidationShown(false);
+  };
+
   const handlePasswordReset = async () => {
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setAlert({ type: 'error', message: 'New passwords do not match!' });
+    setPasswordValidationShown(true);
+    setPasswordDialogError('');
+
+    if (!passwordData.currentPassword.trim()) {
+      setPasswordDialogError('Enter your current password.');
       return;
     }
 
     const passwordPolicyError = validateNewPassword(passwordData.newPassword);
     if (passwordPolicyError) {
-      setAlert({ type: 'error', message: passwordPolicyError });
+      setPasswordDialogError(passwordPolicyError);
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordDialogError('New passwords do not match.');
       return;
     }
 
     try {
-      await updatePassword(passwordData.newPassword);
+      await updatePassword(passwordData.newPassword, passwordData.currentPassword);
       setAlert({ type: 'success', message: 'Password updated successfully!' });
       setPasswordDialogOpen(false);
-      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      resetPasswordDialogState();
       setTimeout(() => setAlert(null), 3000);
     } catch (err) {
-      setAlert({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Failed to update password. Please try again.',
-      });
+      setPasswordDialogError(
+        err instanceof Error ? err.message : 'Failed to update password. Please try again.'
+      );
     }
   };
 
@@ -1122,23 +1138,47 @@ const AccountPage = () => {
       </Box>
 
       {/* Password Reset Dialog */}
-      <Dialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={passwordDialogOpen}
+        onClose={() => {
+          setPasswordDialogOpen(false);
+          resetPasswordDialogState();
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Change Password</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 1 }}>
+            {passwordDialogError && (
+              <Alert severity="error" sx={{ mb: 2 }} role="alert">
+                {passwordDialogError}
+              </Alert>
+            )}
             <TextField
               fullWidth
               type={showPasswords.current ? 'text' : 'password'}
               label="Current Password"
               value={passwordData.currentPassword}
-              onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+              onChange={(e) => {
+                setPasswordData({ ...passwordData, currentPassword: e.target.value });
+                if (passwordDialogError) setPasswordDialogError('');
+              }}
               margin="normal"
+              required
+              error={passwordValidationShown && !passwordData.currentPassword.trim()}
+              helperText={
+                passwordValidationShown && !passwordData.currentPassword.trim()
+                  ? 'Required to confirm your identity.'
+                  : undefined
+              }
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
                       onClick={() => setShowPasswords({ ...showPasswords, current: !showPasswords.current })}
                       edge="end"
+                      aria-label={showPasswords.current ? 'Hide current password' : 'Show current password'}
                     >
                       {showPasswords.current ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
@@ -1151,15 +1191,34 @@ const AccountPage = () => {
               type={showPasswords.new ? 'text' : 'password'}
               label="New Password"
               value={passwordData.newPassword}
-              onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+              onChange={(e) => {
+                setPasswordData({ ...passwordData, newPassword: e.target.value });
+                if (passwordDialogError) setPasswordDialogError('');
+              }}
+              onBlur={() => setPasswordValidationShown(true)}
               margin="normal"
-              helperText={PASSWORD_REQUIREMENT_TEXT}
+              required
+              error={
+                passwordValidationShown &&
+                !!validateNewPassword(passwordData.newPassword) &&
+                passwordData.newPassword.length > 0
+              }
+              helperText={passwordFieldHelperText(passwordData.newPassword, passwordValidationShown)}
+              FormHelperTextProps={{
+                sx: {
+                  color:
+                    passwordValidationShown && validateNewPassword(passwordData.newPassword)
+                      ? 'error.main'
+                      : 'text.secondary',
+                },
+              }}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
                       onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
                       edge="end"
+                      aria-label={showPasswords.new ? 'Hide new password' : 'Show new password'}
                     >
                       {showPasswords.new ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
@@ -1167,19 +1226,40 @@ const AccountPage = () => {
                 ),
               }}
             />
+            <PasswordPolicyChecklist
+              password={passwordData.newPassword}
+              showValidation={passwordValidationShown}
+            />
             <TextField
               fullWidth
               type={showPasswords.confirm ? 'text' : 'password'}
               label="Confirm New Password"
               value={passwordData.confirmPassword}
-              onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+              onChange={(e) => {
+                setPasswordData({ ...passwordData, confirmPassword: e.target.value });
+                if (passwordDialogError) setPasswordDialogError('');
+              }}
               margin="normal"
+              required
+              error={
+                passwordValidationShown &&
+                passwordData.confirmPassword.length > 0 &&
+                passwordData.newPassword !== passwordData.confirmPassword
+              }
+              helperText={
+                passwordValidationShown &&
+                passwordData.confirmPassword.length > 0 &&
+                passwordData.newPassword !== passwordData.confirmPassword
+                  ? 'Passwords do not match.'
+                  : undefined
+              }
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
                       onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
                       edge="end"
+                      aria-label={showPasswords.confirm ? 'Hide confirm password' : 'Show confirm password'}
                     >
                       {showPasswords.confirm ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
@@ -1190,7 +1270,14 @@ const AccountPage = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPasswordDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              setPasswordDialogOpen(false);
+              resetPasswordDialogState();
+            }}
+          >
+            Cancel
+          </Button>
           <Button onClick={handlePasswordReset} variant="contained">
             Update Password
           </Button>
