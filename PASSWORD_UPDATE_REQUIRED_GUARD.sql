@@ -26,7 +26,8 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF OLD.data_key = 'password_update_required' THEN
+  IF OLD.data_key = 'password_update_required'
+     AND current_setting('app.clear_password_update_required', true) IS DISTINCT FROM '1' THEN
     RAISE EXCEPTION 'password_update_required cannot be deleted directly';
   END IF;
   RETURN OLD;
@@ -49,6 +50,7 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'not authenticated';
   END IF;
+  PERFORM set_config('app.clear_password_update_required', '1', true);
   DELETE FROM public.user_data
   WHERE user_id = auth.uid()
     AND data_key = 'password_update_required';
