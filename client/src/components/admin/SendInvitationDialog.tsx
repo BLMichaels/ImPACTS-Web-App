@@ -34,6 +34,7 @@ import {
   applyMentorSupervisorAssignment,
   applyPeccDirectManagerAssignment,
 } from '../../utils/managerTeamScope';
+import { MIN_PASSWORD_LENGTH } from '../../utils/passwordPolicy';
 
 interface SendInvitationDialogProps {
   open: boolean;
@@ -389,8 +390,8 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
         if (!['pecc', 'mentor', 'manager'].includes(role)) {
           throw new Error('Starting password can only be used for PECC, Mentor, or Manager accounts.');
         }
-        if (startingPassword.trim().length < 8) {
-          throw new Error('Starting password must be at least 8 characters.');
+        if (startingPassword.trim().length < MIN_PASSWORD_LENGTH) {
+          throw new Error(`Starting password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
         }
 
         const parsedName = contactName.includes(',')
@@ -768,7 +769,7 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
                 onChange={(e) => setStartingPassword(e.target.value)}
                 fullWidth
                 disabled={loading}
-                helperText="If set, this creates the account immediately and skips invitation setup questions. Minimum 8 characters."
+                helperText={`If set, this creates the account immediately and skips invitation setup questions. Minimum ${MIN_PASSWORD_LENGTH} characters.`}
                 sx={{ mb: 2 }}
               />
             )}

@@ -10,6 +10,15 @@ Apply scripts in the **Supabase SQL editor** for production. Track what you ran 
 4. `INVITATIONS_AND_CRM_RLS_HARDENING.sql` — invitation + CRM write policies  
 5. `CRITICAL_RLS_INVITATIONS_AND_MENTOR_HELPERS.sql` — SECURITY DEFINER helpers for invitations / mentor assignments  
 
+## Security hardening (recommended for hospital/AMC deployments)
+
+1. `HIPAA_AUDIT_LOG_MIGRATION.sql` — audit triggers on users, hospitals, contacts, CRM
+2. `SECURITY_EVENTS_AND_AUDIT_HARDENING.sql` — `security_events` table (failed logins, password changes, idle timeouts) + makes `audit_log` append-only
+
+Password policy is 15+ characters, enforced client-side (`client/src/utils/passwordPolicy.ts`) and in the
+`complete-invitation-registration` / `provision-crm-portal-user` edge functions (redeploy both after updating).
+Users with shorter legacy passwords are flagged at login and forced to update. Idle sessions sign out after 30 minutes.
+
 ## Feature-specific (apply if you use the feature)
 
 - Checklists / mentors: `COMPLETE_CHECKLIST_MIGRATION.sql`  

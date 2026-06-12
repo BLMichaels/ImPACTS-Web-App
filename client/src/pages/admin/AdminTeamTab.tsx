@@ -44,7 +44,8 @@ import {
   Edit as EditIcon,
   Save as SaveIcon,
   Settings as SettingsIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  Download as DownloadIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
@@ -578,13 +579,50 @@ const AdminTeamTab: React.FC = () => {
     setAnchorEl(null);
   };
 
+  // User entitlement report for periodic access reviews (security questionnaire SEC 6.a).
+  const exportUserAccessCsv = () => {
+    const esc = (v: string | null | undefined) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = [
+      'First Name', 'Last Name', 'Email', 'Phone', 'Role', 'Platform Admin',
+      'Status', 'Reports To', 'Last Login', 'Account Created'
+    ];
+    const rows = users.map((u) => {
+      const reportsTo =
+        u.role === 'mentor'
+          ? (u.managerNames && u.managerNames.length > 0 ? u.managerNames.join('; ') : u.managerName || '')
+          : u.role === 'pecc'
+            ? [u.mentorName, ...(u.managerNamesForPECC || [])].filter(Boolean).join('; ')
+            : '';
+      return [
+        u.firstName, u.lastName, u.email, u.phone || '', u.role,
+        u.is_admin ? 'yes' : 'no', u.status, reportsTo, u.lastLogin || 'never', u.createdAt
+      ].map(esc).join(',');
+    });
+    const csv = [header.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `impacts-user-access-report-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Box sx={{ py: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6">Team</Typography>
-        <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
-          Add User
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={exportUserAccessCsv} disabled={users.length === 0}>
+            Export access report
+          </Button>
+          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+            Add User
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ p: 2, mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>

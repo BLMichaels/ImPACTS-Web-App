@@ -26,6 +26,7 @@ import { supabase } from '../supabase';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 import TermsOfService from '../components/TermsOfService';
+import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
 import type { RegistrationQuestion, RegistrationQuestionType, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface HospitalOption {
@@ -241,7 +242,8 @@ export default function RegisterPage() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (password !== confirmPassword) return setError('Passwords do not match');
-    if (password.length < 8) return setError('Password must be at least 8 characters.');
+    const passwordPolicyError = validateNewPassword(password);
+    if (passwordPolicyError) return setError(passwordPolicyError);
     if (!termsAccepted) return setError('You must accept the Terms of Service to register.');
 
     if (!effectiveFirstName) return setError('First name is required.');
@@ -739,7 +741,7 @@ export default function RegisterPage() {
 
           <Divider sx={{ my: 3 }} />
           <Typography variant="subtitle1" color="primary" sx={{ mb: 1 }}>Account &amp; Terms</Typography>
-          <TextField margin="normal" required fullWidth type="password" label="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+          <TextField margin="normal" required fullWidth type="password" label="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" helperText={PASSWORD_REQUIREMENT_TEXT} />
           <TextField margin="normal" required fullWidth type="password" label="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
 
           <Box sx={{ mt: 2, mb: 2 }}>

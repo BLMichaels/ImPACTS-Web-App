@@ -34,6 +34,7 @@ import {
   applyPeccDirectManagerAssignment,
   normalizeManagerIds,
 } from '../utils/managerTeamScope';
+import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
 import type { RegistrationQuestion, RegistrationQuestionDisplayCondition } from '../types/database';
 
 interface InvitationData {
@@ -275,8 +276,9 @@ const InvitationPage: React.FC = () => {
       return;
     }
 
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+    const passwordPolicyError = validateNewPassword(formData.password);
+    if (passwordPolicyError) {
+      setError(passwordPolicyError);
       return;
     }
 
@@ -712,7 +714,7 @@ const InvitationPage: React.FC = () => {
             fullWidth
             required
             disabled={submitting}
-            helperText="At least 8 characters"
+            helperText={PASSWORD_REQUIREMENT_TEXT}
             sx={{ mb: 2 }}
           />
 

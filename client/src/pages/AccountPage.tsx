@@ -47,6 +47,7 @@ import { useNavigate } from 'react-router-dom';
 import TermsOfService from '../components/TermsOfService';
 import { supabase } from '../supabase';
 import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
+import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
 
 interface HospitalInfo {
   name: string;
@@ -319,8 +320,9 @@ const AccountPage = () => {
       return;
     }
 
-    if (passwordData.newPassword.length < 8) {
-      setAlert({ type: 'error', message: 'New password must be at least 8 characters long!' });
+    const passwordPolicyError = validateNewPassword(passwordData.newPassword);
+    if (passwordPolicyError) {
+      setAlert({ type: 'error', message: passwordPolicyError });
       return;
     }
 
@@ -1152,6 +1154,7 @@ const AccountPage = () => {
               value={passwordData.newPassword}
               onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
               margin="normal"
+              helperText={PASSWORD_REQUIREMENT_TEXT}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">

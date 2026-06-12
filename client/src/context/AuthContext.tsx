@@ -2,6 +2,9 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { supabase } from '../supabase';
+import { logSecurityEvent } from '../utils/securityEvents';
+import { meetsPasswordPolicy, PASSWORD_UPDATE_REQUIRED_KEY } from '../utils/passwordPolicy';
+import { setUserData } from '../utils/userData';
 
 // Extended User type with uid for backward compatibility
 interface ExtendedUser extends User {
@@ -48,9 +51,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: email.trim(),
       password,
     });
-    if (error) throw error;
+    if (error) {
+      void logSecurityEvent('login_failed', { email, metadata: { reason: error.message } });
+      throw error;
+    }
     if (data.user) setCurrentUser(extendUser(data.user));
     if (data.session) setSession(data.session);
+    // Legacy passwords created before the 15-char policy: flag the account so the
+    // app prompts for a password update on this and subsequent logins.
+    if (data.user && !meetsPasswordPolicy(password)) {
+      void setUserData(data.user.id, PASSWORD_UPDATE_REQUIRED_KEY, true)
+        .then(() => logSecurityEvent('password_update_required', { email, userId: data.user!.id }))
+        .catch((err) => console.warn('[Auth] failed to flag legacy password', err));
+    }
   };
 
   const signup = async (email: string, password: string) => {

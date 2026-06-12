@@ -14,6 +14,8 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 import ErrorBoundary from './components/ErrorBoundary';
+import IdleTimeout from './components/IdleTimeout';
+import ForcePasswordUpdateDialog from './components/ForcePasswordUpdateDialog';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -202,6 +204,8 @@ function App() {
               <ErrorBoundary>
               <Navbar />
               <ScrollToTop />
+              <IdleTimeout />
+              <ForcePasswordUpdateDialog />
               <Box
                 component="a"
                 href="#main-content"

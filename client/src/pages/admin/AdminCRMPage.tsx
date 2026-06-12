@@ -18,6 +18,7 @@ import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database
 import AdminTeamTab from './AdminTeamTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
 import { createAndSendInvitation } from '../../utils/invitations';
+import { MIN_PASSWORD_LENGTH } from '../../utils/passwordPolicy';
 import { buildCrmExportCsv } from '../../utils/crmExport';
 import { buildHospitalsTableOrClause, hospitalIdOrFacilityOrClause } from '../../utils/hospitalId';
 import { normalizeManagerIds } from '../../utils/managerTeamScope';
@@ -2565,9 +2566,9 @@ const AdminCRMPage: React.FC = () => {
     if (
       startingPassword.trim() &&
       portalContactTypes.includes(formData.type as ContactType) &&
-      startingPassword.trim().length < 8
+      startingPassword.trim().length < MIN_PASSWORD_LENGTH
     ) {
-      setSaveError('Starting password must be at least 8 characters.');
+      setSaveError(`Starting password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
     const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
@@ -3093,8 +3094,8 @@ const AdminCRMPage: React.FC = () => {
       if (r === 'pecc' || r === 'manager' || r === 'mentor') {
         const emailTrim = formData.email.trim();
         const startingPasswordTrim = startingPassword.trim();
-        if (startingPasswordTrim && startingPasswordTrim.length < 8) {
-          setSaveError('Contact was saved, but portal provisioning was skipped because starting password must be at least 8 characters.');
+        if (startingPasswordTrim && startingPasswordTrim.length < MIN_PASSWORD_LENGTH) {
+          setSaveError(`Contact was saved, but portal provisioning was skipped because starting password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
           return;
         }
         const { data: existingRow } = await supabase.from('users').select('id').eq('email', emailTrim).maybeSingle();

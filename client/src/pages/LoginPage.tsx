@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, TextField, Button, Alert, Container, Link } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -16,6 +17,8 @@ const LoginPage = () => {
   const [setPasswordSuccess, setSetPasswordSuccess] = useState(false);
   const { login, resetPasswordForEmail, updatePassword } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const timedOut = searchParams.get('timeout') === '1';
 
   // Detect password recovery redirect (hash contains type=recovery)
   useEffect(() => {
@@ -62,8 +65,9 @@ const LoginPage = () => {
   const handleSetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters.');
+    const policyError = validateNewPassword(newPassword);
+    if (policyError) {
+      setError(policyError);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -119,7 +123,7 @@ const LoginPage = () => {
                   autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  helperText="At least 6 characters"
+                  helperText={PASSWORD_REQUIREMENT_TEXT}
                 />
                 <TextField
                   margin="normal"
@@ -200,6 +204,11 @@ const LoginPage = () => {
           Login
         </Typography>
         
+        {timedOut && !error && (
+          <Alert severity="info" sx={{ mb: 2, width: '100%' }}>
+            You were signed out due to inactivity. Please log in again.
+          </Alert>
+        )}
         {error && <Alert severity="error" sx={{ mb: 2, width: '100%' }}>{error}</Alert>}
         
         <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
