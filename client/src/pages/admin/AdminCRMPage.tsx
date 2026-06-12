@@ -30,6 +30,13 @@ import {
   syncProgramManagersForMentorSupervisors,
 } from '../../utils/cohortMembershipSync';
 import { buildCanonicalEmailToUserMap } from '../../utils/canonicalUserByEmail';
+import {
+  BACKUP_EMAIL_CUSTOM_FIELD_KEY,
+  normalizeContactEmail,
+  resolveBackupEmail,
+  syncPortalLoginEmail,
+  withBackupEmailCustomFields,
+} from '../../utils/syncPortalLoginEmail';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
 import { CRM_CONTACT_TYPE_LABELS as TYPE_LABELS, CRM_CONTACT_TYPE_COLORS as TYPE_COLORS } from '../../utils/crmLabels';
@@ -136,7 +143,6 @@ const isPersonType = (t: ContactType) => PEOPLE_TYPES.includes(t);
 const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
 const USER_DATA_PECC_DIRECT_MANAGER_IDS = 'pecc_direct_manager_ids';
 const USER_DATA_PECC_MENTOR_IDS = 'pecc_mentor_ids';
-const BACKUP_EMAIL_CUSTOM_FIELD_KEY = 'backup_email';
 const CRM_MERGE_HIDDEN_KEY = 'crm_merge_hidden_contacts';
 
 interface Contact {
@@ -3148,6 +3154,32 @@ const AdminCRMPage: React.FC = () => {
       }
     }
 
+    // When primary login email changes on a linked platform user, sync auth + users + CRM.
+    if (isPersonType(formData.type)) {
+      const linkedUserId =
+        assignmentTargetUserId ||
+        (editingContact?.user_id && isUuid(editingContact.user_id) ? String(editingContact.user_id) : null);
+      const nextPrimaryEmail = normalizeContactEmail(formData.email);
+      const previousPrimaryEmail = normalizeContactEmail(editingContact?.email);
+      if (linkedUserId && nextPrimaryEmail && previousPrimaryEmail && nextPrimaryEmail !== previousPrimaryEmail) {
+        const explicitBackup = normalizeContactEmail(formData.customFields?.[BACKUP_EMAIL_CUSTOM_FIELD_KEY]);
+        const backupEmail = explicitBackup || previousPrimaryEmail;
+        const syncResult = await syncPortalLoginEmail({
+          userId: linkedUserId,
+          primaryEmail: nextPrimaryEmail,
+          backupEmail: backupEmail !== nextPrimaryEmail ? backupEmail : '',
+          demoteEmails: [previousPrimaryEmail],
+        });
+        if ('error' in syncResult && syncResult.error) {
+          setSaveError(
+            `Login email sync failed: ${syncResult.error}. Deploy the sync-portal-login-email edge function in Supabase if this is the first use.`
+          );
+          return;
+        }
+        assignmentTargetUserId = linkedUserId;
+      }
+    }
+
     // When a person contact has cohort(s) assigned, sync cohort_members (and cohort_managers for managers)
     if (isPersonType(formData.type) && availableCohorts.length > 0) {
       const cohortNames = (formData.cohorts ?? []).map((n: string) => (n || '').trim()).filter(Boolean);
@@ -4387,11 +4419,24 @@ const AdminCRMPage: React.FC = () => {
         }
       }
 
-      if (keepContact.user_id && finalPrimaryEmail) {
-        await supabase
-          .from('users')
-          .update({ email: finalPrimaryEmail, updated_at: new Date().toISOString() })
-          .eq('id', keepContact.user_id);
+      const mergedUserId =
+        (keepContact.user_id && isUuid(keepContact.user_id) ? String(keepContact.user_id) : null) ||
+        (deleteContact.user_id && isUuid(deleteContact.user_id) ? String(deleteContact.user_id) : null);
+      if (mergedUserId && finalPrimaryEmail) {
+        const syncResult = await syncPortalLoginEmail({
+          userId: mergedUserId,
+          primaryEmail: finalPrimaryEmail,
+          backupEmail: secondaryEmailNorm,
+          demoteEmails: [
+            keepContact.email,
+            deleteContact.email,
+            getBackupEmail(keepContact),
+            getBackupEmail(deleteContact),
+          ],
+        });
+        if ('error' in syncResult && syncResult.error) {
+          throw new Error(syncResult.error);
+        }
       }
       if (deleteContact.type === 'manager' && isUuid(deleteContact.user_id)) {
         await reassignManagerReferences(
@@ -5805,7 +5850,23 @@ const AdminCRMPage: React.FC = () => {
                     </Grid>
                   </>
                 ) : null}
-                <Grid item xs={6}><TextField label="Email" type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} fullWidth size="small" /></Grid>
+                <Grid item xs={6}><TextField label={isPersonType(formData.type) ? 'Login / Primary Email' : 'Email'} type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} fullWidth size="small" helperText={isPersonType(formData.type) ? 'Used for platform login and CRM' : undefined} /></Grid>
+                {isPersonType(formData.type) && (
+                  <Grid item xs={6}>
+                    <TextField
+                      label="Secondary contact email"
+                      type="email"
+                      value={formData.customFields?.[BACKUP_EMAIL_CUSTOM_FIELD_KEY] ?? ''}
+                      onChange={(e) => setFormData((prev) => ({
+                        ...prev,
+                        customFields: withBackupEmailCustomFields(prev.customFields, e.target.value),
+                      }))}
+                      fullWidth
+                      size="small"
+                      helperText="Contact only — not used for login"
+                    />
+                  </Grid>
+                )}
                 <Grid item xs={6}><TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth size="small" /></Grid>
                 <Grid item xs={6}>
                   <Autocomplete freeSolo size="small" options={regions} value={formData.region || null} inputValue={formData.region} onInputChange={(_, v) => setFormData(prev => ({ ...prev, region: v }))} onChange={(_, v) => setFormData(prev => ({ ...prev, region: v == null ? '' : String(v) }))} renderInput={(params) => <TextField {...params} label="Region" placeholder="Select or type new" />} />
@@ -6805,8 +6866,32 @@ const AdminCRMPage: React.FC = () => {
               </>
             )}
             <Grid item xs={6}>
-              <TextField label="Email" type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} fullWidth size="small" />
+              <TextField
+                label={isPersonType(formData.type) ? 'Login / Primary Email' : 'Email'}
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                fullWidth
+                size="small"
+                helperText={isPersonType(formData.type) ? 'Used for platform login and CRM' : undefined}
+              />
             </Grid>
+            {isPersonType(formData.type) && (
+              <Grid item xs={6}>
+                <TextField
+                  label="Secondary contact email"
+                  type="email"
+                  value={formData.customFields?.[BACKUP_EMAIL_CUSTOM_FIELD_KEY] ?? ''}
+                  onChange={(e) => setFormData((prev) => ({
+                    ...prev,
+                    customFields: withBackupEmailCustomFields(prev.customFields, e.target.value),
+                  }))}
+                  fullWidth
+                  size="small"
+                  helperText="Contact only — not used for login"
+                />
+              </Grid>
+            )}
             <Grid item xs={6}>
               <TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth size="small" />
             </Grid>

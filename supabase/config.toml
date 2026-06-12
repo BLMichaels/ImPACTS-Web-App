@@ -10,3 +10,6 @@ verify_jwt = false
 
 [functions.send-invitation-email]
 verify_jwt = false
+
+[functions.sync-portal-login-email]
+verify_jwt = false
