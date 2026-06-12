@@ -76,7 +76,7 @@ interface LegacyProfile {
 }
 
 const AccountPage = () => {
-  const { logout, currentUser } = useAuth();
+  const { logout, currentUser, updatePassword } = useAuth();
   const { 
     userProfile: rawUserProfile, 
     updateUserProfile,
@@ -327,17 +327,16 @@ const AccountPage = () => {
     }
 
     try {
-      const { error } = await supabase.auth.updateUser({ password: passwordData.newPassword });
-      if (error) {
-        setAlert({ type: 'error', message: error.message || 'Failed to update password.' });
-        return;
-      }
+      await updatePassword(passwordData.newPassword);
       setAlert({ type: 'success', message: 'Password updated successfully!' });
       setPasswordDialogOpen(false);
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setTimeout(() => setAlert(null), 3000);
     } catch (err) {
-      setAlert({ type: 'error', message: 'Failed to update password. Please try again.' });
+      setAlert({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to update password. Please try again.',
+      });
     }
   };
 

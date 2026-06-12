@@ -22,11 +22,12 @@ ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 
 -- Only admins can read audit log (adjust if you want managers/auditors too).
 -- If your users table has is_admin (from USERS_IS_ADMIN_MIGRATION.sql), you can extend to: u.role = 'admin' OR u.is_admin = true
+DROP POLICY IF EXISTS "Admins can read audit_log" ON public.audit_log;
 CREATE POLICY "Admins can read audit_log" ON public.audit_log
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM public.users u
-      WHERE u.id = auth.uid() AND u.role = 'admin'
+      WHERE u.id = auth.uid() AND (u.role = 'admin' OR u.is_admin = true)
     )
   );
 

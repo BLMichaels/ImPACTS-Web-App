@@ -17,13 +17,16 @@ export async function logSecurityEvent(
   options?: { email?: string | null; userId?: string | null; metadata?: Record<string, unknown> }
 ): Promise<void> {
   try {
-    await supabase.from('security_events').insert({
+    const { error } = await supabase.from('security_events').insert({
       event_type: eventType,
       email: String(options?.email || '').trim().toLowerCase() || null,
       user_id: options?.userId || null,
       metadata: options?.metadata ?? {},
       user_agent: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 500) : null,
     });
+    if (error) {
+      console.warn('[securityEvents] insert failed', eventType, error.message);
+    }
   } catch (err) {
     console.warn('[securityEvents] failed to log event', eventType, err);
   }

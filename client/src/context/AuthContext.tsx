@@ -3,8 +3,13 @@ import { User, Session } from '@supabase/supabase-js';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { supabase } from '../supabase';
 import { logSecurityEvent } from '../utils/securityEvents';
-import { meetsPasswordPolicy, PASSWORD_UPDATE_REQUIRED_KEY } from '../utils/passwordPolicy';
+import {
+  meetsPasswordPolicy,
+  PASSWORD_UPDATE_REQUIRED_KEY,
+  validateNewPassword,
+} from '../utils/passwordPolicy';
 import { setUserData } from '../utils/userData';
+import { clearSessionActivity, markSessionActive } from '../utils/sessionActivity';
 
 // Extended User type with uid for backward compatibility
 interface ExtendedUser extends User {
@@ -57,6 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (data.user) setCurrentUser(extendUser(data.user));
     if (data.session) setSession(data.session);
+    markSessionActive();
     // Legacy passwords created before the 15-char policy: flag the account so the
     // app prompts for a password update on this and subsequent logins.
     if (data.user && !meetsPasswordPolicy(password)) {
@@ -67,6 +73,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signup = async (email: string, password: string) => {
+    const policyError = validateNewPassword(password);
+    if (policyError) throw new Error(policyError);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -80,6 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    clearSessionActivity();
     setCurrentUser(null);
     setSession(null);
   };
@@ -89,11 +98,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       redirectTo: redirectTo || (typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined)
     });
     if (error) throw error;
+    void logSecurityEvent('password_reset_requested', { email });
   };
 
   const updatePassword = async (newPassword: string) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    const policyError = validateNewPassword(newPassword);
+    if (policyError) throw new Error(policyError);
+    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
+    const userId = data.user?.id ?? currentUser?.id;
+    if (userId) {
+      await setUserData(userId, PASSWORD_UPDATE_REQUIRED_KEY, false).catch((err) =>
+        console.warn('[Auth] failed to clear password update flag', err)
+      );
+      void logSecurityEvent('password_updated', {
+        email: data.user?.email ?? currentUser?.email,
+        userId,
+      });
+    }
+    markSessionActive();
   };
 
   useEffect(() => {

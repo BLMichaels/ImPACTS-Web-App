@@ -2,14 +2,13 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
 import { logSecurityEvent } from '../utils/securityEvents';
+import { LAST_ACTIVITY_KEY, markSessionActive } from '../utils/sessionActivity';
 
 /** Sign out after this much inactivity (shared-workstation safeguard). */
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 /** How often activity writes/checks run; keeps event handlers cheap. */
 const ACTIVITY_THROTTLE_MS = 15 * 1000;
 const CHECK_INTERVAL_MS = 30 * 1000;
-/** localStorage key so activity in any tab keeps every tab alive. */
-const LAST_ACTIVITY_KEY = 'impacts_last_activity_at';
 
 const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
   'mousemove',
@@ -31,15 +30,14 @@ const IdleTimeout = () => {
   useEffect(() => {
     if (!currentUser?.id) return;
 
+    markSessionActive();
+    lastWriteRef.current = Date.now();
+
     const markActivity = () => {
       const now = Date.now();
       if (now - lastWriteRef.current < ACTIVITY_THROTTLE_MS) return;
       lastWriteRef.current = now;
-      try {
-        localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
-      } catch {
-        /* storage unavailable; interval fallback below still works */
-      }
+      markSessionActive();
     };
 
     const readLastActivity = (): number => {

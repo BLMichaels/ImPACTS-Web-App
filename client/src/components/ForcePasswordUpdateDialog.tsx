@@ -10,13 +10,12 @@ import {
   Typography,
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
-import { getUserData, setUserData } from '../utils/userData';
+import { getUserData } from '../utils/userData';
 import {
   PASSWORD_UPDATE_REQUIRED_KEY,
   PASSWORD_REQUIREMENT_TEXT,
   validateNewPassword,
 } from '../utils/passwordPolicy';
-import { logSecurityEvent } from '../utils/securityEvents';
 
 /**
  * Shown when the signed-in user's password predates the 15-character policy
@@ -62,14 +61,6 @@ const ForcePasswordUpdateDialog: React.FC = () => {
     try {
       setSaving(true);
       await updatePassword(newPassword);
-      if (currentUser?.id) {
-        await setUserData(currentUser.id, PASSWORD_UPDATE_REQUIRED_KEY, false);
-        void logSecurityEvent('password_updated', {
-          email: currentUser.email,
-          userId: currentUser.id,
-          metadata: { reason: 'policy_upgrade' },
-        });
-      }
       setOpen(false);
       setNewPassword('');
       setConfirmPassword('');
