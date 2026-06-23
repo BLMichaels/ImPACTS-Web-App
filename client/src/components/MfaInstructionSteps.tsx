@@ -52,13 +52,16 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({
   qrBeside = false,
 }) => {
   const ios = isIosDevice();
-  const stepSpacing = compact ? 1.25 : 2;
+  const stepSpacing = compact ? 1 : 1.5;
   const enrollGridSx = compact
     ? {
         display: 'grid',
-        gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+        gridTemplateColumns: '1fr 1fr',
         columnGap: 2,
         rowGap: 0,
+        '@media (max-width: 520px)': {
+          gridTemplateColumns: '1fr',
+        },
       }
     : undefined;
 
@@ -125,24 +128,13 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({
       <Step number={2} title="Add ImPACTS to that app" spacing={stepSpacing}>
         {ios ? (
           <>
-            <strong>On this iPhone:</strong> long-press the QR code {qrRef} and tap{' '}
-            <strong>Add Verification Code in Passwords</strong>. If Passwords opens, that is expected.
-            <br />
-            <br />
-            <strong>On another device:</strong> choose <strong>Scan QR code</strong> and scan the code{' '}
-            {qrRef}.
-            <br />
-            <br />
-            <strong>Can&apos;t scan?</strong> Use <strong>Manual entry</strong> {manualRef} and paste the
-            setup key.
+            Long-press the QR code {qrRef} → <strong>Add Verification Code in Passwords</strong> (expected on
+            iPhone). Or scan from another device. Can&apos;t scan? Use <strong>Manual entry</strong> {manualRef}.
           </>
         ) : (
           <>
-            Choose <strong>Add account</strong> or <strong>Scan QR code</strong>, then scan the QR code{' '}
-            {qrRef}.
-            <br />
-            <br />
-            On the same screen? Use <strong>Manual entry</strong> {manualRef} instead.
+            Choose <strong>Scan QR code</strong> and scan the code {qrRef}. Same screen? Use{' '}
+            <strong>Manual entry</strong> {manualRef}.
           </>
         )}
       </Step>

@@ -6,7 +6,6 @@ import {
   Alert,
   Box,
   Button,
-  Grid,
   IconButton,
   InputAdornment,
   Stack,
@@ -27,6 +26,8 @@ import { isIosDevice } from '../utils/device';
 import { logSecurityEvent } from '../utils/securityEvents';
 import MfaInstructionSteps from './MfaInstructionSteps';
 
+export const MFA_ENROLLMENT_FORM_ID = 'mfa-enrollment-form';
+
 interface MfaEnrollmentFormProps {
   email?: string | null;
   userId?: string | null;
@@ -36,6 +37,8 @@ interface MfaEnrollmentFormProps {
   /** Wider two-column layout for blocking dialogs. */
   layout?: 'stacked' | 'split';
   hideIntro?: boolean;
+  hideActions?: boolean;
+  onSubmitStateChange?: (state: { loading: boolean; canSubmit: boolean }) => void;
 }
 
 const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
@@ -46,6 +49,8 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
   cancelLabel = 'Log out',
   layout = 'stacked',
   hideIntro = false,
+  hideActions = false,
+  onSubmitStateChange,
 }) => {
   const split = layout === 'split';
   const [factorId, setFactorId] = useState('');
@@ -56,7 +61,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
   const [loading, setLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [manualExpanded, setManualExpanded] = useState(isIosDevice());
+  const [manualExpanded, setManualExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +86,13 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    onSubmitStateChange?.({
+      loading,
+      canSubmit: !bootstrapping && !!factorId,
+    });
+  }, [loading, bootstrapping, factorId, onSubmitStateChange]);
 
   const handleCopySecret = async () => {
     if (!secret) return;
@@ -117,7 +129,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
     }
   };
 
-  const qrSize = split ? 168 : 200;
+  const qrSize = split ? 156 : 200;
 
   const setupPanel = bootstrapping ? (
     <Typography variant="body2" color="text.secondary">
@@ -126,17 +138,15 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
   ) : (
     <>
       {qrCode ? (
-        <Box sx={{ mb: split ? 1.5 : 2 }}>
-          {!split ? (
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-              QR code (Step 2)
-            </Typography>
-          ) : null}
+        <Box sx={{ mb: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75, fontSize: '0.875rem' }}>
+            QR code — Step 2
+          </Typography>
           <Box
             sx={{
               display: 'flex',
               justifyContent: 'center',
-              p: split ? 1.5 : 2,
+              p: 1.25,
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 2,
@@ -151,8 +161,8 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
             />
           </Box>
           {isIosDevice() ? (
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.75 }}>
-              iPhone: long-press the QR code, then tap Add Verification Code in Passwords.
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5, lineHeight: 1.4 }}>
+              iPhone: long-press the QR code → Add Verification Code in Passwords.
             </Typography>
           ) : null}
         </Box>
@@ -165,21 +175,24 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
           disableGutters
           elevation={0}
           sx={{
-            mb: split ? 1.5 : 2,
+            mb: 1.5,
             border: '1px solid',
             borderColor: 'divider',
             borderRadius: '8px !important',
             '&:before': { display: 'none' },
           }}
         >
-          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 2, minHeight: 44, '& .MuiAccordionSummary-content': { my: 0.75 } }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-              Manual entry
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
+            sx={{ px: 1.5, minHeight: 40, '& .MuiAccordionSummary-content': { my: 0.5 } }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
+              Manual entry (can&apos;t scan?)
             </Typography>
           </AccordionSummary>
-          <AccordionDetails sx={{ px: 2, pt: 0, pb: 1.5 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1, lineHeight: 1.5, fontSize: '0.8125rem' }}>
-              Paste this setup key into your app under <strong>Enter setup key</strong>.
+          <AccordionDetails sx={{ px: 1.5, pt: 0, pb: 1.25 }}>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1, lineHeight: 1.45 }}>
+              Paste into your app under <strong>Enter setup key</strong>.
               {email ? (
                 <>
                   {' '}
@@ -194,7 +207,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
                 value={secret}
                 InputProps={{
                   readOnly: true,
-                  sx: { fontFamily: 'monospace', fontSize: '0.85rem' },
+                  sx: { fontFamily: 'monospace', fontSize: '0.8rem' },
                   endAdornment: (
                     <InputAdornment position="end">
                       <Tooltip title={copied ? 'Copied' : 'Copy setup key'}>
@@ -217,9 +230,9 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
       <TextField
         fullWidth
         required
-        size={split ? 'small' : 'medium'}
-        label="6-digit verification code"
-        helperText="Codes refresh every ~30 seconds."
+        size="small"
+        label="6-digit code — Steps 3–4"
+        helperText="Use the current code from your app (~30 sec refresh)."
         value={verifyCode}
         onChange={(e) => {
           setVerifyCode(e.target.value);
@@ -230,7 +243,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
     </>
   );
 
-  const actions = (
+  const actions = hideActions ? null : (
     <Box
       sx={{
         display: 'flex',
@@ -256,8 +269,35 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
     </Box>
   );
 
+  const splitGrid = (
+    <Box
+      sx={{
+        containerType: 'inline-size',
+        width: '100%',
+      }}
+    >
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 2,
+          alignItems: 'start',
+          gridTemplateColumns: '1fr',
+          '@container (min-width: 560px)': {
+            gridTemplateColumns: 'minmax(0, 1.15fr) minmax(260px, 0.85fr)',
+          },
+        }}
+      >
+        <Box>
+          <MfaInstructionSteps mode="enroll" compact qrBeside />
+        </Box>
+        <Box>{setupPanel}</Box>
+      </Box>
+      {actions}
+    </Box>
+  );
+
   return (
-    <Box component="form" onSubmit={handleEnable} id="mfa-enrollment-form">
+    <Box component="form" onSubmit={handleEnable} id={MFA_ENROLLMENT_FORM_ID}>
       {!hideIntro ? (
         <Alert severity="info" sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
@@ -270,21 +310,13 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
       ) : null}
 
       {error ? (
-        <Alert severity="error" sx={{ mb: 2 }} role="alert">
+        <Alert severity="error" sx={{ mb: 1.5 }} role="alert">
           {error}
         </Alert>
       ) : null}
 
       {split ? (
-        <Grid container spacing={2.5} alignItems="flex-start">
-          <Grid item xs={12} md={7}>
-            <MfaInstructionSteps mode="enroll" compact qrBeside />
-          </Grid>
-          <Grid item xs={12} md={5}>
-            {setupPanel}
-            {actions}
-          </Grid>
-        </Grid>
+        splitGrid
       ) : (
         <>
           <MfaInstructionSteps mode="enroll" />
