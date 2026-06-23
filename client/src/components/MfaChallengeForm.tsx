@@ -4,11 +4,11 @@ import {
   Box,
   Button,
   TextField,
-  Typography,
 } from '@mui/material';
 import { verifyMfaLogin } from '../utils/mfa';
 import { logSecurityEvent } from '../utils/securityEvents';
 import { useAuth } from '../context/AuthContext';
+import MfaInstructionSteps from './MfaInstructionSteps';
 
 interface MfaChallengeFormProps {
   email?: string | null;
@@ -73,19 +73,19 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
 
   return (
     <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-      <Typography variant={compact ? 'body2' : 'body1'} color="text.secondary" sx={{ mb: 2 }}>
-        Enter the 6-digit code from your authenticator app (Google Authenticator, 1Password, Authy,
-        or Apple Passwords).
-      </Typography>
+      <MfaInstructionSteps mode="verify" />
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} role="alert">
           {error}
         </Alert>
       )}
+
       <TextField
         fullWidth
         required
-        label="Authentication code"
+        label="6-digit authentication code"
+        helperText="Codes change every ~30 seconds. Wait for a new code if verification fails."
         value={code}
         onChange={(e) => {
           setCode(e.target.value);
@@ -97,8 +97,10 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
           'aria-label': 'Authenticator code',
         }}
         autoFocus
+        size={compact ? 'small' : 'medium'}
       />
-      <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexDirection: compact ? 'column' : 'row' }}>
+
+      <Box sx={{ display: 'flex', gap: 1.5, mt: 2.5, flexDirection: compact ? 'column' : 'row' }}>
         {onCancel ? (
           <Button type="button" onClick={handleCancel} disabled={loading} color="inherit">
             {cancelLabel}

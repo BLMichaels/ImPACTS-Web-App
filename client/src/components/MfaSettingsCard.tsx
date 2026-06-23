@@ -76,9 +76,8 @@ const MfaSettingsCard: React.FC = () => {
           )}
         </Box>
         <Typography variant="body2" color="text.secondary" paragraph>
-          ImPACTS requires a free authenticator app (Google Authenticator, 1Password, Authy, or Apple
-          Passwords). Password reset emails are not affected — you can still use Forgot password on the
-          login page.
+          ImPACTS requires MFA with a free authenticator app. If you have not set it up yet, follow the
+          numbered steps below. Password reset on the login page is not affected.
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>

@@ -76,8 +76,8 @@ const MfaGateDialog: React.FC = () => {
   const title = gate === 'challenge' ? 'Verify your identity' : 'Set up multi-factor authentication';
   const subtitle =
     gate === 'challenge'
-      ? 'MFA is required for your ImPACTS account. Enter your authenticator code to continue.'
-      : 'MFA is required for all ImPACTS users. This one-time setup uses a free authenticator app.';
+      ? 'Enter the 6-digit code from the authenticator app you set up earlier.'
+      : 'Follow the step-by-step instructions below. This is a one-time setup and takes about 2 minutes.';
 
   return (
     <Dialog open disableEscapeKeyDown maxWidth="sm" fullWidth>

@@ -1,17 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
+  IconButton,
+  InputAdornment,
+  Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import {
+  ContentCopy as CopyIcon,
+  ExpandMore as ExpandMoreIcon,
+} from '@mui/icons-material';
 import {
   beginTotpEnrollment,
   totpQrDataUrl,
   verifyMfaCode,
 } from '../utils/mfa';
+import { isIosDevice } from '../utils/device';
 import { logSecurityEvent } from '../utils/securityEvents';
+import MfaInstructionSteps from './MfaInstructionSteps';
 
 interface MfaEnrollmentFormProps {
   email?: string | null;
@@ -35,6 +48,8 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [manualExpanded, setManualExpanded] = useState(isIosDevice());
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +74,17 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
       cancelled = true;
     };
   }, []);
+
+  const handleCopySecret = async () => {
+    if (!secret) return;
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Could not copy the setup key. Select and copy it manually.');
+    }
+  };
 
   const handleEnable = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,62 +112,139 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
 
   return (
     <Box component="form" onSubmit={handleEnable}>
-      <Typography variant="body2" color="text.secondary" paragraph>
-        Multi-factor authentication (MFA) is required for all ImPACTS accounts. Scan the QR code with a
-        free authenticator app, then enter the 6-digit code to finish setup.
-      </Typography>
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+          One-time setup (about 2 minutes)
+        </Typography>
+        <Typography variant="body2">
+          MFA is required for all ImPACTS accounts. Follow the steps below to link a free authenticator
+          app to your account.
+        </Typography>
+      </Alert>
+
+      <MfaInstructionSteps mode="enroll" />
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} role="alert">
           {error}
         </Alert>
       )}
+
       {bootstrapping ? (
         <Typography variant="body2" color="text.secondary">
-          Preparing your authenticator setup…
+          Preparing your QR code and setup key…
         </Typography>
       ) : (
         <>
           {qrCode ? (
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'center',
-                mb: 2,
-                p: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                bgcolor: 'background.paper',
-              }}
-            >
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                QR code (Step 2)
+              </Typography>
               <Box
-                component="img"
-                src={totpQrDataUrl(qrCode)}
-                alt="QR code for authenticator app setup"
-                sx={{ width: 200, height: 200 }}
-              />
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  p: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  bgcolor: 'background.paper',
+                }}
+              >
+                <Box
+                  component="img"
+                  src={totpQrDataUrl(qrCode)}
+                  alt="QR code to add ImPACTS to your authenticator app"
+                  sx={{ width: 200, height: 200, maxWidth: '100%' }}
+                />
+              </Box>
+              {isIosDevice() ? (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  Tip: long-press the QR code above, then tap Add Verification Code in Passwords.
+                </Typography>
+              ) : null}
             </Box>
           ) : null}
+
           {secret ? (
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-              Manual entry key: <Box component="span" sx={{ fontFamily: 'monospace' }}>{secret}</Box>
-            </Typography>
+            <Accordion
+              expanded={manualExpanded}
+              onChange={(_, expanded) => setManualExpanded(expanded)}
+              disableGutters
+              elevation={0}
+              sx={{
+                mb: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: '8px !important',
+                '&:before': { display: 'none' },
+              }}
+            >
+              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  Manual entry (if you can&apos;t scan the QR code)
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ px: 2, pt: 0, pb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, lineHeight: 1.6 }}>
+                  In your authenticator app, choose <strong>Enter setup key</strong> (or{' '}
+                  <strong>Enter code manually</strong>), then paste this key. Account name:{' '}
+                  <strong>ImPACTS</strong>
+                  {email ? (
+                    <>
+                      {' '}
+                      · Email: <strong>{email}</strong>
+                    </>
+                  ) : null}
+                  .
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={secret}
+                    InputProps={{
+                      readOnly: true,
+                      sx: { fontFamily: 'monospace', fontSize: '0.9rem' },
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip title={copied ? 'Copied' : 'Copy setup key'}>
+                            <IconButton onClick={handleCopySecret} edge="end" aria-label="Copy setup key">
+                              <CopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <Button variant="outlined" onClick={handleCopySecret} sx={{ flexShrink: 0, textTransform: 'none' }}>
+                    {copied ? 'Copied' : 'Copy'}
+                  </Button>
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
           ) : null}
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+            Enter verification code (Steps 3–4)
+          </Typography>
           <TextField
             fullWidth
             required
-            label="6-digit verification code"
+            label="6-digit code from your authenticator app"
+            helperText="Use the current code shown in Passwords or your authenticator app. Codes refresh every ~30 seconds."
             value={verifyCode}
             onChange={(e) => {
               setVerifyCode(e.target.value);
               if (error) setError('');
             }}
             inputProps={{ inputMode: 'numeric', autoComplete: 'one-time-code' }}
-            autoFocus
           />
         </>
       )}
-      <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+
+      <Box sx={{ display: 'flex', gap: 1.5, mt: 2.5, flexDirection: { xs: 'column', sm: 'row' } }}>
         {onCancel ? (
           <Button type="button" onClick={onCancel} disabled={loading || bootstrapping} color="inherit">
             {cancelLabel}
@@ -153,7 +256,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
           disabled={loading || bootstrapping || !factorId}
           fullWidth
         >
-          {loading ? 'Enabling…' : 'Enable authenticator'}
+          {loading ? 'Verifying…' : 'Enable authenticator'}
         </Button>
       </Box>
     </Box>

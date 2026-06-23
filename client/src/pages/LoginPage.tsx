@@ -210,8 +210,8 @@ const LoginPage = () => {
           <Typography component="h1" variant="h4" gutterBottom>
             Verify your identity
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
-            Enter the code from your authenticator app to finish signing in.
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1, textAlign: 'center' }}>
+            Follow the steps below to enter your 6-digit code and finish signing in.
           </Typography>
           <MfaChallengeForm
             email={email || currentUser?.email}
@@ -243,7 +243,8 @@ const LoginPage = () => {
           </Alert>
         )}
         <Alert severity="info" sx={{ mb: 2, width: '100%' }}>
-          ImPACTS requires multi-factor authentication (MFA) with a free authenticator app after you sign in.
+          After you sign in, you will set up or verify MFA with a free authenticator app (one-time setup,
+          then a quick code at each login).
         </Alert>
         {error && <Alert severity="error" sx={{ mb: 2, width: '100%' }}>{error}</Alert>}
         
