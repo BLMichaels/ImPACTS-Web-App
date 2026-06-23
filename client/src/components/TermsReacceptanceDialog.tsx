@@ -9,7 +9,16 @@ import {
   Box,
   Checkbox,
   FormControlLabel,
+  Alert,
+  Chip,
+  Stack,
+  alpha,
+  useTheme,
 } from '@mui/material';
+import {
+  GavelOutlined as TermsIcon,
+  OpenInNewOutlined as ReadTermsIcon,
+} from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { getUserData } from '../utils/userData';
 import { PASSWORD_UPDATE_REQUIRED_KEY } from '../utils/passwordPolicy';
@@ -17,24 +26,24 @@ import {
   CURRENT_TERMS_VERSION,
   needsTermsReacceptance,
   recordTermsAcceptance,
+  TERMS_LAST_UPDATED_LABEL,
   TERMS_VERSION_KEY,
 } from '../utils/termsOfService';
 import TermsOfService from './TermsOfService';
 
-const TERMS_FONT = '"Times New Roman", Times, serif';
-const termsDoc = {
-  fontFamily: TERMS_FONT,
-  fontSize: '12pt',
-  lineHeight: 1,
-  color: '#000000',
-  textAlign: 'left' as const,
-};
+const HIGHLIGHTS = [
+  'Mandatory MFA with an authenticator app',
+  'Minimum 15-character passwords',
+  'Automatic sign-out after inactivity',
+  'Security event logging and provider disclosures',
+] as const;
 
 /**
  * Blocks app use until the user accepts the current Terms version.
  * Deferred while the forced password-update dialog is active.
  */
 const TermsReacceptanceDialog: React.FC = () => {
+  const theme = useTheme();
   const { currentUser, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -99,6 +108,8 @@ const TermsReacceptanceDialog: React.FC = () => {
 
   if (!currentUser) return null;
 
+  const headerBg = `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(theme.palette.primary.main, 0.03)} 100%)`;
+
   return (
     <>
       <Dialog
@@ -106,73 +117,167 @@ const TermsReacceptanceDialog: React.FC = () => {
         disableEscapeKeyDown
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { bgcolor: '#ffffff', color: '#000000', border: '1px solid #000000' } }}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: 'hidden',
+            boxShadow: '0 20px 60px rgba(15, 23, 42, 0.14)',
+          },
+        }}
       >
-        <DialogTitle sx={{ ...termsDoc, fontWeight: 700, borderBottom: '1px solid #000000' }}>
-          Updated Terms of Service
-        </DialogTitle>
-        <DialogContent sx={{ ...termsDoc, py: 2 }}>
-          <Typography component="p" sx={{ ...termsDoc, mb: 1 }}>
-            We updated our Terms of Service and User Agreement (version {CURRENT_TERMS_VERSION}),
-            including security, logging, password, and multi-factor authentication (MFA) requirements.
-            Please review and accept to continue using ImPACTS.
-          </Typography>
-          <Typography component="p" sx={{ ...termsDoc, mb: 2 }}>
-            Changes include mandatory MFA with an authenticator app, minimum password length,
-            automatic sign-out after inactivity, security event logging, and disclosure of
-            infrastructure providers used to operate the Tool.
-          </Typography>
-          {error && (
-            <Typography component="p" sx={{ ...termsDoc, fontWeight: 700, mb: 2 }} role="alert">
-              {error}
-            </Typography>
-          )}
-          <Box sx={{ mb: 1 }}>
-            <Button
-              variant="outlined"
-              onClick={() => setShowTerms(true)}
-              fullWidth
+        <DialogTitle
+          component="div"
+          sx={{
+            px: 3,
+            pt: 3,
+            pb: 2.5,
+            background: headerBg,
+            borderBottom: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+          }}
+        >
+          <Stack direction="row" spacing={2} alignItems="flex-start">
+            <Box
               sx={{
-                ...termsDoc,
-                textTransform: 'none',
-                color: '#000000',
-                borderColor: '#000000',
-                '&:hover': { borderColor: '#000000', bgcolor: '#f5f5f5' },
+                width: 48,
+                height: 48,
+                borderRadius: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: 'background.paper',
+                color: 'primary.main',
+                boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.08)}`,
+                flexShrink: 0,
               }}
             >
-              Read full Terms of Service
-            </Button>
+              <TermsIcon aria-hidden />
+            </Box>
+            <Box sx={{ minWidth: 0, pt: 0.25 }}>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>
+                Updated Terms of Service
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Chip
+                  size="small"
+                  label={`Version ${CURRENT_TERMS_VERSION}`}
+                  sx={{ fontWeight: 600, bgcolor: 'background.paper' }}
+                />
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`Updated ${TERMS_LAST_UPDATED_LABEL}`}
+                  sx={{ bgcolor: alpha(theme.palette.background.paper, 0.6) }}
+                />
+              </Stack>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3, pt: 3, pb: 1 }}>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 2.5, lineHeight: 1.65 }}>
+            We&apos;ve updated our Terms of Service and User Agreement with important security and
+            access requirements. Please review the summary below and accept to continue using ImPACTS.
+          </Typography>
+
+          <Box
+            sx={{
+              mb: 2.5,
+              p: 2,
+              borderRadius: 2,
+              bgcolor: alpha(theme.palette.primary.main, 0.04),
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.25, color: 'text.primary' }}>
+              What&apos;s new
+            </Typography>
+            <Stack component="ul" spacing={0.75} sx={{ m: 0, pl: 2.25 }}>
+              {HIGHLIGHTS.map((item) => (
+                <Typography key={item} component="li" variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
+                  {item}
+                </Typography>
+              ))}
+            </Stack>
           </Box>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={accepted}
-                onChange={(e) => setAccepted(e.target.checked)}
-                sx={{ color: '#000000', '&.Mui-checked': { color: '#000000' } }}
-              />
-            }
-            label="I have read and agree to the updated Terms of Service and User Agreement"
-            sx={{ ...termsDoc, '& .MuiFormControlLabel-label': { ...termsDoc } }}
-          />
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} role="alert">
+              {error}
+            </Alert>
+          )}
+
+          <Button
+            variant="outlined"
+            onClick={() => setShowTerms(true)}
+            fullWidth
+            startIcon={<ReadTermsIcon fontSize="small" />}
+            sx={{
+              mb: 2,
+              py: 1.1,
+              textTransform: 'none',
+              fontWeight: 600,
+              borderRadius: 2,
+            }}
+          >
+            Read full Terms of Service
+          </Button>
+
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              bgcolor: 'grey.50',
+              border: `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={accepted}
+                  onChange={(e) => setAccepted(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={
+                <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
+                  I have read and agree to the updated Terms of Service and User Agreement
+                </Typography>
+              }
+              sx={{ m: 0, alignItems: 'flex-start', '& .MuiCheckbox-root': { pt: 0.25 } }}
+            />
+          </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, borderTop: '1px solid #000000' }}>
+
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 2.5,
+            gap: 1,
+            borderTop: `1px solid ${theme.palette.divider}`,
+            flexDirection: { xs: 'column-reverse', sm: 'row' },
+            '& > :not(style) ~ :not(style)': { ml: { xs: 0, sm: 'auto' } },
+          }}
+        >
           <Button
             onClick={handleLogout}
             disabled={saving}
-            sx={{ ...termsDoc, textTransform: 'none', color: '#000000' }}
+            color="inherit"
+            sx={{ textTransform: 'none', fontWeight: 500, width: { xs: '100%', sm: 'auto' } }}
           >
             Log out
           </Button>
           <Button
-            variant="outlined"
+            variant="contained"
             onClick={handleAccept}
             disabled={!accepted || saving}
             sx={{
-              ...termsDoc,
               textTransform: 'none',
-              color: '#000000',
-              borderColor: '#000000',
-              '&:hover': { borderColor: '#000000', bgcolor: '#f5f5f5' },
+              fontWeight: 600,
+              px: 3,
+              borderRadius: 2,
+              boxShadow: 'none',
+              width: { xs: '100%', sm: 'auto' },
+              '&:hover': { boxShadow: 1 },
             }}
           >
             {saving ? 'Saving…' : 'Accept and continue'}
