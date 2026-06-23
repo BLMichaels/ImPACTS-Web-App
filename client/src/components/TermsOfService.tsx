@@ -333,7 +333,7 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
         </TermsP>
         <TermsList>
           <li><strong>No Absolute Security:</strong> No system is completely secure from unauthorized access, data breaches, or cyber attacks</li>
-          <li><strong>Credential Responsibility:</strong> You are solely responsible for maintaining the security and confidentiality of your login credentials, passwords, and access codes</li>
+          <li><strong>Credential Responsibility:</strong> You are solely responsible for maintaining the security and confidentiality of your login credentials, passwords, access codes, and authenticator devices used for multi-factor authentication (MFA)</li>
           <li><strong>Breach Notification:</strong> You will immediately notify ImPACTS of any suspected security breaches, unauthorized access, or data incidents</li>
           <li><strong>Incident Response:</strong> ImPACTS will notify users of any significant security incidents affecting their data within 72 hours of discovery</li>
           <li><strong>Data Encryption:</strong> Data is encrypted in transit and at rest, but you acknowledge that encryption is not foolproof</li>
@@ -347,6 +347,7 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
         </TermsP>
         <TermsList>
           <li><strong>Minimum password length:</strong> Passwords must meet the minimum length and strength requirements displayed in the Tool (currently at least 15 characters). Requirements may be strengthened over time; you may be required to update legacy passwords before continuing to use the Tool.</li>
+          <li><strong>Multi-factor authentication (MFA):</strong> All users must enroll MFA using a time-based one-time password (TOTP) authenticator app (for example, Google Authenticator, 1Password, Authy, or Apple Passwords). Enrollment is required before full use of the Tool after sign-in. You may be prompted to verify MFA when signing in, resuming a session, or after inactivity. Password-reset email links do not require MFA during the recovery flow itself; MFA applies again after you complete recovery and sign in normally.</li>
           <li><strong>Password changes:</strong> Changing your password may require your current password or recent re-authentication.</li>
           <li><strong>Idle session timeout:</strong> For shared-workstation safety, inactive sessions may be signed out automatically after a period of inactivity (currently approximately 30 minutes).</li>
         </TermsList>
@@ -357,6 +358,7 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
         <TermsList>
           <li>Failed sign-in attempts and password-reset requests</li>
           <li>Password update events and mandatory password-upgrade prompts</li>
+          <li>MFA enrollment and failed MFA verification attempts</li>
           <li>Idle-timeout sign-outs and related session activity metadata</li>
           <li>Administrative changes to sensitive records (for example, user roles, hospital contacts, and CRM data), where audit logging is enabled</li>
         </TermsList>
@@ -464,15 +466,16 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
         </TermsP>
         <TermsP>
           <strong>Account Security:</strong> You must use passwords that meet the Tool&apos;s current
-          requirements (including the displayed minimum length), keep credentials confidential, sign out
-          on shared devices, and not share accounts. You are responsible for activity under your account
-          until you report unauthorized access. ImPACTS is not liable for loss or damage arising from
-          your failure to protect your account, including weak or reused passwords.
+          requirements (including the displayed minimum length), enroll and maintain MFA as required,
+          keep credentials and authenticator devices confidential, sign out on shared devices, and not
+          share accounts. You are responsible for activity under your account until you report
+          unauthorized access. ImPACTS is not liable for loss or damage arising from your failure to
+          protect your account, including weak or reused passwords or compromised authenticator access.
         </TermsP>
         <TermsP>
           <strong>Session Use:</strong> You acknowledge that inactive sessions may be terminated
-          automatically and that you may be prompted to accept updated terms or upgrade your password
-          when security requirements change.
+          automatically and that you may be prompted to accept updated terms, enroll or verify MFA,
+          or upgrade your password when security requirements change.
         </TermsP>
 
         <TermsSection>12. Prohibited Uses and Activities</TermsSection>

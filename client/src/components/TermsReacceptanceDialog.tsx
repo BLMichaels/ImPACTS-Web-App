@@ -114,12 +114,13 @@ const TermsReacceptanceDialog: React.FC = () => {
         <DialogContent sx={{ ...termsDoc, py: 2 }}>
           <Typography component="p" sx={{ ...termsDoc, mb: 1 }}>
             We updated our Terms of Service and User Agreement (version {CURRENT_TERMS_VERSION}),
-            including security, logging, and password requirements. Please review and accept to
-            continue using ImPACTS.
+            including security, logging, password, and multi-factor authentication (MFA) requirements.
+            Please review and accept to continue using ImPACTS.
           </Typography>
           <Typography component="p" sx={{ ...termsDoc, mb: 2 }}>
-            Changes include minimum password length, automatic sign-out after inactivity, security
-            event logging, and disclosure of infrastructure providers used to operate the Tool.
+            Changes include mandatory MFA with an authenticator app, minimum password length,
+            automatic sign-out after inactivity, security event logging, and disclosure of
+            infrastructure providers used to operate the Tool.
           </Typography>
           {error && (
             <Typography component="p" sx={{ ...termsDoc, fontWeight: 700, mb: 2 }} role="alert">

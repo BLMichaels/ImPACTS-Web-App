@@ -35,6 +35,7 @@ ImPACTS uses **Supabase TOTP MFA** (free; authenticator apps such as Google Auth
 - Returning users with MFA enrolled must enter a code at login and when resuming a session at AAL1.
 - Account Settings → Security includes MFA status and optional backup authenticator enrollment.
 - Password reset (`Forgot password?` on login) is unchanged and does not require MFA during the recovery link flow.
+- Terms version `2026-06-22` includes mandatory MFA disclosure; existing users must re-accept before the MFA gate runs.
 
 Supabase Auth MFA TOTP is enabled in `supabase/config.toml` (`[auth.mfa.totp]`). Apply `MFA_SECURITY_EVENTS.sql` for MFA audit event types.
 

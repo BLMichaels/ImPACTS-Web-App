@@ -1,9 +1,9 @@
 import { setUserData } from './userData';
 
 /** Bump when Terms content changes materially; triggers re-acceptance for existing users. */
-export const CURRENT_TERMS_VERSION = '2026-06-12';
+export const CURRENT_TERMS_VERSION = '2026-06-22';
 
-export const TERMS_LAST_UPDATED_LABEL = 'June 12, 2026';
+export const TERMS_LAST_UPDATED_LABEL = 'June 22, 2026';
 
 export const TERMS_ACCEPTED_AT_KEY = 'terms_accepted_at';
 export const TERMS_VERSION_KEY = 'terms_accepted_version';
