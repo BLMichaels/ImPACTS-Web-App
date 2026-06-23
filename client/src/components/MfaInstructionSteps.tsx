@@ -8,8 +8,8 @@ interface StepProps {
   children: React.ReactNode;
 }
 
-const Step: React.FC<StepProps> = ({ number, title, children }) => (
-  <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: 2 }}>
+const Step: React.FC<StepProps & { spacing?: number }> = ({ number, title, children, spacing = 2 }) => (
+  <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: spacing }}>
     <Box
       aria-hidden
       sx={{
@@ -42,15 +42,30 @@ const Step: React.FC<StepProps> = ({ number, title, children }) => (
 
 interface MfaInstructionStepsProps {
   mode: 'enroll' | 'verify';
+  compact?: boolean;
+  qrBeside?: boolean;
 }
 
-const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({ mode }) => {
+const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({
+  mode,
+  compact = false,
+  qrBeside = false,
+}) => {
   const ios = isIosDevice();
+  const stepSpacing = compact ? 1.25 : 2;
+  const enrollGridSx = compact
+    ? {
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+        columnGap: 2,
+        rowGap: 0,
+      }
+    : undefined;
 
   if (mode === 'verify') {
     return (
-      <Box component="section" aria-label="How to verify MFA" sx={{ mb: 2.5 }}>
-        <Step number={1} title="Open your authenticator app">
+      <Box component="section" aria-label="How to verify MFA" sx={{ mb: compact ? 1.5 : 2.5 }}>
+        <Step number={1} title="Open your authenticator app" spacing={stepSpacing}>
           Use the same app you set up earlier — for example{' '}
           {ios ? (
             <>
@@ -63,7 +78,7 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({ mode }) => {
             </>
           )}
         </Step>
-        <Step number={2} title="Find your ImPACTS code">
+        <Step number={2} title="Find your ImPACTS code" spacing={stepSpacing}>
           {ios ? (
             <>
               In <strong>Passwords</strong>, open the ImPACTS entry and view the verification code.
@@ -77,7 +92,7 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({ mode }) => {
             </>
           )}
         </Step>
-        <Step number={3} title="Enter the code below">
+        <Step number={3} title="Enter the code below" spacing={stepSpacing}>
           Type the current 6-digit code and tap <strong>Verify code</strong>. If it fails, wait for
           the next code and try again.
         </Step>
@@ -85,9 +100,16 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({ mode }) => {
     );
   }
 
+  const qrRef = qrBeside ? 'to the right' : 'below';
+  const manualRef = qrBeside ? 'on the right' : 'below';
+
   return (
-    <Box component="section" aria-label="How to set up MFA" sx={{ mb: 2.5 }}>
-      <Step number={1} title="Choose a free authenticator app">
+    <Box
+      component="section"
+      aria-label="How to set up MFA"
+      sx={{ mb: compact ? 0 : 2.5, ...enrollGridSx }}
+    >
+      <Step number={1} title="Choose a free authenticator app" spacing={stepSpacing}>
         {ios ? (
           <>
             On iPhone, the built-in <strong>Passwords</strong> app works and requires no download.
@@ -100,39 +122,35 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({ mode }) => {
           </>
         )}
       </Step>
-      <Step number={2} title="Add ImPACTS to that app">
+      <Step number={2} title="Add ImPACTS to that app" spacing={stepSpacing}>
         {ios ? (
           <>
-            <strong>On this iPhone:</strong> long-press the QR code below and tap{' '}
-            <strong>Add Verification Code in Passwords</strong>. If the Camera or Passwords app opens
-            instead, that is expected — follow the prompts to save the code.
+            <strong>On this iPhone:</strong> long-press the QR code {qrRef} and tap{' '}
+            <strong>Add Verification Code in Passwords</strong>. If Passwords opens, that is expected.
             <br />
             <br />
-            <strong>On another device:</strong> open your authenticator app, choose{' '}
-            <strong>Scan QR code</strong>, and scan the code below.
+            <strong>On another device:</strong> choose <strong>Scan QR code</strong> and scan the code{' '}
+            {qrRef}.
             <br />
             <br />
-            <strong>Can&apos;t scan?</strong> Expand <strong>Manual entry</strong> below, copy the setup
-            key, and paste it into your app under <strong>Enter setup key</strong>.
+            <strong>Can&apos;t scan?</strong> Use <strong>Manual entry</strong> {manualRef} and paste the
+            setup key.
           </>
         ) : (
           <>
-            In your authenticator app, choose <strong>Add account</strong> or{' '}
-            <strong>Scan QR code</strong>, then scan the QR code below with your phone camera.
+            Choose <strong>Add account</strong> or <strong>Scan QR code</strong>, then scan the QR code{' '}
+            {qrRef}.
             <br />
             <br />
-            If you are setting up on the same screen (for example, a phone browser), expand{' '}
-            <strong>Manual entry</strong> below and type or paste the setup key into your app.
+            On the same screen? Use <strong>Manual entry</strong> {manualRef} instead.
           </>
         )}
       </Step>
-      <Step number={3} title="Get your 6-digit code">
-        After ImPACTS is added, your app shows a 6-digit verification code. It changes about every 30
-        seconds — use the current code only.
+      <Step number={3} title="Get your 6-digit code" spacing={stepSpacing}>
+        Your app shows a 6-digit code that changes about every 30 seconds.
       </Step>
-      <Step number={4} title="Confirm setup in ImPACTS">
-        Enter that 6-digit code in the box below and tap <strong>Enable authenticator</strong>. Setup is
-        complete once verified.
+      <Step number={4} title="Confirm setup in ImPACTS" spacing={compact ? 0 : stepSpacing}>
+        Enter the code {qrBeside ? 'on the right' : 'below'} and tap <strong>Enable authenticator</strong>.
       </Step>
     </Box>
   );

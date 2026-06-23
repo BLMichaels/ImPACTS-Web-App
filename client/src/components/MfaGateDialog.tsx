@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Alert } from '@mui/material';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Typography,
+  Box,
+} from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { isPasswordRecoverySession } from '../utils/authFlow';
 import { getUserData } from '../utils/userData';
@@ -8,6 +16,13 @@ import { needsTermsReacceptance, TERMS_VERSION_KEY } from '../utils/termsOfServi
 import { resolveMfaGateState, type MfaGateState } from '../utils/mfa';
 import MfaEnrollmentForm from './MfaEnrollmentForm';
 import MfaChallengeForm from './MfaChallengeForm';
+
+const dialogPaperSx = {
+  borderRadius: 3,
+  width: 'min(960px, 96vw)',
+  maxWidth: '96vw',
+  maxHeight: 'calc(100vh - 32px)',
+};
 
 /**
  * Blocks the app until MFA is verified (returning users) or enrolled (first-time setup).
@@ -73,19 +88,27 @@ const MfaGateDialog: React.FC = () => {
 
   if (!currentUser || gate === 'none' || checking) return null;
 
-  const title = gate === 'challenge' ? 'Verify your identity' : 'Set up multi-factor authentication';
-  const subtitle =
-    gate === 'challenge'
-      ? 'Enter the 6-digit code from the authenticator app you set up earlier.'
-      : 'Follow the step-by-step instructions below. This is a one-time setup and takes about 2 minutes.';
+  const isEnroll = gate === 'enroll';
 
   return (
-    <Dialog open disableEscapeKeyDown maxWidth="sm" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <Alert severity="info" sx={{ mb: 2 }}>
-          {subtitle}
-        </Alert>
+    <Dialog
+      open
+      disableEscapeKeyDown
+      maxWidth={false}
+      fullWidth
+      PaperProps={{ sx: dialogPaperSx }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="h6" component="span" sx={{ fontWeight: 700 }}>
+          {isEnroll ? 'Set up multi-factor authentication' : 'Verify your identity'}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, lineHeight: 1.5 }}>
+          {isEnroll
+            ? 'One-time setup (~2 min). Link a free authenticator app using the steps and QR code below.'
+            : 'Enter the 6-digit code from the authenticator app you set up earlier.'}
+        </Typography>
+      </DialogTitle>
+      <DialogContent sx={{ pt: 1, pb: 2, overflow: 'visible' }}>
         {gate === 'challenge' ? (
           <MfaChallengeForm
             email={currentUser.email}
@@ -98,15 +121,25 @@ const MfaGateDialog: React.FC = () => {
             email={currentUser.email}
             userId={currentUser.id}
             onEnrolled={() => setGate('none')}
-            onCancel={handleLogout}
+            layout="split"
+            hideIntro
           />
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={handleLogout} color="inherit">
-          Log out
-        </Button>
-      </DialogActions>
+      {isEnroll ? (
+        <DialogActions sx={{ px: 3, py: 1.5, borderTop: 1, borderColor: 'divider' }}>
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={handleLogout} color="inherit" sx={{ textTransform: 'none' }}>
+            Log out
+          </Button>
+        </DialogActions>
+      ) : (
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleLogout} color="inherit">
+            Log out
+          </Button>
+        </DialogActions>
+      )}
     </Dialog>
   );
 };
