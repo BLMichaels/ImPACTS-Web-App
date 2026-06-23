@@ -10,7 +10,9 @@ export type SecurityEventType =
   | 'password_updated'
   | 'password_update_required'
   | 'idle_timeout_logout'
-  | 'password_reset_requested';
+  | 'password_reset_requested'
+  | 'mfa_enrolled'
+  | 'mfa_challenge_failed';
 
 export async function logSecurityEvent(
   eventType: SecurityEventType,

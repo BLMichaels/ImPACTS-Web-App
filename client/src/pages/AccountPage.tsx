@@ -49,6 +49,7 @@ import { supabase } from '../supabase';
 import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
 import { validateNewPassword } from '../utils/passwordPolicy';
 import PasswordPolicyChecklist, { passwordFieldHelperText } from '../components/PasswordPolicyChecklist';
+import MfaSettingsCard from '../components/MfaSettingsCard';
 import {
   CURRENT_TERMS_VERSION,
   TERMS_LAST_UPDATED_LABEL,
@@ -737,6 +738,8 @@ const AccountPage = () => {
                     </Button>
                   </Grid>
                 </Grid>
+
+                <MfaSettingsCard />
 
                 <Divider sx={{ my: 3 }} />
 

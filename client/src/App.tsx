@@ -17,6 +17,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import IdleTimeout from './components/IdleTimeout';
 import ForcePasswordUpdateDialog from './components/ForcePasswordUpdateDialog';
 import TermsReacceptanceDialog from './components/TermsReacceptanceDialog';
+import MfaGateDialog from './components/MfaGateDialog';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -208,6 +209,7 @@ function App() {
               <IdleTimeout />
               <ForcePasswordUpdateDialog />
               <TermsReacceptanceDialog />
+              <MfaGateDialog />
               <Box
                 component="a"
                 href="#main-content"

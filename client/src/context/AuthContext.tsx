@@ -10,6 +10,9 @@ import {
 } from '../utils/passwordPolicy';
 import { setUserData } from '../utils/userData';
 import { clearSessionActivity, markSessionActive } from '../utils/sessionActivity';
+import { needsMfaChallenge } from '../utils/mfa';
+
+export type LoginResult = 'complete' | 'mfa_required';
 
 // Extended User type with uid for backward compatibility
 interface ExtendedUser extends User {
@@ -22,7 +25,7 @@ interface AuthContextType {
   loading: boolean;
   /** Last auth lifecycle note (e.g. token refresh) for debugging; not shown in UI by default. */
   authLifecycleNote: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPasswordForEmail: (email: string, redirectTo?: string) => Promise<void>;
@@ -51,7 +54,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [authLifecycleNote, setAuthLifecycleNote] = useState<string | null>(null);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<LoginResult> => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
@@ -78,6 +81,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
       });
     }
+
+    const { data: aal, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalError) throw aalError;
+    if (needsMfaChallenge(aal)) {
+      return 'mfa_required';
+    }
+    return 'complete';
   };
 
   const signup = async (email: string, password: string) => {

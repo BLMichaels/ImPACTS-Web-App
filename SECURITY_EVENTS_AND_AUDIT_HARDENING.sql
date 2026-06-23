@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS public.security_events (
     'password_updated',
     'password_update_required',
     'idle_timeout_logout',
-    'password_reset_requested'
+    'password_reset_requested',
+    'mfa_enrolled',
+    'mfa_challenge_failed'
   )),
   email TEXT,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,

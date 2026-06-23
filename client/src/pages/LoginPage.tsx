@@ -3,19 +3,21 @@ import { Box, Typography, TextField, Button, Alert, Container, Link } from '@mui
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
+import MfaChallengeForm from '../components/MfaChallengeForm';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loginStep, setLoginStep] = useState<'credentials' | 'mfa'>('credentials');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState(false);
   const [showSetPassword, setShowSetPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [setPasswordSuccess, setSetPasswordSuccess] = useState(false);
-  const { login, resetPasswordForEmail, updatePassword } = useAuth();
+  const { login, logout, resetPasswordForEmail, updatePassword, currentUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const timedOut = searchParams.get('timeout') === '1';
@@ -34,7 +36,11 @@ const LoginPage = () => {
     try {
       setError('');
       setLoading(true);
-      await login(email, password);
+      const result = await login(email, password);
+      if (result === 'mfa_required') {
+        setLoginStep('mfa');
+        return;
+      }
       navigate('/', { replace: true });
     } catch (err) {
       const details = err instanceof Error ? err.message : '';
@@ -197,6 +203,33 @@ const LoginPage = () => {
     );
   }
 
+  if (loginStep === 'mfa') {
+    return (
+      <Container maxWidth="sm">
+        <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <Typography component="h1" variant="h4" gutterBottom>
+            Verify your identity
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
+            Enter the code from your authenticator app to finish signing in.
+          </Typography>
+          <MfaChallengeForm
+            email={email || currentUser?.email}
+            userId={currentUser?.id}
+            onSuccess={() => navigate('/', { replace: true })}
+            onCancel={async () => {
+              await logout();
+              setLoginStep('credentials');
+              setPassword('');
+            }}
+            cancelLabel="Back to login"
+            compact
+          />
+        </Box>
+      </Container>
+    );
+  }
+
   return (
     <Container maxWidth="sm">
       <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -209,6 +242,9 @@ const LoginPage = () => {
             You were signed out due to inactivity. Please log in again.
           </Alert>
         )}
+        <Alert severity="info" sx={{ mb: 2, width: '100%' }}>
+          ImPACTS requires multi-factor authentication (MFA) with a free authenticator app after you sign in.
+        </Alert>
         {error && <Alert severity="error" sx={{ mb: 2, width: '100%' }}>{error}</Alert>}
         
         <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>

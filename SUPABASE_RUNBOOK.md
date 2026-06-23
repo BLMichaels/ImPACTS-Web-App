@@ -27,6 +27,17 @@ Password policy is **15+ characters**, enforced at four layers:
 
 Idle sessions sign out after 30 minutes.
 
+## Multi-factor authentication (MFA)
+
+ImPACTS uses **Supabase TOTP MFA** (free; authenticator apps such as Google Authenticator, 1Password, Authy).
+
+- All users must enroll MFA on first use (blocking dialog after password/terms gates).
+- Returning users with MFA enrolled must enter a code at login and when resuming a session at AAL1.
+- Account Settings → Security includes MFA status and optional backup authenticator enrollment.
+- Password reset (`Forgot password?` on login) is unchanged and does not require MFA during the recovery link flow.
+
+Supabase Auth MFA TOTP is enabled in `supabase/config.toml` (`[auth.mfa.totp]`). Apply `MFA_SECURITY_EVENTS.sql` for MFA audit event types.
+
 ## Feature-specific (apply if you use the feature)
 
 - Checklists / mentors: `COMPLETE_CHECKLIST_MIGRATION.sql`  
