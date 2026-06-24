@@ -259,7 +259,7 @@ const LoginPage = () => {
             variant="text"
             onClick={() => navigate('/register')}
           >
-            Don&apos;t have an account? Register
+            Need an account? Request an invitation
           </Button>
         </Box>
       </Box>

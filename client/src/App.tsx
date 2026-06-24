@@ -17,7 +17,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import IdleTimeout from './components/IdleTimeout';
 import SecurityGateShell from './components/SecurityGateShell';
 import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
+import AccessByInvitationPage from './pages/AccessByInvitationPage';
 import NotFoundPage from './pages/NotFoundPage';
 import AccountPage from './pages/AccountPage';
 import LandingPage from './pages/LandingPage';
@@ -232,7 +232,7 @@ function App() {
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/app" element={<RoleBasedRedirect />} />
                   <Route path="/login" element={<LoginPage />} />
-                  <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/register" element={<AccessByInvitationPage />} />
                   <Route path="/invite/:code" element={<InvitationPage />} />
                   
                   {/* PECC Routes */}

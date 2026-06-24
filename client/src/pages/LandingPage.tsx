@@ -145,7 +145,7 @@ const LandingPage: React.FC = () => {
                   Enter platform
                 </Button>
                 <Button size="large" variant="outlined" onClick={() => navigate('/register')} sx={{ px: 3.5 }}>
-                  Request access
+                  Request an invitation
                 </Button>
               </Stack>
               <Stack direction="row" spacing={2} flexWrap="wrap" sx={{ pt: 1 }}>
@@ -302,11 +302,11 @@ const LandingPage: React.FC = () => {
             Ready to align your team around pediatric emergency readiness goals?
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 760, mx: { md: 'auto' }, mb: 2 }}>
-            Sign in to continue your work or request access to bring your team into the platform.
+            Sign in to continue your work. New users need an invitation from an ImPACTS program administrator.
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent={{ md: 'center' }}>
             <Button variant="contained" onClick={() => navigate('/login')}>Sign in</Button>
-            <Button variant="outlined" onClick={() => navigate('/register')}>Request access</Button>
+            <Button variant="outlined" onClick={() => navigate('/register')}>Request an invitation</Button>
           </Stack>
         </Paper>
       </Container>
