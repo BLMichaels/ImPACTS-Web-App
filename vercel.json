@@ -8,15 +8,13 @@
       "source": "/:path*",
       "has": [{ "type": "host", "value": "impacts-tau.vercel.app" }],
       "destination": "https://peccsupporttool.com/:path*",
-      "permanent": true,
-      "preserveQueryParams": true
+      "permanent": true
     },
     {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "www.peccsupporttool.com" }],
       "destination": "https://peccsupporttool.com/:path*",
-      "permanent": true,
-      "preserveQueryParams": true
+      "permanent": true
     }
   ],
   "rewrites": [
