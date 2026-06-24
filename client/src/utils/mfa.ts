@@ -73,12 +73,37 @@ export async function verifyMfaCode(factorId: string, code: string): Promise<voi
   const normalized = code.replace(/\s/g, '');
   const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
   if (challengeError) throw challengeError;
-  const { error: verifyError } = await supabase.auth.mfa.verify({
+  const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
     factorId,
     challengeId: challenge.id,
     code: normalized,
   });
   if (verifyError) throw verifyError;
+
+  if (verifyData?.access_token && verifyData?.refresh_token) {
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: verifyData.access_token,
+      refresh_token: verifyData.refresh_token,
+    });
+    if (sessionError) throw sessionError;
+  } else {
+    const { error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) throw refreshError;
+  }
+
+  await waitForMfaChallengeCleared();
+}
+
+/** Poll until MFA challenge is satisfied (session at AAL2). */
+export async function waitForMfaChallengeCleared(maxAttempts = 15): Promise<void> {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const levels = await getAuthenticatorLevels();
+    if (!needsMfaChallenge(levels)) return;
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 150);
+    });
+  }
+  throw new Error('MFA verification did not complete. Please try again.');
 }
 
 export async function verifyMfaLogin(code: string): Promise<void> {

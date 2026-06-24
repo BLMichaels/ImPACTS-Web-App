@@ -10,7 +10,6 @@ import {
 } from '../utils/passwordPolicy';
 import { setUserData } from '../utils/userData';
 import { clearSessionActivity, markSessionActive } from '../utils/sessionActivity';
-import { needsMfaChallenge } from '../utils/mfa';
 
 export type LoginResult = 'complete' | 'mfa_required';
 
@@ -82,11 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     }
 
-    const { data: aal, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aalError) throw aalError;
-    if (needsMfaChallenge(aal)) {
-      return 'mfa_required';
-    }
+    // MFA challenge/enrollment is handled by MfaGateDialog after navigation.
     return 'complete';
   };
 

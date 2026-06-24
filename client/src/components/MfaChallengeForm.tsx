@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -18,6 +18,10 @@ interface MfaChallengeFormProps {
   cancelLabel?: string;
   submitLabel?: string;
   compact?: boolean;
+  /** Hide inline action row (e.g. when parent dialog provides footer buttons). */
+  hideActions?: boolean;
+  /** Auto-verify when 6 digits are entered (default true). */
+  autoSubmit?: boolean;
 }
 
 const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
@@ -28,36 +32,58 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
   cancelLabel = 'Log out',
   submitLabel = 'Verify code',
   compact = false,
+  hideActions = false,
+  autoSubmit = true,
 }) => {
   const { logout } = useAuth();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const verifyingRef = useRef(false);
+
+  const verifyCode = useCallback(
+    async (rawCode: string) => {
+      if (verifyingRef.current) return;
+      const normalized = rawCode.replace(/\s/g, '');
+      if (normalized.length < 6) {
+        setError('Enter the 6-digit code from your authenticator app.');
+        return;
+      }
+      setError('');
+      try {
+        verifyingRef.current = true;
+        setLoading(true);
+        await verifyMfaLogin(normalized);
+        onSuccess();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Verification failed. Try again.';
+        setError(message);
+        setCode('');
+        void logSecurityEvent('mfa_challenge_failed', {
+          email,
+          userId,
+          metadata: { reason: message },
+        });
+      } finally {
+        verifyingRef.current = false;
+        setLoading(false);
+      }
+    },
+    [email, onSuccess, userId]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    const normalized = code.replace(/\s/g, '');
-    if (normalized.length < 6) {
-      setError('Enter the 6-digit code from your authenticator app.');
-      return;
-    }
-    try {
-      setLoading(true);
-      await verifyMfaLogin(normalized);
-      onSuccess();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Verification failed. Try again.';
-      setError(message);
-      void logSecurityEvent('mfa_challenge_failed', {
-        email,
-        userId,
-        metadata: { reason: message },
-      });
-    } finally {
-      setLoading(false);
-    }
+    await verifyCode(code);
   };
+
+  useEffect(() => {
+    if (!autoSubmit || loading || verifyingRef.current) return;
+    const normalized = code.replace(/\D/g, '');
+    if (normalized.length === 6) {
+      void verifyCode(normalized);
+    }
+  }, [autoSubmit, code, loading, verifyCode]);
 
   const handleCancel = async () => {
     if (onCancel) {
@@ -73,7 +99,7 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
 
   return (
     <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-      <MfaInstructionSteps mode="verify" />
+      <MfaInstructionSteps mode="verify" compact={compact} />
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} role="alert">
@@ -81,35 +107,46 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
         </Alert>
       )}
 
+      {loading && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Verifying your code…
+        </Alert>
+      )}
+
       <TextField
         fullWidth
         required
         label="6-digit authentication code"
-        helperText="Codes change every ~30 seconds. Wait for a new code if verification fails."
+        helperText="Codes change every ~30 seconds. Verification runs automatically when you enter 6 digits."
         value={code}
         onChange={(e) => {
-          setCode(e.target.value);
+          const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+          setCode(digits);
           if (error) setError('');
         }}
         inputProps={{
           inputMode: 'numeric',
           autoComplete: 'one-time-code',
           'aria-label': 'Authenticator code',
+          maxLength: 6,
         }}
         autoFocus
         size={compact ? 'small' : 'medium'}
+        disabled={loading}
       />
 
-      <Box sx={{ display: 'flex', gap: 1.5, mt: 2.5, flexDirection: compact ? 'column' : 'row' }}>
-        {onCancel ? (
-          <Button type="button" onClick={handleCancel} disabled={loading} color="inherit">
-            {cancelLabel}
+      {!hideActions ? (
+        <Box sx={{ display: 'flex', gap: 1.5, mt: 2.5, flexDirection: compact ? 'column' : 'row' }}>
+          {onCancel ? (
+            <Button type="button" onClick={handleCancel} disabled={loading} color="inherit">
+              {cancelLabel}
+            </Button>
+          ) : null}
+          <Button type="submit" variant="contained" disabled={loading || code.length < 6} fullWidth={compact}>
+            {loading ? 'Verifying…' : submitLabel}
           </Button>
-        ) : null}
-        <Button type="submit" variant="contained" disabled={loading} fullWidth={compact}>
-          {loading ? 'Verifying…' : submitLabel}
-        </Button>
-      </Box>
+        </Box>
+      ) : null}
     </Box>
   );
 };

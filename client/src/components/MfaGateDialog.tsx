@@ -42,6 +42,11 @@ const MfaGateDialog: React.FC = () => {
     setEnrollCanSubmit(state.canSubmit);
   }, []);
 
+  const handleChallengeSuccess = useCallback(() => {
+    setGate('none');
+    window.location.replace('/');
+  }, []);
+
   useEffect(() => {
     if (!currentUser?.id || isPasswordRecoverySession()) {
       setGate('none');
@@ -122,14 +127,15 @@ const MfaGateDialog: React.FC = () => {
           <MfaChallengeForm
             email={currentUser.email}
             userId={currentUser.id}
-            onSuccess={() => setGate('none')}
-            onCancel={handleLogout}
+            onSuccess={handleChallengeSuccess}
+            hideActions
+            compact
           />
         ) : (
           <MfaEnrollmentForm
             email={currentUser.email}
             userId={currentUser.id}
-            onEnrolled={() => setGate('none')}
+            onEnrolled={handleChallengeSuccess}
             layout="split"
             hideIntro
             hideActions
@@ -163,8 +169,8 @@ const MfaGateDialog: React.FC = () => {
           </Button>
         </DialogActions>
       ) : (
-        <DialogActions sx={{ px: 3, pb: 2, flexShrink: 0 }}>
-          <Button onClick={handleLogout} color="inherit">
+        <DialogActions sx={{ px: 3, py: 1.5, flexShrink: 0, borderTop: 1, borderColor: 'divider' }}>
+          <Button onClick={handleLogout} color="inherit" sx={{ textTransform: 'none' }}>
             Log out
           </Button>
         </DialogActions>
