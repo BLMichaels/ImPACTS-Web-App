@@ -67,12 +67,14 @@ supabase functions deploy provision-crm-portal-user
 
 **Secrets**
 
-- `ALLOWED_ORIGINS`: comma-separated portal origins (e.g. `https://app.example.com`). If empty, functions fall back to `*` (dev only).  
-- `RESEND_API_KEY`, `INVITATION_FROM_EMAIL`, `APP_BASE_URL` for invitation email.
+- `ALLOWED_ORIGINS`: comma-separated portal origins (e.g. `https://peccsupporttool.com,https://www.peccsupporttool.com,https://impacts-tau.vercel.app`). If empty, functions fall back to `*` (dev only).
+- `APP_BASE_URL`: `https://peccsupporttool.com` (invitation email links).
 
 ## Vercel
 
-- Production headers: `client/vercel.json` (CSP, X-Frame-Options, etc.).  
+- Production project: **impacts** (canonical URL: `https://peccsupporttool.com`).
+- Legacy `impacts-tau.vercel.app` redirects to `peccsupporttool.com` (same path) via root `vercel.json`.
+- Production headers: root `vercel.json` (CSP, X-Frame-Options, etc.).
 - Add any third-party `connect-src` / `frame-src` hosts to CSP when integrating new APIs or embeds.
 
 ### PECC hospital continuity (client cutover)

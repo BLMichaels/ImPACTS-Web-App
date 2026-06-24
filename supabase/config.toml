@@ -7,8 +7,12 @@
 
 [auth]
 enabled = true
-site_url = "https://impacts-tau.vercel.app/"
-additional_redirect_urls = ["https://impacts-tau.vercel.app/", "https://impacts-tau.vercel.app/account"]
+site_url = "https://peccsupporttool.com/"
+additional_redirect_urls = [
+  "https://peccsupporttool.com/**",
+  "https://www.peccsupporttool.com/**",
+  "https://impacts-tau.vercel.app/**",
+]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10

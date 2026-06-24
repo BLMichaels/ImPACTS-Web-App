@@ -3,6 +3,22 @@
   "ignoreCommand": "if [[ \"$VERCEL_GIT_COMMIT_REF\" == dependabot/* ]]; then echo \"Skipping Dependabot preview build\"; exit 0; else exit 1; fi",
   "outputDirectory": "client/build",
   "framework": "create-react-app",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "impacts-tau.vercel.app" }],
+      "destination": "https://peccsupporttool.com/:path*",
+      "permanent": true,
+      "preserveQueryParams": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.peccsupporttool.com" }],
+      "destination": "https://peccsupporttool.com/:path*",
+      "permanent": true,
+      "preserveQueryParams": true
+    }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
