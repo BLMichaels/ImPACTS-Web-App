@@ -126,15 +126,21 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({
         )}
       </Step>
       <Step number={2} title="Add ImPACTS to that app" spacing={stepSpacing}>
+        <Box component="span" sx={{ display: 'block', mb: 0.75 }}>
+          <strong>Do not use your phone&apos;s regular Camera app.</strong> Open your authenticator app
+          first, then choose <strong>Scan QR code</strong> (or equivalent) inside that app.
+        </Box>
         {ios ? (
           <>
-            Long-press the QR code {qrRef} → <strong>Add Verification Code in Passwords</strong> (expected on
-            iPhone). Or scan from another device. Can&apos;t scan? Use <strong>Manual entry</strong> {manualRef}.
+            On iPhone with <strong>Passwords</strong>, you can long-press the QR code {qrRef} on this page
+            (not the Camera app) and tap <strong>Add Verification Code in Passwords</strong>. Or scan from
+            another device using your app&apos;s built-in scanner. Can&apos;t scan? Use{' '}
+            <strong>Manual entry</strong> {manualRef}.
           </>
         ) : (
           <>
-            Choose <strong>Scan QR code</strong> and scan the code {qrRef}. Same screen? Use{' '}
-            <strong>Manual entry</strong> {manualRef}.
+            Point your authenticator app&apos;s scanner at the QR code {qrRef}. Setting up on the same
+            screen? Use <strong>Manual entry</strong> {manualRef} instead.
           </>
         )}
       </Step>

@@ -142,6 +142,11 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75, fontSize: '0.875rem' }}>
             QR code — Step 2
           </Typography>
+          <Alert severity="warning" sx={{ mb: 1.25, py: 0.5, '& .MuiAlert-message': { fontSize: '0.8125rem', lineHeight: 1.45 } }}>
+            <strong>Do not scan with your phone&apos;s regular Camera app.</strong> Open your authenticator
+            app (Google Authenticator, Microsoft Authenticator, Passwords, Authy, 1Password, etc.) and use
+            its built-in <strong>Scan QR code</strong> feature.
+          </Alert>
           <Box
             sx={{
               display: 'flex',
@@ -162,7 +167,8 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
           </Box>
           {isIosDevice() ? (
             <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5, lineHeight: 1.4 }}>
-              iPhone: long-press the QR code → Add Verification Code in Passwords.
+              iPhone tip: long-press this QR code on the page (not Camera) → Add Verification Code in
+              Passwords.
             </Typography>
           ) : null}
         </Box>
