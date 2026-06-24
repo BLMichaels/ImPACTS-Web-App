@@ -35,7 +35,7 @@ const LoginPage = () => {
       setError('');
       setLoading(true);
       await login(email, password);
-      window.location.replace('/');
+      window.location.replace('/app');
     } catch (err) {
       const details = err instanceof Error ? err.message : '';
       setError(details ? `Failed to log in: ${details}` : 'Failed to log in. Please check your credentials.');

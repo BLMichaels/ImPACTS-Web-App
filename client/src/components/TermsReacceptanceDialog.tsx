@@ -42,10 +42,13 @@ const HIGHLIGHTS = [
  * Blocks app use until the user accepts the current Terms version.
  * Deferred while the forced password-update dialog is active.
  */
-const TermsReacceptanceDialog: React.FC = () => {
+const TermsReacceptanceDialog: React.FC<{ onComplete?: () => void; gateManaged?: boolean }> = ({
+  onComplete,
+  gateManaged = false,
+}) => {
   const theme = useTheme();
   const { currentUser, logout } = useAuth();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(gateManaged);
   const [showTerms, setShowTerms] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,6 +57,11 @@ const TermsReacceptanceDialog: React.FC = () => {
   useEffect(() => {
     if (!currentUser?.id) {
       setOpen(false);
+      return;
+    }
+
+    if (gateManaged) {
+      setOpen(true);
       return;
     }
 
@@ -80,7 +88,7 @@ const TermsReacceptanceDialog: React.FC = () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, gateManaged]);
 
   const handleAccept = async () => {
     if (!currentUser?.id || !accepted) return;
@@ -90,6 +98,7 @@ const TermsReacceptanceDialog: React.FC = () => {
       await recordTermsAcceptance(currentUser.id);
       setOpen(false);
       setAccepted(false);
+      onComplete?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record acceptance. Please try again.');
     } finally {

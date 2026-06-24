@@ -81,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     }
 
-    // MFA challenge/enrollment is handled by MfaGateDialog after navigation.
+    // MFA challenge/enrollment is handled by SecurityGateShell before the app loads.
     return 'complete';
   };
 

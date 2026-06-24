@@ -15,9 +15,7 @@ import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 import ErrorBoundary from './components/ErrorBoundary';
 import IdleTimeout from './components/IdleTimeout';
-import ForcePasswordUpdateDialog from './components/ForcePasswordUpdateDialog';
-import TermsReacceptanceDialog from './components/TermsReacceptanceDialog';
-import MfaGateDialog from './components/MfaGateDialog';
+import SecurityGateShell from './components/SecurityGateShell';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -199,17 +197,15 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <UserProfileProvider>
-          <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <UsageAnalyticsProvider>
-            <Suspense fallback={<LoadingSpinner />}>
-              <ErrorBoundary>
-              <Navbar />
-              <ScrollToTop />
-              <IdleTimeout />
-              <ForcePasswordUpdateDialog />
-              <TermsReacceptanceDialog />
-              <MfaGateDialog />
+        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <SecurityGateShell>
+            <UserProfileProvider>
+              <UsageAnalyticsProvider>
+              <Suspense fallback={<LoadingSpinner />}>
+                <ErrorBoundary>
+                <Navbar />
+                <ScrollToTop />
+                <IdleTimeout />
               <Box
                 component="a"
                 href="#main-content"
@@ -315,8 +311,9 @@ function App() {
               </ErrorBoundary>
             </Suspense>
             </UsageAnalyticsProvider>
-          </Router>
-        </UserProfileProvider>
+            </UserProfileProvider>
+          </SecurityGateShell>
+        </Router>
       </AuthProvider>
     </ThemeProvider>
   );

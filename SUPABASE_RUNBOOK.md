@@ -31,7 +31,7 @@ Idle sessions sign out after 30 minutes.
 
 ImPACTS uses **Supabase TOTP MFA** (free; authenticator apps such as Google Authenticator, 1Password, Authy).
 
-- All users must enroll MFA on first use (blocking dialog after password/terms gates).
+- All users must enroll MFA on first use (full-screen gate via `SecurityGateShell` before any app content loads).
 - Returning users with MFA enrolled must enter a code at login and when resuming a session at AAL1.
 - Account Settings → Security includes MFA status and optional backup authenticator enrollment.
 - Password reset (`Forgot password?` on login) is unchanged and does not require MFA during the recovery link flow.

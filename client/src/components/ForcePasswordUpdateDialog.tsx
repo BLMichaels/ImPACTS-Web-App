@@ -23,9 +23,18 @@ import PasswordPolicyChecklist, { passwordFieldHelperText } from './PasswordPoli
  * (flagged at login). Blocks app use until the password is updated or the
  * user signs out.
  */
-const ForcePasswordUpdateDialog: React.FC = () => {
+interface ForcePasswordUpdateDialogProps {
+  onComplete?: () => void;
+  /** When true, dialog is shown by SecurityGateShell (always open). */
+  gateManaged?: boolean;
+}
+
+const ForcePasswordUpdateDialog: React.FC<ForcePasswordUpdateDialogProps> = ({
+  onComplete,
+  gateManaged = false,
+}) => {
   const { currentUser, updatePassword, logout } = useAuth();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(gateManaged);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -38,6 +47,10 @@ const ForcePasswordUpdateDialog: React.FC = () => {
       setOpen(false);
       return;
     }
+    if (gateManaged) {
+      setOpen(true);
+      return;
+    }
     getUserData<boolean>(currentUser.id, PASSWORD_UPDATE_REQUIRED_KEY)
       .then((flag) => {
         if (!cancelled && flag === true) setOpen(true);
@@ -46,7 +59,7 @@ const ForcePasswordUpdateDialog: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, gateManaged]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +81,7 @@ const ForcePasswordUpdateDialog: React.FC = () => {
       setNewPassword('');
       setConfirmPassword('');
       setShowValidation(false);
+      onComplete?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update password. Please try again.');
     } finally {

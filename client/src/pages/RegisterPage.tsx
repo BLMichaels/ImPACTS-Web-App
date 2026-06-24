@@ -356,7 +356,7 @@ export default function RegisterPage() {
       }
 
       await recordTermsAcceptance(userId);
-      navigate('/', { replace: true });
+      navigate('/app', { replace: true });
     } catch (err: unknown) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
