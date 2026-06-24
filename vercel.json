@@ -5,15 +5,27 @@
   "framework": "create-react-app",
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/",
       "has": [{ "type": "host", "value": "impacts-tau.vercel.app" }],
-      "destination": "https://peccsupporttool.com/:path*",
+      "destination": "https://peccsupporttool.com/",
       "permanent": true
     },
     {
-      "source": "/:path*",
+      "source": "/:path+",
+      "has": [{ "type": "host", "value": "impacts-tau.vercel.app" }],
+      "destination": "https://peccsupporttool.com/:path+",
+      "permanent": true
+    },
+    {
+      "source": "/",
       "has": [{ "type": "host", "value": "www.peccsupporttool.com" }],
-      "destination": "https://peccsupporttool.com/:path*",
+      "destination": "https://peccsupporttool.com/",
+      "permanent": true
+    },
+    {
+      "source": "/:path+",
+      "has": [{ "type": "host", "value": "www.peccsupporttool.com" }],
+      "destination": "https://peccsupporttool.com/:path+",
       "permanent": true
     }
   ],
