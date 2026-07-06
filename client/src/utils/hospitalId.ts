@@ -11,6 +11,17 @@ export function isHospitalUuid(value: string | null | undefined): boolean {
   return HOSPITAL_UUID_RE.test(normalizeHospitalKey(value));
 }
 
+/** True when a ref can be sent to hospitals.id / hospitals.facility_id filters (excludes CRM placeholders). */
+export function isQueryableHospitalRef(value: string | null | undefined): boolean {
+  const v = normalizeHospitalKey(value);
+  if (!v) return false;
+  if (isHospitalUuid(v)) return true;
+  if (/^#+$/.test(v)) return false;
+  const lower = v.toLowerCase();
+  if (lower === 'n/a' || lower === 'tbd' || lower === 'unknown') return false;
+  return /^[0-9]+$/.test(v);
+}
+
 export function hospitalKeysMatch(a: string | null | undefined, b: string | null | undefined): boolean {
   const na = normalizeHospitalKey(a);
   const nb = normalizeHospitalKey(b);

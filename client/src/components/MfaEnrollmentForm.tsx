@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -62,30 +62,33 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
   const [bootstrapping, setBootstrapping] = useState(true);
   const [copied, setCopied] = useState(false);
   const [manualExpanded, setManualExpanded] = useState(false);
+  const [restarted, setRestarted] = useState(false);
+
+  const startEnrollment = useCallback(async (isCancelled?: () => boolean) => {
+    try {
+      setBootstrapping(true);
+      setError('');
+      const data = await beginTotpEnrollment();
+      if (isCancelled?.()) return;
+      setFactorId(data.id);
+      setQrCode(data.totp.qr_code);
+      setSecret(data.totp.secret);
+    } catch (err) {
+      if (!isCancelled?.()) {
+        setError(err instanceof Error ? err.message : 'Could not start MFA setup.');
+      }
+    } finally {
+      if (!isCancelled?.()) setBootstrapping(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        setBootstrapping(true);
-        setError('');
-        const data = await beginTotpEnrollment();
-        if (cancelled) return;
-        setFactorId(data.id);
-        setQrCode(data.totp.qr_code);
-        setSecret(data.totp.secret);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Could not start MFA setup.');
-        }
-      } finally {
-        if (!cancelled) setBootstrapping(false);
-      }
-    })();
+    void startEnrollment(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [startEnrollment]);
 
   useEffect(() => {
     onSubmitStateChange?.({
@@ -103,6 +106,14 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
     } catch {
       setError('Could not copy the setup key. Select and copy it manually.');
     }
+  };
+
+  const handleRestartEnrollment = async () => {
+    setVerifyCode('');
+    setCopied(false);
+    setManualExpanded(false);
+    setRestarted(true);
+    await startEnrollment();
   };
 
   const handleEnable = async (e: React.FormEvent) => {
@@ -171,7 +182,24 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
               Passwords.
             </Typography>
           ) : null}
+          <Button
+            type="button"
+            variant="outlined"
+            size="small"
+            onClick={handleRestartEnrollment}
+            disabled={loading || bootstrapping}
+            sx={{ mt: 1.25, textTransform: 'none' }}
+          >
+            Wrong app or need a new code? Start over
+          </Button>
         </Box>
+      ) : null}
+
+      {restarted && !bootstrapping ? (
+        <Alert severity="info" sx={{ mb: 1.5, py: 0.5, '& .MuiAlert-message': { fontSize: '0.8125rem', lineHeight: 1.45 } }}>
+          A new QR code and setup key were generated. Remove any old ImPACTS entry from your authenticator
+          app, then scan or enter the new one below.
+        </Alert>
       ) : null}
 
       {secret ? (

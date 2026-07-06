@@ -66,7 +66,12 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { supabase } from '../../supabase';
 import { format, subDays } from 'date-fns';
 import { mapSiteRefsToHospitalRowIds, shouldMirrorLegacyUserData } from '../../utils/userData';
-import { buildHospitalsTableOrClause, hospitalIdOrFacilityOrClause, isHospitalUuid } from '../../utils/hospitalId';
+import {
+  buildHospitalsTableOrClause,
+  hospitalIdOrFacilityOrClause,
+  isHospitalUuid,
+  isQueryableHospitalRef,
+} from '../../utils/hospitalId';
 import { buildReportCsvContent, downloadReportCsv } from '../../utils/reportCsvExport';
 import {
   buildLongitudinalColumnList,
@@ -577,38 +582,21 @@ function checklistPercent(stats: { total: number; completed: number } | undefine
   return String(Math.round((stats.completed / stats.total) * 100));
 }
 
-const HOSPITAL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isLikelyHospitalRowUuid(s: string): boolean {
-  return HOSPITAL_UUID_RE.test(String(s).trim());
-}
-
 /** Unify hospitals.id and hospitals.facility_id for reporting filters (PECC uses facility id; contacts use row id). */
 async function expandHospitalScopeKeys(rawIds: string[]): Promise<string[]> {
+  const queryable = [...new Set(rawIds.map((id) => String(id || '').trim()).filter(isQueryableHospitalRef))];
+  if (queryable.length === 0) return [];
   const set = new Set<string>();
-  rawIds.forEach((id) => {
-    const t = String(id || '').trim();
-    if (t) set.add(t);
-  });
-  if (set.size === 0) return [];
-  const queue = [...set];
-  for (const part of chunk(queue, 80)) {
-    const uuidPart = part.filter(isLikelyHospitalRowUuid);
-    const facilityPart = part.filter((x) => !isLikelyHospitalRowUuid(x));
-    if (uuidPart.length > 0) {
-      const { data } = await supabase.from('hospitals').select('id, facility_id').in('id', uuidPart);
-      (data || []).forEach((r: { id: string; facility_id: string | null }) => {
-        set.add(String(r.id));
-        if (r.facility_id != null && String(r.facility_id).trim()) set.add(String(r.facility_id).trim());
-      });
-    }
-    if (facilityPart.length > 0) {
-      const { data } = await supabase.from('hospitals').select('id, facility_id').in('facility_id', facilityPart);
-      (data || []).forEach((r: { id: string; facility_id: string | null }) => {
-        set.add(String(r.id));
-        if (r.facility_id != null && String(r.facility_id).trim()) set.add(String(r.facility_id).trim());
-      });
-    }
+  for (const part of chunk(queryable, 80)) {
+    const orClause = buildHospitalsTableOrClause(part);
+    if (!orClause || orClause.includes('__no_match__')) continue;
+    const { data, error } = await supabase.from('hospitals').select('id, facility_id').or(orClause);
+    if (error) throw error;
+    (data || []).forEach((r: { id: string; facility_id: string | null }) => {
+      set.add(String(r.id));
+      const fid = r.facility_id != null ? String(r.facility_id).trim() : '';
+      if (fid) set.add(fid);
+    });
   }
   return [...set];
 }
@@ -2979,8 +2967,9 @@ function exportSlugForDataset(d: ReportDataset): string {
 
 async function loadChecklistForHospitals(hospitalIds: string[]): Promise<Map<string, { total: number; completed: number }>> {
   const map = new Map<string, { total: number; completed: number }>();
-  if (!hospitalIds.length) return map;
-  for (const part of chunk(hospitalIds, 80)) {
+  const uuids = await resolveScopeRefsToHospitalUuids(hospitalIds.filter(isQueryableHospitalRef));
+  if (!uuids.length) return map;
+  for (const part of chunk(uuids, 80)) {
     const rows = await fetchAllRowsOrEmpty<{ hospital_id: string; completed: boolean }>((from, to) =>
       supabase.from('site_checklist_progress').select('hospital_id, completed').in('hospital_id', part).range(from, to)
     );
@@ -3042,8 +3031,9 @@ async function loadChecklistDetailsForHospitals(
   hospitalIds: string[]
 ): Promise<Map<string, { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> }>> {
   const map = new Map<string, { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> }>();
-  if (!hospitalIds.length) return map;
-  for (const part of chunk(hospitalIds, 80)) {
+  const uuids = await resolveScopeRefsToHospitalUuids(hospitalIds.filter(isQueryableHospitalRef));
+  if (!uuids.length) return map;
+  for (const part of chunk(uuids, 80)) {
     const rows = await fetchAllRowsOrEmpty<{ hospital_id: string; task_id: string; completed: boolean }>((from, to) =>
       supabase.from('site_checklist_progress').select('hospital_id, task_id, completed').in('hospital_id', part).range(from, to)
     );
@@ -3330,9 +3320,9 @@ async function loadPeccDataset(params: {
 
   const hidSetRaw = [
     ...new Set([
-      ...peccs.map((p) => p.hospital_facility_id).filter(Boolean) as string[],
-      ...peccHospitalContactRows.map((c) => c.hospital_id),
-      ...crmPeccRows.map((c) => c.hospital_id).filter(Boolean) as string[],
+      ...peccs.map((p) => p.hospital_facility_id).filter(isQueryableHospitalRef) as string[],
+      ...peccHospitalContactRows.map((c) => c.hospital_id).filter(isQueryableHospitalRef),
+      ...crmPeccRows.map((c) => c.hospital_id).filter(isQueryableHospitalRef) as string[],
     ]),
   ] as string[];
   const hidSet = await expandHospitalScopeKeys(hidSetRaw);
@@ -3385,16 +3375,13 @@ async function loadPeccDataset(params: {
     const hospSelect =
       'id, name, facility_id, address, city, state, zip, county, phone, email, trauma_level, ed_size, region, hospital_system, crm_status, company_name, custom_fields, programs, cohorts';
     const parts = await Promise.all(
-      chunk(hidSet, 80).map((hidPart) =>
-        supabase
-          .from('hospitals')
-          .select(hospSelect)
-          .in('id', hidPart)
-          .then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          })
-      )
+      chunk(hidSet, 80).map(async (hidPart) => {
+        const orClause = buildHospitalsTableOrClause(hidPart.filter(Boolean));
+        if (!orClause || orClause.includes('__no_match__')) return [];
+        const { data, error } = await supabase.from('hospitals').select(hospSelect).or(orClause);
+        if (error) throw error;
+        return data || [];
+      })
     );
     parts.flat().forEach((h: Record<string, unknown>) => {
       const row: HospRow = {
@@ -4328,8 +4315,10 @@ async function enrichStaffUsersToReportRows(urows: StaffReportUserRow[]): Promis
 
   const discussionByUser = await loadDiscussionCountsByUser(userIds);
 
-  for (const hidPart of chunk(canonicalHospitalIds, 80)) {
-    const { data: refHosp } = await supabase.from('hospitals').select('id, facility_id, name, state').in('id', hidPart);
+  for (const hidPart of chunk(canonicalHospitalIds.filter(isQueryableHospitalRef), 80)) {
+    const orClause = buildHospitalsTableOrClause(hidPart);
+    if (!orClause || orClause.includes('__no_match__')) continue;
+    const { data: refHosp } = await supabase.from('hospitals').select('id, facility_id, name, state').or(orClause);
     (refHosp || []).forEach((h: { id: string; facility_id?: string; name: string; state?: string }) => {
       hospById.set(h.id, h);
       if (h.facility_id) hospById.set(String(h.facility_id), h);
@@ -4554,8 +4543,10 @@ async function loadPlatformUsersByRoles(params: {
     ),
   ];
   const hospitalStateById = new Map<string, string>();
-  for (const hidPart of chunk(linkedHospitalIds, 80)) {
-    const { data } = await supabase.from('hospitals').select('id, state').in('id', hidPart);
+  for (const hidPart of chunk(linkedHospitalIds.filter(isQueryableHospitalRef), 80)) {
+    const orClause = buildHospitalsTableOrClause(hidPart);
+    if (!orClause || orClause.includes('__no_match__')) continue;
+    const { data } = await supabase.from('hospitals').select('id, state').or(orClause);
     (data || []).forEach((h: { id: string; state: string | null }) => {
       hospitalStateById.set(h.id, String(h.state || '').trim().toUpperCase());
     });
