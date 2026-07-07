@@ -18,6 +18,10 @@ export function getVerifiedTotpFactors(factors: Factor[] | undefined): Factor[] 
   return (factors ?? []).filter((f) => f.factor_type === 'totp' && f.status === 'verified');
 }
 
+export function getUnverifiedTotpFactors(factors: Factor[] | undefined): Factor[] {
+  return (factors ?? []).filter((f) => f.factor_type === 'totp' && f.status === 'unverified');
+}
+
 export async function listAllMfaFactors(): Promise<Factor[]> {
   const { data, error } = await supabase.auth.mfa.listFactors();
   if (error) throw error;
@@ -41,10 +45,12 @@ export async function hasVerifiedTotpEnrollment(): Promise<boolean> {
 }
 
 export async function resolveMfaGateState(): Promise<MfaGateState> {
+  const factors = await listAllMfaFactors();
+  const verifiedTotp = getVerifiedTotpFactors(factors);
+  // Incomplete setup (unverified factor only) must stay on enrollment — not the login challenge screen.
+  if (verifiedTotp.length === 0) return 'enroll';
   const levels = await getAuthenticatorLevels();
   if (needsMfaChallenge(levels)) return 'challenge';
-  const enrolled = await hasVerifiedTotpEnrollment();
-  if (!enrolled) return 'enroll';
   return 'none';
 }
 

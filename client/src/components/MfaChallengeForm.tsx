@@ -5,7 +5,7 @@ import {
   Button,
   TextField,
 } from '@mui/material';
-import { verifyMfaLogin } from '../utils/mfa';
+import { verifyMfaLogin, hasVerifiedTotpEnrollment } from '../utils/mfa';
 import { logSecurityEvent } from '../utils/securityEvents';
 import { useAuth } from '../context/AuthContext';
 import MfaInstructionSteps from './MfaInstructionSteps';
@@ -22,6 +22,8 @@ interface MfaChallengeFormProps {
   hideActions?: boolean;
   /** Auto-verify when 6 digits are entered (default true). */
   autoSubmit?: boolean;
+  /** When no verified authenticator exists, switch back to enrollment. */
+  onNeedsEnrollment?: () => void;
 }
 
 const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
@@ -34,12 +36,23 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
   compact = false,
   hideActions = false,
   autoSubmit = true,
+  onNeedsEnrollment,
 }) => {
   const { logout } = useAuth();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const verifyingRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void hasVerifiedTotpEnrollment().then((verified) => {
+      if (!cancelled && !verified) onNeedsEnrollment?.();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [onNeedsEnrollment]);
 
   const verifyCode = useCallback(
     async (rawCode: string) => {
@@ -59,6 +72,9 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
         const message = err instanceof Error ? err.message : 'Verification failed. Try again.';
         setError(message);
         setCode('');
+        if (message.toLowerCase().includes('no authenticator')) {
+          onNeedsEnrollment?.();
+        }
         void logSecurityEvent('mfa_challenge_failed', {
           email,
           userId,
@@ -69,7 +85,7 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
         setLoading(false);
       }
     },
-    [email, onSuccess, userId]
+    [email, onNeedsEnrollment, onSuccess, userId]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {

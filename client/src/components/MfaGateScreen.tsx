@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -7,6 +7,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import { hasVerifiedTotpEnrollment } from '../utils/mfa';
 import MfaEnrollmentForm, { MFA_ENROLLMENT_FORM_ID } from './MfaEnrollmentForm';
 import MfaChallengeForm from './MfaChallengeForm';
 
@@ -22,8 +23,25 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
   const { currentUser, logout } = useAuth();
   const [enrollSubmitting, setEnrollSubmitting] = useState(false);
   const [enrollCanSubmit, setEnrollCanSubmit] = useState(false);
+  const [enrollKey, setEnrollKey] = useState(0);
+  const [effectiveMode, setEffectiveMode] = useState(mode);
 
-  const isEnroll = mode === 'mfa-enroll';
+  const isEnroll = effectiveMode === 'mfa-enroll';
+
+  useEffect(() => {
+    setEffectiveMode(mode);
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'mfa-challenge') return;
+    let cancelled = false;
+    void hasVerifiedTotpEnrollment().then((verified) => {
+      if (!cancelled && !verified) setEffectiveMode('mfa-enroll');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
 
   const handleSuccess = useCallback(() => {
     onComplete();
@@ -86,6 +104,7 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
 
           {isEnroll ? (
             <MfaEnrollmentForm
+              key={enrollKey}
               email={currentUser.email}
               userId={currentUser.id}
               onEnrolled={handleSuccess}
@@ -104,6 +123,7 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
               onSuccess={handleSuccess}
               onCancel={handleLogout}
               cancelLabel="Log out"
+              onNeedsEnrollment={() => setEffectiveMode('mfa-enroll')}
             />
           )}
         </Paper>
@@ -112,25 +132,37 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
           <Box
             sx={{
               display: 'flex',
-              justifyContent: 'flex-end',
+              justifyContent: 'space-between',
+              alignItems: 'center',
               gap: 1.5,
               mt: 2,
               maxWidth: 'min(1120px, 100%)',
               mx: 'auto',
+              flexWrap: 'wrap',
             }}
           >
-            <Button onClick={handleLogout} color="inherit" disabled={enrollSubmitting} sx={{ textTransform: 'none' }}>
-              Log out
-            </Button>
             <Button
-              type="submit"
-              form={MFA_ENROLLMENT_FORM_ID}
-              variant="contained"
-              disabled={!enrollCanSubmit || enrollSubmitting}
-              sx={{ textTransform: 'none', fontWeight: 600, minWidth: 180 }}
+              onClick={() => setEnrollKey((k) => k + 1)}
+              color="inherit"
+              disabled={enrollSubmitting}
+              sx={{ textTransform: 'none' }}
             >
-              {enrollSubmitting ? 'Verifying…' : 'Enable authenticator'}
+              Get new QR code
             </Button>
+            <Box sx={{ display: 'flex', gap: 1.5, ml: 'auto' }}>
+              <Button onClick={handleLogout} color="inherit" disabled={enrollSubmitting} sx={{ textTransform: 'none' }}>
+                Log out
+              </Button>
+              <Button
+                type="submit"
+                form={MFA_ENROLLMENT_FORM_ID}
+                variant="contained"
+                disabled={!enrollCanSubmit || enrollSubmitting}
+                sx={{ textTransform: 'none', fontWeight: 600, minWidth: 180 }}
+              >
+                {enrollSubmitting ? 'Verifying…' : 'Enable authenticator'}
+              </Button>
+            </Box>
           </Box>
         ) : null}
       </Container>

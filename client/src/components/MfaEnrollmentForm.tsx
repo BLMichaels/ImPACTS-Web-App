@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -6,6 +6,7 @@ import {
   Alert,
   Box,
   Button,
+  CircularProgress,
   IconButton,
   InputAdornment,
   Stack,
@@ -63,6 +64,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
   const [copied, setCopied] = useState(false);
   const [manualExpanded, setManualExpanded] = useState(false);
   const [restarted, setRestarted] = useState(false);
+  const qrSectionRef = useRef<HTMLDivElement | null>(null);
 
   const startEnrollment = useCallback(async (isCancelled?: () => boolean) => {
     try {
@@ -75,6 +77,9 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
       setSecret(data.totp.secret);
     } catch (err) {
       if (!isCancelled?.()) {
+        setFactorId('');
+        setQrCode('');
+        setSecret('');
         setError(err instanceof Error ? err.message : 'Could not start MFA setup.');
       }
     } finally {
@@ -114,7 +119,40 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
     setManualExpanded(false);
     setRestarted(true);
     await startEnrollment();
+    window.setTimeout(() => {
+      qrSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
   };
+
+  const showQrPanel = bootstrapping || !!qrCode;
+  const showRestartActions = !loading;
+
+  const restartActions = showRestartActions ? (
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.25 }}>
+      <Button
+        type="button"
+        variant="outlined"
+        size="small"
+        onClick={handleRestartEnrollment}
+        disabled={loading || bootstrapping}
+        sx={{ textTransform: 'none' }}
+      >
+        {bootstrapping ? 'Generating new QR code…' : 'Wrong app or need a new code? Get new QR code'}
+      </Button>
+      {!qrCode && !bootstrapping ? (
+        <Button
+          type="button"
+          variant="contained"
+          size="small"
+          onClick={handleRestartEnrollment}
+          disabled={loading}
+          sx={{ textTransform: 'none' }}
+        >
+          Show QR code
+        </Button>
+      ) : null}
+    </Stack>
+  ) : null;
 
   const handleEnable = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,14 +180,10 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
 
   const qrSize = split ? 156 : 200;
 
-  const setupPanel = bootstrapping ? (
-    <Typography variant="body2" color="text.secondary">
-      Preparing your QR code and setup key…
-    </Typography>
-  ) : (
+  const setupPanel = (
     <>
-      {qrCode ? (
-        <Box sx={{ mb: 1.5 }}>
+      {showQrPanel ? (
+        <Box ref={qrSectionRef} sx={{ mb: 1.5 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75, fontSize: '0.875rem' }}>
             QR code — Step 2
           </Typography>
@@ -167,14 +201,41 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
               borderColor: 'divider',
               borderRadius: 2,
               bgcolor: 'background.paper',
+              position: 'relative',
+              minHeight: qrSize + 20,
             }}
           >
-            <Box
-              component="img"
-              src={totpQrDataUrl(qrCode)}
-              alt="QR code to add ImPACTS to your authenticator app"
-              sx={{ width: qrSize, height: qrSize, maxWidth: '100%' }}
-            />
+            {qrCode ? (
+              <Box
+                component="img"
+                src={totpQrDataUrl(qrCode)}
+                alt="QR code to add ImPACTS to your authenticator app"
+                sx={{
+                  width: qrSize,
+                  height: qrSize,
+                  maxWidth: '100%',
+                  opacity: bootstrapping ? 0.35 : 1,
+                  transition: 'opacity 0.2s ease',
+                }}
+              />
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                Preparing your QR code…
+              </Typography>
+            )}
+            {bootstrapping ? (
+              <CircularProgress
+                size={32}
+                sx={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  mt: '-16px',
+                  ml: '-16px',
+                }}
+                aria-label="Generating QR code"
+              />
+            ) : null}
           </Box>
           {isIosDevice() ? (
             <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5, lineHeight: 1.4 }}>
@@ -182,20 +243,18 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
               Passwords.
             </Typography>
           ) : null}
-          <Button
-            type="button"
-            variant="outlined"
-            size="small"
-            onClick={handleRestartEnrollment}
-            disabled={loading || bootstrapping}
-            sx={{ mt: 1.25, textTransform: 'none' }}
-          >
-            Wrong app or need a new code? Start over
-          </Button>
+          {restartActions}
         </Box>
-      ) : null}
+      ) : (
+        <Box sx={{ mb: 1.5 }}>
+          <Alert severity="error" sx={{ mb: 1.25 }}>
+            We could not load a QR code. Tap below to try again.
+          </Alert>
+          {restartActions}
+        </Box>
+      )}
 
-      {restarted && !bootstrapping ? (
+      {restarted && !bootstrapping && qrCode ? (
         <Alert severity="info" sx={{ mb: 1.5, py: 0.5, '& .MuiAlert-message': { fontSize: '0.8125rem', lineHeight: 1.45 } }}>
           A new QR code and setup key were generated. Remove any old ImPACTS entry from your authenticator
           app, then scan or enter the new one below.
@@ -274,6 +333,12 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
         }}
         inputProps={{ inputMode: 'numeric', autoComplete: 'one-time-code' }}
       />
+
+      {!showQrPanel ? null : (
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1, lineHeight: 1.45 }}>
+          Scanned with the wrong app or can&apos;t find the code? Use <strong>Get new QR code</strong> above.
+        </Typography>
+      )}
     </>
   );
 
