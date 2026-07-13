@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box, Typography, Link } from '@mui/material';
 
-const PHI_DISCLAIMER = 'Do not enter any Protected Health Information (PHI) or real patient data. This tool is for educational and pediatric readiness purposes only.';
+const PHI_DISCLAIMER =
+  'Do not enter any Protected Health Information (PHI) or real patient data. Free-text fields are screened for common HIPAA identifiers. This tool is for educational and pediatric readiness purposes only.';
 
 const Footer: React.FC = () => {
   return (

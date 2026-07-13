@@ -30,6 +30,7 @@ import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { getUserDisplayName } from '../../utils/displayName';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { usePhiGuard } from '../PhiGuard';
 import RichTextEditor, { sanitizeHtml, stripHtmlToText } from './RichTextEditor';
 
 const COHORT_ATTACHMENT_BUCKETS = ['cohort-discussion-attachments', 'cohort-attachments'] as const;
@@ -55,6 +56,7 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   onTopicUpdated
 }) => {
   const { userProfile } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
   const [replies, setReplies] = useState<CohortDiscussionReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyHtml, setReplyHtml] = useState('');
@@ -141,41 +143,48 @@ const DiscussionTopicView: React.FC<DiscussionTopicViewProps> = ({
   const handleSubmitReply = async () => {
     const trimmed = sanitizeHtml(replyHtml).trim();
     if (!stripHtmlToText(trimmed) || !userProfile?.id) return;
-    
+
     setSubmitting(true);
     try {
-      const { data, error } = await supabase
-        .from('cohort_discussion_replies')
-        .insert({
-          topic_id: topic.id,
-          content: trimmed,
-          created_by: userProfile.id,
-          ...(replyAttachments.length > 0 && { attachments: replyAttachments })
-        })
-        .select(`
+      const ok = await runWithPhiGuard({
+        surface: 'cohort_discussion_reply',
+        texts: [trimmed, stripHtmlToText(trimmed)],
+        onSave: async () => {
+          const { data, error } = await supabase
+            .from('cohort_discussion_replies')
+            .insert({
+              topic_id: topic.id,
+              content: trimmed,
+              created_by: userProfile.id,
+              ...(replyAttachments.length > 0 && { attachments: replyAttachments })
+            })
+            .select(`
           *,
           author:created_by(id, first_name, last_name, role)
         `)
-        .single();
+            .single();
 
-      if (error) throw error;
+          if (error) throw error;
 
-      if (data) {
-        setReplies(prev => [...prev, data]);
-        setReplyHtml('');
-        setReplyAttachments([]);
-        const newCount = (topic.reply_count || 0) + 1;
-        const now = new Date().toISOString();
-        await supabase
-          .from('cohort_discussion_topics')
-          .update({
-            reply_count: newCount,
-            last_reply_at: now,
-            last_reply_by: userProfile.id
-          })
-          .eq('id', topic.id);
-        onTopicUpdated?.(topic.id, { reply_count: newCount, last_reply_at: now, last_reply_by: userProfile.id });
-      }
+          if (data) {
+            setReplies(prev => [...prev, data]);
+            setReplyHtml('');
+            setReplyAttachments([]);
+            const newCount = (topic.reply_count || 0) + 1;
+            const now = new Date().toISOString();
+            await supabase
+              .from('cohort_discussion_topics')
+              .update({
+                reply_count: newCount,
+                last_reply_at: now,
+                last_reply_by: userProfile.id
+              })
+              .eq('id', topic.id);
+            onTopicUpdated?.(topic.id, { reply_count: newCount, last_reply_at: now, last_reply_by: userProfile.id });
+          }
+        },
+      });
+      if (!ok) return;
     } catch (err) {
       console.error('Error posting reply:', err);
       setSnackMessage('Failed to post reply. Please try again.');

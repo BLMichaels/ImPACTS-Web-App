@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { provisionCrmPortalUser } from '../../utils/provisionCrmPortalUser';
 import { useAuth } from '../../context/AuthContext';
+import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 import { batchGetUserDataForKey, getUserData, setUserData } from '../../utils/userData';
 import {
   applyPeccHospitalFromLinkedIds,
@@ -466,6 +467,7 @@ const AdminCRMPage: React.FC = () => {
     }
   }, [navigate]);
   const { currentUser } = useAuth();
+  const { runWithPhiGuard } = usePhiGuard();
   const { actualRole, enterViewAsUser, refreshProfile, userProfile, viewAsUserId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const canSeeReminders = actualRole === UserRole.ADMIN || actualRole === UserRole.MANAGER || actualRole === UserRole.MENTOR;
@@ -2039,22 +2041,38 @@ const AdminCRMPage: React.FC = () => {
   }, []);
 
   const addNote = useCallback((c: Contact, entry: NotesLogEntry) => {
-    const nextLog = [...(c.notesLog ?? []), entry].sort((a, b) => (b.date.localeCompare(a.date)));
-    const updated = { ...c, notesLog: nextLog };
-    setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
-    setDetailContact(prev => (prev?.id === c.id ? updated : prev));
-    persistNotesAndActivity(updated);
-  }, [persistNotesAndActivity]);
+    void runWithPhiGuard({
+      surface: 'crm_notes',
+      fieldHint: 'notes_log',
+      texts: [entry.text],
+      payload: entry,
+      onSave: () => {
+        const nextLog = [...(c.notesLog ?? []), entry].sort((a, b) => (b.date.localeCompare(a.date)));
+        const updated = { ...c, notesLog: nextLog };
+        setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
+        setDetailContact(prev => (prev?.id === c.id ? updated : prev));
+        void persistNotesAndActivity(updated);
+      },
+    });
+  }, [persistNotesAndActivity, runWithPhiGuard]);
 
   const updateNote = useCallback((c: Contact, index: number, entry: NotesLogEntry) => {
-    const nextLog = [...(c.notesLog ?? [])];
-    nextLog[index] = entry;
-    nextLog.sort((a, b) => (b.date.localeCompare(a.date)));
-    const updated = { ...c, notesLog: nextLog };
-    setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
-    setDetailContact(prev => (prev?.id === c.id ? updated : prev));
-    persistNotesAndActivity(updated);
-  }, [persistNotesAndActivity]);
+    void runWithPhiGuard({
+      surface: 'crm_notes',
+      fieldHint: 'notes_log',
+      texts: [entry.text],
+      payload: entry,
+      onSave: () => {
+        const nextLog = [...(c.notesLog ?? [])];
+        nextLog[index] = entry;
+        nextLog.sort((a, b) => (b.date.localeCompare(a.date)));
+        const updated = { ...c, notesLog: nextLog };
+        setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
+        setDetailContact(prev => (prev?.id === c.id ? updated : prev));
+        void persistNotesAndActivity(updated);
+      },
+    });
+  }, [persistNotesAndActivity, runWithPhiGuard]);
 
   const deleteNote = useCallback((c: Contact, index: number) => {
     const nextLog = [...(c.notesLog ?? [])];
@@ -2066,25 +2084,39 @@ const AdminCRMPage: React.FC = () => {
   }, [persistNotesAndActivity]);
 
   const addActivityEntry = useCallback((c: Contact, entry: ActivityLogEntry) => {
-    const nextLog = [...(c.activityLog ?? []), entry].sort((a, b) => (b.date.localeCompare(a.date)));
-    const updated = { ...c, activityLog: nextLog };
-    setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
-    setDetailContact(prev => (prev?.id === c.id ? updated : prev));
-    persistNotesAndActivity(updated);
-  }, [persistNotesAndActivity]);
+    void runWithPhiGuard({
+      surface: 'crm_activity',
+      fieldHint: 'activity_log',
+      texts: [entry.text],
+      onSave: () => {
+        const nextLog = [...(c.activityLog ?? []), entry].sort((a, b) => (b.date.localeCompare(a.date)));
+        const updated = { ...c, activityLog: nextLog };
+        setContacts(prev => prev.map(x => (x.id === c.id ? updated : x)));
+        setDetailContact(prev => (prev?.id === c.id ? updated : prev));
+        void persistNotesAndActivity(updated);
+      },
+    });
+  }, [persistNotesAndActivity, runWithPhiGuard]);
 
   const addReminder = useCallback(async (contactId: string, contactName: string, remind_at: string, title: string) => {
     if (!currentUser?.id) return;
-    const { data, error } = await supabase.from('crm_reminders').insert({
-      user_id: currentUser.id,
-      contact_id: contactId,
-      contact_name: contactName || null,
-      remind_at: new Date(remind_at).toISOString(),
-      title: title || 'Follow up'
-    }).select('id, contact_id, contact_name, remind_at, title, created_at').single();
-    if (error) return;
-    setReminders(prev => [...prev, data as CrmReminder]);
-  }, [currentUser?.id]);
+    const ok = await runWithPhiGuard({
+      surface: 'crm_reminders',
+      texts: [title],
+      onSave: async () => {
+        const { data, error } = await supabase.from('crm_reminders').insert({
+          user_id: currentUser.id,
+          contact_id: contactId,
+          contact_name: contactName || null,
+          remind_at: new Date(remind_at).toISOString(),
+          title: title || 'Follow up'
+        }).select('id, contact_id, contact_name, remind_at, title, created_at').single();
+        if (error) return;
+        setReminders(prev => [...prev, data as CrmReminder]);
+      },
+    });
+    if (!ok) return;
+  }, [currentUser?.id, runWithPhiGuard]);
 
   const deleteReminder = useCallback(async (id: string) => {
     await supabase.from('crm_reminders').delete().eq('id', id);
@@ -5707,7 +5739,7 @@ const AdminCRMPage: React.FC = () => {
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
             <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-              <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
+              <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes. {PHI_SCAN_HINT} {PHI_SCAN_HINT}
             </Alert>
             {fullScreenEditMode ? (
               /* Inline edit form in full-screen – same fields as Add/Edit dialog */
@@ -6664,7 +6696,7 @@ const AdminCRMPage: React.FC = () => {
         <DialogTitle>{editingContact ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes. {PHI_SCAN_HINT}
           </Alert>
           {saveError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSaveError(null)}>

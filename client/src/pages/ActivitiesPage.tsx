@@ -42,6 +42,7 @@ import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
+import { usePhiGuard, PHI_SCAN_HINT } from '../components/PhiGuard';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { supabase } from '../supabase';
@@ -144,6 +145,7 @@ const PARTICIPANT_OPTIONS = Array.from({ length: 26 }, (_, i) => i);
 
 const ActivitiesPage = () => {
   const { currentUser, loading } = useAuth();
+  const { runWithPhiGuard } = usePhiGuard();
   const { effectiveUserId, siteId } = useUserProfile();
   const { trackClick, trackActivity } = useUsageAnalytics();
   useEffect(() => {
@@ -366,53 +368,59 @@ const ActivitiesPage = () => {
       }
 
       const isSimulation = formData.categories.includes('Simulation Facilitation');
-      
-      if (editingActivity) {
-        trackActivity('edit', { activity_id: editingActivity.id, name: formData.activity?.slice(0, 80) });
-        const updatedActivity: Activity = {
-          ...editingActivity,
-          date: formData.date,
-          activity: formData.activity,
-          categories: formData.categories,
-          category: formData.categories[0],
-          hours: formData.hours,
-          simulation: isSimulation ? formData.simulation : undefined,
-          simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
-          participants: isSimulation ? formData.participants : undefined,
-          feedbackForms: isSimulation ? formData.feedbackForms : undefined,
-          associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
-          associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
-          notes: formData.notes || undefined
-        };
-        const updatedActivities = activities.map(activity =>
-          activity.id === editingActivity.id ? updatedActivity : activity
-        );
-        saveActivities(updatedActivities);
-      } else {
-        trackActivity('create', { name: formData.activity?.slice(0, 80) });
-        const uid = userId;
-        const newActivity: Activity = {
-          id: Date.now().toString(),
-          date: formData.date,
-          activity: formData.activity,
-          categories: formData.categories,
-          category: formData.categories[0],
-          hours: formData.hours,
-          simulation: isSimulation ? formData.simulation : undefined,
-          simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
-          participants: isSimulation ? formData.participants : undefined,
-          feedbackForms: isSimulation ? formData.feedbackForms : undefined,
-          associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
-          associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
-          notes: formData.notes || undefined,
-          submitted_by: uid ?? undefined
-        };
-        saveActivities([...activities, newActivity]);
-      }
 
-      // Close dialog and reset form
-      handleClose();
-      setError(null);
+      void runWithPhiGuard({
+        surface: 'activities',
+        fieldHint: 'activity/notes',
+        texts: [formData.activity, formData.notes, formData.simulationOther],
+        onSave: () => {
+          if (editingActivity) {
+            trackActivity('edit', { activity_id: editingActivity.id, name: formData.activity?.slice(0, 80) });
+            const updatedActivity: Activity = {
+              ...editingActivity,
+              date: formData.date,
+              activity: formData.activity,
+              categories: formData.categories,
+              category: formData.categories[0],
+              hours: formData.hours,
+              simulation: isSimulation ? formData.simulation : undefined,
+              simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
+              participants: isSimulation ? formData.participants : undefined,
+              feedbackForms: isSimulation ? formData.feedbackForms : undefined,
+              associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
+              associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
+              notes: formData.notes || undefined
+            };
+            const updatedActivities = activities.map(activity =>
+              activity.id === editingActivity.id ? updatedActivity : activity
+            );
+            saveActivities(updatedActivities);
+          } else {
+            trackActivity('create', { name: formData.activity?.slice(0, 80) });
+            const uid = userId;
+            const newActivity: Activity = {
+              id: Date.now().toString(),
+              date: formData.date,
+              activity: formData.activity,
+              categories: formData.categories,
+              category: formData.categories[0],
+              hours: formData.hours,
+              simulation: isSimulation ? formData.simulation : undefined,
+              simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
+              participants: isSimulation ? formData.participants : undefined,
+              feedbackForms: isSimulation ? formData.feedbackForms : undefined,
+              associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
+              associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
+              notes: formData.notes || undefined,
+              submitted_by: uid ?? undefined
+            };
+            saveActivities([...activities, newActivity]);
+          }
+
+          handleClose();
+          setError(null);
+        },
+      });
     } catch (err) {
       console.error('Error submitting activity:', err);
       setError('Error submitting activity');
@@ -796,7 +804,7 @@ const ActivitiesPage = () => {
     <Container maxWidth="xl">
       <Box sx={{ mb: 4, mt: 3 }}>
         <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in activities or notes.
+          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in activities or notes. {PHI_SCAN_HINT}
         </Alert>
         {/* Mobile Header */}
         {isMobile ? (

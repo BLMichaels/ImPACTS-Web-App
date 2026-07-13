@@ -27,10 +27,11 @@ import {
 } from '@mui/icons-material';
 import { CohortDiscussionTopic } from '../../types/database';
 import { useAuth } from '../../context/AuthContext';
+import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { getUserDisplayName } from '../../utils/displayName';
-import RichTextEditor, { sanitizeHtml } from './RichTextEditor';
+import RichTextEditor, { sanitizeHtml, stripHtmlToText } from './RichTextEditor';
 
 interface DiscussionTopicListProps {
   cohortId: string;
@@ -57,6 +58,7 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
 }) => {
   const canCreateDiscussion = canManage || canPost;
   const { currentUser } = useAuth();
+  const { runWithPhiGuard } = usePhiGuard();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -86,29 +88,37 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
     setSaving(true);
     setError(null);
     try {
-      const { data, error: insertError } = await supabase
-        .from('cohort_discussion_topics')
-        .insert({
-          cohort_id: cohortId,
-          title: title.trim(),
-          content: sanitizeHtml(content).trim() || null,
-          created_by: currentUser.id,
-          is_pinned: false,
-          is_locked: false,
-          reply_count: 0
-        })
-        .select(`
+      const sanitized = sanitizeHtml(content).trim() || null;
+      const ok = await runWithPhiGuard({
+        surface: 'cohort_discussion_topic',
+        texts: [title, sanitized || '', stripHtmlToText(sanitized || '')],
+        onSave: async () => {
+          const { data, error: insertError } = await supabase
+            .from('cohort_discussion_topics')
+            .insert({
+              cohort_id: cohortId,
+              title: title.trim(),
+              content: sanitized,
+              created_by: currentUser.id,
+              is_pinned: false,
+              is_locked: false,
+              reply_count: 0
+            })
+            .select(`
           *,
           author:created_by(id, first_name, last_name, role),
           last_replier:last_reply_by(id, first_name, last_name)
         `)
-        .single();
+            .single();
 
-      if (insertError) throw insertError;
-      if (data) {
-        onTopicCreated(data as CohortDiscussionTopic);
-        handleCloseDialog();
-      }
+          if (insertError) throw insertError;
+          if (data) {
+            onTopicCreated(data as CohortDiscussionTopic);
+            handleCloseDialog();
+          }
+        },
+      });
+      if (!ok) setError('Possible PHI detected. Remove patient identifiers and try again.');
     } catch (err: any) {
       setError(err?.message || 'Failed to create topic');
     } finally {

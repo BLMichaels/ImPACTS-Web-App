@@ -44,6 +44,7 @@ import {
   PictureAsPdf as PdfIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import { usePhiGuard, PHI_SCAN_HINT } from '../components/PhiGuard';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import ScormPackagesSection from '../components/ScormPackagesSection';
@@ -374,6 +375,7 @@ const SEVERITY_LEVELS = [
 
 const SimulationPage: React.FC = () => {
   const { currentUser, loading } = useAuth();
+  const { runWithPhiGuard } = usePhiGuard();
   const { effectiveUserId, siteId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const theme = useTheme();
@@ -528,26 +530,33 @@ const SimulationPage: React.FC = () => {
 
   const handleNext = () => {
     if (activeStep === 0) {
-      // Create session
       const caseData = SIMULATION_CASES.find(c => c.id === sessionForm.caseId);
       if (!caseData) return;
 
-      const newSession: SimulationSession = {
-        id: Date.now().toString(),
-        caseId: sessionForm.caseId,
-        caseName: caseData.name,
-        date: sessionForm.date,
-        participants: sessionForm.participants.split(',').map(p => p.trim()).filter(p => p),
-        duration: parseInt(sessionForm.duration),
-        debriefNotes: sessionForm.debriefNotes,
-        overallRating: sessionForm.overallRating,
-        gaps: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      void runWithPhiGuard({
+        surface: 'simulation_sessions',
+        texts: [sessionForm.debriefNotes, sessionForm.participants],
+        onSave: () => {
+          const newSession: SimulationSession = {
+            id: Date.now().toString(),
+            caseId: sessionForm.caseId,
+            caseName: caseData.name,
+            date: sessionForm.date,
+            participants: sessionForm.participants.split(',').map(p => p.trim()).filter(p => p),
+            duration: parseInt(sessionForm.duration),
+            debriefNotes: sessionForm.debriefNotes,
+            overallRating: sessionForm.overallRating,
+            gaps: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
 
-      setCurrentSession(newSession);
-      setSessions([newSession, ...sessions]);
+          setCurrentSession(newSession);
+          setSessions([newSession, ...sessions]);
+          setActiveStep((prevActiveStep) => prevActiveStep + 1);
+        },
+      });
+      return;
     }
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
@@ -1052,7 +1061,7 @@ const SimulationPage: React.FC = () => {
             Use the structured debriefing process to track improvements and link to your activities.
           </Typography>
           <Alert severity="info" sx={{ mt: 2 }} icon={false}>
-            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in sessions, debrief notes, or gap descriptions.
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in sessions, debrief notes, or gap descriptions. {PHI_SCAN_HINT}
           </Alert>
         </Box>
 

@@ -12,7 +12,10 @@ export type SecurityEventType =
   | 'idle_timeout_logout'
   | 'password_reset_requested'
   | 'mfa_enrolled'
-  | 'mfa_challenge_failed';
+  | 'mfa_challenge_failed'
+  | 'phi_input_blocked'
+  | 'phi_input_warned'
+  | 'phi_input_acknowledged';
 
 export async function logSecurityEvent(
   eventType: SecurityEventType,

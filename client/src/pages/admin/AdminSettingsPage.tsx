@@ -57,6 +57,7 @@ const AdminProgramsContent = lazy(() => import('./AdminProgramsPage'));
 const AdminCohortsContent = lazy(() => import('./AdminCohortsPage'));
 const GranularPermissionsManager = lazy(() => import('../../components/admin/GranularPermissionsManager'));
 const AdminProgramChecklistsTab = lazy(() => import('./AdminProgramChecklistsTab'));
+const AdminPhiEventsPanel = lazy(() => import('../../components/admin/AdminPhiEventsPanel'));
 
 // ---- Registration section constants ----
 const QUESTION_TYPES: { value: RegistrationQuestionType; label: string }[] = [
@@ -151,7 +152,8 @@ export default function AdminSettingsPage() {
     'gap-closure': 8,
     'simulations': 9,
     'tiers': 10,
-    'program-checklists': 11
+    'program-checklists': 11,
+    'phi-events': 12
   }), []);
 
   const tabIndexToParam: Record<number, string> = useMemo(() => ({
@@ -166,7 +168,8 @@ export default function AdminSettingsPage() {
     8: 'gap-closure',
     9: 'simulations',
     10: 'tiers',
-    11: 'program-checklists'
+    11: 'program-checklists',
+    12: 'phi-events'
   }), []);
 
   // Initialize tab from URL or default to 0
@@ -849,6 +852,7 @@ export default function AdminSettingsPage() {
         <Tab label="Simulations" />
         <Tab label="Tiers" />
         <Tab label="Program Checklists" />
+        <Tab label="PHI Events" />
       </Tabs>
 
       {/* Registration Questions */}
@@ -1492,6 +1496,12 @@ export default function AdminSettingsPage() {
       {tabIndex === 11 && (
         <Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={24} /></Box>}>
           <AdminProgramChecklistsTab />
+        </Suspense>
+      )}
+
+      {tabIndex === 12 && (
+        <Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={24} /></Box>}>
+          <AdminPhiEventsPanel />
         </Suspense>
       )}
 

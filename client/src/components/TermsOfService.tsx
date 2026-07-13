@@ -235,6 +235,14 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
             appropriate regulatory authorities. You will be held fully liable for any damages,
             fines, or penalties resulting from such violations.
           </TermsP>
+          <TermsP>
+            As an additional safeguard, the Tool may automatically screen free-text inputs for
+            patterns associated with the HIPAA Safe Harbor identifiers (for example, Social Security
+            numbers, medical record numbers, and patient names in clinical context). High-confidence
+            matches may be blocked; uncertain matches may require confirmation before saving.
+            Screening is heuristic and does not guarantee detection of all PHI — you remain
+            responsible for never entering real patient data.
+          </TermsP>
         </Box>
 
         <TermsSection>3. Data Collection, Research Use, and Intellectual Property</TermsSection>

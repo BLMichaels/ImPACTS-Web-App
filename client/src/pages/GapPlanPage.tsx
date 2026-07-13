@@ -37,6 +37,7 @@ import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
+import { usePhiGuard, PHI_SCAN_HINT } from '../components/PhiGuard';
 import { supabase } from '../supabase';
 import {
   migrateFromLocalStorage,
@@ -89,6 +90,7 @@ const GapPlanPage: React.FC = () => {
   useAuth();
   const { effectiveUserId, siteId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
+  const { runWithPhiGuard } = usePhiGuard();
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<GapPlan[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('');
@@ -227,7 +229,14 @@ const GapPlanPage: React.FC = () => {
   const saveGapPlans = async (plans: GapPlan[]) => {
     if (!userId) return;
     try {
-      await writeContinuityData(effectiveHospitalId, userId, 'gapPlans', plans);
+      const ok = await runWithPhiGuard({
+        surface: 'gapPlans',
+        payload: plans,
+        onSave: async () => {
+          await writeContinuityData(effectiveHospitalId, userId, 'gapPlans', plans);
+        },
+      });
+      if (!ok) setError('Save blocked: possible PHI detected in gap plan text. Remove patient identifiers and try again.');
     } catch (err) {
       console.error('Error saving gap plans:', err);
       setError('Failed to save gap plans');
@@ -597,7 +606,7 @@ const GapPlanPage: React.FC = () => {
           </Typography>
 
         <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in plans, notes, or attachments.
+          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in plans, notes, or attachments. {PHI_SCAN_HINT}
         </Alert>
 
         {/* Gap Plan Reminder Banner */}

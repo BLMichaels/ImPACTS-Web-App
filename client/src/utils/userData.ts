@@ -9,6 +9,14 @@ import {
   logSupabaseError,
   shouldFallbackUserDataToLocalStorage,
 } from './supabaseErrors';
+import {
+  PHI_NARRATIVE_DATA_KEYS,
+  PhiBlockedError,
+  enforcePhiForDataKey,
+  phiFindingsToMetadata,
+  scanUnknownPayload,
+} from './phiScanner';
+import { logSecurityEvent } from './securityEvents';
 
 const LS_PREFIX = 'ud_';
 const LEGACY_MIRROR_OVERRIDE_KEY = 'impacts_disable_legacy_user_mirror';
@@ -39,8 +47,33 @@ export async function getUserData<T = unknown>(userId: string, dataKey: string):
   return null;
 }
 
+function assertPhiSafeForDataKey(dataKey: string, value: unknown, userId?: string): void {
+  if (!PHI_NARRATIVE_DATA_KEYS.has(dataKey)) return;
+  const result = scanUnknownPayload(value);
+  try {
+    // High-confidence PHI is always blocked. Medium is UI-gated; forceAcknowledged skips medium throw here.
+    enforcePhiForDataKey(dataKey, value, { forceAcknowledged: true });
+  } catch (err) {
+    if (err instanceof PhiBlockedError) {
+      void logSecurityEvent('phi_input_blocked', {
+        userId: userId || null,
+        metadata: phiFindingsToMetadata(err.findings, err.surface),
+      });
+      throw err;
+    }
+    throw err;
+  }
+  if (result.maxSeverity === 'medium') {
+    void logSecurityEvent('phi_input_warned', {
+      userId: userId || null,
+      metadata: phiFindingsToMetadata(result.findings, `data_key:${dataKey}`),
+    });
+  }
+}
+
 export async function setUserData(userId: string, dataKey: string, value: unknown): Promise<void> {
   if (!userId || !dataKey) return;
+  assertPhiSafeForDataKey(dataKey, value, userId);
   const { error } = await supabase
     .from('user_data')
     .upsert(
@@ -180,6 +213,7 @@ export async function getHospitalData<T = unknown>(hospitalId: string, dataKey: 
 export async function setHospitalData(hospitalId: string, dataKey: string, value: unknown): Promise<void> {
   if (!hospitalId || !dataKey) return;
   if (hospitalDataTableMissing) return;
+  assertPhiSafeForDataKey(dataKey, value);
   const { error } = await supabase
     .from('hospital_data')
     .upsert(

@@ -47,6 +47,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { useMentorWorkRoutes } from '../../hooks/useMentorWorkRoutes';
 import { fetchMergedMentorHospitals, mergedRowsToHospitalOptions } from '../../utils/mentorHospitalScope';
 import { supabase } from '../../supabase';
+import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
 import { DEFAULT_ACTIVITY_CATEGORIES, SIMULATION_CASE_OPTIONS } from '../../types/database';
@@ -104,6 +105,7 @@ type SortOrder = 'asc' | 'desc';
 const MentorActivitiesPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { effectiveUserId } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
   const navigate = useNavigate();
   const mentorRoutes = useMentorWorkRoutes();
   
@@ -339,37 +341,42 @@ const MentorActivitiesPage: React.FC = () => {
       createdAt: editingActivity?.createdAt || new Date().toISOString()
     };
 
-    let newActivities: MentorActivity[];
-    if (editingActivity) {
-      newActivities = activities.map(a => a.id === editingActivity.id ? activityData : a);
-    } else {
-      newActivities = [...activities, activityData];
-    }
-    
-    // Sort by date (newest first)
-    newActivities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    saveActivities(newActivities);
-    setError(null);
-    setEditingActivity(null);
-    setDialogOpen(false);
-    
-    // Reset form after a brief delay to ensure state updates
-    setTimeout(() => {
-      setFormData({
-        date: new Date(),
-        activityName: '',
-        category: '',
-        hours: 0,
-        description: '',
-        hospitalIds: [],
-        readinessDomains: [],
-        simulationCase: '',
-        simParticipants: 1,
-        facilitatorFeedbackSubmitted: false,
-        participantFeedbackSubmitted: false
-      });
-    }, 100);
+    void runWithPhiGuard({
+      surface: 'mentorActivities',
+      texts: [activityData.activityName, activityData.description],
+      payload: activityData,
+      onSave: () => {
+        let newActivities: MentorActivity[];
+        if (editingActivity) {
+          newActivities = activities.map(a => a.id === editingActivity.id ? activityData : a);
+        } else {
+          newActivities = [...activities, activityData];
+        }
+
+        newActivities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        saveActivities(newActivities);
+        setError(null);
+        setEditingActivity(null);
+        setDialogOpen(false);
+
+        setTimeout(() => {
+          setFormData({
+            date: new Date(),
+            activityName: '',
+            category: '',
+            hours: 0,
+            description: '',
+            hospitalIds: [],
+            readinessDomains: [],
+            simulationCase: '',
+            simParticipants: 1,
+            facilitatorFeedbackSubmitted: false,
+            participantFeedbackSubmitted: false
+          });
+        }, 100);
+      },
+    });
   };
 
   // Handle hospital selection
@@ -479,7 +486,7 @@ const MentorActivitiesPage: React.FC = () => {
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ py: 3 }}>
         <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in activities, descriptions, or notes.
+          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in activities, descriptions, or notes. {PHI_SCAN_HINT}
         </Alert>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Log PRISM activities and simulations by hospital. Link activities to hospitals from the <strong>Hospitals</strong> page so they appear in Site Milestones and your Snapshot.

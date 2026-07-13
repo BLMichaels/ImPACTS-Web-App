@@ -16,6 +16,7 @@ import ScrollToTop from './components/ScrollToTop';
 import ErrorBoundary from './components/ErrorBoundary';
 import IdleTimeout from './components/IdleTimeout';
 import SecurityGateShell from './components/SecurityGateShell';
+import { PhiGuardProvider } from './components/PhiGuard';
 import LoginPage from './pages/LoginPage';
 import AccessByInvitationPage from './pages/AccessByInvitationPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -197,6 +198,7 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
+        <PhiGuardProvider>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <SecurityGateShell>
             <UserProfileProvider>
@@ -314,6 +316,7 @@ function App() {
             </UserProfileProvider>
           </SecurityGateShell>
         </Router>
+        </PhiGuardProvider>
       </AuthProvider>
     </ThemeProvider>
   );

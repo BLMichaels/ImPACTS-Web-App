@@ -58,6 +58,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { usePhiGuard } from '../../components/PhiGuard';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
 import { getUserDisplayName } from '../../utils/displayName';
@@ -135,6 +136,7 @@ interface TabVisibilitySettings {
 
 const ManagerCRMPage: React.FC = () => {
   const { userProfile } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -873,18 +875,25 @@ const ManagerCRMPage: React.FC = () => {
         is_actively_engaged: contactForm.isActivelyEngaged,
         notes: contactForm.notes?.trim() || null
       };
-      if (editingContact) {
-        const { error } = await supabase.from('hospital_contacts').update(payload).eq('id', editingContact.id);
-        if (error) throw error;
-        setSnackbar({ open: true, message: 'Contact updated', severity: 'success' });
-      } else {
-        const { error } = await supabase.from('hospital_contacts').insert(payload);
-        if (error) throw error;
-        setSnackbar({ open: true, message: 'Contact added', severity: 'success' });
-      }
-      setContactDialogOpen(false);
-      setEditingContact(null);
-      loadContacts();
+      const ok = await runWithPhiGuard({
+        surface: 'manager_hospital_contacts',
+        texts: [payload.notes],
+        onSave: async () => {
+          if (editingContact) {
+            const { error } = await supabase.from('hospital_contacts').update(payload).eq('id', editingContact.id);
+            if (error) throw error;
+            setSnackbar({ open: true, message: 'Contact updated', severity: 'success' });
+          } else {
+            const { error } = await supabase.from('hospital_contacts').insert(payload);
+            if (error) throw error;
+            setSnackbar({ open: true, message: 'Contact added', severity: 'success' });
+          }
+          setContactDialogOpen(false);
+          setEditingContact(null);
+          loadContacts();
+        },
+      });
+      if (!ok) return;
     } catch (err: any) {
       setSnackbar({ open: true, message: err?.message || 'Failed to save contact', severity: 'error' });
     }
@@ -1645,7 +1654,7 @@ const ManagerCRMPage: React.FC = () => {
         <DialogTitle>{editingContact ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-            Do not include PHI or patient data in contact details or notes.
+            Do not include PHI or patient data in contact details or notes. Free-text notes are screened for common HIPAA identifiers.
           </Alert>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>

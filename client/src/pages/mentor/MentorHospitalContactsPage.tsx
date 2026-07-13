@@ -47,6 +47,7 @@ import {
   PersonAdd as PersonAddIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
+import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getHospitalData, getUserData, resolveHospitalUuid, setUserData } from '../../utils/userData';
@@ -185,6 +186,7 @@ function mergeContactsForHospital(
 
 const MentorHospitalContactsPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { runWithPhiGuard } = usePhiGuard();
   const { userProfile, effectiveUserId } = useUserProfile();
   const dataUserId = effectiveUserId ?? currentUser?.id;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -742,40 +744,46 @@ const MentorHospitalContactsPage: React.FC = () => {
   const handleAddDatedNote = async () => {
     if (!selectedHospital || !newNoteText.trim()) return;
     const noteText = newNoteText.trim();
-    const noteId = crypto.randomUUID();
-    const note: DatedNote = {
-      id: noteId,
-      date: newNoteDate,
-      text: noteText,
-      author_id: dataUserId ?? undefined
-    };
-    const notesLog = [...(selectedHospital.notesLog ?? []), note].sort((a, b) => b.date.localeCompare(a.date));
-    const updated: Hospital = { ...selectedHospital, notesLog };
-    const newHospitals = hospitals.map(h => h.id === selectedHospital.id ? updated : h);
-    saveHospitals(newHospitals);
-    setSelectedHospital(updated);
-    setNewNoteText('');
-    setNewNoteDate(new Date().toISOString().slice(0, 10));
-    setSnackbar({ open: true, message: 'Dated note added', severity: 'success' });
+    const ok = await runWithPhiGuard({
+      surface: 'mentor_hospital_notes',
+      texts: [noteText],
+      onSave: async () => {
+        const noteId = crypto.randomUUID();
+        const note: DatedNote = {
+          id: noteId,
+          date: newNoteDate,
+          text: noteText,
+          author_id: dataUserId ?? undefined
+        };
+        const notesLog = [...(selectedHospital.notesLog ?? []), note].sort((a, b) => b.date.localeCompare(a.date));
+        const updated: Hospital = { ...selectedHospital, notesLog };
+        const newHospitals = hospitals.map(h => h.id === selectedHospital.id ? updated : h);
+        saveHospitals(newHospitals);
+        setSelectedHospital(updated);
+        setNewNoteText('');
+        setNewNoteDate(new Date().toISOString().slice(0, 10));
+        setSnackbar({ open: true, message: 'Dated note added', severity: 'success' });
 
-    // Sync note to CRM so admins see it on the hospital's CRM page
-    const authorName = [userProfile?.first_name, userProfile?.last_name].filter(Boolean).join(' ').trim();
-    const roleLabel = userProfile?.role === 'manager' ? 'Manager' : 'Mentor';
-    const crmNoteText = authorName ? `${roleLabel} (${authorName}): ${noteText}` : `${roleLabel}: ${noteText}`;
-    const { error } = await supabase.rpc('append_hospital_note', {
-      p_hospital_id: selectedHospital.id,
-      p_note_date: newNoteDate,
-      p_note_text: crmNoteText,
-      p_note_id: noteId
+        const authorName = [userProfile?.first_name, userProfile?.last_name].filter(Boolean).join(' ').trim();
+        const roleLabel = userProfile?.role === 'manager' ? 'Manager' : 'Mentor';
+        const crmNoteText = authorName ? `${roleLabel} (${authorName}): ${noteText}` : `${roleLabel}: ${noteText}`;
+        const { error } = await supabase.rpc('append_hospital_note', {
+          p_hospital_id: selectedHospital.id,
+          p_note_date: newNoteDate,
+          p_note_text: crmNoteText,
+          p_note_id: noteId
+        });
+        if (error) {
+          console.warn('Could not sync note to CRM:', error.message);
+          setSnackbar({
+            open: true,
+            message: `Note saved locally. It did not sync to the CRM (${error.message}). Ask an admin to run MENTOR_HOSPITAL_NOTE_TO_CRM.sql in Supabase if you need notes to appear in the CRM.`,
+            severity: 'warning'
+          });
+        }
+      },
     });
-    if (error) {
-      console.warn('Could not sync note to CRM:', error.message);
-      setSnackbar({
-        open: true,
-        message: `Note saved locally. It did not sync to the CRM (${error.message}). Ask an admin to run MENTOR_HOSPITAL_NOTE_TO_CRM.sql in Supabase if you need notes to appear in the CRM.`,
-        severity: 'warning'
-      });
-    }
+    if (!ok) return;
   };
 
   const canEditNote = (entry: DatedNote) =>
@@ -1161,7 +1169,7 @@ const MentorHospitalContactsPage: React.FC = () => {
   return (
     <Box sx={{ py: 3 }}>
       <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-        <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital or contact notes.
+        <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital or contact notes. {PHI_SCAN_HINT}
       </Alert>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Typography variant="h4">Hospital Contacts</Typography>
@@ -1639,7 +1647,7 @@ const MentorHospitalContactsPage: React.FC = () => {
         <DialogTitle>{editingHospital ? 'Edit Hospital' : 'Add Hospital or Contact'}</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital details or notes.
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital details or notes. {PHI_SCAN_HINT}
           </Alert>
           {editingHospital ? (
             <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -1898,7 +1906,7 @@ const MentorHospitalContactsPage: React.FC = () => {
         <DialogTitle>{editingContact ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes.
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes. {PHI_SCAN_HINT}
           </Alert>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             {!editingContact && (
