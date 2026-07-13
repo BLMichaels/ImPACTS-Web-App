@@ -19,7 +19,7 @@ import {
 import PasswordPolicyChecklist, { passwordFieldHelperText } from './PasswordPolicyChecklist';
 
 /**
- * Shown when the signed-in user's password predates the 15-character policy
+ * Shown when the signed-in user's password predates the 12-character policy
  * (flagged at login). Blocks app use until the password is updated or the
  * user signs out.
  */

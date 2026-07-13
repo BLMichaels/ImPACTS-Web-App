@@ -33,7 +33,7 @@ import TermsOfService from './TermsOfService';
 
 const HIGHLIGHTS = [
   'Mandatory MFA with an authenticator app',
-  'Minimum 15-character passwords',
+  'Minimum 12-character passwords',
   'Automatic sign-out after inactivity',
   'Security event logging and provider disclosures',
 ] as const;

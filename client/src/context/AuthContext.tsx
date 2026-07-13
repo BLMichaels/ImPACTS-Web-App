@@ -66,19 +66,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (data.session) setSession(data.session);
     markSessionActive();
     // Legacy / weak passwords: flag before navigation so ForcePasswordUpdateDialog opens.
+    // If the password now meets policy, clear any leftover flag from a prior stricter minimum.
     const weakReasons = (data as { weakPassword?: { reasons?: string[] } })?.weakPassword?.reasons;
     const needsPasswordUpdate =
       !!data.user && (!meetsPasswordPolicy(password) || (weakReasons?.length ?? 0) > 0);
-    if (needsPasswordUpdate && data.user) {
-      await setUserData(data.user.id, PASSWORD_UPDATE_REQUIRED_KEY, true);
-      void logSecurityEvent('password_update_required', {
-        email,
-        userId: data.user.id,
-        metadata: {
-          source: weakReasons?.length ? 'supabase_weak_password' : 'legacy_length',
-          reasons: weakReasons,
-        },
-      });
+    if (data.user) {
+      if (needsPasswordUpdate) {
+        await setUserData(data.user.id, PASSWORD_UPDATE_REQUIRED_KEY, true);
+        void logSecurityEvent('password_update_required', {
+          email,
+          userId: data.user.id,
+          metadata: {
+            source: weakReasons?.length ? 'supabase_weak_password' : 'legacy_length',
+            reasons: weakReasons,
+          },
+        });
+      } else {
+        const { error: clearError } = await supabase.rpc('clear_password_update_required');
+        if (clearError) {
+          console.warn('[Auth] failed to clear password update flag', clearError.message);
+        }
+      }
     }
 
     // MFA challenge/enrollment is handled by SecurityGateShell before the app loads.

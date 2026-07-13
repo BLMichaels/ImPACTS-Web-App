@@ -102,8 +102,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!emailRaw || !roleRaw || !ALLOWED_ROLES.has(roleRaw)) {
     return json({ error: 'email and role (pecc | manager | mentor) are required' }, 400);
   }
-  if (startingPassword && startingPassword.length < 15) {
-    return json({ error: 'starting_password must be at least 15 characters' }, 400);
+  if (startingPassword && startingPassword.length < 12) {
+    return json({ error: 'starting_password must be at least 12 characters' }, 400);
   }
 
   const emailNorm = emailRaw.toLowerCase();

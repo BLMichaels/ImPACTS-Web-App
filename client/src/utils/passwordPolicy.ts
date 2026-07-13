@@ -1,8 +1,8 @@
 /**
  * Central password policy. AMC security reviews expect a documented, enforced
- * minimum; we use length-first guidance (NIST 800-63B style): 15+ characters.
+ * minimum; we use length-first guidance (NIST 800-63B style): 12+ characters.
  */
-export const MIN_PASSWORD_LENGTH = 15;
+export const MIN_PASSWORD_LENGTH = 12;
 
 export const PASSWORD_REQUIREMENT_TEXT =
   `At least ${MIN_PASSWORD_LENGTH} characters. Include uppercase (e.g. M), lowercase (e.g. k), a number (e.g. 7), and a symbol (e.g. !). Example: Mango-Kitchen-27!`;

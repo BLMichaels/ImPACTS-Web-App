@@ -346,7 +346,7 @@ const TermsOfService: React.FC<TermsOfServiceProps> = ({
           enforces technical access controls that may include:
         </TermsP>
         <TermsList>
-          <li><strong>Minimum password length:</strong> Passwords must meet the minimum length and strength requirements displayed in the Tool (currently at least 15 characters). Requirements may be strengthened over time; you may be required to update legacy passwords before continuing to use the Tool.</li>
+          <li><strong>Minimum password length:</strong> Passwords must meet the minimum length and strength requirements displayed in the Tool (currently at least 12 characters). Requirements may be strengthened over time; you may be required to update legacy passwords before continuing to use the Tool.</li>
           <li><strong>Multi-factor authentication (MFA):</strong> All users must enroll MFA using a time-based one-time password (TOTP) authenticator app (for example, Google Authenticator, 1Password, Authy, or Apple Passwords). Enrollment is required before full use of the Tool after sign-in. You may be prompted to verify MFA when signing in, resuming a session, or after inactivity. Password-reset email links do not require MFA during the recovery flow itself; MFA applies again after you complete recovery and sign in normally.</li>
           <li><strong>Password changes:</strong> Changing your password may require your current password or recent re-authentication.</li>
           <li><strong>Idle session timeout:</strong> For shared-workstation safety, inactive sessions may be signed out automatically after a period of inactivity (currently approximately 30 minutes).</li>

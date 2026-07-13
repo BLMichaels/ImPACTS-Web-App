@@ -15,9 +15,9 @@ Apply scripts in the **Supabase SQL editor** for production. Track what you ran 
 1. `HIPAA_AUDIT_LOG_MIGRATION.sql` — audit triggers on users, hospitals, contacts, CRM
 2. `SECURITY_EVENTS_AND_AUDIT_HARDENING.sql` — `security_events` table (failed logins, password changes, idle timeouts) + makes `audit_log` append-only
 
-Password policy is **15+ characters**, enforced at four layers:
+Password policy is **12+ characters**, enforced at four layers:
 
-1. **Supabase Auth** — `minimum_password_length = 15` in `supabase/config.toml`; push with  
+1. **Supabase Auth** — `minimum_password_length = 12` in `supabase/config.toml`; push with  
    `npx supabase config push --project-ref ftpifgzzfwpujlvbqqhu --yes`  
    (keep production `site_url` / redirect URLs in that file; do not push local dev defaults).
 2. **Client** — `client/src/utils/passwordPolicy.ts` on register, invite, account, and admin provision flows.
