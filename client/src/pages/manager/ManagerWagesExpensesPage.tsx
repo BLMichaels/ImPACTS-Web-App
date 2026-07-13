@@ -41,6 +41,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
 import { getUserData } from '../../utils/userData';
 import { getScopedMentorUsersForManager } from '../../utils/managerTeamScope';
+import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 
 // Constants (same as mentor page)
 const HOURLY_RATE = 30;
@@ -91,6 +92,7 @@ interface Mentor {
 
 const ManagerWagesExpensesPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { runWithPhiGuard } = usePhiGuard();
   const currentYear = new Date().getFullYear();
   
   const [tabValue, setTabValue] = useState(0); // 0 = list view, 1 = mentor detail
@@ -350,8 +352,14 @@ const ManagerWagesExpensesPage: React.FC = () => {
         : e
     );
 
-    saveMentorWagesData({ ...mentorWagesData, expenses: updatedExpenses });
-    setExpenseDialogOpen(false);
+    void runWithPhiGuard({
+      surface: 'mentorWages',
+      texts: [expenseForm.managerNotes],
+      onSave: async () => {
+        await saveMentorWagesData({ ...mentorWagesData, expenses: updatedExpenses });
+        setExpenseDialogOpen(false);
+      },
+    });
   };
 
   // Handle receipts folder link
@@ -749,6 +757,11 @@ const ManagerWagesExpensesPage: React.FC = () => {
                     rows={3}
                     placeholder="Add any notes about this expense..."
                   />
+                </Grid>
+                <Grid item xs={12}>
+                  <Alert severity="info">
+                    <strong>No PHI:</strong> Staff names are fine. Do not include patient names or other patient identifiers. {PHI_SCAN_HINT}
+                  </Alert>
                 </Grid>
               </Grid>
             )}

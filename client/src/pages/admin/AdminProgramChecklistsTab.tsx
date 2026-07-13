@@ -38,6 +38,7 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { supabase } from '../../supabase';
 import type { ProgramChecklist, ProgramChecklistStage, ProgramChecklistTask, ProgramChecklistTaskLink } from '../../types/database';
 import RichTextEditor, { sanitizeHtml, stripHtmlToText } from '../../components/cohorts/RichTextEditor';
+import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 
 type ChecklistEntryType = 'task' | 'banner' | 'footnote' | 'subnote' | 'divider';
 const ENTRY_PREFIX = '[[ENTRY:';
@@ -240,6 +241,7 @@ function ColorSwatch({ color, label }: { color: string; label: string }) {
 }
 
 export default function AdminProgramChecklistsTab() {
+  const { runWithPhiGuard } = usePhiGuard();
   const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
   const [checklists, setChecklists] = useState<(ProgramChecklist & { stages?: ProgramChecklistStage[] })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -616,38 +618,45 @@ export default function AdminProgramChecklistsTab() {
     const textTrim = normalizeChecklistHtml(taskForm.text_content).trim();
     if (!stripHtmlToText(textTrim).trim() || !taskStageId) return;
     const encodedText = encodeEntry(taskForm.entry_type, textTrim, taskForm.color_hex);
-    setSaving(true);
-    setError(null);
-    try {
-      if (editingTask) {
-        const { error: e } = await supabase
-          .from('program_checklist_tasks')
-          .update({
-            text_content: encodedText,
-            task_id_suffix: taskForm.task_id_suffix.trim() || '1',
-            links: [],
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingTask.id);
-        if (e) throw e;
-      } else {
-        const { data: tasks } = await supabase.from('program_checklist_tasks').select('id').eq('stage_id', taskStageId);
-        const { error: e } = await supabase.from('program_checklist_tasks').insert({
-          stage_id: taskStageId,
-          sort_order: (tasks?.length ?? 0),
-          task_id_suffix: taskForm.task_id_suffix.trim() || '1',
-          text_content: encodedText,
-          links: []
-        });
-        if (e) throw e;
-      }
-      await loadChecklists();
-      setTaskDialogOpen(false);
-    } catch (e: any) {
-      setError(e?.message || 'Save failed');
-    } finally {
-      setSaving(false);
-    }
+    const ok = await runWithPhiGuard({
+      surface: 'program_checklist_tasks',
+      texts: [stripHtmlToText(textTrim)],
+      onSave: async () => {
+        setSaving(true);
+        setError(null);
+        try {
+          if (editingTask) {
+            const { error: e } = await supabase
+              .from('program_checklist_tasks')
+              .update({
+                text_content: encodedText,
+                task_id_suffix: taskForm.task_id_suffix.trim() || '1',
+                links: [],
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', editingTask.id);
+            if (e) throw e;
+          } else {
+            const { data: tasks } = await supabase.from('program_checklist_tasks').select('id').eq('stage_id', taskStageId);
+            const { error: e } = await supabase.from('program_checklist_tasks').insert({
+              stage_id: taskStageId,
+              sort_order: (tasks?.length ?? 0),
+              task_id_suffix: taskForm.task_id_suffix.trim() || '1',
+              text_content: encodedText,
+              links: []
+            });
+            if (e) throw e;
+          }
+          await loadChecklists();
+          setTaskDialogOpen(false);
+        } catch (e: any) {
+          setError(e?.message || 'Save failed');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
+    if (!ok) return;
   };
 
   const handleSavePalette = async () => {
@@ -992,6 +1001,9 @@ export default function AdminProgramChecklistsTab() {
           )}
           <TextField fullWidth label="Step ID (e.g. 1)" value={taskForm.task_id_suffix} onChange={(e) => setTaskForm((f) => ({ ...f, task_id_suffix: e.target.value }))} margin="dense" sx={{ mb: 1 }} />
           <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Content *</Typography>
+          <Alert severity="info" sx={{ mb: 1 }}>
+            Staff names are fine. Do not include patient names or other patient identifiers. {PHI_SCAN_HINT}
+          </Alert>
           <RichTextEditor
             value={taskForm.text_content}
             onChange={(html) => setTaskForm((f) => ({ ...f, text_content: html }))}

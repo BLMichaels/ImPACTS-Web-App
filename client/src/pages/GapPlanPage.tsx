@@ -37,7 +37,7 @@ import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
-import { usePhiGuard, PHI_SCAN_HINT } from '../components/PhiGuard';
+import { usePhiGuard, PHI_SCAN_HINT, PHI_UPLOAD_HINT } from '../components/PhiGuard';
 import { supabase } from '../supabase';
 import {
   migrateFromLocalStorage,
@@ -339,24 +339,30 @@ const GapPlanPage: React.FC = () => {
     if (!files) return;
 
     Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const fileData = e.target?.result as string;
-        const attachment: GapPlanAttachment = {
-          id: Date.now().toString() + Math.random(),
-          fileName: file.name,
-          fileType: file.type.includes('pdf') ? 'pdf' : 'image',
-          fileSize: file.size,
-          uploadedAt: new Date(),
-          fileData: fileData
-        };
-        
-        setEditFormData(prev => ({
-          ...prev,
-          attachments: [...prev.attachments, attachment]
-        }));
-      };
-      reader.readAsDataURL(file);
+      void runWithPhiGuard({
+        surface: 'gapPlans_attachment',
+        texts: [file.name],
+        onSave: () => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const fileData = e.target?.result as string;
+            const attachment: GapPlanAttachment = {
+              id: Date.now().toString() + Math.random(),
+              fileName: file.name,
+              fileType: file.type.includes('pdf') ? 'pdf' : 'image',
+              fileSize: file.size,
+              uploadedAt: new Date(),
+              fileData: fileData
+            };
+            
+            setEditFormData(prev => ({
+              ...prev,
+              attachments: [...prev.attachments, attachment]
+            }));
+          };
+          reader.readAsDataURL(file);
+        },
+      });
     });
   };
 
@@ -1066,7 +1072,7 @@ const GapPlanPage: React.FC = () => {
                   File Attachments
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Upload PDFs or images related to this gap plan (e.g., policies, photos, documents)
+                  Upload PDFs or images related to this gap plan (e.g., policies, photos of equipment — not patients). {PHI_UPLOAD_HINT}
                 </Typography>
                 
                 {/* File Upload */}

@@ -7,6 +7,7 @@
  */
 import {
   scanTextForPhi,
+  scanUnknownPayload,
   enforcePhiScan,
   PhiBlockedError,
   PhiNeedsAcknowledgmentError,
@@ -89,6 +90,32 @@ function assert(cond: boolean, msg: string) {
     blocked = e instanceof PhiBlockedError;
   }
   assert(blocked, 'SSN should hard-block');
+}
+
+// Dashboard department contacts: staff contactName skipped; patient name in notes blocked
+{
+  const r = scanUnknownPayload([
+    {
+      department: 'Chief Nursing Officer',
+      contactName: 'Jane Doe',
+      notes: 'Talk to John Smith about PEWS policy',
+    },
+  ]);
+  assert(r.maxSeverity === 'none', 'staff contact names and talk-to phrasing should pass');
+}
+{
+  const r = scanUnknownPayload([{ notes: 'The patient John Smith needs follow-up' }]);
+  assert(r.maxSeverity === 'high', 'patient name in notes should be high');
+}
+
+// Base64 / data-URL blobs should not be scanned as narrative
+{
+  const r = scanUnknownPayload({
+    fileName: 'policy.pdf',
+    fileData: 'data:application/pdf;base64,' + 'A'.repeat(300),
+    notes: 'Equipment photo of cart only',
+  });
+  assert(r.maxSeverity === 'none', 'fileData blobs should be skipped');
 }
 
 console.log('phiScanner self-check: OK', hashPhiContent('ok'));

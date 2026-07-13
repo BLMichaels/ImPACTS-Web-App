@@ -83,6 +83,8 @@ export const PHI_NARRATIVE_DATA_KEYS = new Set([
   'admin_project_pipeline_scholarship',
   'admin_project_pipeline_research_dissemination',
   'admin_project_pipeline_abstracts',
+  'prsQuestions',
+  'dashboard_resources',
 ]);
 
 /** Keys that autosave frequently — persistence hard-blocks high only; medium is logged. */
@@ -90,6 +92,7 @@ export const PHI_AUTOSAVE_DATA_KEYS = new Set([
   'dashboard_department_contacts',
   'simulation_sessions',
   'simulation_gaps',
+  'prsQuestions',
 ]);
 
 /** Object keys that are structured identity / staff fields — do not scan their values. */
@@ -143,6 +146,9 @@ const SKIP_FIELD_KEYS = new Set([
   'status',
   'type',
   'url',
+  'fileData',
+  'file_data',
+  'receiptFileName',
 ]);
 
 /** Words that look Title-Case but are not person names in PECC/readiness text. */
@@ -566,7 +572,16 @@ export function collectNarrativeStrings(
 ): string[] {
   if (value == null) return out;
   if (typeof value === 'string') {
-    if (value.trim()) out.push(value);
+    const trimmed = value.trim();
+    if (!trimmed) return out;
+    // Skip embedded file blobs (base64 / data URLs) — not OCR-scanned
+    if (
+      trimmed.length > 120 &&
+      (trimmed.toLowerCase().startsWith('data:') || /^[A-Za-z0-9+/=]{200,}$/.test(trimmed))
+    ) {
+      return out;
+    }
+    out.push(trimmed);
     return out;
   }
   if (typeof value !== 'object') return out;

@@ -30,6 +30,7 @@ type PhiEventRow = {
     categoryLabels?: string[];
     findingCount?: number;
     fieldHint?: string | null;
+    serverSide?: boolean;
   } | null;
   created_at: string;
 };
@@ -82,7 +83,9 @@ const AdminPhiEventsPanel: React.FC = () => {
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 2 }}>
         Automated scans of free-text for HIPAA Safe Harbor identifiers. Raw match text is never stored — only
-        category numbers and redacted metadata. Heuristic only; not a guarantee of zero PHI.
+        category numbers and redacted metadata. Client screening is the primary UX; database triggers also
+        reject high-severity patterns on narrative saves (user/hospital data, CRM notes, checklist tasks).
+        Heuristic only; not a guarantee of zero PHI. File/image contents are not OCR-scanned.
       </Typography>
       <Alert severity="info" sx={{ mb: 2 }}>
         Categories follow the HIPAA Safe Harbor 18 identifiers (e.g. #7 SSN, #8 MRN). See{' '}
@@ -130,6 +133,9 @@ const AdminPhiEventsPanel: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Chip size="small" color={colorForType(row.event_type)} label={labelForType(row.event_type)} />
+                      {row.metadata?.serverSide ? (
+                        <Chip size="small" variant="outlined" label="Server" sx={{ ml: 0.5 }} />
+                      ) : null}
                     </TableCell>
                     <TableCell>{row.email || row.user_id || '—'}</TableCell>
                     <TableCell>

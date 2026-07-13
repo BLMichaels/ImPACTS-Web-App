@@ -288,4 +288,8 @@ export function previewPhiHash(text: string): string {
 export const PHI_SCAN_HINT =
   'Free-text is screened for common HIPAA identifiers (SSN, MRN, patient names, etc.). High-risk matches are blocked; uncertain matches require confirmation.';
 
+/** Shown near file uploads — content inside files/images is not OCR-scanned. */
+export const PHI_UPLOAD_HINT =
+  'Do not upload files that contain patient names, photos of patients, MRNs, or other PHI. File contents are not automatically scanned.';
+
 export default PhiGuardProvider;

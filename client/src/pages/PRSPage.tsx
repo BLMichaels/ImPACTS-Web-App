@@ -40,6 +40,7 @@ import {
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, Upload as UploadIcon, Image as ImageIcon, Visibility as VisibilityIcon, Warning as WarningIcon, CloudUpload as CloudUploadIcon, Send as SendIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { usePhiGuard, PHI_SCAN_HINT, PHI_UPLOAD_HINT } from '../components/PhiGuard';
 import {
   getUserData,
   setUserData,
@@ -49,6 +50,7 @@ import {
   getContinuityData,
 } from '../utils/userData';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import { PhiBlockedError } from '../utils/phiScanner';
 
 interface ReadinessScore {
   id: string;
@@ -1365,6 +1367,8 @@ export const ASSESSMENT_QUESTIONS: AssessmentQuestion[] = [
 const PRSPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { userProfile, siteId } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
+  const [phiGapBlocked, setPhiGapBlocked] = useState(false);
   const [questions, setQuestions] = useState<AssessmentQuestion[]>(ASSESSMENT_QUESTIONS);
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [gapPlans, setGapPlans] = useState<GapPlan[]>([]);
@@ -1552,7 +1556,15 @@ const PRSPage: React.FC = () => {
   // Persist gap plans to user_data when they change
   useEffect(() => {
     if (!prsUserId) return;
-    void writeContinuityData(effectiveHospitalId, prsUserId, 'gapPlans', gapPlans);
+    void writeContinuityData(effectiveHospitalId, prsUserId, 'gapPlans', gapPlans)
+      .then(() => setPhiGapBlocked(false))
+      .catch((err) => {
+        if (err instanceof PhiBlockedError) {
+          setPhiGapBlocked(true);
+          return;
+        }
+        console.error('Failed to save PRS gap plans', err);
+      });
   }, [prsUserId, effectiveHospitalId, gapPlans]);
 
   // Calculate readiness score
@@ -1701,39 +1713,44 @@ const PRSPage: React.FC = () => {
   const handleGapPlanSubmit = () => {
     if (!selectedQuestion || !gapFormData.action || !gapFormData.owner) return;
 
-    if (editingGapPlan) {
-      // Update existing gap plan
-      setGapPlans(prevPlans => 
-        prevPlans.map(plan => 
-          plan.id === editingGapPlan.id 
-            ? { ...plan, ...gapFormData, questionText: selectedQuestion.text }
-            : plan
-        )
-      );
-    } else {
-      // Create new gap plan
-      const newPlan: GapPlan = {
-        id: Date.now().toString(),
-        questionId: selectedQuestion.id,
-        questionText: selectedQuestion.text,
-        action: gapFormData.action!,
-        owner: gapFormData.owner!,
-        status: gapFormData.status as GapPlan['status'] || 'Need to Develop',
-        priority: gapFormData.priority as GapPlan['priority'] || 'Low Importance & Low Urgency (Do Last)',
-        difficulty: gapFormData.difficulty as GapPlan['difficulty'] || 'Low Impact & Low Effort (Filler Tasks)',
-        notes: gapFormData.notes || '',
-        dueDate: gapFormData.dueDate || '',
-        completionDate: gapFormData.completionDate || '',
-        rank: getNextAvailableRank(),
-        attachments: gapFormData.attachments || []
-      };
-      setGapPlans(prevPlans => [...prevPlans, newPlan]);
-    }
+    const attachmentNames = (gapFormData.attachments || []).map((a) => a.fileName).join(' ');
+    void runWithPhiGuard({
+      surface: 'gapPlans',
+      texts: [gapFormData.action, gapFormData.notes, attachmentNames],
+      onSave: () => {
+        if (editingGapPlan) {
+          setGapPlans(prevPlans =>
+            prevPlans.map(plan =>
+              plan.id === editingGapPlan.id
+                ? { ...plan, ...gapFormData, questionText: selectedQuestion.text }
+                : plan
+            )
+          );
+        } else {
+          const newPlan: GapPlan = {
+            id: Date.now().toString(),
+            questionId: selectedQuestion.id,
+            questionText: selectedQuestion.text,
+            action: gapFormData.action!,
+            owner: gapFormData.owner!,
+            status: gapFormData.status as GapPlan['status'] || 'Need to Develop',
+            priority: gapFormData.priority as GapPlan['priority'] || 'Low Importance & Low Urgency (Do Last)',
+            difficulty: gapFormData.difficulty as GapPlan['difficulty'] || 'Low Impact & Low Effort (Filler Tasks)',
+            notes: gapFormData.notes || '',
+            dueDate: gapFormData.dueDate || '',
+            completionDate: gapFormData.completionDate || '',
+            rank: getNextAvailableRank(),
+            attachments: gapFormData.attachments || []
+          };
+          setGapPlans(prevPlans => [...prevPlans, newPlan]);
+        }
 
-    setGapPlanDialogOpen(false);
-    setGapFormData({});
-    setEditingGapPlan(null);
-    setSelectedQuestion(null);
+        setGapPlanDialogOpen(false);
+        setGapFormData({});
+        setEditingGapPlan(null);
+        setSelectedQuestion(null);
+      },
+    });
   };
 
   const handleGapPlanDelete = (gapPlanId: string) => {
@@ -1745,23 +1762,29 @@ const PRSPage: React.FC = () => {
     if (!files) return;
 
     Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const attachment: GapPlanAttachment = {
-          id: Date.now().toString(),
-          fileName: file.name,
-          fileType: file.type.includes('pdf') ? 'pdf' : 'image',
-          fileSize: file.size,
-          uploadedAt: new Date(),
-          fileData: e.target?.result as string
-        };
+      void runWithPhiGuard({
+        surface: 'gapPlans_attachment',
+        texts: [file.name],
+        onSave: () => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const attachment: GapPlanAttachment = {
+              id: Date.now().toString(),
+              fileName: file.name,
+              fileType: file.type.includes('pdf') ? 'pdf' : 'image',
+              fileSize: file.size,
+              uploadedAt: new Date(),
+              fileData: e.target?.result as string
+            };
 
-        setGapFormData(prev => ({
-          ...prev,
-          attachments: [...(prev.attachments || []), attachment]
-        }));
-      };
-      reader.readAsDataURL(file);
+            setGapFormData(prev => ({
+              ...prev,
+              attachments: [...(prev.attachments || []), attachment]
+            }));
+          };
+          reader.readAsDataURL(file);
+        },
+      });
     });
   };
 
@@ -2642,6 +2665,14 @@ const PRSPage: React.FC = () => {
           {editingGapPlan ? 'Edit Gap Plan' : 'Create Gap Plan'}
         </DialogTitle>
         <DialogContent>
+          {phiGapBlocked && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPhiGapBlocked(false)}>
+              Save blocked: possible patient PHI detected in gap plan text. Remove patient identifiers and try again.
+            </Alert>
+          )}
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <strong>No PHI:</strong> Owner/staff names are allowed. Do not include patient names or other patient identifiers. {PHI_SCAN_HINT}
+          </Alert>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -2753,6 +2784,9 @@ const PRSPage: React.FC = () => {
               <Typography variant="subtitle1" gutterBottom>
                 Attachments
               </Typography>
+              <Alert severity="info" sx={{ mb: 1 }}>
+                {PHI_UPLOAD_HINT}
+              </Alert>
               <input
                 type="file"
                 multiple
