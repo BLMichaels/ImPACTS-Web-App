@@ -304,7 +304,7 @@ const DiscussionTopicList: React.FC<DiscussionTopicListProps> = ({
             required
           />
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Content (optional) — use toolbar for bold, italic, link
+            Content (optional) — use toolbar for bold, italic, link. Staff names are fine; no patient names. {PHI_SCAN_HINT}
           </Typography>
           <RichTextEditor
             value={content}

@@ -648,42 +648,42 @@ const SimulationPage: React.FC = () => {
       return;
     }
 
-    // Add to other cases if it's an "other" case
-    if (caseGapForm.caseName === 'other' && caseGapForm.otherCaseName && !otherCases.includes(caseGapForm.otherCaseName)) {
-      const updatedOtherCases = [...otherCases, caseGapForm.otherCaseName];
-      setOtherCases(updatedOtherCases);
-      if (userId) {
-        void writeContinuityData(effectiveHospitalId, userId, 'other_cases', updatedOtherCases);
-      }
-    }
+    void runWithPhiGuard({
+      surface: 'simulation_gaps',
+      texts: [caseGapForm.description, caseGapForm.actionPlan],
+      onSave: () => {
+        // Add to other cases if it's an "other" case
+        if (caseGapForm.caseName === 'other' && caseGapForm.otherCaseName && !otherCases.includes(caseGapForm.otherCaseName)) {
+          const updatedOtherCases = [...otherCases, caseGapForm.otherCaseName];
+          setOtherCases(updatedOtherCases);
+          if (userId) {
+            void writeContinuityData(effectiveHospitalId, userId, 'other_cases', updatedOtherCases);
+          }
+        }
 
-    const newGap: SimulationGap = {
-      id: Date.now().toString(),
-      sessionId: 'standalone',
-      caseName: caseName,
-      category: caseGapForm.category,
-      description: caseGapForm.description,
-      severity: caseGapForm.severity,
-      actionPlan: caseGapForm.actionPlan,
-      assignedTo: caseGapForm.assignedTo,
-      targetDate: caseGapForm.targetDate,
-      status: caseGapForm.status,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      linkedActivities: []
-    };
+        const newGap: SimulationGap = {
+          id: Date.now().toString(),
+          sessionId: 'standalone',
+          caseName: caseName,
+          category: caseGapForm.category,
+          description: caseGapForm.description,
+          severity: caseGapForm.severity,
+          actionPlan: caseGapForm.actionPlan,
+          assignedTo: caseGapForm.assignedTo,
+          targetDate: caseGapForm.targetDate,
+          status: caseGapForm.status,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          linkedActivities: []
+        };
 
-    const updatedGaps = [...gaps, newGap];
-    setGaps(updatedGaps);
-
-    console.log('✅ Case-related gap created successfully');
-    handleCloseCaseGapDialog();
+        setGaps([...gaps, newGap]);
+        handleCloseCaseGapDialog();
+      },
+    });
   };
 
   const handleSubmitGap = () => {
-    console.log('Submitting gap:', gapForm);
-    console.log('Current session:', currentSession);
-    
     // Validate required fields
     if (!gapForm.category || !gapForm.description) {
       alert('Please fill in the category and description fields.');
@@ -711,61 +711,58 @@ const SimulationPage: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
 
-    console.log('New gap created:', newGap);
-
-    if (editingGap) {
-      // Update existing gap
-      setGaps(gaps.map(g => g.id === editingGap.id ? newGap : g));
-      
-      // Update session gaps if we have a current session
-      if (currentSession) {
-        setSessions(sessions.map(s => 
-          s.id === currentSession.id 
-            ? { ...s, gaps: s.gaps.map(g => g.id === editingGap.id ? newGap : g) }
-            : s
-        ));
-      }
-    } else {
-      // Add new gap
-      setGaps([newGap, ...gaps]);
-      
-      // Update session gaps if we have a current session
-      if (currentSession) {
-        setSessions(sessions.map(s => 
-          s.id === currentSession.id 
-            ? { ...s, gaps: [...s.gaps, newGap] }
-            : s
-        ));
-      }
-    }
-
-    // Update bidirectional linking with activities
-    try {
-      if (userId) {
-        const activities = [...activitiesSim];
-        let activitiesUpdated = false;
-        activities.forEach((activity: any) => {
-          if (activity.associatedSimulationGaps) {
-            const originalLength = activity.associatedSimulationGaps.length;
-            activity.associatedSimulationGaps = activity.associatedSimulationGaps.filter((gapId: string) => {
-              const gap = gaps.find(g => g.id === gapId);
-              return gap && gap.id !== newGap.id;
-            });
-            if (activity.associatedSimulationGaps.length !== originalLength) activitiesUpdated = true;
+    void runWithPhiGuard({
+      surface: 'simulation_gaps',
+      texts: [newGap.description, newGap.actionPlan],
+      onSave: () => {
+        if (editingGap) {
+          setGaps(gaps.map(g => g.id === editingGap.id ? newGap : g));
+          
+          if (currentSession) {
+            setSessions(sessions.map(s => 
+              s.id === currentSession.id 
+                ? { ...s, gaps: s.gaps.map(g => g.id === editingGap.id ? newGap : g) }
+                : s
+            ));
           }
-        });
-        if (activitiesUpdated) {
-          setActivitiesSim(activities);
-          void writeContinuityData(effectiveHospitalId, userId, 'activities', activities);
-          console.log('✅ Updated activities with bidirectional gap links');
+        } else {
+          setGaps([newGap, ...gaps]);
+          
+          if (currentSession) {
+            setSessions(sessions.map(s => 
+              s.id === currentSession.id 
+                ? { ...s, gaps: [...s.gaps, newGap] }
+                : s
+            ));
+          }
         }
-      }
-    } catch (linkError) {
-      console.error('❌ Failed to update activity links:', linkError);
-    }
 
-    console.log('Gap saved successfully');
-    handleCloseGapDialog();
+        try {
+          if (userId) {
+            const activities = [...activitiesSim];
+            let activitiesUpdated = false;
+            activities.forEach((activity: any) => {
+              if (activity.associatedSimulationGaps) {
+                const originalLength = activity.associatedSimulationGaps.length;
+                activity.associatedSimulationGaps = activity.associatedSimulationGaps.filter((gapId: string) => {
+                  const gap = gaps.find(g => g.id === gapId);
+                  return gap && gap.id !== newGap.id;
+                });
+                if (activity.associatedSimulationGaps.length !== originalLength) activitiesUpdated = true;
+              }
+            });
+            if (activitiesUpdated) {
+              setActivitiesSim(activities);
+              void writeContinuityData(effectiveHospitalId, userId, 'activities', activities);
+            }
+          }
+        } catch (linkError) {
+          console.error('❌ Failed to update activity links:', linkError);
+        }
+
+        handleCloseGapDialog();
+      },
+    });
   };
 
   const getSeverityColor = (severity: string) => {
@@ -1061,7 +1058,7 @@ const SimulationPage: React.FC = () => {
             Use the structured debriefing process to track improvements and link to your activities.
           </Typography>
           <Alert severity="info" sx={{ mt: 2 }} icon={false}>
-            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in sessions, debrief notes, or gap descriptions. {PHI_SCAN_HINT}
+            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in sessions, debrief notes, or gap descriptions. Staff assignee names are allowed. {PHI_SCAN_HINT}
           </Alert>
         </Box>
 

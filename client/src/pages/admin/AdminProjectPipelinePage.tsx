@@ -56,6 +56,7 @@ import { format, parseISO, isValid } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../supabase';
 import { getUserData, setUserData } from '../../utils/userData';
+import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 
 /** Safely format a date; returns null if the date is invalid */
 const safeFormatDate = (d: Date | null | undefined, fmt: string): string | null => {
@@ -256,6 +257,7 @@ const StatusChip: React.FC<{ status: string }> = ({ status }) => {
 
 const AdminProjectPipelinePage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { runWithPhiGuard } = usePhiGuard();
   const [tabValue, setTabValue] = useState(0);
 
   // Team members lists (editable)
@@ -426,21 +428,45 @@ const AdminProjectPipelinePage: React.FC = () => {
     return () => { mounted = false; };
   }, [currentUser?.id]);
 
-  const saveSimboxCases = (cases: SimBoxCase[]) => {
-    setSimboxCases(cases);
-    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_STORAGE_KEY, cases);
+  const saveSimboxCases = async (cases: SimBoxCase[]): Promise<boolean> => {
+    return runWithPhiGuard({
+      surface: 'admin_project_pipeline_simbox',
+      texts: cases.map((c) => c.notes),
+      onSave: async () => {
+        setSimboxCases(cases);
+        if (currentUser?.id) await setUserData(currentUser.id, PIPELINE_STORAGE_KEY, cases);
+      },
+    });
   };
-  const saveScholarship = (items: ScholarshipPublication[]) => {
-    setScholarshipItems(items);
-    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_SCHOLARSHIP_KEY, items);
+  const saveScholarship = async (items: ScholarshipPublication[]): Promise<boolean> => {
+    return runWithPhiGuard({
+      surface: 'admin_project_pipeline_scholarship',
+      texts: items.map((c) => c.categoryTopic),
+      onSave: async () => {
+        setScholarshipItems(items);
+        if (currentUser?.id) await setUserData(currentUser.id, PIPELINE_SCHOLARSHIP_KEY, items);
+      },
+    });
   };
-  const saveResearchDissemination = (items: ResearchDisseminationIdea[]) => {
-    setResearchDisseminationItems(items);
-    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_RESEARCH_DISSEMINATION_KEY, items);
+  const saveResearchDissemination = async (items: ResearchDisseminationIdea[]): Promise<boolean> => {
+    return runWithPhiGuard({
+      surface: 'admin_project_pipeline_research_dissemination',
+      texts: items.flatMap((c) => [c.summaryBriefOverview, c.notes, c.topic, c.manuscriptAbstractOrBoth]),
+      onSave: async () => {
+        setResearchDisseminationItems(items);
+        if (currentUser?.id) await setUserData(currentUser.id, PIPELINE_RESEARCH_DISSEMINATION_KEY, items);
+      },
+    });
   };
-  const saveAbstracts = (items: AbstractsPresentation[]) => {
-    setAbstractsItems(items);
-    if (currentUser?.id) setUserData(currentUser.id, PIPELINE_ABSTRACTS_KEY, items);
+  const saveAbstracts = async (items: AbstractsPresentation[]): Promise<boolean> => {
+    return runWithPhiGuard({
+      surface: 'admin_project_pipeline_abstracts',
+      texts: items.map((c) => c.categoryTopic),
+      onSave: async () => {
+        setAbstractsItems(items);
+        if (currentUser?.id) await setUserData(currentUser.id, PIPELINE_ABSTRACTS_KEY, items);
+      },
+    });
   };
   const saveTeamMembersList = (list: string[]) => {
     setTeamMembersList(list);
@@ -533,7 +559,7 @@ const AdminProjectPipelinePage: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const isValid = validatePriority(
       simboxCases.filter(c => c.id !== editingCase?.id),
       form.order, form.projectLead, editingCase?.id
@@ -543,11 +569,11 @@ const AdminProjectPipelinePage: React.FC = () => {
         return;
       }
     }
-    if (editingCase) {
-      saveSimboxCases(simboxCases.map(c => c.id === editingCase.id ? { ...form } : c));
-    } else {
-      saveSimboxCases([...simboxCases, { ...form }]);
-    }
+    const next = editingCase
+      ? simboxCases.map(c => c.id === editingCase.id ? { ...form } : c)
+      : [...simboxCases, { ...form }];
+    const ok = await saveSimboxCases(next);
+    if (!ok) return;
     setDialogOpen(false);
     setForm(defaultSimBoxCase());
   };
@@ -601,12 +627,12 @@ const AdminProjectPipelinePage: React.FC = () => {
     setScholarshipDialogOpen(true);
   };
 
-  const handleScholarshipSave = () => {
-    if (editingScholarship) {
-      saveScholarship(scholarshipItems.map(c => c.id === editingScholarship.id ? { ...scholarshipForm } : c));
-    } else {
-      saveScholarship([...scholarshipItems, { ...scholarshipForm }]);
-    }
+  const handleScholarshipSave = async () => {
+    const next = editingScholarship
+      ? scholarshipItems.map(c => c.id === editingScholarship.id ? { ...scholarshipForm } : c)
+      : [...scholarshipItems, { ...scholarshipForm }];
+    const ok = await saveScholarship(next);
+    if (!ok) return;
     setScholarshipDialogOpen(false);
     setScholarshipForm(defaultScholarship());
   };
@@ -628,12 +654,12 @@ const AdminProjectPipelinePage: React.FC = () => {
     setResearchDisseminationDialogOpen(true);
   };
 
-  const handleResearchDisseminationSave = () => {
-    if (editingResearchDissemination) {
-      saveResearchDissemination(researchDisseminationItems.map(c => c.id === editingResearchDissemination.id ? { ...researchDisseminationForm } : c));
-    } else {
-      saveResearchDissemination([...researchDisseminationItems, { ...researchDisseminationForm }]);
-    }
+  const handleResearchDisseminationSave = async () => {
+    const next = editingResearchDissemination
+      ? researchDisseminationItems.map(c => c.id === editingResearchDissemination.id ? { ...researchDisseminationForm } : c)
+      : [...researchDisseminationItems, { ...researchDisseminationForm }];
+    const ok = await saveResearchDissemination(next);
+    if (!ok) return;
     setResearchDisseminationDialogOpen(false);
     setResearchDisseminationForm(defaultResearchDissemination());
   };
@@ -656,12 +682,12 @@ const AdminProjectPipelinePage: React.FC = () => {
     setAbstractsDialogOpen(true);
   };
 
-  const handleAbstractsSave = () => {
-    if (editingAbstracts) {
-      saveAbstracts(abstractsItems.map(c => c.id === editingAbstracts.id ? { ...abstractsForm } : c));
-    } else {
-      saveAbstracts([...abstractsItems, { ...abstractsForm }]);
-    }
+  const handleAbstractsSave = async () => {
+    const next = editingAbstracts
+      ? abstractsItems.map(c => c.id === editingAbstracts.id ? { ...abstractsForm } : c)
+      : [...abstractsItems, { ...abstractsForm }];
+    const ok = await saveAbstracts(next);
+    if (!ok) return;
     setAbstractsDialogOpen(false);
     setAbstractsForm(defaultAbstractsPresentation());
   };
@@ -1196,6 +1222,7 @@ const AdminProjectPipelinePage: React.FC = () => {
             <Typography variant="h4" gutterBottom>Project Pipeline</Typography>
             <Typography color="textSecondary">
               Manage project pipeline sections. Use &quot;Master Priorities List&quot; to view all sections stacked.
+              Staff/lead names are fine; do not put patient names or other patient PHI in notes. {PHI_SCAN_HINT}
             </Typography>
           </Box>
           <Button

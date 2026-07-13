@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import { CohortAnnouncement } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { usePhiGuard } from '../PhiGuard';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { getUserDisplayName } from '../../utils/displayName';
@@ -62,6 +63,7 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
   loading
 }) => {
   const { userProfile } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
   
   const canEditAnnouncement = (announcement: CohortAnnouncement) => {
     // Only the author can edit
@@ -128,51 +130,54 @@ const AnnouncementList: React.FC<AnnouncementListProps> = ({
     setError(null);
 
     try {
-      if (editingAnnouncement) {
-        // Update existing
-        const { data, error: updateError } = await supabase
-          .from('cohort_announcements')
-          .update({
-            title: title.trim(),
-            content: safeContent,
-            is_pinned: isPinned,
-            visible_until: visibleUntil.trim() ? visibleUntil.trim().slice(0, 10) : null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingAnnouncement.id)
-          .select(`
+      const plain = safeContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const ok = await runWithPhiGuard({
+        surface: 'cohort_announcement',
+        texts: [title, plain],
+        onSave: async () => {
+          if (editingAnnouncement) {
+            const { data, error: updateError } = await supabase
+              .from('cohort_announcements')
+              .update({
+                title: title.trim(),
+                content: safeContent,
+                is_pinned: isPinned,
+                visible_until: visibleUntil.trim() ? visibleUntil.trim().slice(0, 10) : null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', editingAnnouncement.id)
+              .select(`
             *,
             author:created_by(id, first_name, last_name)
           `)
-          .single();
+              .single();
 
-        if (updateError) throw updateError;
-        
-        // Update in list
-        onAnnouncementCreated(data);
-      } else {
-        // Create new
-        const { data, error: insertError } = await supabase
-          .from('cohort_announcements')
-          .insert({
-            cohort_id: cohortId,
-            title: title.trim(),
-            content: safeContent,
-            is_pinned: isPinned,
-            visible_until: visibleUntil.trim() ? visibleUntil.trim().slice(0, 10) : null,
-            created_by: userProfile?.id
-          })
-          .select(`
+            if (updateError) throw updateError;
+            onAnnouncementCreated(data);
+          } else {
+            const { data, error: insertError } = await supabase
+              .from('cohort_announcements')
+              .insert({
+                cohort_id: cohortId,
+                title: title.trim(),
+                content: safeContent,
+                is_pinned: isPinned,
+                visible_until: visibleUntil.trim() ? visibleUntil.trim().slice(0, 10) : null,
+                created_by: userProfile?.id
+              })
+              .select(`
             *,
             author:created_by(id, first_name, last_name)
           `)
-          .single();
+              .single();
 
-        if (insertError) throw insertError;
-        onAnnouncementCreated(data);
-      }
-
-      handleCloseDialog();
+            if (insertError) throw insertError;
+            onAnnouncementCreated(data);
+          }
+          handleCloseDialog();
+        },
+      });
+      if (!ok) setError('Possible PHI detected. Remove patient identifiers and try again.');
     } catch (err: any) {
       console.error('Error saving announcement:', err);
       setError(err.message || 'Failed to save announcement');

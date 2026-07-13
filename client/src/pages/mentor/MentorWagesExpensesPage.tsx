@@ -39,6 +39,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, startOfMonth, endOfMonth, parseISO, getYear, getMonth, isWithinInterval } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 import { getUserData, setUserData } from '../../utils/userData';
 
 // Constants
@@ -100,6 +101,7 @@ interface MentorWagesData {
 const MentorWagesExpensesPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { effectiveUserId } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
   const dataUserId = effectiveUserId ?? currentUser?.id;
   const currentYear = new Date().getFullYear();
   
@@ -275,12 +277,18 @@ const MentorWagesExpensesPage: React.FC = () => {
       createdAt: editingExpense?.createdAt || new Date().toISOString()
     };
 
-    const newExpenses = editingExpense
-      ? wagesData.expenses.map(e => e.id === expense.id ? expense : e)
-      : [...wagesData.expenses, expense];
+    void runWithPhiGuard({
+      surface: 'mentorWages',
+      texts: [expense.description],
+      onSave: () => {
+        const newExpenses = editingExpense
+          ? wagesData.expenses.map(e => e.id === expense.id ? expense : e)
+          : [...wagesData.expenses, expense];
 
-    saveWagesData({ ...wagesData, expenses: newExpenses });
-    setExpenseDialogOpen(false);
+        saveWagesData({ ...wagesData, expenses: newExpenses });
+        setExpenseDialogOpen(false);
+      },
+    });
   };
 
   const handleDeleteExpense = (id: string) => {
@@ -513,6 +521,11 @@ const MentorWagesExpensesPage: React.FC = () => {
                   multiline
                   rows={2}
                 />
+              </Grid>
+              <Grid item xs={12}>
+                <Alert severity="info">
+                  <strong>No PHI:</strong> Do not include patient names or other patient identifiers in expense descriptions. {PHI_SCAN_HINT}
+                </Alert>
               </Grid>
               <Grid item xs={12}>
                 <FormControl fullWidth required>

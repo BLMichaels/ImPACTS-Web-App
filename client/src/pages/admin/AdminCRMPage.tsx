@@ -2603,6 +2603,18 @@ const AdminCRMPage: React.FC = () => {
       setSaveError(`Starting password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
+    const customFieldNoteTexts = Object.values(formData.customFields || {}).filter(
+      (v): v is string => typeof v === 'string' && v.trim().length > 0
+    );
+    const phiOk = await runWithPhiGuard({
+      surface: 'crm_contact_save',
+      texts: [formData.notes, ...customFieldNoteTexts],
+      onSave: async () => {},
+    });
+    if (!phiOk) {
+      setSaveError('Save blocked: possible PHI detected in notes. Staff names are allowed; remove patient identifiers and try again.');
+      return;
+    }
     const displayName = isPersonType(formData.type) ? [formData.firstName, formData.lastName].filter(Boolean).join(' ') : formData.name;
     const effectiveStaffIsAdmin =
       formData.type !== 'staff'
@@ -5739,7 +5751,7 @@ const AdminCRMPage: React.FC = () => {
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
             <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-              <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes. {PHI_SCAN_HINT} {PHI_SCAN_HINT}
+              <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in contact details or notes. Staff names are allowed. {PHI_SCAN_HINT}
             </Alert>
             {fullScreenEditMode ? (
               /* Inline edit form in full-screen – same fields as Add/Edit dialog */

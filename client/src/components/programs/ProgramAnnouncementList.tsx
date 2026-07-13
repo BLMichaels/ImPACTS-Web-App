@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import { supabase } from '../../supabase';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { usePhiGuard } from '../PhiGuard';
 import { ProgramAnnouncement } from '../../types/database';
 import { formatDistanceToNow } from 'date-fns';
 import { AnnouncementRichTextEditor } from '../common/AnnouncementRichTextEditor';
@@ -50,6 +51,7 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
   canAnnounce
 }) => {
   const { userProfile } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
   const [announcements, setAnnouncements] = useState<ProgramAnnouncement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,33 +132,41 @@ export const ProgramAnnouncementList: React.FC<ProgramAnnouncementListProps> = (
 
     try {
       setSaving(true);
+      const plain = safeContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const ok = await runWithPhiGuard({
+        surface: 'program_announcement',
+        texts: [announcementForm.title, plain],
+        onSave: async () => {
+          if (editingAnnouncement) {
+            const { error } = await supabase
+              .from('program_announcements')
+              .update({
+                title: announcementForm.title.trim(),
+                content: safeContent,
+                is_pinned: announcementForm.is_pinned,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', editingAnnouncement.id);
 
-      if (editingAnnouncement) {
-        // Update existing
-        const { error } = await supabase
-          .from('program_announcements')
-          .update({
-            title: announcementForm.title.trim(),
-            content: safeContent,
-            is_pinned: announcementForm.is_pinned,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingAnnouncement.id);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from('program_announcements')
+              .insert({
+                program_id: programId,
+                title: announcementForm.title.trim(),
+                content: safeContent,
+                is_pinned: announcementForm.is_pinned,
+                created_by: userProfile?.id
+              });
 
-        if (error) throw error;
-      } else {
-        // Create new
-        const { error } = await supabase
-          .from('program_announcements')
-          .insert({
-            program_id: programId,
-            title: announcementForm.title.trim(),
-            content: safeContent,
-            is_pinned: announcementForm.is_pinned,
-            created_by: userProfile?.id
-          });
-
-        if (error) throw error;
+            if (error) throw error;
+          }
+        },
+      });
+      if (!ok) {
+        setError('Possible PHI detected. Remove patient identifiers and try again.');
+        return;
       }
 
       setDialogOpen(false);

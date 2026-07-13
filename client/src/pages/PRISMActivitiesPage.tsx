@@ -39,6 +39,8 @@ import {
 import { useUserProfile } from '../context/UserProfileContext';
 import { getUserData, setUserData } from '../utils/userData';
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
+import { PHI_SCAN_HINT } from '../components/PhiGuard';
+import Alert from '@mui/material/Alert';
 
 interface PRISMActivity {
   id: string;
@@ -201,6 +203,10 @@ const PRISMActivitiesPage: React.FC = () => {
           Add Activity
         </Button>
       </Box>
+
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <strong>No PHI:</strong> When activity notes are saved here, do not include patient names or other patient identifiers. Staff names are allowed. {PHI_SCAN_HINT}
+      </Alert>
 
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>

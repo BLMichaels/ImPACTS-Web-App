@@ -37,6 +37,20 @@ function assert(cond: boolean, msg: string) {
   assert(r.maxSeverity === 'high', 'patient + name should be high');
 }
 
+// Staff names allowed
+{
+  const r = scanTextForPhi('Assign gap to Jane Doe and talk to John Smith about updating the policy.');
+  assert(r.maxSeverity === 'none', 'staff assignment names should pass');
+}
+{
+  const r = scanTextForPhi('Patient Safety Officer training completed with Mary Johnson.');
+  assert(!r.findings.some((f) => f.identifierNumber === 1), 'Patient Safety + staff name should not flag name PHI');
+}
+{
+  const r = scanTextForPhi('Need to meet with John Smith about the PEWS policy update.');
+  assert(r.maxSeverity === 'none', 'meet with staff name should pass');
+}
+
 // Medium: phone in notes
 {
   const r = scanTextForPhi('Call them at (203) 555-1212 about the drill.');

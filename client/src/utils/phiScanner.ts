@@ -79,11 +79,20 @@ export const PHI_NARRATIVE_DATA_KEYS = new Set([
   'mentorContacts',
   'prismActivities',
   'mentorWages',
-  'admin_project_pipeline_notes',
-  'admin_project_pipeline_research',
+  'admin_project_pipeline_simbox',
+  'admin_project_pipeline_scholarship',
+  'admin_project_pipeline_research_dissemination',
+  'admin_project_pipeline_abstracts',
 ]);
 
-/** Object keys that are structured identity fields — do not scan their values. */
+/** Keys that autosave frequently — persistence hard-blocks high only; medium is logged. */
+export const PHI_AUTOSAVE_DATA_KEYS = new Set([
+  'dashboard_department_contacts',
+  'simulation_sessions',
+  'simulation_gaps',
+]);
+
+/** Object keys that are structured identity / staff fields — do not scan their values. */
 const SKIP_FIELD_KEYS = new Set([
   'id',
   'user_id',
@@ -97,6 +106,26 @@ const SKIP_FIELD_KEYS = new Set([
   'name',
   'contactName',
   'contact_name',
+  'department',
+  'owner',
+  'assignee',
+  'assignedTo',
+  'assigned_to',
+  'assignedBy',
+  'leadSenior',
+  'lead_senior',
+  'teamMember',
+  'team_member',
+  'teamMembers',
+  'projectLead',
+  'projectSponsor',
+  'projectAdmin',
+  'consulted',
+  'informed',
+  'reachOutToLeadAuthor',
+  'interestedCoAuthors',
+  'vendor',
+  'participants', // often staff roles/names in sim forms
   'address',
   'city',
   'state',
@@ -113,8 +142,63 @@ const SKIP_FIELD_KEYS = new Set([
   'role',
   'status',
   'type',
-  'url', // structured resource URLs sometimes intentional; still scanned in free text bodies
+  'url',
 ]);
+
+/** Words that look Title-Case but are not person names in PECC/readiness text. */
+const NAME_STOPWORDS = new Set([
+  'safety',
+  'care',
+  'education',
+  'family',
+  'families',
+  'experience',
+  'outcomes',
+  'volume',
+  'flow',
+  'handbook',
+  'advocate',
+  'rights',
+  'portal',
+  'identifier',
+  'identifiers',
+  'information',
+  'privacy',
+  'readiness',
+  'transport',
+  'handoff',
+  'life',
+  'officer',
+  'director',
+  'manager',
+  'coordinator',
+  'educator',
+  'nurse',
+  'nursing',
+  'physician',
+  'hospitalist',
+  'intensivist',
+  'trauma',
+  'emergency',
+  'pediatric',
+  'pediatrics',
+  'policy',
+  'policies',
+  'procedure',
+  'procedures',
+  'team',
+  'staff',
+  'mentor',
+  'manager',
+  'pecc',
+]);
+
+/**
+ * Staff-collaboration phrasing — person names here are expected (gap owners, colleagues).
+ * Do not treat nearby Title-Case names as patient PHI solely because "patient" appears elsewhere.
+ */
+const STAFF_NAME_CONTEXT_RE =
+  /\b(?:talk\s+to|speak\s+(?:to|with)|spoke\s+with|meet\s+with|meeting\s+with|assign(?:ed)?\s+to|follow[\s-]?up\s+with|reach\s+out\s+to|email|call|ask|notify|cc|owner|assignee|contact)\b/i;
 
 const APP_URL_ALLOWLIST = [
   'peccsupporttool.com',
@@ -177,11 +261,19 @@ function maxSeverityOf(findings: PhiFinding[]): PhiSeverity {
   return 'none';
 }
 
-const PERSON_NAME =
-  /\b([A-Z][a-z]{1,20})\s+([A-Z][a-z]{1,20})(?:\s+[A-Z][a-z]{1,20})?\b/;
+function isLikelyPersonName(candidate: string): boolean {
+  const parts = String(candidate || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length < 2) return false;
+  return parts.every((p) => !NAME_STOPWORDS.has(p.toLowerCase()));
+}
 
 /**
  * Scan a single free-text string for likely HIPAA identifiers.
+ * Staff names (gap owners, "talk to Jane Doe about policy") are allowed;
+ * only patient-context names are flagged.
  */
 export function scanTextForPhi(text: string | null | undefined): PhiScanResult {
   const raw = String(text ?? '');
@@ -289,35 +381,35 @@ export function scanTextForPhi(text: string | null | undefined): PhiScanResult {
     });
   }
 
-  // 1 — patient + name (high)
-  const patientNameRe =
-    /\b(?:patient|pt\.?|child|infant|neonate)\s+(?:named\s+|name[:\s]+)?([A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){1,2})\b/g;
-  while ((m = patientNameRe.exec(raw)) !== null) {
-    pushFinding(findings, seen, {
-      identifierNumber: 1,
-      category: HIPAA_18_CATEGORIES[1],
-      severity: 'high',
-      matchPreview: redactPreview(m[1]),
-      message: 'Possible patient name near clinical context.',
-    });
-  }
-
-  // Medium: “patient named …” already covered; also “pt John Smith”
-  if (/\b(?:patient|pt\.?)\b/i.test(raw) && PERSON_NAME.test(raw)) {
-    const nm = raw.match(PERSON_NAME);
-    if (nm && !findings.some((f) => f.identifierNumber === 1)) {
+  // 1 — patient names only (staff names like gap owners / "talk to John Smith" are allowed)
+  const patientNamePatterns: RegExp[] = [
+    /\b(?:patient|pt\.?)(?:'s)?\s+(?:named\s+|name\s*[:-]\s*)([A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){1,2})\b/g,
+    /\b(?:the\s+)?(?:patient|pt\.?)\s+([A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){1,2})\b/g,
+    /\b(?:infant|neonate)\s+(?:named\s+)?([A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){1,2})\b/g,
+  ];
+  for (const re of patientNamePatterns) {
+    re.lastIndex = 0;
+    while ((m = re.exec(raw)) !== null) {
+      const candidate = m[1];
+      if (!isLikelyPersonName(candidate)) continue;
+      // Ignore when the hit is clearly staff collaboration phrasing in the same clause.
+      const windowStart = Math.max(0, m.index - 40);
+      const window = raw.slice(windowStart, m.index + m[0].length + 10);
+      if (STAFF_NAME_CONTEXT_RE.test(window) && !/\b(?:patient|pt\.?|infant|neonate)\b/i.test(window)) {
+        continue;
+      }
       pushFinding(findings, seen, {
         identifierNumber: 1,
         category: HIPAA_18_CATEGORIES[1],
-        severity: 'medium',
-        matchPreview: redactPreview(nm[0]),
-        message: 'Person name appears near patient wording.',
+        severity: 'high',
+        matchPreview: redactPreview(candidate),
+        message: 'Possible patient name in clinical context (staff names in assignments are allowed).',
       });
     }
   }
 
-  // 3 medium — full date near patient/age words
-  if (/\b(?:patient|pt\.?|age|yo|y\/o|years?\s*old)\b/i.test(raw)) {
+  // 3 medium — full date near patient/age words (not near staff assignment language alone)
+  if (/\b(?:patient|pt\.?|years?\s*old|y\/o)\b/i.test(raw) && !STAFF_NAME_CONTEXT_RE.test(raw)) {
     const dateNear = raw.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/);
     if (dateNear && !findings.some((f) => f.identifierNumber === 3 && f.severity === 'high')) {
       pushFinding(findings, seen, {

@@ -26,10 +26,11 @@ import {
 } from '@mui/icons-material';
 import { CohortResource } from '../../types/database';
 import { useUserProfile } from '../../context/UserProfileContext';
+import { usePhiGuard } from '../PhiGuard';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { getUserDisplayName } from '../../utils/displayName';
-import RichTextEditor, { sanitizeHtml } from './RichTextEditor';
+import RichTextEditor, { sanitizeHtml, stripHtmlToText } from './RichTextEditor';
 
 interface CohortResourcesSectionProps {
   cohortId: string;
@@ -98,6 +99,7 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
   loading: parentLoading
 }) => {
   const { userProfile } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
   const [resources, setResources] = useState<CohortResource[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -269,39 +271,50 @@ const CohortResourcesSection: React.FC<CohortResourcesSectionProps> = ({
     setSaving(true);
     setError(null);
     try {
-      if (editingResource) {
-        const { data, error: updateError } = await supabase
-          .from('cohort_resources')
-          .update({
-            title: title.trim(),
-            content: content.trim() || '',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingResource.id)
-          .select(`
+      const safe = sanitizeHtml(content).trim() || '';
+      const ok = await runWithPhiGuard({
+        surface: 'cohort_resources',
+        texts: [title, stripHtmlToText(safe)],
+        onSave: async () => {
+          if (editingResource) {
+            const { data, error: updateError } = await supabase
+              .from('cohort_resources')
+              .update({
+                title: title.trim(),
+                content: safe,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', editingResource.id)
+              .select(`
             *,
             author:created_by(id, first_name, last_name)
           `)
-          .single();
-        if (updateError) throw updateError;
-        setResources(prev => prev.map(r => r.id === editingResource.id ? (data as CohortResource) : r));
-      } else {
-        const { data, error: insertError } = await supabase
-          .from('cohort_resources')
-          .insert({
-            cohort_id: cohortId,
-            title: title.trim(),
-            content: content.trim() || '',
-            sort_order: resources.length,
-            created_by: userProfile?.id
-          })
-          .select(`
+              .single();
+            if (updateError) throw updateError;
+            setResources(prev => prev.map(r => r.id === editingResource.id ? (data as CohortResource) : r));
+          } else {
+            const { data, error: insertError } = await supabase
+              .from('cohort_resources')
+              .insert({
+                cohort_id: cohortId,
+                title: title.trim(),
+                content: safe,
+                sort_order: resources.length,
+                created_by: userProfile?.id
+              })
+              .select(`
             *,
             author:created_by(id, first_name, last_name)
           `)
-          .single();
-        if (insertError) throw insertError;
-        setResources(prev => [...prev, data as CohortResource].sort((a, b) => a.sort_order - b.sort_order));
+              .single();
+            if (insertError) throw insertError;
+            if (data) setResources(prev => [...prev, data as CohortResource]);
+          }
+        },
+      });
+      if (!ok) {
+        setError('Possible PHI detected. Remove patient identifiers and try again.');
+        return;
       }
       handleCloseDialog();
     } catch (err: any) {

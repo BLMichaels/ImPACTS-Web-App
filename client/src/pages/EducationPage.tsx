@@ -23,6 +23,7 @@ import {
 import { Add as AddIcon, School as SchoolIcon, Assignment as AssignmentIcon, NoteAdd as NoteAddIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { usePhiGuard, PHI_SCAN_HINT } from '../components/PhiGuard';
 import { useNavigate } from 'react-router-dom';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
 import { supabase } from '../supabase';
@@ -101,6 +102,7 @@ interface EducationPageProps {
 const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFilter }) => {
   useAuth();
   const { effectiveUserId, siteId } = useUserProfile();
+  const { runWithPhiGuard } = usePhiGuard();
   const navigate = useNavigate();
   const { trackLinkClick } = useUsageAnalytics();
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
@@ -214,11 +216,18 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     if (!userId) return;
     const next = { ...userQuestionNotes, [questionId]: value.trim() };
     if (!value.trim()) delete next[questionId];
-    setUserQuestionNotes(next);
-    await writeContinuityData(effectiveHospitalId, userId, 'gap_closure_question_notes', next);
-    setNoteDialogOpen(false);
-    setNoteDialogQuestionId(null);
-    setNoteDialogValue('');
+    const ok = await runWithPhiGuard({
+      surface: 'gap_closure_question_notes',
+      texts: [value],
+      onSave: async () => {
+        setUserQuestionNotes(next);
+        await writeContinuityData(effectiveHospitalId, userId, 'gap_closure_question_notes', next);
+        setNoteDialogOpen(false);
+        setNoteDialogQuestionId(null);
+        setNoteDialogValue('');
+      },
+    });
+    if (!ok) return;
   };
 
   const openNoteDialog = (questionId: string, label: string, currentNote: string, e: React.MouseEvent) => {
@@ -287,15 +296,21 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     };
 
     const updatedPlans = [...gapPlansList, newGapPlan];
-    await writeContinuityData(effectiveHospitalId, userId, 'gapPlans', updatedPlans);
-    setGapPlansList(updatedPlans);
-
-    onGapPlanSaved?.();
-    window.dispatchEvent(new CustomEvent(GAP_PLANS_UPDATED_EVENT));
-
-    setGapPlanDialogOpen(false);
-    setGapPlanQuestionId(null);
-    navigate('/gap-plan');
+    const ok = await runWithPhiGuard({
+      surface: 'gapPlans',
+      texts: [newGapPlan.action, newGapPlan.notes],
+      payload: newGapPlan,
+      onSave: async () => {
+        await writeContinuityData(effectiveHospitalId, userId, 'gapPlans', updatedPlans);
+        setGapPlansList(updatedPlans);
+        onGapPlanSaved?.();
+        window.dispatchEvent(new CustomEvent(GAP_PLANS_UPDATED_EVENT));
+        setGapPlanDialogOpen(false);
+        setGapPlanQuestionId(null);
+        navigate('/gap-plan');
+      },
+    });
+    if (!ok) return;
   };
 
   // All gap plans for current user (from Supabase; filtered to real gap plans only)
@@ -454,6 +469,9 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
               {noteDialogLabel}
             </Typography>
           )}
+          <Alert severity="info" sx={{ mb: 1.5 }}>
+            <strong>No PHI:</strong> Staff names are fine (e.g. who to talk to). Do not include patient names or other patient identifiers. {PHI_SCAN_HINT}
+          </Alert>
           <TextField
             autoFocus
             fullWidth
@@ -766,6 +784,11 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
                 value={gapPlanFormData.notes || ''}
                 onChange={(e) => setGapPlanFormData({ ...gapPlanFormData, notes: e.target.value })}
               />
+            </Grid>
+            <Grid item xs={12}>
+              <Alert severity="info">
+                <strong>No PHI:</strong> Owner and staff names are allowed. Do not include patient names or other patient identifiers. {PHI_SCAN_HINT}
+              </Alert>
             </Grid>
           </Grid>
         </DialogContent>

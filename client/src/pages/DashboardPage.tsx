@@ -24,6 +24,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useUserProfile } from '../context/UserProfileContext';
+import { PhiBlockedError } from '../utils/phiScanner';
 import { supabase } from '../supabase';
 import {
   migrateFromLocalStorage,
@@ -39,7 +40,7 @@ import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
 import DashboardResources from '../components/DashboardResources';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-
+import Alert from '@mui/material/Alert';
 interface DepartmentContact {
   id: string;
   department: string;
@@ -98,6 +99,8 @@ interface ReadinessScore {
     open: false,
     scoreId: null
   });
+
+  const [phiContactsBlocked, setPhiContactsBlocked] = useState(false);
 
   const [departmentContacts, setDepartmentContacts] = useState<DepartmentContact[]>([
     { id: '17', department: 'Pediatric Readiness Mentor', contactName: '', phone: '', email: '', notes: '' },
@@ -198,7 +201,15 @@ interface ReadinessScore {
 
   useEffect(() => {
     if (!uid || !contactsHydrated) return;
-    void writeContinuityData(effectiveHospitalId, uid, 'dashboard_department_contacts', departmentContacts);
+    void writeContinuityData(effectiveHospitalId, uid, 'dashboard_department_contacts', departmentContacts)
+      .then(() => setPhiContactsBlocked(false))
+      .catch((err) => {
+        if (err instanceof PhiBlockedError) {
+          setPhiContactsBlocked(true);
+          return;
+        }
+        console.error('Failed to save department contacts', err);
+      });
   }, [uid, effectiveHospitalId, contactsHydrated, departmentContacts]);
 
   // Handle add readiness score
@@ -541,7 +552,14 @@ interface ReadinessScore {
           <AccordionDetails>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Click on column headers to sort departments. Click in any field to edit contact information.
+              Staff and role contact names belong here; do not put patient names or other patient PHI in Notes.
             </Typography>
+            {phiContactsBlocked && (
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPhiContactsBlocked(false)}>
+                Save blocked: possible patient PHI was detected in department contact notes. Remove patient
+                identifiers and try again. Staff names in the Contact Name column are allowed.
+              </Alert>
+            )}
             <Card>
               <CardContent>
                 <Box sx={{ overflowX: 'auto' }}>

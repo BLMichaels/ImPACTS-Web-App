@@ -10,8 +10,10 @@ import {
   shouldFallbackUserDataToLocalStorage,
 } from './supabaseErrors';
 import {
+  PHI_AUTOSAVE_DATA_KEYS,
   PHI_NARRATIVE_DATA_KEYS,
   PhiBlockedError,
+  PhiNeedsAcknowledgmentError,
   enforcePhiForDataKey,
   phiFindingsToMetadata,
   scanUnknownPayload,
@@ -50,9 +52,10 @@ export async function getUserData<T = unknown>(userId: string, dataKey: string):
 function assertPhiSafeForDataKey(dataKey: string, value: unknown, userId?: string): void {
   if (!PHI_NARRATIVE_DATA_KEYS.has(dataKey)) return;
   const result = scanUnknownPayload(value);
+  const autosave = PHI_AUTOSAVE_DATA_KEYS.has(dataKey);
   try {
-    // High-confidence PHI is always blocked. Medium is UI-gated; forceAcknowledged skips medium throw here.
-    enforcePhiForDataKey(dataKey, value, { forceAcknowledged: true });
+    // Autosave paths: high only. Explicit saves: medium requires prior PhiGuard acknowledgment.
+    enforcePhiForDataKey(dataKey, value, { forceAcknowledged: autosave });
   } catch (err) {
     if (err instanceof PhiBlockedError) {
       void logSecurityEvent('phi_input_blocked', {
@@ -61,9 +64,16 @@ function assertPhiSafeForDataKey(dataKey: string, value: unknown, userId?: strin
       });
       throw err;
     }
+    if (err instanceof PhiNeedsAcknowledgmentError) {
+      void logSecurityEvent('phi_input_warned', {
+        userId: userId || null,
+        metadata: phiFindingsToMetadata(err.findings, err.surface),
+      });
+      throw err;
+    }
     throw err;
   }
-  if (result.maxSeverity === 'medium') {
+  if (autosave && result.maxSeverity === 'medium') {
     void logSecurityEvent('phi_input_warned', {
       userId: userId || null,
       metadata: phiFindingsToMetadata(result.findings, `data_key:${dataKey}`),
