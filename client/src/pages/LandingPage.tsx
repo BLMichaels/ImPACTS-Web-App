@@ -345,33 +345,18 @@ const LandingPage: React.FC = () => {
             justifyContent: 'space-between',
           }}
         >
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: 2,
-                background: `linear-gradient(135deg, ${SLATE} 0%, ${alpha(SLATE, 0.75)} 100%)`,
-                display: 'grid',
-                placeItems: 'center',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '1rem',
-                boxShadow: `0 4px 16px ${alpha(SLATE, 0.2)}`,
-              }}
-              aria-hidden
-            >
-              P
-            </Box>
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
-                PECC Support Tool
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                From the ImPACTS program
-              </Typography>
-            </Box>
-          </Stack>
+          <Box
+            component="img"
+            src="/impacts-logo.png"
+            alt="ImPACTS"
+            sx={{
+              height: { xs: 42, sm: 48 },
+              width: 'auto',
+              display: 'block',
+              borderRadius: 1,
+              boxShadow: `0 4px 16px ${alpha(SLATE, 0.18)}`,
+            }}
+          />
           <Button
             variant="outlined"
             onClick={() => navigate('/login')}

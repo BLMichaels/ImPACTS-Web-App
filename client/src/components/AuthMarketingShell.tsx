@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Button, Stack, Typography, alpha } from '@mui/material';
+import { Box, Button, alpha } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 
 export const AUTH_SLATE = '#455a64';
@@ -83,10 +83,7 @@ const AuthMarketingShell: React.FC<AuthMarketingShellProps> = ({
             justifyContent: 'space-between',
           }}
         >
-          <Stack
-            direction="row"
-            spacing={1.25}
-            alignItems="center"
+          <Box
             component="button"
             type="button"
             onClick={() => navigate('/')}
@@ -95,8 +92,7 @@ const AuthMarketingShell: React.FC<AuthMarketingShellProps> = ({
               background: 'none',
               cursor: 'pointer',
               p: 0,
-              textAlign: 'left',
-              color: 'inherit',
+              lineHeight: 0,
               '&:focus-visible': {
                 outline: `2px solid ${AUTH_SLATE}`,
                 outlineOffset: 4,
@@ -105,31 +101,18 @@ const AuthMarketingShell: React.FC<AuthMarketingShellProps> = ({
             }}
           >
             <Box
+              component="img"
+              src="/impacts-logo.png"
+              alt="ImPACTS"
               sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 1.5,
-                background: `linear-gradient(135deg, ${AUTH_SLATE} 0%, ${alpha(AUTH_SLATE, 0.75)} 100%)`,
-                display: 'grid',
-                placeItems: 'center',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '0.95rem',
-                boxShadow: `0 4px 14px ${alpha(AUTH_SLATE, 0.2)}`,
+                height: { xs: 40, sm: 44 },
+                width: 'auto',
+                display: 'block',
+                borderRadius: 1,
+                boxShadow: `0 4px 14px ${alpha(AUTH_SLATE, 0.18)}`,
               }}
-              aria-hidden
-            >
-              P
-            </Box>
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.15 }}>
-                PECC Support Tool
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                From the ImPACTS program
-              </Typography>
-            </Box>
-          </Stack>
+            />
+          </Box>
           {headerAction ??
             (showBackHome ? (
               <Button variant="text" onClick={() => navigate('/')} sx={{ fontWeight: 600, color: AUTH_SLATE_DARK }}>
