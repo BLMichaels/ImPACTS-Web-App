@@ -1226,6 +1226,12 @@ const ActivitiesPage = () => {
                             <Stack spacing={0.75}>
                               {activity.associatedGaps.map((gapId) => {
                                 const gapPlan = gapPlans.find((gp) => gp.id === gapId);
+                                const questionLabel = gapPlan
+                                  ? educationCategories[gapPlan.questionId]?.trim() ||
+                                    gapPlan.questionText?.trim() ||
+                                    `Question ${gapPlan.questionId}`
+                                  : gapId;
+                                const description = gapPlan?.action?.trim();
                                 return (
                                   <Box
                                     key={gapId}
@@ -1238,16 +1244,27 @@ const ActivitiesPage = () => {
                                       borderColor: alpha(theme.palette.secondary.main, 0.18),
                                     }}
                                   >
-                                    <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
-                                      {gapPlan
-                                        ? educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`
-                                        : gapId}
+                                    <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.25 }}>
+                                      {questionLabel}
+                                      {gapPlan && (
+                                        <Box component="span" sx={{ fontWeight: 500, color: 'text.secondary', ml: 0.75 }}>
+                                          · Q{gapPlan.questionId}
+                                        </Box>
+                                      )}
                                     </Typography>
-                                    {gapPlan && (
-                                      <Typography variant="caption" color="text.secondary">
-                                        Question #{gapPlan.questionId}
+                                    {description ? (
+                                      <Typography
+                                        variant="body2"
+                                        sx={{
+                                          fontStyle: 'italic',
+                                          color: 'text.secondary',
+                                          lineHeight: 1.25,
+                                          mt: 0.15,
+                                        }}
+                                      >
+                                        {description}
                                       </Typography>
-                                    )}
+                                    ) : null}
                                   </Box>
                                 );
                               })}
@@ -1427,12 +1444,26 @@ const ActivitiesPage = () => {
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                               {selected.map((value) => {
                                 const gapPlan = gapPlans.find(gp => gp.id === value);
+                                const questionLabel = gapPlan
+                                  ? (educationCategories[gapPlan.questionId]?.trim() ||
+                                      gapPlan.questionText?.trim() ||
+                                      `Question ${gapPlan.questionId}`)
+                                  : value;
+                                const actionLabel = gapPlan?.action?.trim();
                                 return (
                                   <Chip
                                     key={value}
-                                    label={gapPlan ? (educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`) : value}
+                                    label={
+                                      actionLabel
+                                        ? `${questionLabel}: ${actionLabel.length > 48 ? `${actionLabel.slice(0, 48)}…` : actionLabel}`
+                                        : questionLabel
+                                    }
                                     size="small"
-                                    title={gapPlan ? `Question #${gapPlan.questionId}` : value}
+                                    title={
+                                      gapPlan
+                                        ? `Q${gapPlan.questionId}${actionLabel ? ` — ${actionLabel}` : ''}`
+                                        : value
+                                    }
                                   />
                                 );
                               })}
@@ -1441,24 +1472,66 @@ const ActivitiesPage = () => {
                           MenuProps={{
                             PaperProps: {
                               sx: {
-                                maxHeight: 400,
+                                maxHeight: 420,
                                 width: 'auto',
-                                minWidth: 220,
-                                maxWidth: 'min(380px, 90vw)'
-                              }
-                            }
+                                minWidth: 320,
+                                maxWidth: 'min(520px, 92vw)',
+                              },
+                            },
                           }}
                         >
                           {gapPlans.map((gapPlan) => {
-                            const category = educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`;
+                            const questionLabel =
+                              educationCategories[gapPlan.questionId]?.trim() ||
+                              gapPlan.questionText?.trim() ||
+                              `Question ${gapPlan.questionId}`;
+                            const description =
+                              gapPlan.action?.trim() ||
+                              gapPlan.questionText?.trim() ||
+                              'No action description yet';
                             return (
-                              <MenuItem key={gapPlan.id} value={gapPlan.id} sx={{ py: 0.5, minHeight: 36 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'nowrap' }}>
-                                  <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                                    {category}
+                              <MenuItem
+                                key={gapPlan.id}
+                                value={gapPlan.id}
+                                sx={{
+                                  py: 0.75,
+                                  alignItems: 'flex-start',
+                                  whiteSpace: 'normal',
+                                  minHeight: 'auto',
+                                }}
+                              >
+                                <Checkbox
+                                  checked={formData.associatedGaps.includes(gapPlan.id)}
+                                  size="small"
+                                  sx={{ mt: 0.15, mr: 0.5, p: 0.5 }}
+                                />
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{ fontWeight: 700, lineHeight: 1.25, color: 'text.primary' }}
+                                  >
+                                    {questionLabel}
+                                    <Box
+                                      component="span"
+                                      sx={{ fontWeight: 500, color: 'text.secondary', ml: 0.75 }}
+                                    >
+                                      · Q{gapPlan.questionId}
+                                    </Box>
                                   </Typography>
-                                  <Typography component="span" variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
-                                    Question #{gapPlan.questionId}
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      fontStyle: 'italic',
+                                      color: 'text.secondary',
+                                      lineHeight: 1.25,
+                                      mt: 0.15,
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    {description}
                                   </Typography>
                                 </Box>
                               </MenuItem>
