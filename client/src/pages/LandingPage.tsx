@@ -353,8 +353,6 @@ const LandingPage: React.FC = () => {
               height: { xs: 42, sm: 48 },
               width: 'auto',
               display: 'block',
-              borderRadius: 1,
-              boxShadow: `0 4px 16px ${alpha(SLATE, 0.18)}`,
             }}
           />
           <Button

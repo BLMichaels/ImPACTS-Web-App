@@ -108,8 +108,6 @@ const AuthMarketingShell: React.FC<AuthMarketingShellProps> = ({
                 height: { xs: 40, sm: 44 },
                 width: 'auto',
                 display: 'block',
-                borderRadius: 1,
-                boxShadow: `0 4px 14px ${alpha(AUTH_SLATE, 0.18)}`,
               }}
             />
           </Box>
