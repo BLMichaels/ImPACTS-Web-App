@@ -18,6 +18,10 @@ import {
   TimelineOutlined as SnapshotIcon,
   ArrowForward as ArrowForwardIcon,
   CheckCircleOutline as CheckIcon,
+  ShieldOutlined as ShieldIcon,
+  NoPhotographyOutlined as NoPhiIcon,
+  VerifiedUserOutlined as ScreeningIcon,
+  MailOutline as InviteIcon,
 } from '@mui/icons-material';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -84,6 +88,29 @@ const CORE_TABS: CoreTab[] = [
     icon: <SnapshotIcon sx={{ fontSize: 28 }} />,
     accent: '#1d4ed8',
     bullets: ['Readiness & gap metrics', 'Activity and simulation counts', 'Printable summary views'],
+  },
+];
+
+const SECURITY_NOTES = [
+  {
+    icon: <NoPhiIcon sx={{ fontSize: 22 }} />,
+    title: 'No patient PHI',
+    text: 'Do not enter real patient names, MRNs, dates of birth, or other protected health information. Staff and colleague names are allowed.',
+  },
+  {
+    icon: <ScreeningIcon sx={{ fontSize: 22 }} />,
+    title: 'Free-text screening',
+    text: 'Notes and narrative fields are checked for common HIPAA Safe Harbor identifiers. High-risk matches are blocked before save.',
+  },
+  {
+    icon: <InviteIcon sx={{ fontSize: 22 }} />,
+    title: 'Invitation-only access',
+    text: 'Accounts are created through program administrators — not open public registration.',
+  },
+  {
+    icon: <ShieldIcon sx={{ fontSize: 22 }} />,
+    title: 'Readiness & QI purpose',
+    text: 'Built for pediatric emergency readiness improvement and coordination — not as a clinical record or EHR.',
   },
 ];
 
@@ -595,6 +622,62 @@ const LandingPage: React.FC = () => {
             </Grid>
           </Box>
 
+          {/* Security & data use */}
+          <Box
+            sx={{
+              mb: { xs: 5, md: 7 },
+              p: { xs: 2.5, md: 3.5 },
+              borderRadius: 3,
+              border: '1px solid',
+              borderColor: alpha(SLATE, 0.12),
+              bgcolor: 'rgba(255,255,255,0.7)',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+              <ShieldIcon sx={{ color: SLATE, fontSize: 22 }} />
+              <Typography component="h2" variant="h5" sx={{ fontWeight: 600 }}>
+                Security &amp; appropriate use
+              </Typography>
+            </Stack>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 720, lineHeight: 1.6 }}>
+              ImPACTS is designed for quality-improvement and readiness work. Treat it like any other program tool:
+              no real patient data, and only share what you would put in a de-identified QI report.
+            </Typography>
+            <Grid container spacing={2}>
+              {SECURITY_NOTES.map((note) => (
+                <Grid item xs={12} sm={6} key={note.title}>
+                  <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                    <Box
+                      sx={{
+                        mt: 0.25,
+                        color: SLATE,
+                        flexShrink: 0,
+                        width: 36,
+                        height: 36,
+                        borderRadius: 1.5,
+                        display: 'grid',
+                        placeItems: 'center',
+                        bgcolor: alpha(SLATE, 0.08),
+                      }}
+                      aria-hidden
+                    >
+                      {note.icon}
+                    </Box>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.25 }}>
+                        {note.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
+                        {note.text}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+
           {/* CTA band */}
           <Box
             sx={{
@@ -637,10 +720,10 @@ const LandingPage: React.FC = () => {
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ display: 'block', textAlign: 'center', mt: 4, maxWidth: 720, mx: 'auto', lineHeight: 1.55 }}
+            sx={{ display: 'block', textAlign: 'center', mt: 3, maxWidth: 720, mx: 'auto', lineHeight: 1.55 }}
           >
-            Do not enter Protected Health Information (PHI) or real patient data. Free-text fields are screened for
-            common HIPAA identifiers. For educational and pediatric readiness purposes only.
+            Screening is heuristic and does not guarantee detection of all PHI. You remain responsible for never
+            entering real patient data. See Terms of Service after sign-in.
           </Typography>
         </Container>
       </Box>
