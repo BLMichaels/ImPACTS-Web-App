@@ -342,11 +342,11 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
         <Box>
           <Typography
             variant="overline"
-            sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block' }}
+            sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
           >
             Library
           </Typography>
-          <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: { xs: '1.15rem', md: '1.25rem' } }}>
             Resources & tools
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.55 }}>
@@ -355,9 +355,11 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
         </Box>
         <Button
           variant="contained"
+          color="secondary"
           startIcon={<AddIcon />}
           onClick={() => setAddDialogOpen(true)}
-          sx={{ alignSelf: { xs: 'stretch', sm: 'center' }, boxShadow: 'none' }}
+          size="small"
+          sx={{ alignSelf: { xs: 'stretch', sm: 'center' } }}
         >
           Add resource
         </Button>
@@ -371,7 +373,7 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
           borderRadius: 2,
           border: '1px solid',
           borderColor: 'divider',
-          bgcolor: alpha(theme.palette.primary.main, 0.02),
+          bgcolor: alpha(theme.palette.secondary.main, 0.03),
         }}
       >
         <Grid container spacing={isMobile ? 1.5 : 2} alignItems="center">

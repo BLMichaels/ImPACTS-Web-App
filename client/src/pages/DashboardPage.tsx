@@ -124,7 +124,7 @@ const TOOL_AREAS: {
 ];
 
 const sectionShellSx = {
-  p: { xs: 2.5, md: 3 },
+  p: { xs: 2, md: 2.5 },
   borderRadius: 2,
   border: '1px solid',
   borderColor: 'divider',
@@ -439,27 +439,32 @@ const sectionShellSx = {
   return (
     <Box
       sx={{
-        bgcolor: 'grey.50',
+        bgcolor: 'background.default',
         minHeight: '100%',
-        pb: { xs: 5, md: 7 },
-        borderBottom: '1px solid',
-        borderColor: 'divider',
+        pb: { xs: 4, md: 5 },
       }}
     >
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 3.5 }, maxWidth: { xl: '1200px !important' } }}>
+      <Container
+        maxWidth={false}
+        sx={{
+          py: { xs: 2, md: 3 },
+          px: { xs: 2, sm: 3, md: 4, lg: 5 },
+          width: '100%',
+        }}
+      >
         <GapPlanReminderBanner />
 
-        <Stack spacing={{ xs: 2.5, md: 3.5 }}>
+        <Stack spacing={{ xs: 2, md: 2.5 }}>
           {/* Welcome hero */}
           <Paper
             elevation={0}
             sx={{
-              p: { xs: 2.5, md: 3.5 },
+              p: { xs: 2, md: 2.75 },
               borderRadius: 2,
               border: '1px solid',
               borderColor: 'divider',
               background: (t) =>
-                `linear-gradient(135deg, ${alpha(t.palette.primary.main, 0.06)} 0%, ${t.palette.background.paper} 55%, ${alpha(t.palette.grey[100], 0.5)} 100%)`,
+                `linear-gradient(120deg, ${alpha(t.palette.secondary.main, 0.07)} 0%, ${t.palette.background.paper} 42%, ${alpha(t.palette.primary.main, 0.04)} 100%)`,
             }}
           >
             <Box
@@ -471,24 +476,30 @@ const sectionShellSx = {
                 gap: 2,
               }}
             >
-              <Box sx={{ maxWidth: { md: 'min(100%, 560px)' } }}>
+              <Box sx={{ maxWidth: { md: 640 } }}>
                 <Typography
                   variant="overline"
-                  sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block', mb: 0.75 }}
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
                 >
                   PECC Support Tool
                 </Typography>
                 <Typography
                   variant="h4"
                   component="h1"
-                  sx={{ fontWeight: 700, letterSpacing: -0.02, mb: 1, fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' } }}
+                  sx={{
+                    fontWeight: 700,
+                    letterSpacing: -0.02,
+                    mb: 0.75,
+                    color: 'text.primary',
+                    fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
+                  }}
                 >
                   Welcome back, {firstName}
                 </Typography>
                 <Typography
                   variant="body1"
                   color="text.secondary"
-                  sx={{ lineHeight: 1.65, fontSize: { xs: '0.95rem', sm: '1rem' } }}
+                  sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}
                 >
                   Your home base for readiness work—progress, hospital contacts, and the tools you use most.
                 </Typography>
@@ -511,22 +522,22 @@ const sectionShellSx = {
           <Box sx={sectionShellSx}>
             <Typography
               variant="overline"
-              sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block', mb: 0.75 }}
+              sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
             >
               Getting started
             </Typography>
-            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015, mb: 0.75 }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015, mb: 0.5, fontSize: { xs: '1.2rem', md: '1.35rem' } }}>
               How this tool works
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 720, lineHeight: 1.65 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 820, lineHeight: 1.6 }}>
               Your {primaryProgramName} PECC Tracker guides you through the Pediatric Emergency Care Coordinator
               journey. Start with Checklist and Snapshot, then use Gap Plan and Activities to close gaps and document
               your work.
             </Typography>
 
-            <Grid container spacing={{ xs: 1.5, md: 2 }}>
+            <Grid container spacing={{ xs: 1.25, md: 1.5 }}>
               {TOOL_AREAS.map(({ title, path, Icon, description }) => (
-                <Grid item xs={12} sm={6} md={4} key={path}>
+                <Grid item xs={12} sm={6} md={4} lg={2} key={path}>
                   <Box
                     component="button"
                     type="button"
@@ -539,40 +550,40 @@ const sectionShellSx = {
                       border: '1px solid',
                       borderColor: 'divider',
                       borderRadius: 2,
-                      bgcolor: alpha(theme.palette.primary.main, 0.02),
-                      p: 2,
+                      bgcolor: alpha(theme.palette.secondary.main, 0.03),
+                      p: 1.75,
                       transition: 'border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease',
                       '&:hover': {
-                        borderColor: alpha(theme.palette.primary.main, 0.35),
-                        bgcolor: alpha(theme.palette.primary.main, 0.05),
-                        boxShadow: `0 6px 20px ${alpha(theme.palette.primary.main, 0.08)}`,
+                        borderColor: alpha(theme.palette.secondary.main, 0.4),
+                        bgcolor: alpha(theme.palette.secondary.main, 0.07),
+                        boxShadow: `0 4px 16px ${alpha(theme.palette.secondary.main, 0.1)}`,
                       },
                       '&:focus-visible': {
-                        outline: `2px solid ${theme.palette.primary.main}`,
+                        outline: `2px solid ${theme.palette.secondary.main}`,
                         outlineOffset: 2,
                       },
                     }}
                   >
-                    <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 1 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
                       <Box
                         sx={{
-                          width: 32,
-                          height: 32,
+                          width: 28,
+                          height: 28,
                           borderRadius: 1,
                           display: 'grid',
                           placeItems: 'center',
-                          bgcolor: alpha(theme.palette.primary.main, 0.1),
-                          color: 'primary.main',
+                          bgcolor: alpha(theme.palette.secondary.main, 0.12),
+                          color: 'secondary.dark',
                           flexShrink: 0,
                         }}
                       >
-                        <Icon sx={{ fontSize: 18 }} aria-hidden />
+                        <Icon sx={{ fontSize: 16 }} aria-hidden />
                       </Box>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: -0.01, lineHeight: 1.2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, letterSpacing: -0.01, lineHeight: 1.2 }}>
                         {title}
                       </Typography>
                     </Stack>
-                    <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55, fontSize: '0.875rem' }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5, fontSize: '0.8125rem' }}>
                       {description}
                     </Typography>
                   </Box>
@@ -584,11 +595,11 @@ const sectionShellSx = {
               variant="body2"
               color="text.secondary"
               sx={{
-                mt: 2.5,
-                pt: 2,
+                mt: 2,
+                pt: 1.75,
                 borderTop: '1px solid',
                 borderColor: 'divider',
-                lineHeight: 1.6,
+                lineHeight: 1.55,
               }}
             >
               <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
@@ -599,93 +610,158 @@ const sectionShellSx = {
             </Typography>
           </Box>
 
-          {/* Pediatric Readiness Scores */}
+          {/* Pediatric Readiness Scores — dense full-width table */}
           {showPrsSection && (
-            <Box>
+            <Paper
+              elevation={0}
+              sx={{
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                overflow: 'hidden',
+              }}
+            >
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}
                 justifyContent="space-between"
                 alignItems={{ xs: 'stretch', sm: 'center' }}
-                spacing={1.5}
-                sx={{ mb: 1.5 }}
+                spacing={1.25}
+                sx={{
+                  px: { xs: 2, md: 2.5 },
+                  py: 1.5,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                }}
               >
                 <Box>
                   <Typography
                     variant="overline"
-                    sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block' }}
+                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', lineHeight: 1.2 }}
                   >
                     Assessment
                   </Typography>
-                  <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015 }}>
+                  <Typography
+                    variant="h5"
+                    component="h2"
+                    sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: { xs: '1.15rem', md: '1.25rem' } }}
+                  >
                     Pediatric Readiness Scores
                   </Typography>
                 </Box>
                 <Button
                   variant="contained"
+                  color="secondary"
                   startIcon={<AddIcon />}
                   onClick={handleAddReadinessScore}
-                  sx={{ alignSelf: { xs: 'stretch', sm: 'center' }, boxShadow: 'none' }}
+                  size="small"
+                  sx={{ alignSelf: { xs: 'stretch', sm: 'center' } }}
                 >
                   Add Score
                 </Button>
               </Stack>
-              <Box sx={sectionShellSx}>
-                {readinessScores.length === 0 ? (
-                  <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center', lineHeight: 1.6 }}>
-                    No readiness scores yet. Add your first National Pediatric Readiness Project assessment score.
-                  </Typography>
-                ) : (
-                  <Grid container spacing={1.5}>
-                    {readinessScores.map((score) => (
-                      <Grid item xs={12} sm={6} md={4} key={score.id}>
-                        <Paper
-                          elevation={0}
+
+              {readinessScores.length === 0 ? (
+                <Typography color="text.secondary" sx={{ px: 2.5, py: 2.5, lineHeight: 1.55 }}>
+                  No readiness scores yet. Add your first National Pediatric Readiness Project assessment score.
+                </Typography>
+              ) : (
+                <TableContainer>
+                  <Table size="small" aria-label="Pediatric readiness scores">
+                    <TableHead>
+                      <TableRow
+                        sx={{
+                          '& th': {
+                            fontWeight: 600,
+                            fontSize: '0.7rem',
+                            letterSpacing: 0.04,
+                            color: 'text.secondary',
+                            textTransform: 'uppercase',
+                            borderBottomColor: 'divider',
+                            py: 1,
+                            bgcolor: alpha(theme.palette.primary.main, 0.03),
+                          },
+                        }}
+                      >
+                        <TableCell sx={{ width: 120 }}>Score</TableCell>
+                        <TableCell>Assessment date</TableCell>
+                        <TableCell align="right" sx={{ width: 96 }}>
+                          Actions
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {readinessScores.map((score, index) => (
+                        <TableRow
+                          key={score.id}
+                          hover
                           sx={{
-                            p: 2,
-                            borderRadius: 2,
-                            border: '1px solid',
-                            borderColor: 'divider',
-                            height: '100%',
-                            bgcolor: alpha(theme.palette.primary.main, 0.02),
+                            '& td': { borderBottomColor: 'divider', py: 1 },
+                            bgcolor: index === 0 ? alpha(theme.palette.secondary.main, 0.05) : 'transparent',
                           }}
                         >
-                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                            <Box>
+                          <TableCell>
+                            <Stack direction="row" spacing={1} alignItems="baseline">
                               <Typography
-                                variant="h4"
-                                sx={{ fontWeight: 700, letterSpacing: -0.02, color: 'primary.main', lineHeight: 1.1 }}
+                                component="span"
+                                sx={{
+                                  fontWeight: 700,
+                                  fontSize: '1.25rem',
+                                  letterSpacing: -0.02,
+                                  color: 'secondary.dark',
+                                  fontVariantNumeric: 'tabular-nums',
+                                  lineHeight: 1,
+                                }}
                               >
                                 {score.score}
                               </Typography>
-                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-                                {format(parseISO(score.date), 'MMM d, yyyy')}
-                              </Typography>
-                            </Box>
-                            <Stack direction="row" spacing={0.25}>
-                              <IconButton
-                                size="small"
-                                onClick={() => handleEditReadinessScore(score)}
-                                aria-label="Edit score"
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => handleDeleteReadinessScore(score.id)}
-                                aria-label="Delete score"
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
+                              {index === 0 && (
+                                <Typography
+                                  component="span"
+                                  variant="caption"
+                                  sx={{
+                                    fontWeight: 700,
+                                    color: 'secondary.main',
+                                    letterSpacing: 0.04,
+                                    textTransform: 'uppercase',
+                                    fontSize: '0.65rem',
+                                  }}
+                                >
+                                  Latest
+                                </Typography>
+                              )}
                             </Stack>
-                          </Stack>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-                )}
-              </Box>
-            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="text.secondary">
+                              {format(parseISO(score.date), 'MMM d, yyyy')}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleEditReadinessScore(score)}
+                              aria-label="Edit score"
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleDeleteReadinessScore(score.id)}
+                              aria-label="Delete score"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Paper>
           )}
 
           {/* Hospital Department Contacts */}
@@ -719,11 +795,11 @@ const sectionShellSx = {
                 <Box sx={{ flex: 1, minWidth: 180 }}>
                   <Typography
                     variant="overline"
-                    sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block' }}
+                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
                   >
                     Hospital directory
                   </Typography>
-                  <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015 }}>
+                  <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: { xs: '1.15rem', md: '1.25rem' } }}>
                     Department contacts
                   </Typography>
                 </Box>

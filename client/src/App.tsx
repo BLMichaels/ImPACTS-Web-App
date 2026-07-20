@@ -70,18 +70,30 @@ const HiringGroupSnapshotPage = lazy(() => import('./pages/hiring-group/HiringGr
 // Invitation Page
 const InvitationPage = lazy(() => import('./pages/InvitationPage'));
 
-// Create theme
+// Create theme — cool clinical slate + teal accent (professional, crisp)
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#455a64', // Darker blue-grey (almost grey)
+      main: '#3d5560',
+      dark: '#2a3d45',
+      light: '#5f7884',
+      contrastText: '#ffffff',
     },
     secondary: {
-      main: '#dc004e',
+      main: '#0e7490',
+      dark: '#0a5a70',
+      light: '#22a0bd',
+      contrastText: '#ffffff',
     },
     background: {
-      default: '#f5f5f5',
+      default: '#e9eef2',
+      paper: '#ffffff',
     },
+    text: {
+      primary: '#1a2b33',
+      secondary: '#5c7180',
+    },
+    divider: 'rgba(28, 55, 68, 0.12)',
   },
   typography: {
     fontFamily: fontSans,
@@ -95,6 +107,9 @@ const theme = createTheme({
     subtitle2: { fontWeight: 500 },
     button: { fontWeight: 600, textTransform: 'none' },
   },
+  shape: {
+    borderRadius: 10,
+  },
   components: {
     MuiCssBaseline: {
       styleOverrides: {
@@ -102,9 +117,23 @@ const theme = createTheme({
           fontFamily: fontSans,
           WebkitFontSmoothing: 'antialiased',
           MozOsxFontSmoothing: 'grayscale',
+          backgroundColor: '#e9eef2',
         },
         code: { fontFamily: fontMono },
         pre: { fontFamily: fontMono },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        contained: {
+          boxShadow: 'none',
+          '&:hover': { boxShadow: 'none' },
+        },
+      },
+    },
+    MuiPaper: {
+      defaultProps: {
+        elevation: 0,
       },
     },
   },
