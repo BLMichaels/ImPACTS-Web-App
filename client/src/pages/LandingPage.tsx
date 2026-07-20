@@ -420,7 +420,7 @@ const LandingPage: React.FC = () => {
                   sx={{ maxWidth: 520, fontSize: { xs: '1rem', md: '1.0625rem' }, lineHeight: 1.65 }}
                 >
                   The PECC Support Tool is organized around Activities, Gap Closure, Cohorts, and Snapshot — the four
-                  areas you use every week to improve pediatric emergency care at your hospital.
+                  areas that support pediatric emergency care readiness work at your hospital.
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 0.5 }}>
                   <Button
