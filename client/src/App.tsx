@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, Container, Box, CircularProgress } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
 
@@ -193,21 +193,19 @@ const RoleBasedRedirect = () => {
   return <Navigate to={dashboard} replace />;
 };
 
-function App() {
+function AppShell() {
+  const location = useLocation();
+  const isLanding = location.pathname === '/';
+
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AuthProvider>
-        <PhiGuardProvider>
-        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <SecurityGateShell>
-            <UserProfileProvider>
-              <UsageAnalyticsProvider>
-              <Suspense fallback={<LoadingSpinner />}>
-                <ErrorBoundary>
-                <Navbar />
-                <ScrollToTop />
-                <IdleTimeout />
+    <SecurityGateShell>
+      <UserProfileProvider>
+        <UsageAnalyticsProvider>
+          <Suspense fallback={<LoadingSpinner />}>
+            <ErrorBoundary>
+              <Navbar />
+              <ScrollToTop />
+              <IdleTimeout />
               <Box
                 component="a"
                 href="#main-content"
@@ -222,14 +220,23 @@ function App() {
                   border: 1,
                   borderColor: 'divider',
                   textDecoration: 'none',
-                  '&:focus': { left: 8 }
+                  '&:focus': { left: 8 },
                 }}
               >
                 Skip to main content
               </Box>
-              <Container sx={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 64px)' }}>
-                <Box component="main" id="main-content" sx={{ flex: 1 }}>
-                <Routes>
+              <Container
+                maxWidth={isLanding ? false : 'lg'}
+                disableGutters={isLanding}
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: isLanding ? '100vh' : 'calc(100vh - 64px)',
+                  ...(isLanding ? { width: '100%', maxWidth: '100%' } : {}),
+                }}
+              >
+                <Box component="main" id="main-content" sx={{ flex: 1, ...(isLanding ? { width: '100%' } : {}) }}>
+                  <Routes>
                   {/* Public Routes */}
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/app" element={<RoleBasedRedirect />} />
@@ -308,14 +315,25 @@ function App() {
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
                 </Box>
-                <Footer />
+                {!isLanding && <Footer />}
               </Container>
-              </ErrorBoundary>
-            </Suspense>
-            </UsageAnalyticsProvider>
-            </UserProfileProvider>
-          </SecurityGateShell>
-        </Router>
+            </ErrorBoundary>
+          </Suspense>
+        </UsageAnalyticsProvider>
+      </UserProfileProvider>
+    </SecurityGateShell>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AuthProvider>
+        <PhiGuardProvider>
+          <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <AppShell />
+          </Router>
         </PhiGuardProvider>
       </AuthProvider>
     </ThemeProvider>
