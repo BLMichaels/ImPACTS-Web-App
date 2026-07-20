@@ -24,16 +24,13 @@ import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { UserRole } from '../types/database';
 
-const FONT_DISPLAY = '"Fraunces", Georgia, "Times New Roman", serif';
-const FONT_BODY = '"DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-
 const SLATE = '#455a64';
 const SLATE_DARK = '#2f3e46';
 
-type PillarId = 'activities' | 'gaps' | 'cohorts' | 'snapshot';
+type CoreTabId = 'activities' | 'gaps' | 'cohorts' | 'snapshot';
 
-interface Pillar {
-  id: PillarId;
+interface CoreTab {
+  id: CoreTabId;
   navLabel: string;
   title: string;
   headline: string;
@@ -43,7 +40,7 @@ interface Pillar {
   bullets: string[];
 }
 
-const PILLARS: Pillar[] = [
+const CORE_TABS: CoreTab[] = [
   {
     id: 'activities',
     navLabel: 'Activities',
@@ -107,8 +104,8 @@ const getDefaultDashboard = (role: UserRole): string => {
   }
 };
 
-function PillarPreview({ pillar }: { pillar: Pillar }) {
-  switch (pillar.id) {
+function TabPreview({ tab }: { tab: CoreTab }) {
+  switch (tab.id) {
     case 'activities':
       return (
         <Stack spacing={1.25}>
@@ -127,10 +124,10 @@ function PillarPreview({ pillar }: { pillar: Pillar }) {
                 borderRadius: 2,
                 bgcolor: 'rgba(255,255,255,0.85)',
                 border: '1px solid',
-                borderColor: alpha(pillar.accent, 0.15),
+                borderColor: alpha(tab.accent, 0.15),
               }}
             >
-              <Chip label={row.type} size="small" sx={{ bgcolor: alpha(pillar.accent, 0.12), color: pillar.accent, fontWeight: 600 }} />
+              <Chip label={row.type} size="small" sx={{ bgcolor: alpha(tab.accent, 0.12), color: tab.accent, fontWeight: 600 }} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
                   {row.title}
@@ -157,7 +154,7 @@ function PillarPreview({ pillar }: { pillar: Pillar }) {
                 borderRadius: 2,
                 bgcolor: 'rgba(255,255,255,0.85)',
                 border: '1px solid',
-                borderColor: alpha(pillar.accent, 0.15),
+                borderColor: alpha(tab.accent, 0.15),
               }}
             >
               <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.75, lineHeight: 1.35 }}>
@@ -165,7 +162,7 @@ function PillarPreview({ pillar }: { pillar: Pillar }) {
               </Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Chip label={`Owner: ${row.owner}`} size="small" variant="outlined" />
-                <Chip label={row.status} size="small" sx={{ bgcolor: alpha(pillar.accent, 0.1), color: pillar.accent }} />
+                <Chip label={row.status} size="small" sx={{ bgcolor: alpha(tab.accent, 0.1), color: tab.accent }} />
               </Stack>
             </Box>
           ))}
@@ -174,8 +171,8 @@ function PillarPreview({ pillar }: { pillar: Pillar }) {
     case 'cohorts':
       return (
         <Stack spacing={1.25}>
-          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(pillar.accent, 0.08), border: '1px solid', borderColor: alpha(pillar.accent, 0.2) }}>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: pillar.accent, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(tab.accent, 0.08), border: '1px solid', borderColor: alpha(tab.accent, 0.2) }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: tab.accent, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Announcement
             </Typography>
             <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5 }}>
@@ -190,7 +187,7 @@ function PillarPreview({ pillar }: { pillar: Pillar }) {
                 borderRadius: 2,
                 bgcolor: 'rgba(255,255,255,0.85)',
                 border: '1px solid',
-                borderColor: alpha(pillar.accent, 0.15),
+                borderColor: alpha(tab.accent, 0.15),
               }}
             >
               <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
@@ -220,11 +217,11 @@ function PillarPreview({ pillar }: { pillar: Pillar }) {
                   borderRadius: 2,
                   bgcolor: 'rgba(255,255,255,0.85)',
                   border: '1px solid',
-                  borderColor: alpha(pillar.accent, 0.15),
+                  borderColor: alpha(tab.accent, 0.15),
                   textAlign: 'center',
                 }}
               >
-                <Typography variant="h5" sx={{ fontWeight: 800, color: pillar.accent, lineHeight: 1 }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: tab.accent, lineHeight: 1 }}>
                   {m.value}
                 </Typography>
                 <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mt: 0.5 }}>
@@ -247,15 +244,15 @@ const LandingPage: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { currentUser, loading: authLoading } = useAuth();
   const { userProfile, isLoading: profileLoading } = useUserProfile();
-  const [activePillar, setActivePillar] = useState<PillarId>('activities');
+  const [activeTab, setActiveTab] = useState<CoreTabId>('activities');
 
-  const pillar = PILLARS.find((p) => p.id === activePillar) ?? PILLARS[0];
+  const tab = CORE_TABS.find((t) => t.id === activeTab) ?? CORE_TABS[0];
 
-  const handlePillarKeyDown = useCallback(
-    (e: React.KeyboardEvent, id: PillarId) => {
+  const handleTabKeyDown = useCallback(
+    (e: React.KeyboardEvent, id: CoreTabId) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        setActivePillar(id);
+        setActiveTab(id);
       }
     },
     []
@@ -273,7 +270,6 @@ const LandingPage: React.FC = () => {
         width: '100%',
         position: 'relative',
         overflow: 'hidden',
-        fontFamily: FONT_BODY,
         color: SLATE_DARK,
       }}
     >
@@ -332,20 +328,16 @@ const LandingPage: React.FC = () => {
                 display: 'grid',
                 placeItems: 'center',
                 color: '#fff',
-                fontFamily: FONT_DISPLAY,
-                fontWeight: 700,
-                fontSize: '1.1rem',
-                boxShadow: `0 8px 24px ${alpha(SLATE, 0.25)}`,
+                fontWeight: 600,
+                fontSize: '1rem',
+                boxShadow: `0 4px 16px ${alpha(SLATE, 0.2)}`,
               }}
               aria-hidden
             >
               I
             </Box>
             <Box>
-              <Typography
-                variant="subtitle1"
-                sx={{ fontFamily: FONT_DISPLAY, fontWeight: 700, lineHeight: 1.1, letterSpacing: '-0.02em' }}
-              >
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
                 ImPACTS
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
@@ -386,28 +378,22 @@ const LandingPage: React.FC = () => {
                 />
                 <Typography
                   component="h1"
+                  variant="h1"
                   sx={{
-                    fontFamily: FONT_DISPLAY,
-                    fontWeight: 700,
-                    fontSize: { xs: '2.35rem', sm: '3rem', md: '3.65rem' },
-                    lineHeight: { xs: 1.08, md: 1.04 },
-                    letterSpacing: '-0.03em',
-                    maxWidth: 560,
+                    fontSize: { xs: '2.1rem', sm: '2.75rem', md: '3.25rem' },
+                    lineHeight: { xs: 1.12, md: 1.08 },
+                    maxWidth: 540,
                   }}
                 >
-                  Four pillars for{' '}
-                  <Box component="span" sx={{ color: SLATE }}>
-                    pediatric readiness
-                  </Box>{' '}
-                  work
+                  Track work. Close gaps. Learn with peers. See your progress.
                 </Typography>
                 <Typography
                   variant="body1"
                   color="text.secondary"
-                  sx={{ maxWidth: 520, fontSize: { xs: '1.05rem', md: '1.125rem' }, lineHeight: 1.65 }}
+                  sx={{ maxWidth: 520, fontSize: { xs: '1rem', md: '1.0625rem' }, lineHeight: 1.65 }}
                 >
-                  Track activities, close gaps, learn with your cohort, and review metrics — the core tabs PECCs use
-                  every week to improve emergency care for children.
+                  The ImPACTS PECC Support Tool is organized around Activities, Gap Closure, Cohorts, and Snapshot — the
+                  four areas you use every week to improve pediatric emergency care at your hospital.
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 0.5 }}>
                   <Button
@@ -454,128 +440,114 @@ const LandingPage: React.FC = () => {
                   backdropFilter: 'blur(16px)',
                   border: '1px solid',
                   borderColor: alpha('#fff', 0.8),
-                  boxShadow: `0 32px 80px ${alpha(SLATE, 0.14)}, inset 0 1px 0 ${alpha('#fff', 0.9)}`,
-                  '@media (prefers-reduced-motion: no-preference)': {
-                    animation: 'landingFloat 8s ease-in-out infinite',
-                  },
-                  '@keyframes landingFloat': {
-                    '0%, 100%': { transform: 'translateY(0)' },
-                    '50%': { transform: 'translateY(-6px)' },
-                  },
+                  boxShadow: `0 24px 64px ${alpha(SLATE, 0.12)}, inset 0 1px 0 ${alpha('#fff', 0.9)}`,
                 }}
               >
-                {/* Mock nav tabs */}
                 <Stack
                   direction="row"
                   spacing={0.5}
                   sx={{
                     mb: 2,
                     p: 0.5,
-                    borderRadius: 2.5,
+                    borderRadius: 2,
                     bgcolor: alpha(SLATE, 0.06),
                     overflowX: 'auto',
                   }}
                   role="tablist"
-                  aria-label="Platform core tabs"
+                  aria-label="Platform tabs"
                 >
-                  {PILLARS.map((p) => {
-                    const selected = p.id === activePillar;
+                  {CORE_TABS.map((t) => {
+                    const selected = t.id === activeTab;
                     return (
                       <Box
-                        key={p.id}
+                        key={t.id}
                         role="tab"
                         aria-selected={selected}
                         tabIndex={selected ? 0 : -1}
-                        onClick={() => setActivePillar(p.id)}
-                        onKeyDown={(e) => handlePillarKeyDown(e, p.id)}
+                        onClick={() => setActiveTab(t.id)}
+                        onKeyDown={(e) => handleTabKeyDown(e, t.id)}
                         sx={{
                           px: 1.5,
                           py: 0.85,
-                          borderRadius: 2,
+                          borderRadius: 1.5,
                           cursor: 'pointer',
                           flexShrink: 0,
-                          fontSize: '0.8rem',
-                          fontWeight: selected ? 700 : 500,
+                          fontSize: '0.8125rem',
+                          fontWeight: selected ? 600 : 500,
                           color: selected ? '#fff' : SLATE,
-                          bgcolor: selected ? p.accent : 'transparent',
-                          transition: 'background-color 0.2s, color 0.2s',
+                          bgcolor: selected ? t.accent : 'transparent',
+                          transition: 'background-color 0.15s, color 0.15s',
                           outline: 'none',
                           '&:focus-visible': {
-                            boxShadow: `0 0 0 2px ${p.accent}`,
+                            boxShadow: `0 0 0 2px ${t.accent}`,
                           },
                         }}
                       >
-                        {p.navLabel}
+                        {t.navLabel}
                       </Box>
                     );
                   })}
                 </Stack>
 
-                <Typography
-                  variant="subtitle2"
-                  sx={{ fontWeight: 700, mb: 0.5, color: pillar.accent, fontFamily: FONT_DISPLAY }}
-                >
-                  {pillar.headline}
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5, color: tab.accent }}>
+                  {tab.headline}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.5 }}>
-                  {pillar.description}
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.55 }}>
+                  {tab.description}
                 </Typography>
-                <PillarPreview pillar={pillar} />
+                <TabPreview tab={tab} />
               </Box>
             </Grid>
           </Grid>
 
-          {/* Four pillar cards */}
+          {/* Core tab cards */}
           <Box sx={{ mb: { xs: 5, md: 7 } }}>
             <Typography
               component="h2"
+              variant="h3"
               sx={{
-                fontFamily: FONT_DISPLAY,
-                fontWeight: 700,
-                fontSize: { xs: '1.65rem', md: '2rem' },
-                letterSpacing: '-0.02em',
                 mb: 0.75,
                 textAlign: { xs: 'left', md: 'center' },
               }}
             >
-              The core of your PECC workflow
+              How the platform is organized
             </Typography>
             <Typography
               variant="body1"
               color="text.secondary"
               sx={{ maxWidth: 640, mx: { md: 'auto' }, mb: 3.5, textAlign: { xs: 'left', md: 'center' }, lineHeight: 1.6 }}
             >
-              Everything else supports these four areas. Click a pillar to preview it above{isMobile ? '' : ' on the right'}.
+              Select a tab in the preview{isMobile ? '' : ' on the right'} or choose a section below to learn what each area is for.
             </Typography>
 
             <Grid container spacing={2}>
-              {PILLARS.map((p) => {
-                const selected = p.id === activePillar;
+              {CORE_TABS.map((t) => {
+                const selected = t.id === activeTab;
                 return (
-                  <Grid item xs={12} sm={6} key={p.id}>
+                  <Grid item xs={12} sm={6} key={t.id}>
                     <Box
                       component="button"
                       type="button"
-                      onClick={() => setActivePillar(p.id)}
+                      onClick={() => setActiveTab(t.id)}
                       aria-pressed={selected}
                       sx={{
                         width: '100%',
                         textAlign: 'left',
                         cursor: 'pointer',
                         border: '1px solid',
-                        borderColor: selected ? alpha(p.accent, 0.45) : alpha(SLATE, 0.12),
+                        borderColor: selected ? alpha(t.accent, 0.45) : alpha(SLATE, 0.12),
                         borderRadius: 3,
                         p: 2.5,
-                        bgcolor: selected ? alpha(p.accent, 0.06) : 'rgba(255,255,255,0.65)',
+                        bgcolor: selected ? alpha(t.accent, 0.06) : 'rgba(255,255,255,0.65)',
                         backdropFilter: 'blur(8px)',
-                        transition: 'transform 0.2s, box-shadow 0.2s, border-color 0.2s',
-                        boxShadow: selected ? `0 16px 40px ${alpha(p.accent, 0.12)}` : 'none',
+                        transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
+                        boxShadow: selected ? `0 12px 32px ${alpha(t.accent, 0.1)}` : 'none',
                         '&:hover': {
-                          transform: 'translateY(-2px)',
-                          boxShadow: `0 12px 32px ${alpha(SLATE, 0.1)}`,
+                          transform: 'translateY(-1px)',
+                          boxShadow: `0 8px 24px ${alpha(SLATE, 0.08)}`,
                         },
                         '&:focus-visible': {
-                          outline: `2px solid ${p.accent}`,
+                          outline: `2px solid ${t.accent}`,
                           outlineOffset: 2,
                         },
                       }}
@@ -584,33 +556,33 @@ const LandingPage: React.FC = () => {
                         <Stack direction="row" spacing={1.5} alignItems="center">
                           <Box
                             sx={{
-                              width: 48,
-                              height: 48,
-                              borderRadius: 2,
+                              width: 44,
+                              height: 44,
+                              borderRadius: 1.5,
                               display: 'grid',
                               placeItems: 'center',
-                              bgcolor: alpha(p.accent, 0.12),
-                              color: p.accent,
+                              bgcolor: alpha(t.accent, 0.12),
+                              color: t.accent,
                             }}
                           >
-                            {p.icon}
+                            {t.icon}
                           </Box>
                           <Box>
-                            <Typography variant="overline" sx={{ color: p.accent, fontWeight: 700, letterSpacing: '0.08em' }}>
-                              {p.navLabel}
+                            <Typography variant="overline" sx={{ color: t.accent, fontWeight: 600, letterSpacing: '0.04em' }}>
+                              {t.navLabel}
                             </Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: FONT_DISPLAY }}>
-                              {p.title}
+                            <Typography variant="h6" sx={{ fontWeight: 600, lineHeight: 1.25 }}>
+                              {t.title}
                             </Typography>
                           </Box>
                         </Stack>
                         <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
-                          {p.description}
+                          {t.description}
                         </Typography>
                         <Stack spacing={0.75}>
-                          {p.bullets.map((b) => (
+                          {t.bullets.map((b) => (
                             <Stack key={b} direction="row" spacing={1} alignItems="flex-start">
-                              <CheckIcon sx={{ fontSize: 18, color: p.accent, mt: 0.15 }} />
+                              <CheckIcon sx={{ fontSize: 18, color: t.accent, mt: 0.15 }} />
                               <Typography variant="body2">{b}</Typography>
                             </Stack>
                           ))}
@@ -623,23 +595,20 @@ const LandingPage: React.FC = () => {
             </Grid>
           </Box>
 
-          {/* CTA band — full width within page */}
+          {/* CTA band */}
           <Box
             sx={{
-              borderRadius: 4,
+              borderRadius: 3,
               px: { xs: 3, md: 5 },
               py: { xs: 4, md: 5 },
               textAlign: 'center',
               background: `linear-gradient(135deg, ${SLATE} 0%, ${SLATE_DARK} 100%)`,
               color: '#fff',
-              boxShadow: `0 24px 60px ${alpha(SLATE, 0.3)}`,
+              boxShadow: `0 16px 48px ${alpha(SLATE, 0.22)}`,
             }}
           >
-            <Typography
-              variant="h4"
-              sx={{ fontFamily: FONT_DISPLAY, fontWeight: 700, mb: 1.5, letterSpacing: '-0.02em' }}
-            >
-              Ready to track, close gaps, and measure progress?
+            <Typography variant="h4" sx={{ fontWeight: 600, mb: 1.5 }}>
+              Ready to pick up where you left off?
             </Typography>
             <Typography variant="body1" sx={{ opacity: 0.88, maxWidth: 560, mx: 'auto', mb: 3, lineHeight: 1.6 }}>
               Sign in to continue your hospital&apos;s readiness work. New users need an invitation from an ImPACTS
