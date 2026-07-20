@@ -24,12 +24,22 @@ import {
   Paper,
   alpha,
   useTheme,
+  ToggleButton,
+  ToggleButtonGroup,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import LinkIcon from '@mui/icons-material/Link';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ViewModuleIcon from '@mui/icons-material/ViewModule';
+import ViewListIcon from '@mui/icons-material/ViewList';
 import { getUserData, setUserData } from '../utils/userData';
 
 export interface DashboardResource {
@@ -46,6 +56,9 @@ export interface DashboardResource {
 }
 
 const STORAGE_KEY_PREFIX = 'dashboard_resources_';
+const VIEW_MODE_KEY_PREFIX = 'dashboard_resources_view_';
+
+type ResourceViewMode = 'cards' | 'list';
 
 const formatResourceUrl = (url: string): string => {
   if (!url) return '';
@@ -63,6 +76,7 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
   const theme = useTheme();
   const [resources, setResources] = useState<DashboardResource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ResourceViewMode>('cards');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [currentResource, setCurrentResource] = useState<DashboardResource | null>(null);
@@ -85,6 +99,27 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
     category: ''
   });
 
+  useEffect(() => {
+    if (!userId) return;
+    try {
+      const saved = localStorage.getItem(`${VIEW_MODE_KEY_PREFIX}${userId}`);
+      if (saved === 'list' || saved === 'cards') setViewMode(saved);
+    } catch {
+      /* ignore */
+    }
+  }, [userId]);
+
+  const handleViewModeChange = (_: React.MouseEvent<HTMLElement>, next: ResourceViewMode | null) => {
+    if (!next) return;
+    setViewMode(next);
+    if (userId) {
+      try {
+        localStorage.setItem(`${VIEW_MODE_KEY_PREFIX}${userId}`, next);
+      } catch {
+        /* ignore */
+      }
+    }
+  };
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
@@ -353,16 +388,60 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
             Quick access to the web links you use most
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          color="secondary"
-          startIcon={<AddIcon />}
-          onClick={() => setAddDialogOpen(true)}
-          size="small"
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          flexWrap="wrap"
+          useFlexGap
           sx={{ alignSelf: { xs: 'stretch', sm: 'center' } }}
         >
-          Add resource
-        </Button>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={handleViewModeChange}
+            size="small"
+            aria-label="Resource view mode"
+            sx={{
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+              '& .MuiToggleButton-root': {
+                border: 0,
+                px: 1.25,
+                py: 0.75,
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+                color: 'text.secondary',
+                '&.Mui-selected': {
+                  bgcolor: alpha(theme.palette.secondary.main, 0.12),
+                  color: 'secondary.dark',
+                  '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.18) },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="cards" aria-label="Card view">
+              <ViewModuleIcon sx={{ fontSize: 18, mr: 0.75 }} />
+              Cards
+            </ToggleButton>
+            <ToggleButton value="list" aria-label="List view">
+              <ViewListIcon sx={{ fontSize: 18, mr: 0.75 }} />
+              List
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <Button
+            variant="contained"
+            color="secondary"
+            startIcon={<AddIcon />}
+            onClick={() => setAddDialogOpen(true)}
+            size="small"
+            sx={{ flex: { xs: 1, sm: 'none' } }}
+          >
+            Add resource
+          </Button>
+        </Stack>
       </Stack>
 
       <Paper
@@ -445,34 +524,139 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
         </Grid>
       </Paper>
 
-      <Grid container spacing={isMobile ? 1.5 : 2}>
-        {isLoading ? (
-          <Grid item xs={12}>
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-              Loading resources…
-            </Typography>
-          </Grid>
-        ) : filtered.length === 0 ? (
-          <Grid item xs={12}>
-            <Paper
-              elevation={0}
-              sx={{
-                py: 5,
-                px: 2,
-                textAlign: 'center',
-                borderRadius: 2,
-                border: '1px dashed',
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-              }}
-            >
-              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                No resources yet. Add a web link to build your personal toolkit.
-              </Typography>
-            </Paper>
-          </Grid>
-        ) : (
-          filtered.map((r) => (
+      {isLoading ? (
+        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+          Loading resources…
+        </Typography>
+      ) : filtered.length === 0 ? (
+        <Paper
+          elevation={0}
+          sx={{
+            py: 5,
+            px: 2,
+            textAlign: 'center',
+            borderRadius: 2,
+            border: '1px dashed',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+            No resources yet. Add a web link to build your personal toolkit.
+          </Typography>
+        </Paper>
+      ) : viewMode === 'list' ? (
+        <TableContainer
+          component={Paper}
+          elevation={0}
+          sx={{
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Table size="small" aria-label="Resources list">
+            <TableHead>
+              <TableRow
+                sx={{
+                  '& th': {
+                    fontWeight: 600,
+                    fontSize: '0.7rem',
+                    letterSpacing: 0.04,
+                    color: 'text.secondary',
+                    textTransform: 'uppercase',
+                    borderBottomColor: 'divider',
+                    py: 1,
+                    bgcolor: alpha(theme.palette.primary.main, 0.03),
+                  },
+                }}
+              >
+                <TableCell>Title</TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Category</TableCell>
+                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Tags</TableCell>
+                <TableCell align="right" sx={{ width: 140 }}>
+                  Actions
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filtered.map((r) => (
+                <TableRow
+                  key={r.id}
+                  hover
+                  sx={{
+                    '& td': { borderBottomColor: 'divider', py: 1.1, verticalAlign: 'middle' },
+                  }}
+                >
+                  <TableCell>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, letterSpacing: -0.01, lineHeight: 1.3 }}>
+                      {r.title}
+                    </Typography>
+                    {r.description ? (
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                          mt: 0.25,
+                          lineHeight: 1.45,
+                          fontSize: '0.8125rem',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 1,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {r.description}
+                      </Typography>
+                    ) : null}
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                    {r.category ? (
+                      <Chip label={r.category} size="small" variant="outlined" />
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        —
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                    {r.tags?.length ? (
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {r.tags.slice(0, 3).map((t) => (
+                          <Chip key={t} label={t} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                        ))}
+                        {r.tags.length > 3 ? (
+                          <Chip label={`+${r.tags.length - 3}`} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                        ) : null}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        —
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Tooltip title="Open in a new tab">
+                      <IconButton size="small" onClick={() => handleResourceClick(r.url)} aria-label={`Open ${r.title}`}>
+                        <LinkIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <IconButton size="small" onClick={() => handleEdit(r)} aria-label={`Edit ${r.title}`}>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" color="error" onClick={() => handleDelete(r.id)} aria-label={`Delete ${r.title}`}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : (
+        <Grid container spacing={isMobile ? 1.5 : 2}>
+          {filtered.map((r) => (
             <Grid item xs={12} sm={6} md={4} key={r.id}>
               <Card
                 elevation={0}
@@ -486,8 +670,8 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                   bgcolor: 'background.paper',
                   transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
                   '&:hover': {
-                    borderColor: alpha(theme.palette.primary.main, 0.3),
-                    boxShadow: `0 6px 20px ${alpha(theme.palette.primary.main, 0.08)}`,
+                    borderColor: alpha(theme.palette.secondary.main, 0.35),
+                    boxShadow: `0 6px 20px ${alpha(theme.palette.secondary.main, 0.08)}`,
                   },
                 }}
               >
@@ -499,10 +683,10 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                         label="Link"
                         size="small"
                         sx={{
-                          bgcolor: alpha(theme.palette.primary.main, 0.1),
-                          color: 'primary.main',
+                          bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                          color: 'secondary.dark',
                           fontWeight: 600,
-                          '& .MuiChip-icon': { color: 'primary.main' },
+                          '& .MuiChip-icon': { color: 'secondary.dark' },
                         }}
                       />
                       {r.category ? <Chip label={r.category} size="small" variant="outlined" /> : null}
@@ -548,9 +732,9 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                 </CardContent>
               </Card>
             </Grid>
-          ))
-        )}
-      </Grid>
+          ))}
+        </Grid>
+      )}
 
       <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add New Resource</DialogTitle>
