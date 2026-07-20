@@ -111,8 +111,11 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
               xs: '1fr',
               md: isEnroll ? 'minmax(0, 1fr)' : 'minmax(220px, 280px) minmax(0, 1fr)',
             },
+            ...(!isEnroll && {
+              gridTemplateRows: { md: '1fr auto' },
+            }),
             gap: { xs: 2.5, md: 3 },
-            alignItems: 'start',
+            alignItems: { xs: 'start', md: isEnroll ? 'start' : 'stretch' },
           }}
         >
           {!isEnroll ? (
@@ -125,6 +128,11 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
                 bgcolor: 'rgba(255,255,255,0.55)',
                 backdropFilter: 'blur(10px)',
                 order: { xs: 2, md: 1 },
+                gridRow: { md: 1 },
+                gridColumn: { md: 1 },
+                height: { md: '100%' },
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
               <Stack spacing={1.75}>
@@ -180,7 +188,19 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
             </Box>
           ) : null}
 
-          <Box sx={{ order: { xs: 1, md: 2 } }}>
+          <Box
+            sx={{
+              order: { xs: 1, md: 2 },
+              ...(!isEnroll && {
+                gridRow: { md: 1 },
+                gridColumn: { md: 2 },
+                height: { md: '100%' },
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+              }),
+            }}
+          >
             <Box
               sx={{
                 p: { xs: 2.25, sm: 3 },
@@ -190,6 +210,12 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
                 border: '1px solid',
                 borderColor: alpha('#fff', 0.9),
                 boxShadow: `0 20px 48px ${alpha(AUTH_SLATE, 0.12)}`,
+                ...(!isEnroll && {
+                  flex: { md: 1 },
+                  height: { md: '100%' },
+                  display: 'flex',
+                  flexDirection: 'column',
+                }),
               }}
             >
               {isEnroll ? (
@@ -265,15 +291,36 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
               </Box>
             ) : null}
 
+            {isEnroll ? (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: 'block', textAlign: 'center', mt: 2, lineHeight: 1.5 }}
+              >
+                Do not enter Protected Health Information (PHI). Free-text fields are screened for common HIPAA
+                identifiers.
+              </Typography>
+            ) : null}
+          </Box>
+
+          {!isEnroll ? (
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ display: 'block', textAlign: 'center', mt: 2, lineHeight: 1.5 }}
+              sx={{
+                display: 'block',
+                textAlign: 'center',
+                mt: { xs: -0.5, md: 0 },
+                lineHeight: 1.5,
+                order: { xs: 3, md: 3 },
+                gridRow: { md: 2 },
+                gridColumn: { md: 2 },
+              }}
             >
               Do not enter Protected Health Information (PHI). Free-text fields are screened for common HIPAA
               identifiers.
             </Typography>
-          </Box>
+          ) : null}
         </Box>
       </Box>
     </AuthMarketingShell>
