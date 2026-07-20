@@ -382,8 +382,9 @@ const LoginPage = () => {
           sx={{
             display: 'grid',
             gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(300px, 380px)' },
+            gridTemplateRows: { md: '1fr auto' },
             gap: { xs: 2.5, md: 3 },
-            alignItems: 'start',
+            alignItems: { xs: 'start', md: 'stretch' },
           }}
         >
           {/* Security grid fills the left / main column */}
@@ -395,7 +396,12 @@ const LoginPage = () => {
               borderColor: alpha(AUTH_SLATE, 0.12),
               bgcolor: 'rgba(255,255,255,0.55)',
               backdropFilter: 'blur(10px)',
-              order: { xs: 2, md: 1 },
+              order: { xs: 3, md: 1 },
+              gridRow: { md: 1 },
+              gridColumn: { md: 1 },
+              height: { md: '100%' },
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.75 }}>
@@ -442,7 +448,17 @@ const LoginPage = () => {
           </Box>
 
           {/* Form card */}
-          <Box sx={{ order: { xs: 1, md: 2 } }}>
+          <Box
+            sx={{
+              order: { xs: 1, md: 2 },
+              gridRow: { md: 1 },
+              gridColumn: { md: 2 },
+              height: { md: '100%' },
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+            }}
+          >
             <Box
               sx={{
                 p: { xs: 2.25, sm: 3 },
@@ -452,6 +468,10 @@ const LoginPage = () => {
                 border: '1px solid',
                 borderColor: alpha('#fff', 0.9),
                 boxShadow: `0 20px 48px ${alpha(AUTH_SLATE, 0.12)}`,
+                flex: { md: 1 },
+                height: { md: '100%' },
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
               <Typography component="h2" variant="h6" sx={{ fontWeight: 600, mb: 0.35 }}>
@@ -462,15 +482,24 @@ const LoginPage = () => {
               </Typography>
               {formBody}
             </Box>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: 'block', textAlign: 'center', mt: 1.75, lineHeight: 1.5, px: 0.5 }}
-            >
-              Screening is heuristic and does not guarantee detection of all PHI. Terms of Service are available after
-              sign-in.
-            </Typography>
           </Box>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              display: 'block',
+              textAlign: 'center',
+              mt: { xs: -0.75, md: 0 },
+              lineHeight: 1.5,
+              px: 0.5,
+              order: { xs: 2, md: 3 },
+              gridRow: { md: 2 },
+              gridColumn: { md: 2 },
+            }}
+          >
+            Screening is heuristic and does not guarantee detection of all PHI. Terms of Service are available after
+            sign-in.
+          </Typography>
         </Box>
       </Box>
     </AuthMarketingShell>
