@@ -210,7 +210,10 @@ const RoleBasedRedirect = () => {
 
 function AppShell() {
   const location = useLocation();
-  const isLanding = location.pathname === '/';
+  const isFullBleedPublic =
+    location.pathname === '/' ||
+    location.pathname === '/login' ||
+    location.pathname === '/register';
 
   return (
     <SecurityGateShell>
@@ -241,16 +244,16 @@ function AppShell() {
                 Skip to main content
               </Box>
               <Container
-                maxWidth={isLanding ? false : 'lg'}
-                disableGutters={isLanding}
+                maxWidth={isFullBleedPublic ? false : 'lg'}
+                disableGutters={isFullBleedPublic}
                 sx={{
                   display: 'flex',
                   flexDirection: 'column',
-                  minHeight: isLanding ? '100vh' : 'calc(100vh - 64px)',
-                  ...(isLanding ? { width: '100%', maxWidth: '100%' } : {}),
+                  minHeight: isFullBleedPublic ? '100vh' : 'calc(100vh - 64px)',
+                  ...(isFullBleedPublic ? { width: '100%', maxWidth: '100%' } : {}),
                 }}
               >
-                <Box component="main" id="main-content" sx={{ flex: 1, ...(isLanding ? { width: '100%' } : {}) }}>
+                <Box component="main" id="main-content" sx={{ flex: 1, ...(isFullBleedPublic ? { width: '100%' } : {}) }}>
                   <Routes>
                   {/* Public Routes */}
                   <Route path="/" element={<LandingPage />} />
@@ -330,7 +333,7 @@ function AppShell() {
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
                 </Box>
-                {!isLanding && <Footer />}
+                {!isFullBleedPublic && <Footer />}
               </Container>
             </ErrorBoundary>
           </Suspense>
