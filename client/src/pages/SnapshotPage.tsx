@@ -79,6 +79,30 @@ const sectionShellSx = {
   overflow: 'hidden',
 } as const;
 
+/** Matches Checklist tab defaults / admin milestone_stage_palette. */
+const DEFAULT_STAGE_PALETTE: Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string> = {
+  stage1: '#2196F3',
+  stage2: '#4CAF50',
+  stage3: '#FF9800',
+  stage4: '#9C27B0',
+};
+
+const resolveStageBarColor = (
+  stage: { id?: string; title?: string; color_hex?: string | null },
+  index: number,
+  palette: typeof DEFAULT_STAGE_PALETTE
+): string => {
+  if (stage.color_hex) return stage.color_hex;
+  const id = String(stage.id || '').toLowerCase();
+  const title = String(stage.title || '').toLowerCase();
+  if (id === 'stage1' || id.includes('stage1') || title.includes('establish')) return palette.stage1;
+  if (id === 'stage2' || id.includes('stage2') || title.includes('implement')) return palette.stage2;
+  if (id === 'stage3' || id.includes('stage3') || title.includes('lead')) return palette.stage3;
+  if (id === 'stage4' || id.includes('stage4') || title.includes('sustain')) return palette.stage4;
+  const keys = ['stage1', 'stage2', 'stage3', 'stage4'] as const;
+  return palette[keys[index % 4]];
+};
+
 const SnapshotPage = () => {
   useAuth();
   const navigate = useNavigate();
@@ -106,7 +130,26 @@ const SnapshotPage = () => {
   const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
   const [activitySubmitterById, setActivitySubmitterById] = useState<Record<string, string>>({});
   const [checklistDbProgress, setChecklistDbProgress] = useState<ChecklistDbProgress | null>(null);
+  const [stagePalette, setStagePalette] = useState(DEFAULT_STAGE_PALETTE);
   const userId = effectiveUserId;
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'milestone_stage_palette').maybeSingle();
+      const saved = (data?.value ?? null) as Record<string, unknown> | null;
+      if (!mounted || !saved || typeof saved !== 'object') return;
+      setStagePalette({
+        stage1: typeof saved.stage1 === 'string' ? saved.stage1 : DEFAULT_STAGE_PALETTE.stage1,
+        stage2: typeof saved.stage2 === 'string' ? saved.stage2 : DEFAULT_STAGE_PALETTE.stage2,
+        stage3: typeof saved.stage3 === 'string' ? saved.stage3 : DEFAULT_STAGE_PALETTE.stage3,
+        stage4: typeof saved.stage4 === 'string' ? saved.stage4 : DEFAULT_STAGE_PALETTE.stage4,
+      });
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -1369,10 +1412,16 @@ const SnapshotPage = () => {
               </Box>
             </Paper>
 
-            {/* Checklist + Gap plans */}
-            <Grid container spacing={2}>
-              <Grid item xs={12} lg={6}>
-                <Paper elevation={0} sx={{ ...sectionShellSx, height: '100%' }}>
+            {/* Checklist + Gap plans — CSS grid keeps edges aligned with full-width sections */}
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' },
+                gap: 2,
+                width: '100%',
+              }}
+            >
+              <Paper elevation={0} sx={{ ...sectionShellSx, height: '100%', minWidth: 0 }}>
                   <Box
                     sx={{
                       px: { xs: 2, md: 2.5 },
@@ -1420,25 +1469,59 @@ const SnapshotPage = () => {
                         <LinearProgress
                           variant="determinate"
                           value={checklistMetrics.overallPct}
-                          sx={{ height: 8, borderRadius: 4, mb: 2 }}
+                          sx={{
+                            height: 8,
+                            borderRadius: 4,
+                            mb: 2,
+                            bgcolor: alpha(theme.palette.secondary.main, 0.12),
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 4,
+                              bgcolor: 'secondary.main',
+                            },
+                          }}
                         />
                         {checklistMetrics.source === 'milestones_staged' && milestones[0]?.tasks != null && (
                           <Stack spacing={1.25}>
-                            {milestones.map((stage: any) => {
+                            {milestones.map((stage: any, index: number) => {
                               const totalTasks = stage.tasks?.length || 0;
                               const completedTasks = stage.tasks?.filter((task: any) => task.completed)?.length || 0;
                               const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                              const barColor = resolveStageBarColor(stage, index, stagePalette);
                               return (
                                 <Box key={stage.id}>
-                                  <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.35 }}>
-                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                      {stage.title}
-                                    </Typography>
+                                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.35 }}>
+                                    <Stack direction="row" spacing={0.75} alignItems="center">
+                                      <Box
+                                        sx={{
+                                          width: 8,
+                                          height: 8,
+                                          borderRadius: '50%',
+                                          bgcolor: barColor,
+                                          flexShrink: 0,
+                                        }}
+                                        aria-hidden
+                                      />
+                                      <Typography variant="body2" sx={{ fontWeight: 600, color: barColor }}>
+                                        {stage.title}
+                                      </Typography>
+                                    </Stack>
                                     <Typography variant="caption" color="text.secondary">
                                       {completedTasks}/{totalTasks} · {progress}%
                                     </Typography>
                                   </Stack>
-                                  <LinearProgress variant="determinate" value={progress} sx={{ height: 5, borderRadius: 3 }} />
+                                  <LinearProgress
+                                    variant="determinate"
+                                    value={progress}
+                                    sx={{
+                                      height: 6,
+                                      borderRadius: 3,
+                                      bgcolor: alpha(barColor, 0.15),
+                                      '& .MuiLinearProgress-bar': {
+                                        borderRadius: 3,
+                                        bgcolor: barColor,
+                                      },
+                                    }}
+                                  />
                                 </Box>
                               );
                             })}
@@ -1452,10 +1535,8 @@ const SnapshotPage = () => {
                     )}
                   </Box>
                 </Paper>
-              </Grid>
 
-              <Grid item xs={12} lg={6}>
-                <Paper elevation={0} sx={{ ...sectionShellSx, height: '100%' }}>
+              <Paper elevation={0} sx={{ ...sectionShellSx, height: '100%', minWidth: 0 }}>
                   <Box
                     sx={{
                       px: { xs: 2, md: 2.5 },
@@ -1552,8 +1633,7 @@ const SnapshotPage = () => {
                     )}
                   </Box>
                 </Paper>
-              </Grid>
-            </Grid>
+            </Box>
 
             {/* Simulation */}
             <Paper elevation={0} sx={sectionShellSx}>
