@@ -133,7 +133,7 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
         fullWidth
         required
         label="6-digit authentication code"
-        helperText="Codes change every ~30 seconds. Verification runs automatically when you enter 6 digits."
+        helperText="Verification runs automatically when you enter 6 digits. If it fails, wait for the next code."
         value={code}
         onChange={(e) => {
           const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
@@ -149,6 +149,12 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
         autoFocus
         size={compact ? 'small' : 'medium'}
         disabled={loading}
+        sx={{
+          '& .MuiOutlinedInput-root': {
+            bgcolor: 'rgba(255,255,255,0.92)',
+            borderRadius: 2,
+          },
+        }}
       />
 
       {!hideActions ? (
@@ -158,7 +164,13 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
               {cancelLabel}
             </Button>
           ) : null}
-          <Button type="submit" variant="contained" disabled={loading || code.length < 6} fullWidth={compact}>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={loading || code.length < 6}
+            fullWidth={compact}
+            sx={{ bgcolor: '#455a64', fontWeight: 600, '&:hover': { bgcolor: '#2f3e46' } }}
+          >
             {loading ? 'Verifying…' : submitLabel}
           </Button>
         </Box>

@@ -76,7 +76,7 @@ const MfaSettingsCard: React.FC = () => {
           )}
         </Box>
         <Typography variant="body2" color="text.secondary" paragraph>
-          ImPACTS requires MFA with a free authenticator app. If you have not set it up yet, follow the
+          The PECC Support Tool requires MFA with a free authenticator app. If you have not set it up yet, follow the
           numbered steps below. Password reset on the login page is not affected.
         </Typography>
         {error && (
@@ -105,7 +105,7 @@ const MfaSettingsCard: React.FC = () => {
             </Box>
             <Alert severity="info" sx={{ mb: 2 }}>
               MFA is mandatory for all users. To remove or replace an authenticator, contact your
-              ImPACTS administrator.
+              ImPACTS program administrator.
             </Alert>
             {!showAddBackup ? (
               <Button variant="outlined" onClick={() => setShowAddBackup(true)}>

@@ -64,7 +64,7 @@ export async function cleanupUnverifiedMfaFactors(): Promise<void> {
   );
 }
 
-export async function beginTotpEnrollment(friendlyName = 'ImPACTS Authenticator') {
+export async function beginTotpEnrollment(friendlyName = 'PECC Support Tool') {
   await cleanupUnverifiedMfaFactors();
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: 'totp',

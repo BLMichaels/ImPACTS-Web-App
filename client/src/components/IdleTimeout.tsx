@@ -3,9 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabase';
 import { logSecurityEvent } from '../utils/securityEvents';
 import { LAST_ACTIVITY_KEY, markSessionActive } from '../utils/sessionActivity';
+import { IDLE_TIMEOUT_MS } from '../utils/sessionPolicy';
 
-/** Sign out after this much inactivity (shared-workstation safeguard). */
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 /** How often activity writes/checks run; keeps event handlers cheap. */
 const ACTIVITY_THROTTLE_MS = 15 * 1000;
 const CHECK_INTERVAL_MS = 30 * 1000;

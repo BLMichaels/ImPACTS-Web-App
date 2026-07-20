@@ -16,8 +16,8 @@ const Step: React.FC<StepProps & { spacing?: number }> = ({ number, title, child
         width: 28,
         height: 28,
         borderRadius: '50%',
-        bgcolor: 'primary.main',
-        color: 'primary.contrastText',
+        bgcolor: '#455a64',
+        color: '#fff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -81,17 +81,17 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({
             </>
           )}
         </Step>
-        <Step number={2} title="Find your ImPACTS code" spacing={stepSpacing}>
+        <Step number={2} title="Find your PECC Support Tool code" spacing={stepSpacing}>
           {ios ? (
             <>
-              In <strong>Passwords</strong>, open the ImPACTS entry and view the verification code.
-              In other apps, select your ImPACTS account. The code is 6 digits and changes about every
-              30 seconds.
+              In <strong>Passwords</strong>, open the PECC Support Tool entry and view the verification code.
+              In other apps, select your PECC Support Tool account. The code is 6 digits and refreshes
+              regularly.
             </>
           ) : (
             <>
-              Look for an entry named <strong>ImPACTS</strong> (or your email). The 6-digit code
-              refreshes about every 30 seconds.
+              Look for an entry named <strong>PECC Support Tool</strong> or <strong>ImPACTS</strong> (or your
+              email). The 6-digit code refreshes regularly.
             </>
           )}
         </Step>
@@ -125,7 +125,7 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({
           </>
         )}
       </Step>
-      <Step number={2} title="Add ImPACTS to that app" spacing={stepSpacing}>
+      <Step number={2} title="Add the PECC Support Tool to that app" spacing={stepSpacing}>
         <Box component="span" sx={{ display: 'block', mb: 0.75 }}>
           <strong>Do not use your phone&apos;s regular Camera app.</strong> Open your authenticator app
           first, then choose <strong>Scan QR code</strong> (or equivalent) inside that app.
@@ -145,9 +145,9 @@ const MfaInstructionSteps: React.FC<MfaInstructionStepsProps> = ({
         )}
       </Step>
       <Step number={3} title="Get your 6-digit code" spacing={stepSpacing}>
-        Your app shows a 6-digit code that changes about every 30 seconds.
+        Your app shows a 6-digit code that refreshes regularly.
       </Step>
-      <Step number={4} title="Confirm setup in ImPACTS" spacing={compact ? 0 : stepSpacing}>
+      <Step number={4} title="Confirm setup" spacing={compact ? 0 : stepSpacing}>
         Enter the code {qrBeside ? 'on the right' : 'below'} and tap <strong>Enable authenticator</strong>.
       </Step>
     </Box>

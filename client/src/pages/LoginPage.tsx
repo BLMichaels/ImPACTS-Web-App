@@ -13,20 +13,55 @@ import {
   ShieldOutlined as ShieldIcon,
   NoPhotographyOutlined as NoPhiIcon,
   LockOutlined as LockIcon,
+  TimerOutlined as TimerIcon,
+  VerifiedUserOutlined as ScreeningIcon,
+  MailOutline as InviteIcon,
 } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
-
-const SLATE = '#455a64';
-const SLATE_DARK = '#2f3e46';
+import { IDLE_TIMEOUT_MINUTES } from '../utils/sessionPolicy';
+import AuthMarketingShell, { AUTH_SLATE, AUTH_SLATE_DARK } from '../components/AuthMarketingShell';
 
 const fieldSx = {
   '& .MuiOutlinedInput-root': {
-    bgcolor: 'rgba(255,255,255,0.9)',
+    bgcolor: 'rgba(255,255,255,0.92)',
     borderRadius: 2,
   },
 };
+
+const SECURITY_POINTS = [
+  {
+    icon: <NoPhiIcon sx={{ fontSize: 18 }} />,
+    title: 'No patient PHI',
+    text: 'Do not enter real patient names, MRNs, or other protected health information. Staff names are fine.',
+  },
+  {
+    icon: <LockIcon sx={{ fontSize: 18 }} />,
+    title: 'MFA required',
+    text: 'After sign-in, verify with a free authenticator app before you can use the tool.',
+  },
+  {
+    icon: <TimerIcon sx={{ fontSize: 18 }} />,
+    title: `Auto sign-out after ${IDLE_TIMEOUT_MINUTES} minutes`,
+    text: 'Inactive sessions end automatically to reduce risk on shared workstations.',
+  },
+  {
+    icon: <ScreeningIcon sx={{ fontSize: 18 }} />,
+    title: 'Free-text screening',
+    text: 'Notes are checked for common HIPAA identifiers; high-risk matches are blocked.',
+  },
+  {
+    icon: <InviteIcon sx={{ fontSize: 18 }} />,
+    title: 'Invitation-only',
+    text: 'Accounts come from ImPACTS program administrators — not open registration.',
+  },
+  {
+    icon: <ShieldIcon sx={{ fontSize: 18 }} />,
+    title: 'QI / readiness use only',
+    text: 'Built for pediatric emergency readiness work — not a clinical record or EHR.',
+  },
+];
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -117,10 +152,10 @@ const LoginPage = () => {
   };
 
   let formTitle = 'Sign in';
-  let formSubtitle = 'Enter your email and password to open the PECC Support Tool.';
+  let formSubtitle = 'Use your PECC Support Tool email and password.';
   if (showSetPassword) {
     formTitle = 'Set new password';
-    formSubtitle = 'Choose a strong password for your PECC Support Tool account.';
+    formSubtitle = 'Choose a strong password for your account.';
   } else if (showForgotPassword) {
     formTitle = 'Reset password';
     formSubtitle = 'We will email you a link to set a new password.';
@@ -129,7 +164,7 @@ const LoginPage = () => {
   let formBody: React.ReactNode;
   if (showSetPassword) {
     formBody = setPasswordSuccess ? (
-      <Stack spacing={2}>
+      <Stack spacing={1.75}>
         <Alert severity="success">Password updated. You can now sign in with your new password.</Alert>
         <Button
           fullWidth
@@ -138,14 +173,14 @@ const LoginPage = () => {
             setShowSetPassword(false);
             setSetPasswordSuccess(false);
           }}
-          sx={{ py: 1.25, fontWeight: 600, bgcolor: SLATE, '&:hover': { bgcolor: SLATE_DARK } }}
+          sx={{ py: 1.2, fontWeight: 600, bgcolor: AUTH_SLATE, '&:hover': { bgcolor: AUTH_SLATE_DARK } }}
         >
           Back to sign in
         </Button>
       </Stack>
     ) : (
       <Box component="form" onSubmit={handleSetPasswordSubmit}>
-        <Stack spacing={2}>
+        <Stack spacing={1.75}>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField
             required
@@ -175,11 +210,11 @@ const LoginPage = () => {
             fullWidth
             variant="contained"
             disabled={loading}
-            sx={{ py: 1.25, fontWeight: 600, bgcolor: SLATE, '&:hover': { bgcolor: SLATE_DARK } }}
+            sx={{ py: 1.2, fontWeight: 600, bgcolor: AUTH_SLATE, '&:hover': { bgcolor: AUTH_SLATE_DARK } }}
           >
             {loading ? 'Updating…' : 'Update password'}
           </Button>
-          <Button fullWidth variant="text" onClick={() => { setShowSetPassword(false); setError(''); }} sx={{ color: SLATE }}>
+          <Button fullWidth variant="text" onClick={() => { setShowSetPassword(false); setError(''); }} sx={{ color: AUTH_SLATE }}>
             Back to sign in
           </Button>
         </Stack>
@@ -187,7 +222,7 @@ const LoginPage = () => {
     );
   } else if (showForgotPassword) {
     formBody = forgotSuccess ? (
-      <Stack spacing={2}>
+      <Stack spacing={1.75}>
         <Alert severity="success">
           Check your email for a link to reset your password. The link may take a few minutes to arrive.
         </Alert>
@@ -198,14 +233,14 @@ const LoginPage = () => {
             setShowForgotPassword(false);
             setForgotSuccess(false);
           }}
-          sx={{ py: 1.25, fontWeight: 600, bgcolor: SLATE, '&:hover': { bgcolor: SLATE_DARK } }}
+          sx={{ py: 1.2, fontWeight: 600, bgcolor: AUTH_SLATE, '&:hover': { bgcolor: AUTH_SLATE_DARK } }}
         >
           Back to sign in
         </Button>
       </Stack>
     ) : (
       <Box component="form" onSubmit={handleForgotSubmit}>
-        <Stack spacing={2}>
+        <Stack spacing={1.75}>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField
             required
@@ -225,11 +260,11 @@ const LoginPage = () => {
             fullWidth
             variant="contained"
             disabled={loading}
-            sx={{ py: 1.25, fontWeight: 600, bgcolor: SLATE, '&:hover': { bgcolor: SLATE_DARK } }}
+            sx={{ py: 1.2, fontWeight: 600, bgcolor: AUTH_SLATE, '&:hover': { bgcolor: AUTH_SLATE_DARK } }}
           >
             {loading ? 'Sending…' : 'Send reset link'}
           </Button>
-          <Button fullWidth variant="text" onClick={() => { setShowForgotPassword(false); setError(''); }} sx={{ color: SLATE }}>
+          <Button fullWidth variant="text" onClick={() => { setShowForgotPassword(false); setError(''); }} sx={{ color: AUTH_SLATE }}>
             Back to sign in
           </Button>
         </Stack>
@@ -238,13 +273,12 @@ const LoginPage = () => {
   } else {
     formBody = (
       <Box component="form" onSubmit={handleSubmit}>
-        <Stack spacing={2}>
+        <Stack spacing={1.75}>
           {timedOut && !error && (
             <Alert severity="info">You were signed out due to inactivity. Please sign in again.</Alert>
           )}
-          <Alert severity="info" icon={<LockIcon fontSize="inherit" />}>
-            After you sign in, you will set up or verify MFA with a free authenticator app (one-time setup, then a
-            quick code at each login).
+          <Alert severity="info" icon={<LockIcon fontSize="inherit" />} sx={{ py: 0.75 }}>
+            After sign-in you will set up or verify MFA with a free authenticator app.
           </Alert>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField
@@ -277,7 +311,7 @@ const LoginPage = () => {
               type="button"
               variant="body2"
               onClick={() => setShowForgotPassword(true)}
-              sx={{ fontWeight: 500, color: SLATE }}
+              sx={{ fontWeight: 500, color: AUTH_SLATE }}
             >
               Forgot password?
             </Link>
@@ -288,11 +322,11 @@ const LoginPage = () => {
             variant="contained"
             disabled={loading}
             sx={{
-              py: 1.35,
+              py: 1.25,
               fontWeight: 600,
-              bgcolor: SLATE,
-              boxShadow: `0 10px 28px ${alpha(SLATE, 0.25)}`,
-              '&:hover': { bgcolor: SLATE_DARK },
+              bgcolor: AUTH_SLATE,
+              boxShadow: `0 10px 24px ${alpha(AUTH_SLATE, 0.22)}`,
+              '&:hover': { bgcolor: AUTH_SLATE_DARK },
             }}
           >
             {loading ? 'Signing in…' : 'Sign in'}
@@ -303,7 +337,7 @@ const LoginPage = () => {
               component="button"
               type="button"
               onClick={() => navigate('/register')}
-              sx={{ fontWeight: 600, color: SLATE, verticalAlign: 'baseline' }}
+              sx={{ fontWeight: 600, color: AUTH_SLATE, verticalAlign: 'baseline' }}
             >
               Request an invitation
             </Link>
@@ -314,277 +348,132 @@ const LoginPage = () => {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        width: '100%',
-        position: 'relative',
-        overflow: 'hidden',
-        color: SLATE_DARK,
-      }}
-    >
-      <Box
-        aria-hidden
-        sx={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 0,
-          pointerEvents: 'none',
-          background: `
-            radial-gradient(ellipse 90% 60% at 8% -10%, ${alpha('#93c5fd', 0.55)} 0%, transparent 55%),
-            radial-gradient(ellipse 70% 50% at 95% 5%, ${alpha('#fda4af', 0.4)} 0%, transparent 50%),
-            radial-gradient(ellipse 80% 55% at 50% 100%, ${alpha('#5eead4', 0.35)} 0%, transparent 55%),
-            linear-gradient(165deg, #f8fafc 0%, #eef2ff 38%, #f0fdfa 72%, #f8fafc 100%)
-          `,
-        }}
-      />
-      <Box
-        aria-hidden
-        sx={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 0,
-          pointerEvents: 'none',
-          opacity: 0.3,
-          backgroundImage: `
-            linear-gradient(${alpha(SLATE, 0.06)} 1px, transparent 1px),
-            linear-gradient(90deg, ${alpha(SLATE, 0.06)} 1px, transparent 1px)
-          `,
-          backgroundSize: '48px 48px',
-          maskImage: 'linear-gradient(180deg, black 0%, black 75%, transparent 100%)',
-        }}
-      />
-
+    <AuthMarketingShell>
       <Box
         sx={{
-          position: 'relative',
-          zIndex: 1,
-          minHeight: '100vh',
+          flex: 1,
+          width: '100%',
+          maxWidth: 1080,
+          mx: 'auto',
+          px: { xs: 2, sm: 3 },
+          py: { xs: 1, md: 2 },
+          pb: { xs: 4, md: 5 },
           display: 'flex',
           flexDirection: 'column',
+          justifyContent: { md: 'center' },
+          gap: { xs: 2.5, md: 3 },
         }}
       >
-        <Box
-          component="header"
-          sx={{
-            px: { xs: 2, sm: 3, lg: 5 },
-            py: { xs: 2, md: 2.5 },
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <Stack
-            direction="row"
-            spacing={1.5}
-            alignItems="center"
-            component="button"
-            type="button"
-            onClick={() => navigate('/')}
-            sx={{
-              border: 0,
-              background: 'none',
-              cursor: 'pointer',
-              p: 0,
-              textAlign: 'left',
-              color: 'inherit',
-              '&:focus-visible': { outline: `2px solid ${SLATE}`, outlineOffset: 4, borderRadius: 1 },
-            }}
+        <Box>
+          <Typography
+            component="h1"
+            variant="h4"
+            sx={{ fontWeight: 600, letterSpacing: '-0.02em', mb: 0.75, fontSize: { xs: '1.65rem', md: '2rem' } }}
           >
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: 2,
-                background: `linear-gradient(135deg, ${SLATE} 0%, ${alpha(SLATE, 0.75)} 100%)`,
-                display: 'grid',
-                placeItems: 'center',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '1rem',
-                boxShadow: `0 4px 16px ${alpha(SLATE, 0.2)}`,
-              }}
-              aria-hidden
-            >
-              P
-            </Box>
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
-                PECC Support Tool
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                From the ImPACTS program
-              </Typography>
-            </Box>
-          </Stack>
-          <Button
-            variant="text"
-            onClick={() => navigate('/')}
-            sx={{ fontWeight: 600, color: SLATE_DARK }}
-          >
-            Back to home
-          </Button>
+            Sign in to the PECC Support Tool
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 640, lineHeight: 1.6 }}>
+            Track activities, close readiness gaps, collaborate with your cohort, and review your snapshot — for
+            pediatric emergency care coordination.
+          </Typography>
         </Box>
 
         <Box
           sx={{
-            flex: 1,
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-            gap: { xs: 3, md: 6 },
-            alignItems: 'center',
-            px: { xs: 2, sm: 3, lg: 6 },
-            py: { xs: 2, md: 4 },
-            pb: { xs: 5, md: 6 },
+            gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(300px, 380px)' },
+            gap: { xs: 2.5, md: 3 },
+            alignItems: 'start',
           }}
         >
-          {/* Brand / trust panel */}
-          <Stack
-            spacing={3}
+          {/* Security grid fills the left / main column */}
+          <Box
             sx={{
-              maxWidth: 480,
-              display: { xs: 'none', md: 'flex' },
-              pr: { md: 2 },
+              p: { xs: 2, sm: 2.5 },
+              borderRadius: 3,
+              border: '1px solid',
+              borderColor: alpha(AUTH_SLATE, 0.12),
+              bgcolor: 'rgba(255,255,255,0.55)',
+              backdropFilter: 'blur(10px)',
+              order: { xs: 2, md: 1 },
             }}
           >
-            <Typography
-              component="h1"
-              variant="h3"
-              sx={{ fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1.15 }}
-            >
-              Sign in to the PECC Support Tool
-            </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.65 }}>
-              Track activities, close readiness gaps, collaborate with your cohort, and review your snapshot — all in
-              one place for pediatric emergency care coordination.
-            </Typography>
-            <Stack spacing={2}>
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <Box
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 1.5,
-                    display: 'grid',
-                    placeItems: 'center',
-                    bgcolor: alpha(SLATE, 0.08),
-                    color: SLATE,
-                    flexShrink: 0,
-                  }}
-                >
-                  <NoPhiIcon sx={{ fontSize: 20 }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                    No patient PHI
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>
-                    Do not enter real patient names, MRNs, or other protected health information.
-                  </Typography>
-                </Box>
-              </Stack>
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <Box
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 1.5,
-                    display: 'grid',
-                    placeItems: 'center',
-                    bgcolor: alpha(SLATE, 0.08),
-                    color: SLATE,
-                    flexShrink: 0,
-                  }}
-                >
-                  <LockIcon sx={{ fontSize: 20 }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                    MFA protected
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>
-                    Authenticator-app MFA is required after sign-in to protect hospital readiness data.
-                  </Typography>
-                </Box>
-              </Stack>
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <Box
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 1.5,
-                    display: 'grid',
-                    placeItems: 'center',
-                    bgcolor: alpha(SLATE, 0.08),
-                    color: SLATE,
-                    flexShrink: 0,
-                  }}
-                >
-                  <ShieldIcon sx={{ fontSize: 20 }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                    Invitation-only access
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>
-                    Accounts are created by ImPACTS program administrators — not open registration.
-                  </Typography>
-                </Box>
-              </Stack>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.75 }}>
+              <ShieldIcon sx={{ color: AUTH_SLATE, fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                Security &amp; appropriate use
+              </Typography>
             </Stack>
-          </Stack>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                gap: 1.75,
+              }}
+            >
+              {SECURITY_POINTS.map((point) => (
+                <Stack key={point.title} direction="row" spacing={1.25} alignItems="flex-start">
+                  <Box
+                    sx={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 1.25,
+                      display: 'grid',
+                      placeItems: 'center',
+                      bgcolor: alpha(AUTH_SLATE, 0.08),
+                      color: AUTH_SLATE,
+                      flexShrink: 0,
+                    }}
+                    aria-hidden
+                  >
+                    {point.icon}
+                  </Box>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.25, mb: 0.25 }}>
+                      {point.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45, display: 'block' }}>
+                      {point.text}
+                    </Typography>
+                  </Box>
+                </Stack>
+              ))}
+            </Box>
+          </Box>
 
           {/* Form card */}
-          <Box sx={{ width: '100%', maxWidth: 440, mx: { xs: 'auto', md: 0 }, justifySelf: { md: 'end' } }}>
+          <Box sx={{ order: { xs: 1, md: 2 } }}>
             <Box
               sx={{
-                display: { xs: 'block', md: 'none' },
-                mb: 2.5,
-                textAlign: 'center',
-              }}
-            >
-              <Typography component="h1" variant="h4" sx={{ fontWeight: 600, mb: 0.75 }}>
-                {formTitle}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {formSubtitle}
-              </Typography>
-            </Box>
-
-            <Box
-              sx={{
-                p: { xs: 2.5, sm: 3.5 },
+                p: { xs: 2.25, sm: 3 },
                 borderRadius: 3,
-                bgcolor: 'rgba(255,255,255,0.78)',
+                bgcolor: 'rgba(255,255,255,0.82)',
                 backdropFilter: 'blur(16px)',
                 border: '1px solid',
-                borderColor: alpha('#fff', 0.85),
-                boxShadow: `0 24px 64px ${alpha(SLATE, 0.12)}`,
+                borderColor: alpha('#fff', 0.9),
+                boxShadow: `0 20px 48px ${alpha(AUTH_SLATE, 0.12)}`,
               }}
             >
-              <Box sx={{ display: { xs: 'none', md: 'block' }, mb: 2.5 }}>
-                <Typography component="h2" variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  {formTitle}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
-                  {formSubtitle}
-                </Typography>
-              </Box>
+              <Typography component="h2" variant="h6" sx={{ fontWeight: 600, mb: 0.35 }}>
+                {formTitle}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.5 }}>
+                {formSubtitle}
+              </Typography>
               {formBody}
             </Box>
-
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ display: 'block', textAlign: 'center', mt: 2.5, lineHeight: 1.55, px: 1 }}
+              sx={{ display: 'block', textAlign: 'center', mt: 1.75, lineHeight: 1.5, px: 0.5 }}
             >
-              Do not enter Protected Health Information (PHI) or real patient data. Free-text fields are screened for
-              common HIPAA identifiers. By using this site you agree to the Terms of Service (available after sign-in).
+              Screening is heuristic and does not guarantee detection of all PHI. Terms of Service are available after
+              sign-in.
             </Typography>
           </Box>
         </Box>
       </Box>
-    </Box>
+    </AuthMarketingShell>
   );
 };
 

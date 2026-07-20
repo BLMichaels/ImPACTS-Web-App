@@ -209,7 +209,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
               <Box
                 component="img"
                 src={totpQrDataUrl(qrCode)}
-                alt="QR code to add ImPACTS to your authenticator app"
+                alt="QR code to add the PECC Support Tool to your authenticator app"
                 sx={{
                   width: qrSize,
                   height: qrSize,
@@ -256,8 +256,8 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
 
       {restarted && !bootstrapping && qrCode ? (
         <Alert severity="info" sx={{ mb: 1.5, py: 0.5, '& .MuiAlert-message': { fontSize: '0.8125rem', lineHeight: 1.45 } }}>
-          A new QR code and setup key were generated. Remove any old ImPACTS entry from your authenticator
-          app, then scan or enter the new one below.
+          A new QR code and setup key were generated. Remove any old PECC Support Tool or ImPACTS entry from your
+          authenticator app, then scan or enter the new one below.
         </Alert>
       ) : null}
 
@@ -289,7 +289,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
               {email ? (
                 <>
                   {' '}
-                  Account: <strong>ImPACTS</strong> · <strong>{email}</strong>
+                  Account: <strong>PECC Support Tool</strong> · <strong>{email}</strong>
                 </>
               ) : null}
             </Typography>
@@ -400,10 +400,10 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
       {!hideIntro ? (
         <Alert severity="info" sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-            One-time setup (about 2 minutes)
+            One-time MFA setup
           </Typography>
           <Typography variant="body2">
-            MFA is required for all ImPACTS accounts. Follow the steps to link a free authenticator app.
+            MFA is required for all PECC Support Tool accounts. Follow the steps to link a free authenticator app.
           </Typography>
         </Alert>
       ) : null}
