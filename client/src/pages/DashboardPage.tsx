@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Grid, 
-  Card, 
-  CardContent, 
+import {
+  Box,
+  Typography,
+  Grid,
   Button,
   IconButton,
   TextField,
@@ -17,12 +15,24 @@ import {
   Container,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TableSortLabel,
+  alpha,
+  Alert,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import { useUserProfile } from '../context/UserProfileContext';
 import { PhiBlockedError } from '../utils/phiScanner';
 import { supabase } from '../supabase';
@@ -40,7 +50,14 @@ import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
 import DashboardResources from '../components/DashboardResources';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import Alert from '@mui/material/Alert';
+import ChecklistRtlIcon from '@mui/icons-material/ChecklistRtl';
+import InsightsIcon from '@mui/icons-material/Insights';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
+import ScienceIcon from '@mui/icons-material/Science';
+import GroupsIcon from '@mui/icons-material/Groups';
+import type { SvgIconComponent } from '@mui/icons-material';
+
 interface DepartmentContact {
   id: string;
   department: string;
@@ -56,7 +73,66 @@ interface ReadinessScore {
   score: number;
 }
 
+const TOOL_AREAS: {
+  title: string;
+  path: string;
+  Icon: SvgIconComponent;
+  description: string;
+}[] = [
+  {
+    title: 'Checklist',
+    path: '/milestones',
+    Icon: ChecklistRtlIcon,
+    description:
+      'Work through Establish, Implement, Lead, and Sustain. Complete milestones to advance your PECC journey.',
+  },
+  {
+    title: 'Snapshot',
+    path: '/snapshot',
+    Icon: InsightsIcon,
+    description:
+      'Review Pediatric Readiness Score trends and progress metrics across checklist, gaps, activities, and simulations.',
+  },
+  {
+    title: 'Activities',
+    path: '/activities',
+    Icon: EventNoteIcon,
+    description:
+      'Log PECC work, simulations, and training. Track time and impact on pediatric readiness.',
+  },
+  {
+    title: 'Gap Plan',
+    path: '/gap-plan',
+    Icon: TrackChangesIcon,
+    description:
+      'Prioritize gap-reduction actions from your assessment and monitor progress toward readiness goals.',
+  },
+  {
+    title: 'Simulation',
+    path: '/simulation',
+    Icon: ScienceIcon,
+    description:
+      'Document simulation exercises, care gaps, and outcomes to strengthen facility readiness.',
+  },
+  {
+    title: 'Cohorts',
+    path: '/cohorts',
+    Icon: GroupsIcon,
+    description:
+      'Stay connected with peers—announcements, discussions, and collaboration within your cohort.',
+  },
+];
+
+const sectionShellSx = {
+  p: { xs: 2.5, md: 3 },
+  borderRadius: 2,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+} as const;
+
   const DashboardPage = () => {
+    const navigate = useNavigate();
     const { userProfile, navbarBrandProgramId, effectiveUserId, siteId } = useUserProfile();
     const [primaryProgramName, setPrimaryProgramName] = useState<string>('ImPACTS');
     /** Matches navbar branding: resolved primary or membership (see resolveNavbarProgramLogo). */
@@ -90,6 +166,11 @@ interface ReadinessScore {
     const showPrsSection = prsSectionVisible && canViewPrs;
     /** Same subject as Snapshot and PRS visibility (view-as aware). */
     const uid = effectiveUserId;
+
+  const firstName =
+    (userProfile as { firstName?: string; first_name?: string } | null)?.firstName ||
+    (userProfile as { firstName?: string; first_name?: string } | null)?.first_name ||
+    'PECC';
 
   const [readinessScores, setReadinessScores] = useState<ReadinessScore[]>([]);
   const [readinessScoreDialogOpen, setReadinessScoreDialogOpen] = useState(false);
@@ -356,427 +437,563 @@ interface ReadinessScore {
   };
 
   return (
-    <Container maxWidth="xl">
-      <Box sx={{ mt: isMobile ? 2 : 4 }}>
+    <Box
+      sx={{
+        bgcolor: 'grey.50',
+        minHeight: '100%',
+        pb: { xs: 5, md: 7 },
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+      }}
+    >
+      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 3.5 }, maxWidth: { xl: '1200px !important' } }}>
         <GapPlanReminderBanner />
-        
-        {/* Welcome Section */}
-        <Box sx={{ mb: isMobile ? 3 : 4 }}>
-          <Typography variant={isMobile ? "h4" : "h3"} gutterBottom color="primary">
-            Welcome back, {(userProfile as any)?.firstName || (userProfile as any)?.first_name || 'PECC'}!
-          </Typography>
-          <Typography variant={isMobile ? "body1" : "h6"} color="text.secondary" sx={{ mb: 2 }}>
-            Your PECC Support Tool
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Track your progress, manage resources, and coordinate with your hospital team to improve pediatric emergency care readiness.
-          </Typography>
-        </Box>
 
-        {/* How This Tool Works Section */}
-        <Grid container spacing={isMobile ? 2 : 3} sx={{ mb: isMobile ? 3 : 4 }}>
-          <Grid item xs={12}>
-          <Card sx={{ p: 2 }}>
-            <CardContent>
-              <Typography variant="h4" gutterBottom color="primary" sx={{ mb: 2 }}>
-                How This Tool Works
-              </Typography>
-              
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.4 }}>
-                Welcome to your {primaryProgramName} PECC Tracker! This tool is designed to guide you through your Pediatric Emergency Care Coordinator journey. Here&apos;s how to get started:
-              </Typography>
-              
-              <Grid container spacing={isMobile ? 1 : 2} sx={{ mt: 2 }}>
-                <Grid item xs={12} md={4}>
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="h6" gutterBottom color="primary">
-                      📋 Checklist
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Track your progress through 4 stages: Establish, Implement, Lead, and Sustain. Complete milestones and objectives to advance through each stage of your PECC journey.
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={12} md={4}>
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="h6" gutterBottom color="primary">
-                      📊 Snapshot
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Complete your facility's Pediatric Readiness Score (PRS) assessment and view comprehensive analytics, charts, and metrics tracking your progress across all areas.
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={12} md={4}>
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="h6" gutterBottom color="primary">
-                      📝 Activities
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Log your PECC activities, simulations, training sessions, and other work. Track your time commitment and document your impact on pediatric readiness.
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={12} md={4}>
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="h6" gutterBottom color="primary">
-                      🎯 Gap Plan
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Create and manage gap reduction action plans based on your PRS assessment. Prioritize improvements and monitor progress toward pediatric readiness goals.
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={12} md={4}>
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="h6" gutterBottom color="primary">
-                      🎮 Simulation
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Track simulation exercises, identify gaps in pediatric emergency care, and document simulation outcomes to improve your facility's readiness.
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={12} md={4}>
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="h6" gutterBottom color="primary">
-                      👥 Cohorts
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Connect with peers in your cohort, view announcements, participate in discussions, and collaborate with other PECCs on your pediatric readiness journey.
-                    </Typography>
-                  </Box>
-                </Grid>
-              </Grid>
-              
-              <Typography variant="body1" color="text.secondary" sx={{ mt: 2, lineHeight: 1.4 }}>
-                <strong>Pro Tip:</strong> Start with the Checklist to understand your journey stages, complete your PRS assessment in Snapshot to identify gaps, create Gap Plans to address them, and log Activities to track your progress. Your pediatric readiness mentor will guide you through each stage!
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Pediatric Readiness Score Section - same source as Snapshot + Granular Permissions (view_tabs) */}
-      {showPrsSection && (
-        <Box sx={{ mb: 6 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h4" color="primary">
-              Pediatric Readiness Scores
-            </Typography>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleAddReadinessScore}
-              sx={{ fontSize: '0.875rem' }}
+        <Stack spacing={{ xs: 2.5, md: 3.5 }}>
+          {/* Welcome hero */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2.5, md: 3.5 },
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              background: (t) =>
+                `linear-gradient(135deg, ${alpha(t.palette.primary.main, 0.06)} 0%, ${t.palette.background.paper} 55%, ${alpha(t.palette.grey[100], 0.5)} 100%)`,
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+                gap: 2,
+              }}
             >
-              Add Score
-            </Button>
-          </Box>
-          <Card>
-            <CardContent>
-              {readinessScores.length === 0 ? (
-                <Typography color="textSecondary" align="center" sx={{ py: 2 }}>
-                  No readiness scores recorded yet. Click "Add Score" to add your first score.
-                </Typography>
-              ) : (
-                <Grid container spacing={2}>
-                  {readinessScores.map((score) => (
-                    <Grid item xs={12} sm={6} md={4} key={score.id}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5, mb: 0.5 }}>
-                            <IconButton size="small" onClick={() => handleEditReadinessScore(score)} aria-label="Edit score">
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton size="small" color="error" onClick={() => handleDeleteReadinessScore(score.id)} aria-label="Delete score">
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                          <Typography variant="h6" color="primary">
-                            {score.score}
-                          </Typography>
-                          <Typography variant="body2" color="textSecondary">
-                            {format(parseISO(score.date), 'MMM d, yyyy')}
-                          </Typography>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              )}
-            </CardContent>
-          </Card>
-        </Box>
-      )}
-
-      {/* Hospital Department Contacts Section - Accordion */}
-      <Box sx={{ mb: 12 }}>
-        <Accordion defaultExpanded>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 2 }}>
-              <Typography variant="h4" color="primary">
-                Hospital Department Contacts
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }} onClick={(e) => e.stopPropagation()}>
-                <Button
-                  variant={isEditMode ? "contained" : "outlined"}
-                  startIcon={<EditIcon />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsEditMode(!isEditMode);
-                  }}
-                  sx={{ fontSize: '0.875rem' }}
+              <Box sx={{ maxWidth: { md: 'min(100%, 560px)' } }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block', mb: 0.75 }}
                 >
-                  {isEditMode ? 'Exit Edit' : 'Edit Mode'}
+                  PECC Support Tool
+                </Typography>
+                <Typography
+                  variant="h4"
+                  component="h1"
+                  sx={{ fontWeight: 700, letterSpacing: -0.02, mb: 1, fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' } }}
+                >
+                  Welcome back, {firstName}
+                </Typography>
+                <Typography
+                  variant="body1"
+                  color="text.secondary"
+                  sx={{ lineHeight: 1.65, fontSize: { xs: '0.95rem', sm: '1rem' } }}
+                >
+                  Your home base for readiness work—progress, hospital contacts, and the tools you use most.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                <Button size="small" variant="outlined" onClick={() => navigate('/milestones')}>
+                  Checklist
                 </Button>
+                <Button size="small" variant="outlined" onClick={() => navigate('/snapshot')}>
+                  Snapshot
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => navigate('/activities')}>
+                  Activities
+                </Button>
+              </Stack>
+            </Box>
+          </Paper>
+
+          {/* How this tool works */}
+          <Box sx={sectionShellSx}>
+            <Typography
+              variant="overline"
+              sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block', mb: 0.75 }}
+            >
+              Getting started
+            </Typography>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015, mb: 0.75 }}>
+              How this tool works
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 720, lineHeight: 1.65 }}>
+              Your {primaryProgramName} PECC Tracker guides you through the Pediatric Emergency Care Coordinator
+              journey. Start with Checklist and Snapshot, then use Gap Plan and Activities to close gaps and document
+              your work.
+            </Typography>
+
+            <Grid container spacing={{ xs: 1.5, md: 2 }}>
+              {TOOL_AREAS.map(({ title, path, Icon, description }) => (
+                <Grid item xs={12} sm={6} md={4} key={path}>
+                  <Box
+                    component="button"
+                    type="button"
+                    onClick={() => navigate(path)}
+                    sx={{
+                      width: '100%',
+                      height: '100%',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2,
+                      bgcolor: alpha(theme.palette.primary.main, 0.02),
+                      p: 2,
+                      transition: 'border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease',
+                      '&:hover': {
+                        borderColor: alpha(theme.palette.primary.main, 0.35),
+                        bgcolor: alpha(theme.palette.primary.main, 0.05),
+                        boxShadow: `0 6px 20px ${alpha(theme.palette.primary.main, 0.08)}`,
+                      },
+                      '&:focus-visible': {
+                        outline: `2px solid ${theme.palette.primary.main}`,
+                        outlineOffset: 2,
+                      },
+                    }}
+                  >
+                    <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 1 }}>
+                      <Box
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 1,
+                          display: 'grid',
+                          placeItems: 'center',
+                          bgcolor: alpha(theme.palette.primary.main, 0.1),
+                          color: 'primary.main',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icon sx={{ fontSize: 18 }} aria-hidden />
+                      </Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: -0.01, lineHeight: 1.2 }}>
+                        {title}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55, fontSize: '0.875rem' }}>
+                      {description}
+                    </Typography>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{
+                mt: 2.5,
+                pt: 2,
+                borderTop: '1px solid',
+                borderColor: 'divider',
+                lineHeight: 1.6,
+              }}
+            >
+              <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                Tip:{' '}
+              </Box>
+              Complete your PRS in Snapshot to surface gaps, build Gap Plans to address them, and log Activities as you
+              go. Your pediatric readiness mentor can guide each stage.
+            </Typography>
+          </Box>
+
+          {/* Pediatric Readiness Scores */}
+          {showPrsSection && (
+            <Box>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                justifyContent="space-between"
+                alignItems={{ xs: 'stretch', sm: 'center' }}
+                spacing={1.5}
+                sx={{ mb: 1.5 }}
+              >
+                <Box>
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block' }}
+                  >
+                    Assessment
+                  </Typography>
+                  <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015 }}>
+                    Pediatric Readiness Scores
+                  </Typography>
+                </Box>
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    addNewContact();
-                  }}
-                  sx={{ fontSize: '0.875rem' }}
+                  onClick={handleAddReadinessScore}
+                  sx={{ alignSelf: { xs: 'stretch', sm: 'center' }, boxShadow: 'none' }}
                 >
-                  Add Contact
+                  Add Score
                 </Button>
-              </Box>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Click on column headers to sort departments. Click in any field to edit contact information.
-              Staff and role contact names belong here; do not put patient names or other patient PHI in Notes.
-            </Typography>
-            {phiContactsBlocked && (
-              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPhiContactsBlocked(false)}>
-                Save blocked: possible patient PHI was detected in department contact notes. Remove patient
-                identifiers and try again. Staff names in the Contact Name column are allowed.
-              </Alert>
-            )}
-            <Card>
-              <CardContent>
-                <Box sx={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ backgroundColor: '#f5f5f5' }}>
-                        <th 
-                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                          onClick={() => handleSort('department')}
-                        >
-                          Department {sortConfig?.key === 'department' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </th>
-                        <th 
-                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                          onClick={() => handleSort('contactName')}
-                        >
-                          Contact Name {sortConfig?.key === 'contactName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </th>
-                        <th 
-                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                          onClick={() => handleSort('phone')}
-                        >
-                          Phone {sortConfig?.key === 'phone' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </th>
-                        <th 
-                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                          onClick={() => handleSort('email')}
-                        >
-                          Email {sortConfig?.key === 'email' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </th>
-                        <th 
-                          style={{ padding: '12px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 'bold', cursor: 'pointer' }}
-                          onClick={() => handleSort('notes')}
-                        >
-                          Notes {sortConfig?.key === 'notes' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </th>
-                        {isEditMode && (
-                          <th style={{ padding: '12px', textAlign: 'center', border: '1px solid #ddd', fontWeight: 'bold', width: '80px' }}>
-                            Actions
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {getSortedContacts().map((contact) => (
-                        <tr
-                          key={contact.id}
-                          style={{ 
-                            borderBottom: '1px solid #ddd',
-                            transition: 'all 0.2s ease'
+              </Stack>
+              <Box sx={sectionShellSx}>
+                {readinessScores.length === 0 ? (
+                  <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center', lineHeight: 1.6 }}>
+                    No readiness scores yet. Add your first National Pediatric Readiness Project assessment score.
+                  </Typography>
+                ) : (
+                  <Grid container spacing={1.5}>
+                    {readinessScores.map((score) => (
+                      <Grid item xs={12} sm={6} md={4} key={score.id}>
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            height: '100%',
+                            bgcolor: alpha(theme.palette.primary.main, 0.02),
                           }}
                         >
-                          <td style={{ padding: '12px', border: '1px solid #ddd', fontWeight: 'bold', backgroundColor: '#f9f9f9' }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                            <Box>
+                              <Typography
+                                variant="h4"
+                                sx={{ fontWeight: 700, letterSpacing: -0.02, color: 'primary.main', lineHeight: 1.1 }}
+                              >
+                                {score.score}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                                {format(parseISO(score.date), 'MMM d, yyyy')}
+                              </Typography>
+                            </Box>
+                            <Stack direction="row" spacing={0.25}>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleEditReadinessScore(score)}
+                                aria-label="Edit score"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDeleteReadinessScore(score.id)}
+                                aria-label="Delete score"
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          </Stack>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                )}
+              </Box>
+            </Box>
+          )}
+
+          {/* Hospital Department Contacts */}
+          <Box>
+            <Accordion
+              defaultExpanded
+              disableGutters
+              elevation={0}
+              sx={{
+                borderRadius: '8px !important',
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                '&:before': { display: 'none' },
+                overflow: 'hidden',
+              }}
+            >
+              <AccordionSummary
+                expandIcon={<ExpandMoreIcon />}
+                sx={{
+                  px: { xs: 2, md: 3 },
+                  py: 1,
+                  '& .MuiAccordionSummary-content': {
+                    my: 1.5,
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 1.5,
+                  },
+                }}
+              >
+                <Box sx={{ flex: 1, minWidth: 180 }}>
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block' }}
+                  >
+                    Hospital directory
+                  </Typography>
+                  <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015 }}>
+                    Department contacts
+                  </Typography>
+                </Box>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  flexWrap="wrap"
+                  useFlexGap
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <Button
+                    size="small"
+                    variant={isEditMode ? 'contained' : 'outlined'}
+                    startIcon={<EditIcon />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditMode(!isEditMode);
+                    }}
+                  >
+                    {isEditMode ? 'Exit edit' : 'Edit'}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addNewContact();
+                    }}
+                    sx={{ boxShadow: 'none' }}
+                  >
+                    Add contact
+                  </Button>
+                </Stack>
+              </AccordionSummary>
+              <AccordionDetails sx={{ px: { xs: 2, md: 3 }, pt: 0, pb: { xs: 2.5, md: 3 } }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.6 }}>
+                  Sort by column headers. Edit fields inline. Staff and role names belong here—do not put patient names
+                  or other patient PHI in Notes.
+                </Typography>
+                {phiContactsBlocked && (
+                  <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPhiContactsBlocked(false)}>
+                    Save blocked: possible patient PHI was detected in department contact notes. Remove patient
+                    identifiers and try again. Staff names in the Contact Name column are allowed.
+                  </Alert>
+                )}
+                <TableContainer
+                  sx={{
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    overflowX: 'auto',
+                  }}
+                >
+                  <Table size="small" aria-label="Hospital department contacts">
+                    <TableHead>
+                      <TableRow
+                        sx={{
+                          bgcolor: alpha(theme.palette.primary.main, 0.04),
+                          '& th': {
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                            letterSpacing: 0.02,
+                            color: 'text.secondary',
+                            textTransform: 'uppercase',
+                            borderBottomColor: 'divider',
+                            whiteSpace: 'nowrap',
+                            py: 1.25,
+                          },
+                        }}
+                      >
+                        {(
+                          [
+                            ['department', 'Department'],
+                            ['contactName', 'Contact name'],
+                            ['phone', 'Phone'],
+                            ['email', 'Email'],
+                            ['notes', 'Notes'],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <TableCell key={key} sortDirection={sortConfig?.key === key ? sortConfig.direction : false}>
+                            <TableSortLabel
+                              active={sortConfig?.key === key}
+                              direction={sortConfig?.key === key ? sortConfig.direction : 'asc'}
+                              onClick={() => handleSort(key)}
+                            >
+                              {label}
+                            </TableSortLabel>
+                          </TableCell>
+                        ))}
+                        {isEditMode && (
+                          <TableCell align="center" sx={{ width: 72 }}>
+                            Actions
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {getSortedContacts().map((contact) => (
+                        <TableRow
+                          key={contact.id}
+                          hover
+                          sx={{
+                            '& td': { borderBottomColor: 'divider', verticalAlign: 'middle', py: 0.75 },
+                          }}
+                        >
+                          <TableCell
+                            sx={{
+                              fontWeight: 600,
+                              bgcolor: alpha(theme.palette.grey[500], 0.04),
+                              minWidth: 180,
+                            }}
+                          >
                             {isEditMode ? (
                               <TextField
                                 fullWidth
                                 size="small"
-                                placeholder="Enter department name"
-                                variant="outlined"
+                                placeholder="Department name"
+                                variant="standard"
                                 value={contact.department}
                                 onChange={(e) => handleContactUpdate(contact.id, 'department', e.target.value)}
-                                sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
+                                InputProps={{ disableUnderline: false }}
                               />
                             ) : (
                               contact.department
                             )}
-                          </td>
-                          <td style={{ padding: '12px', border: '1px solid #ddd' }}>
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 140 }}>
                             <TextField
                               fullWidth
                               size="small"
-                              placeholder="Enter name"
-                              variant="outlined"
+                              placeholder="Name"
+                              variant="standard"
                               value={contact.contactName}
                               onChange={(e) => handleContactUpdate(contact.id, 'contactName', e.target.value)}
-                              sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
                             />
-                          </td>
-                          <td style={{ padding: '12px', border: '1px solid #ddd' }}>
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 120 }}>
                             <TextField
                               fullWidth
                               size="small"
-                              placeholder="Enter phone"
-                              variant="outlined"
+                              placeholder="Phone"
+                              variant="standard"
                               value={contact.phone}
                               onChange={(e) => handleContactUpdate(contact.id, 'phone', e.target.value)}
-                              sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
                             />
-                          </td>
-                          <td style={{ padding: '12px', border: '1px solid #ddd' }}>
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 160 }}>
                             <TextField
                               fullWidth
                               size="small"
-                              placeholder="Enter email"
-                              variant="outlined"
+                              placeholder="Email"
+                              variant="standard"
                               value={contact.email}
                               onChange={(e) => handleContactUpdate(contact.id, 'email', e.target.value)}
-                              sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
                             />
-                          </td>
-                          <td style={{ padding: '12px', border: '1px solid #ddd' }}>
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 160 }}>
                             <TextField
                               fullWidth
                               size="small"
-                              placeholder="Add notes"
-                              variant="outlined"
+                              placeholder="Notes"
+                              variant="standard"
                               value={contact.notes}
                               onChange={(e) => handleContactUpdate(contact.id, 'notes', e.target.value)}
-                              sx={{ '& .MuiOutlinedInput-root': { border: 'none' } }}
                             />
-                          </td>
+                          </TableCell>
                           {isEditMode && (
-                            <td style={{ padding: '12px', border: '1px solid #ddd', textAlign: 'center' }}>
+                            <TableCell align="center">
                               <IconButton
                                 size="small"
                                 color="error"
                                 onClick={() => handleDeleteContact(contact)}
-                                sx={{ p: 0.5 }}
+                                aria-label={`Delete ${contact.department}`}
                               >
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
-                            </td>
+                            </TableCell>
                           )}
-                        </tr>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                </Box>
-              </CardContent>
-            </Card>
-          </AccordionDetails>
-        </Accordion>
-      </Box>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </AccordionDetails>
+            </Accordion>
+          </Box>
 
-      <DashboardResources userId={effectiveUserId} isMobile={isMobile} />
+          <DashboardResources userId={effectiveUserId} isMobile={isMobile} />
+        </Stack>
 
-      {/* Readiness Score Dialog */}
-      <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <Dialog open={readinessScoreDialogOpen} onClose={() => setReadinessScoreDialogOpen(false)}>
-          <DialogTitle>{editingReadinessScoreId ? 'Edit Pediatric Readiness Score' : 'Add Pediatric Readiness Score'}</DialogTitle>
+        {/* Readiness Score Dialog */}
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <Dialog open={readinessScoreDialogOpen} onClose={() => setReadinessScoreDialogOpen(false)}>
+            <DialogTitle>
+              {editingReadinessScoreId ? 'Edit Pediatric Readiness Score' : 'Add Pediatric Readiness Score'}
+            </DialogTitle>
+            <DialogContent>
+              <DatePicker
+                label="Assessment Date"
+                value={readinessScoreForm.date}
+                onChange={(newValue) => newValue && setReadinessScoreForm((prev) => ({ ...prev, date: newValue }))}
+                slotProps={{ textField: { fullWidth: true, sx: { mt: 2 } } }}
+              />
+              <TextField
+                label="Readiness Score"
+                type="number"
+                value={readinessScoreForm.score}
+                onChange={(e) => setReadinessScoreForm((prev) => ({ ...prev, score: e.target.value }))}
+                fullWidth
+                sx={{ mt: 2 }}
+                inputProps={{ min: 0, max: 100, step: 0.1 }}
+                helperText="Enter the score from your National Pediatric Readiness Project assessment"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setReadinessScoreDialogOpen(false)}>Cancel</Button>
+              <Button
+                onClick={handleSaveReadinessScore}
+                variant="contained"
+                disabled={!readinessScoreForm.score || isNaN(parseFloat(readinessScoreForm.score))}
+              >
+                {editingReadinessScoreId ? 'Update' : 'Save'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </LocalizationProvider>
+
+        <Dialog
+          open={readinessDeleteConfirm.open}
+          onClose={() => setReadinessDeleteConfirm({ open: false, scoreId: null })}
+          aria-labelledby="readiness-delete-dialog-title"
+        >
+          <DialogTitle id="readiness-delete-dialog-title">Delete readiness score?</DialogTitle>
           <DialogContent>
-            <DatePicker
-              label="Assessment Date"
-              value={readinessScoreForm.date}
-              onChange={(newValue) => newValue && setReadinessScoreForm(prev => ({ ...prev, date: newValue }))}
-              slotProps={{ textField: { fullWidth: true, sx: { mt: 2 } } }}
-            />
-            <TextField
-              label="Readiness Score"
-              type="number"
-              value={readinessScoreForm.score}
-              onChange={(e) => setReadinessScoreForm(prev => ({ ...prev, score: e.target.value }))}
-              fullWidth
-              sx={{ mt: 2 }}
-              inputProps={{ min: 0, max: 100, step: 0.1 }}
-              helperText="Enter the score from your National Pediatric Readiness Project assessment"
-            />
+            <Typography>This will permanently remove the selected Pediatric Readiness Score entry.</Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setReadinessScoreDialogOpen(false)}>Cancel</Button>
-            <Button 
-              onClick={handleSaveReadinessScore} 
-              variant="contained"
-              disabled={!readinessScoreForm.score || isNaN(parseFloat(readinessScoreForm.score))}
-            >
-              {editingReadinessScoreId ? 'Update' : 'Save'}
+            <Button onClick={() => setReadinessDeleteConfirm({ open: false, scoreId: null })}>Cancel</Button>
+            <Button color="error" variant="contained" onClick={confirmDeleteReadinessScore}>
+              Delete
             </Button>
           </DialogActions>
         </Dialog>
-      </LocalizationProvider>
 
-      {/* Readiness Score Delete Confirmation */}
-      <Dialog
-        open={readinessDeleteConfirm.open}
-        onClose={() => setReadinessDeleteConfirm({ open: false, scoreId: null })}
-        aria-labelledby="readiness-delete-dialog-title"
-      >
-        <DialogTitle id="readiness-delete-dialog-title">Delete readiness score?</DialogTitle>
-        <DialogContent>
-          <Typography>
-            This will permanently remove the selected Pediatric Readiness Score entry.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReadinessDeleteConfirm({ open: false, scoreId: null })}>
-            Cancel
-          </Button>
-          <Button color="error" variant="contained" onClick={confirmDeleteReadinessScore}>
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteConfirmDialog.open}
-        onClose={cancelDeleteContact}
-        aria-labelledby="delete-dialog-title"
-        aria-describedby="delete-dialog-description"
-      >
-        <DialogTitle id="delete-dialog-title">Confirm Delete</DialogTitle>
-        <DialogContent>
-          <Typography id="delete-dialog-description">
-            Are you sure you want to delete the contact for {deleteConfirmDialog.contactName}? This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={cancelDeleteContact} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={confirmDeleteContact} color="error" variant="contained">
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-      </Box>
-    </Container>
+        <Dialog
+          open={deleteConfirmDialog.open}
+          onClose={cancelDeleteContact}
+          aria-labelledby="delete-dialog-title"
+          aria-describedby="delete-dialog-description"
+        >
+          <DialogTitle id="delete-dialog-title">Confirm Delete</DialogTitle>
+          <DialogContent>
+            <Typography id="delete-dialog-description">
+              Are you sure you want to delete the contact for {deleteConfirmDialog.contactName}? This action cannot be
+              undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={cancelDeleteContact} color="primary">
+              Cancel
+            </Button>
+            <Button onClick={confirmDeleteContact} color="error" variant="contained">
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Container>
+    </Box>
   );
 };
 

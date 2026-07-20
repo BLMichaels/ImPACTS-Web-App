@@ -19,7 +19,11 @@ import {
   MenuItem,
   Checkbox,
   ListItemText,
-  Tooltip
+  Tooltip,
+  Stack,
+  Paper,
+  alpha,
+  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -56,6 +60,7 @@ interface DashboardResourcesProps {
 }
 
 const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobile = false }) => {
+  const theme = useTheme();
   const [resources, setResources] = useState<DashboardResource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -326,34 +331,69 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
   if (!userId) return null;
 
   return (
-    <Box sx={{ mt: 10, mb: 6 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4" color="primary">Resources & Tools</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddDialogOpen(true)} sx={{ fontSize: '0.875rem' }}>
-          Add Resource
+    <Box>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        spacing={1.5}
+        sx={{ mb: 1.5 }}
+      >
+        <Box>
+          <Typography
+            variant="overline"
+            sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block' }}
+          >
+            Library
+          </Typography>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015 }}>
+            Resources & tools
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.55 }}>
+            Quick access to the web links you use most
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setAddDialogOpen(true)}
+          sx={{ alignSelf: { xs: 'stretch', sm: 'center' }, boxShadow: 'none' }}
+        >
+          Add resource
         </Button>
-      </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Quick access to frequently used web links
-      </Typography>
+      </Stack>
 
-      <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-        <Grid container spacing={isMobile ? 1 : 2} alignItems="center">
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 2,
+          p: { xs: 1.5, md: 2 },
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: alpha(theme.palette.primary.main, 0.02),
+        }}
+      >
+        <Grid container spacing={isMobile ? 1.5 : 2} alignItems="center">
           <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               size="small"
-              placeholder="Search resources..."
+              placeholder="Search resources…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} /> }}
+              InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} /> }}
             />
           </Grid>
           <Grid item xs={12} md={3}>
             <FormControl fullWidth size="small">
               <InputLabel>Category</InputLabel>
               <Select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} label="Category">
-                {getCategories().map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                {getCategories().map((c) => (
+                  <MenuItem key={c} value={c}>
+                    {c}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Grid>
@@ -363,10 +403,18 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
               <Select
                 multiple
                 value={selectedTags}
-                onChange={(e) => setSelectedTags(typeof e.target.value === 'string' ? e.target.value.split(',') : (e.target.value as string[]))}
+                onChange={(e) =>
+                  setSelectedTags(
+                    typeof e.target.value === 'string' ? e.target.value.split(',') : (e.target.value as string[])
+                  )
+                }
                 label="Tags"
                 renderValue={(sel) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>{(Array.isArray(sel) ? sel : []).map((v) => <Chip key={v} label={v} size="small" />)}</Box>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(Array.isArray(sel) ? sel : []).map((v) => (
+                      <Chip key={v} label={v} size="small" />
+                    ))}
+                  </Box>
                 )}
               >
                 {getTags().map((t) => (
@@ -379,47 +427,120 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
             </FormControl>
           </Grid>
           <Grid item xs={12} md={2}>
-            <Button variant="outlined" size="small" onClick={() => { setSearchTerm(''); setSelectedCategory('All'); setSelectedTags([]); }}>
-              Clear Filters
+            <Button
+              fullWidth
+              variant="outlined"
+              size="small"
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedCategory('All');
+                setSelectedTags([]);
+              }}
+            >
+              Clear
             </Button>
           </Grid>
         </Grid>
-      </Box>
+      </Paper>
 
-      <Grid container spacing={isMobile ? 1 : 2}>
+      <Grid container spacing={isMobile ? 1.5 : 2}>
         {isLoading ? (
           <Grid item xs={12}>
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>Loading resources...</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+              Loading resources…
+            </Typography>
           </Grid>
         ) : filtered.length === 0 ? (
           <Grid item xs={12}>
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>No resources found. Add your first web link to get started!</Typography>
+            <Paper
+              elevation={0}
+              sx={{
+                py: 5,
+                px: 2,
+                textAlign: 'center',
+                borderRadius: 2,
+                border: '1px dashed',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+              }}
+            >
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                No resources yet. Add a web link to build your personal toolkit.
+              </Typography>
+            </Paper>
           </Grid>
         ) : (
           filtered.map((r) => (
             <Grid item xs={12} sm={6} md={4} key={r.id}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Chip icon={<LinkIcon />} label="LINK" color="primary" size="small" sx={{ mr: 1 }} />
-                    {r.category && <Chip label={r.category} size="small" variant="outlined" sx={{ mr: 1 }} />}
-                    <Box sx={{ ml: 'auto' }}>
-                      <IconButton size="small" onClick={() => handleEdit(r)} sx={{ mr: 0.5 }}><EditIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => handleDelete(r.id)}><DeleteIcon fontSize="small" /></IconButton>
+              <Card
+                elevation={0}
+                sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                  transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+                  '&:hover': {
+                    borderColor: alpha(theme.palette.primary.main, 0.3),
+                    boxShadow: `0 6px 20px ${alpha(theme.palette.primary.main, 0.08)}`,
+                  },
+                }}
+              >
+                <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 2, '&:last-child': { pb: 2 } }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 1.25, gap: 0.75 }}>
+                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
+                      <Chip
+                        icon={<LinkIcon />}
+                        label="Link"
+                        size="small"
+                        sx={{
+                          bgcolor: alpha(theme.palette.primary.main, 0.1),
+                          color: 'primary.main',
+                          fontWeight: 600,
+                          '& .MuiChip-icon': { color: 'primary.main' },
+                        }}
+                      />
+                      {r.category ? <Chip label={r.category} size="small" variant="outlined" /> : null}
+                    </Stack>
+                    <Box sx={{ flexShrink: 0 }}>
+                      <IconButton size="small" onClick={() => handleEdit(r)} aria-label={`Edit ${r.title}`}>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton size="small" color="error" onClick={() => handleDelete(r.id)} aria-label={`Delete ${r.title}`}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
                     </Box>
                   </Box>
-                  <Typography variant="h6" gutterBottom sx={{ flexGrow: 1 }}>{r.title}</Typography>
-                  {r.description && <Typography variant="body2" color="text.secondary" sx={{ mb: 2, flexGrow: 1 }}>{r.description}</Typography>}
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: -0.01, mb: 0.75, lineHeight: 1.35 }}>
+                    {r.title}
+                  </Typography>
+                  {r.description ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, flexGrow: 1, lineHeight: 1.55 }}>
+                      {r.description}
+                    </Typography>
+                  ) : (
+                    <Box sx={{ flexGrow: 1 }} />
+                  )}
                   {r.tags?.length > 0 && (
-                    <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {r.tags.map((t) => <Chip key={t} label={t} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />)}
+                    <Box sx={{ mb: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {r.tags.map((t) => (
+                        <Chip key={t} label={t} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                      ))}
                     </Box>
                   )}
                   <Box sx={{ mt: 'auto' }}>
-                    <Tooltip title="Click to open webpage" arrow placement="top">
-                      <Box onClick={() => handleResourceClick(r.url)} sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}>
-                        <LinkIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Access Resource
-                      </Box>
+                    <Tooltip title="Open in a new tab" arrow placement="top">
+                      <Button
+                        size="small"
+                        startIcon={<LinkIcon />}
+                        onClick={() => handleResourceClick(r.url)}
+                        sx={{ px: 0, minWidth: 0, fontWeight: 600 }}
+                      >
+                        Open link
+                      </Button>
                     </Tooltip>
                   </Box>
                 </CardContent>
@@ -434,7 +555,9 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
         <DialogContent>{renderFormFields(false)}</DialogContent>
         <DialogActions>
           <Button onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleAdd} variant="contained" disabled={!form.title.trim() || !form.url.trim()}>Add Resource</Button>
+          <Button onClick={handleAdd} variant="contained" disabled={!form.title.trim() || !form.url.trim()}>
+            Add Resource
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -443,7 +566,9 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
         <DialogContent>{renderFormFields(true)}</DialogContent>
         <DialogActions>
           <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleUpdate} variant="contained" disabled={!form.title.trim() || !form.url.trim()}>Update Resource</Button>
+          <Button onClick={handleUpdate} variant="contained" disabled={!form.title.trim() || !form.url.trim()}>
+            Update Resource
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
