@@ -105,12 +105,12 @@ const SECURITY_NOTES = [
   {
     icon: <InviteIcon sx={{ fontSize: 22 }} />,
     title: 'Invitation-only access',
-    text: 'Accounts are created through program administrators — not open public registration.',
+    text: 'Accounts are created through ImPACTS program administrators — not open public registration.',
   },
   {
     icon: <ShieldIcon sx={{ fontSize: 22 }} />,
     title: 'Readiness & QI purpose',
-    text: 'Built for pediatric emergency readiness improvement and coordination — not as a clinical record or EHR.',
+    text: 'The PECC Support Tool is for pediatric emergency readiness improvement and coordination — not a clinical record or EHR.',
   },
 ];
 
@@ -361,14 +361,14 @@ const LandingPage: React.FC = () => {
               }}
               aria-hidden
             >
-              I
+              P
             </Box>
             <Box>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
-                ImPACTS
+                PECC Support Tool
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                PECC Support Tool
+                From the ImPACTS program
               </Typography>
             </Box>
           </Stack>
@@ -419,8 +419,8 @@ const LandingPage: React.FC = () => {
                   color="text.secondary"
                   sx={{ maxWidth: 520, fontSize: { xs: '1rem', md: '1.0625rem' }, lineHeight: 1.65 }}
                 >
-                  The ImPACTS PECC Support Tool is organized around Activities, Gap Closure, Cohorts, and Snapshot — the
-                  four areas you use every week to improve pediatric emergency care at your hospital.
+                  The PECC Support Tool is organized around Activities, Gap Closure, Cohorts, and Snapshot — the four
+                  areas you use every week to improve pediatric emergency care at your hospital.
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 0.5 }}>
                   <Button
@@ -537,7 +537,7 @@ const LandingPage: React.FC = () => {
                 textAlign: { xs: 'left', md: 'center' },
               }}
             >
-              How the platform is organized
+              How the PECC Support Tool is organized
             </Typography>
             <Typography
               variant="body1"
@@ -641,8 +641,8 @@ const LandingPage: React.FC = () => {
               </Typography>
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 720, lineHeight: 1.6 }}>
-              ImPACTS is designed for quality-improvement and readiness work. Treat it like any other program tool:
-              no real patient data, and only share what you would put in a de-identified QI report.
+              The PECC Support Tool is designed for quality-improvement and readiness work. Treat it like any other
+              program tool: no real patient data, and only share what you would put in a de-identified QI report.
             </Typography>
             <Grid container spacing={2}>
               {SECURITY_NOTES.map((note) => (
@@ -691,7 +691,7 @@ const LandingPage: React.FC = () => {
             }}
           >
             <Typography variant="h4" sx={{ fontWeight: 600, mb: 1.5 }}>
-              Ready to pick up where you left off?
+              The PECC Support Tool is ready when you are
             </Typography>
             <Typography variant="body1" sx={{ opacity: 0.88, maxWidth: 560, mx: 'auto', mb: 3, lineHeight: 1.6 }}>
               Sign in to continue your hospital&apos;s readiness work. New users need an invitation from an ImPACTS
