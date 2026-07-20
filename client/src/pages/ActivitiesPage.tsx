@@ -952,127 +952,100 @@ const ActivitiesPage = () => {
             </Box>
           </Paper>
 
-          {/* Category summary + filters */}
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', lg: categoryStats.length > 0 ? 'minmax(0, 1fr) minmax(0, 1.4fr)' : '1fr' },
-              gap: 2,
-              width: '100%',
-            }}
-          >
-            {categoryStats.length > 0 && (
-              <Paper elevation={0} sx={{ ...sectionShellSx, minWidth: 0 }}>
-                <Box sx={{ px: { xs: 2, md: 2.5 }, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Typography
-                    variant="overline"
-                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
-                  >
-                    By category
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Hours invested across readiness work
-                  </Typography>
-                </Box>
-                <TableContainer sx={{ maxHeight: 280 }}>
-                  <Table size="small" stickyHeader>
-                    <TableHead>
-                      <TableRow
-                        sx={{
-                          '& th': {
-                            fontWeight: 600,
-                            fontSize: '0.7rem',
-                            textTransform: 'uppercase',
-                            color: 'text.secondary',
-                            bgcolor: alpha(theme.palette.primary.main, 0.03),
-                          },
-                        }}
-                      >
-                        <TableCell>Category</TableCell>
-                        <TableCell align="right">#</TableCell>
-                        <TableCell align="right">Hours</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {categoryStats.slice(0, 8).map((row) => (
-                        <TableRow
-                          key={row.label}
-                          hover
-                          onClick={() => setFilterCategory(row.label)}
-                          sx={{ cursor: 'pointer', '& td': { borderBottomColor: 'divider' } }}
-                        >
-                          <TableCell sx={{ fontSize: '0.8125rem' }}>
-                            <Tooltip title="Filter list by this category">
-                              <span>{row.label}</span>
-                            </Tooltip>
-                          </TableCell>
-                          <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                            {row.count}
-                          </TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'secondary.dark' }}>
-                            {row.hours.toFixed(1)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                {categoryStats.length > 8 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, py: 1 }}>
-                    Showing top 8 of {categoryStats.length} categories
-                  </Typography>
-                )}
-              </Paper>
-            )}
-
-            <Paper elevation={0} sx={{ ...sectionShellSx, minWidth: 0 }}>
+          {/* Categories — full width, two columns */}
+          {categoryStats.length > 0 && (
+            <Paper elevation={0} sx={sectionShellSx}>
+              <Box sx={{ px: { xs: 2, md: 2.5 }, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                >
+                  By category
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Hours invested across readiness work · click a category to filter
+                </Typography>
+              </Box>
               <Box
                 sx={{
-                  px: { xs: 2, md: 2.5 },
-                  py: 1.5,
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 1,
-                  flexWrap: 'wrap',
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+                  gap: 0,
+                  px: { xs: 1, md: 1.5 },
+                  py: 1,
                 }}
               >
-                <Box>
-                  <Typography
-                    variant="overline"
-                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                {categoryStats.map((row, index) => (
+                  <Box
+                    key={row.label}
+                    component="button"
+                    type="button"
+                    onClick={() => setFilterCategory(row.label === filterCategory ? '' : row.label)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1.5,
+                      textAlign: 'left',
+                      width: '100%',
+                      px: 1.5,
+                      py: 1.1,
+                      border: 0,
+                      borderRadius: 1.5,
+                      cursor: 'pointer',
+                      bgcolor:
+                        filterCategory === row.label
+                          ? alpha(theme.palette.secondary.main, 0.1)
+                          : 'transparent',
+                      borderRight: {
+                        md: index % 2 === 0 ? '1px solid' : 'none',
+                      },
+                      borderColor: 'divider',
+                      transition: 'background-color 0.15s ease',
+                      '&:hover': {
+                        bgcolor: alpha(theme.palette.secondary.main, 0.06),
+                      },
+                      '&:focus-visible': {
+                        outline: `2px solid ${theme.palette.secondary.main}`,
+                        outlineOffset: 1,
+                      },
+                    }}
                   >
-                    Filters
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Showing {filteredAndSortedActivities.length} of {activities.length}
-                    {filteredAndSortedActivities.length !== activities.length
-                      ? ` · ${filteredHours.toFixed(1)}h in view`
-                      : ''}
-                  </Typography>
-                </Box>
-              </Box>
-              <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
-                {!isMobile ? (
-                  filterControls
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    Use the filter button above to refine date, category, and sort.
-                    {filterCategory ? (
-                      <>
-                        {' '}
-                        Active category: <strong>{filterCategory}</strong>
-                      </>
-                    ) : null}
-                  </Typography>
-                )}
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: filterCategory === row.label ? 700 : 500,
+                        color: filterCategory === row.label ? 'secondary.dark' : 'text.primary',
+                        lineHeight: 1.35,
+                        pr: 1,
+                      }}
+                    >
+                      {row.label}
+                    </Typography>
+                    <Stack direction="row" spacing={1.25} alignItems="baseline" sx={{ flexShrink: 0 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {row.count}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 700,
+                          color: 'secondary.dark',
+                          fontVariantNumeric: 'tabular-nums',
+                          minWidth: 40,
+                          textAlign: 'right',
+                        }}
+                      >
+                        {row.hours.toFixed(1)}h
+                      </Typography>
+                    </Stack>
+                  </Box>
+                ))}
               </Box>
             </Paper>
-          </Box>
+          )}
 
-          {/* Activity log table */}
+          {/* Filters — full width underneath */}
           <Paper elevation={0} sx={sectionShellSx}>
             <Box
               sx={{
@@ -1092,9 +1065,53 @@ const ActivitiesPage = () => {
                   variant="overline"
                   sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
                 >
+                  Filters
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Showing {filteredAndSortedActivities.length} of {activities.length}
+                  {filteredAndSortedActivities.length !== activities.length
+                    ? ` · ${filteredHours.toFixed(1)}h in view`
+                    : ''}
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+              {!isMobile ? (
+                filterControls
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Use the filter button above to refine date, category, and sort.
+                  {filterCategory ? (
+                    <>
+                      {' '}
+                      Active category: <strong>{filterCategory}</strong>
+                    </>
+                  ) : null}
+                </Typography>
+              )}
+            </Box>
+          </Paper>
+
+          {/* Logged work — clean cards */}
+          <Box>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-end',
+                gap: 1,
+                flexWrap: 'wrap',
+                mb: 1.5,
+              }}
+            >
+              <Box>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                >
                   Activity log
                 </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.1rem' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>
                   Logged work
                 </Typography>
               </Box>
@@ -1106,7 +1123,7 @@ const ActivitiesPage = () => {
             </Box>
 
             {filteredAndSortedActivities.length === 0 ? (
-              <Box sx={{ px: { xs: 2, md: 2.5 }, py: 4, textAlign: 'center' }}>
+              <Paper elevation={0} sx={{ ...sectionShellSx, px: { xs: 2, md: 2.5 }, py: 4, textAlign: 'center' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
                   {activities.length === 0 ? 'No activities yet' : 'No activities match filters'}
                 </Typography>
@@ -1120,151 +1137,194 @@ const ActivitiesPage = () => {
                     Add activity
                   </Button>
                 )}
-              </Box>
+              </Paper>
             ) : (
-              <TableContainer>
-                <Table size="small" aria-label="Activities log">
-                  <TableHead>
-                    <TableRow
+              <Stack spacing={1.25}>
+                {filteredAndSortedActivities.map((activity) => {
+                  const cats = getActivityCategories(activity);
+                  return (
+                    <Paper
+                      key={activity.id}
+                      elevation={0}
                       sx={{
-                        '& th': {
-                          fontWeight: 600,
-                          fontSize: '0.7rem',
-                          letterSpacing: 0.04,
-                          color: 'text.secondary',
-                          textTransform: 'uppercase',
-                          borderBottomColor: 'divider',
-                          py: 1.1,
-                          bgcolor: alpha(theme.palette.primary.main, 0.03),
-                          whiteSpace: 'nowrap',
+                        ...sectionShellSx,
+                        transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+                        '&:hover': {
+                          borderColor: alpha(theme.palette.secondary.main, 0.35),
+                          boxShadow: `0 4px 16px ${alpha(theme.palette.secondary.main, 0.08)}`,
                         },
                       }}
                     >
-                      <TableCell>Date</TableCell>
-                      <TableCell>Activity</TableCell>
-                      <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Categories</TableCell>
-                      <TableCell align="right">Hours</TableCell>
-                      <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Links</TableCell>
-                      <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Entered by</TableCell>
-                      <TableCell align="right" sx={{ width: 56 }}>
-                        Edit
-                      </TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {filteredAndSortedActivities.map((activity) => {
-                      const cats = getActivityCategories(activity);
-                      const gapCount =
-                        (activity.associatedGaps?.length || 0) + (activity.associatedSimulationGaps?.length || 0);
-                      return (
-                        <TableRow
-                          key={activity.id}
-                          hover
-                          sx={{
-                            '& td': { borderBottomColor: 'divider', verticalAlign: 'top', py: 1.15 },
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => handleEdit(activity)}
+                      <Box
+                        sx={{
+                          px: { xs: 1.75, md: 2.25 },
+                          py: 1.25,
+                          borderBottom: '1px solid',
+                          borderColor: 'divider',
+                          bgcolor: alpha(theme.palette.secondary.main, 0.03),
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: 1.5,
+                        }}
+                      >
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={{ xs: 0.5, sm: 2.5 }}
+                          flexWrap="wrap"
+                          useFlexGap
+                          sx={{ flex: 1, minWidth: 0 }}
                         >
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8125rem' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            <Box component="span" sx={{ color: 'text.secondary', fontWeight: 500, mr: 0.75 }}>
+                              Date
+                            </Box>
                             {formatDate(activity.date)}
-                          </TableCell>
-                          <TableCell sx={{ minWidth: 180, maxWidth: 420 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
-                              {activity.activity}
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            <Box component="span" sx={{ color: 'text.secondary', fontWeight: 500, mr: 0.75 }}>
+                              Hours
+                            </Box>
+                            <Box component="span" sx={{ color: 'secondary.dark', fontVariantNumeric: 'tabular-nums' }}>
+                              {activity.hours}
+                            </Box>
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 500,
+                              color: 'text.primary',
+                              minWidth: 0,
+                            }}
+                          >
+                            <Box component="span" sx={{ color: 'text.secondary', fontWeight: 500, mr: 0.75 }}>
+                              Category
+                            </Box>
+                            {cats.join(', ') || '—'}
+                          </Typography>
+                        </Stack>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEdit(activity)}
+                          aria-label="Edit activity"
+                          color="secondary"
+                          sx={{ flexShrink: 0 }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+
+                      <Box sx={{ px: { xs: 1.75, md: 2.25 }, py: 1.5 }}>
+                        <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.5, mb: 1 }}>
+                          {activity.activity}
+                        </Typography>
+
+                        {activity.submitted_by && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                            Entered by {activitySubmitterById[activity.submitted_by] || activity.submitted_by}
+                          </Typography>
+                        )}
+
+                        {activity.associatedGaps && activity.associatedGaps.length > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                              Linked PRS gaps
                             </Typography>
-                            {activity.notes ? (
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{
-                                  display: '-webkit-box',
-                                  WebkitLineClamp: 1,
-                                  WebkitBoxOrient: 'vertical',
-                                  overflow: 'hidden',
-                                  mt: 0.25,
-                                }}
-                              >
-                                {activity.notes}
-                              </Typography>
-                            ) : null}
-                            {activity.simulation ? (
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-                                Sim: {activity.simulation}
-                                {activity.participants ? ` · ${activity.participants} participants` : ''}
-                              </Typography>
-                            ) : null}
-                            <Stack
-                              direction="row"
-                              spacing={0.5}
-                              flexWrap="wrap"
-                              useFlexGap
-                              sx={{ mt: 0.75, display: { xs: 'flex', md: 'none' } }}
-                            >
-                              {cats.slice(0, 2).map((c) => (
-                                <Chip key={c} label={c} size="small" variant="outlined" sx={{ maxWidth: 160, height: 22, fontSize: '0.65rem' }} />
-                              ))}
-                              {cats.length > 2 ? (
-                                <Chip label={`+${cats.length - 2}`} size="small" variant="outlined" sx={{ height: 22, fontSize: '0.65rem' }} />
-                              ) : null}
+                            <Stack spacing={0.75}>
+                              {activity.associatedGaps.map((gapId) => {
+                                const gapPlan = gapPlans.find((gp) => gp.id === gapId);
+                                return (
+                                  <Box
+                                    key={gapId}
+                                    sx={{
+                                      px: 1.25,
+                                      py: 0.85,
+                                      borderRadius: 1,
+                                      bgcolor: alpha(theme.palette.secondary.main, 0.06),
+                                      border: '1px solid',
+                                      borderColor: alpha(theme.palette.secondary.main, 0.18),
+                                    }}
+                                  >
+                                    <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                                      {gapPlan
+                                        ? educationCategories[gapPlan.questionId]?.trim() || `Q${gapPlan.questionId}`
+                                        : gapId}
+                                    </Typography>
+                                    {gapPlan && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        Question #{gapPlan.questionId}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                );
+                              })}
                             </Stack>
-                          </TableCell>
-                          <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, maxWidth: 280 }}>
-                            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                              {cats.slice(0, 3).map((c) => (
-                                <Chip
-                                  key={c}
-                                  label={c}
-                                  size="small"
-                                  variant="outlined"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setFilterCategory(c);
-                                  }}
-                                  sx={{ maxWidth: 200, height: 24, fontSize: '0.7rem' }}
-                                />
-                              ))}
-                              {cats.length > 3 ? (
-                                <Chip label={`+${cats.length - 3}`} size="small" variant="outlined" sx={{ height: 24, fontSize: '0.7rem' }} />
-                              ) : null}
+                          </Box>
+                        )}
+
+                        {activity.associatedSimulationGaps && activity.associatedSimulationGaps.length > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                              Linked simulation gaps
+                            </Typography>
+                            <Stack spacing={0.75}>
+                              {activity.associatedSimulationGaps.map((gapId) => {
+                                const simulationGap = simulationGaps.find((sg) => sg.id === gapId);
+                                return (
+                                  <Box
+                                    key={gapId}
+                                    sx={{
+                                      px: 1.25,
+                                      py: 0.85,
+                                      borderRadius: 1,
+                                      bgcolor: alpha(theme.palette.warning.main, 0.08),
+                                      border: '1px solid',
+                                      borderColor: alpha(theme.palette.warning.main, 0.25),
+                                    }}
+                                  >
+                                    <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                                      {simulationGap ? simulationGap.description : gapId}
+                                    </Typography>
+                                    {simulationGap && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {simulationGap.category} · {simulationGap.severity}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                );
+                              })}
                             </Stack>
-                          </TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'secondary.dark' }}>
-                            {activity.hours}
-                          </TableCell>
-                          <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
-                            {gapCount > 0 ? (
-                              <Chip
-                                size="small"
-                                color="secondary"
-                                variant="outlined"
-                                label={`${gapCount} gap${gapCount === 1 ? '' : 's'}`}
-                                sx={{ height: 24, fontWeight: 600 }}
-                              />
-                            ) : (
-                              <Typography variant="caption" color="text.secondary">
-                                —
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' }, fontSize: '0.8125rem', color: 'text.secondary' }}>
-                            {activity.submitted_by
-                              ? activitySubmitterById[activity.submitted_by] || activity.submitted_by
-                              : '—'}
-                          </TableCell>
-                          <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                            <IconButton size="small" onClick={() => handleEdit(activity)} aria-label="Edit activity" color="secondary">
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                          </Box>
+                        )}
+
+                        {activity.simulation && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: activity.notes ? 1 : 0, lineHeight: 1.45 }}>
+                            <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                              Simulation:{' '}
+                            </Box>
+                            {activity.simulation}
+                            {activity.simulationOther && activity.simulation === 'Other'
+                              ? ` — ${activity.simulationOther}`
+                              : ''}
+                            {activity.participants ? ` · ${activity.participants} participants` : ''}
+                          </Typography>
+                        )}
+
+                        {activity.notes && (
+                          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.45 }}>
+                            <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                              Notes:{' '}
+                            </Box>
+                            {activity.notes}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Paper>
+                  );
+                })}
+              </Stack>
             )}
-          </Paper>
+          </Box>
         </Stack>
 
         <Dialog 
