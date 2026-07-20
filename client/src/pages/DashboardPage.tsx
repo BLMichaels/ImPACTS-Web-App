@@ -605,7 +605,7 @@ const sectionShellSx = {
               <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
                 Tip:{' '}
               </Box>
-              Complete your PRS in Snapshot to surface gaps, build Gap Plans to address them, and log Activities as you
+              Use Snapshot to review progress, build Gap Plans from assessment gaps, and log Activities as you
               go. Your pediatric readiness mentor can guide each stage.
             </Typography>
           </Box>

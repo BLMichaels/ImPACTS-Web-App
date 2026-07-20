@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Grid, 
-  Card, 
-  CardContent, 
+import {
+  Box,
+  Typography,
+  Grid,
   LinearProgress,
   Button,
   Chip,
@@ -13,7 +11,13 @@ import {
   Paper,
   Snackbar,
   Stack,
-  Divider
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  useTheme,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { useAuth } from '../context/AuthContext';
@@ -29,12 +33,7 @@ import {
 } from '../utils/userData';
 import { usePermission, usePrsSectionVisible } from '../hooks/usePermissions';
 import { PERMISSIONS } from '../types/database';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import AssessmentIcon from '@mui/icons-material/Assessment';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import WorkIcon from '@mui/icons-material/Work';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
-import SlideshowIcon from '@mui/icons-material/Slideshow';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import RemoveIcon from '@mui/icons-material/Remove';
@@ -46,7 +45,6 @@ import {
   calculateCurrentPRSScorePercent
 } from '../utils/snapshotPrsScoring';
 import {
-  gapPlanHasStatus,
   isGapPlanCompleted,
   isMilestoneCompleted,
   isSimulationGapCompleted
@@ -73,23 +71,18 @@ import {
 } from '../utils/snapshotPdfExport';
 import { useNavigate } from 'react-router-dom';
 
-const metricCardSx = {
-  height: '100%',
+const sectionShellSx = {
   borderRadius: 2,
   border: '1px solid',
   borderColor: 'divider',
   bgcolor: 'background.paper',
-  boxShadow: 'none',
-  transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
-  '&:hover': {
-    boxShadow: '0 4px 24px rgba(15, 23, 42, 0.08)',
-    borderColor: 'action.hover'
-  }
+  overflow: 'hidden',
 } as const;
 
 const SnapshotPage = () => {
   useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
   const { effectiveUserId, siteId } = useUserProfile();
   
   const [activities, setActivities] = useState<any[]>([]);
@@ -217,7 +210,6 @@ const SnapshotPage = () => {
     const single = String(activity?.category || '').trim();
     return single ? [single] : [];
   };
-  const hasActivityCategory = (activity: any, category: string): boolean => getActivityCategories(activity).includes(category);
   const displayActivityCategories = (activity: any): string =>
     getActivityCategories(activity).join(', ') || 'Uncategorized';
   const activityCategoryStats = useMemo(() => {
@@ -236,6 +228,73 @@ const SnapshotPage = () => {
       .map(([label, value]) => ({ label, count: value.count, hours: value.hours }))
       .sort((a, b) => b.hours - a.hours || b.count - a.count);
   }, [activities]);
+
+  const gapCompletedCount = useMemo(() => gapPlans.filter(isGapPlanCompleted).length, [gapPlans]);
+  const gapStatusRows = useMemo(() => {
+    const counts = gapPlans.reduce((acc: Record<string, number>, plan) => {
+      const status = plan.status || 'Not Set';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return Object.entries(counts).sort((a, b) => (b[1] as number) - (a[1] as number));
+  }, [gapPlans]);
+  const gapPriorityRows = useMemo(() => {
+    const counts = gapPlans.reduce((acc: Record<string, number>, plan) => {
+      const priority = plan.priority || 'Not Set';
+      acc[priority] = (acc[priority] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return Object.entries(counts).sort((a, b) => (b[1] as number) - (a[1] as number));
+  }, [gapPlans]);
+  const highPriorityGapCount = useMemo(() => {
+    return gapPlans.filter((p) => {
+      const priority = String(p.priority || '');
+      return (
+        priority.includes('High Importance & High Urgency') ||
+        priority.includes('High Importance & Low Urgency')
+      );
+    }).length;
+  }, [gapPlans]);
+  const simGapCompletedCount = useMemo(
+    () => simulationGaps.filter(isSimulationGapCompleted).length,
+    [simulationGaps]
+  );
+  const simGapStatusRows = useMemo(() => {
+    const counts = simulationGaps.reduce((acc: Record<string, number>, g) => {
+      const s = (g.status || 'identified') as string;
+      acc[s] = (acc[s] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return Object.entries(counts);
+  }, [simulationGaps]);
+  const simGapSeverityRows = useMemo(() => {
+    const counts = simulationGaps.reduce((acc: Record<string, number>, g) => {
+      const s = (g.severity || 'other') as string;
+      acc[s] = (acc[s] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return Object.entries(counts);
+  }, [simulationGaps]);
+  const recentActivities = useMemo(
+    () =>
+      [...activities]
+        .sort((a, b) => activityTime(b.date) - activityTime(a.date))
+        .slice(0, 8),
+    [activities]
+  );
+  const totalActivityHours = useMemo(
+    () => activities.reduce((sum: number, a: any) => sum + (Number(a.hours) || 0), 0),
+    [activities]
+  );
+  const latestSavedScore = readinessScores.length > 0 ? readinessScores[readinessScores.length - 1] : null;
+  const readinessAverage = useMemo(() => {
+    if (!readinessScores.length) return null;
+    return Math.round(readinessScores.reduce((sum, score) => sum + score.score, 0) / readinessScores.length);
+  }, [readinessScores]);
+  const readinessHighest = useMemo(() => {
+    if (!readinessScores.length) return null;
+    return Math.max(...readinessScores.map((s) => s.score));
+  }, [readinessScores]);
 
   // Load all data for snapshot. When PRS section is hidden, do not load readiness scores or PRS questions.
   useEffect(() => {
@@ -1039,13 +1098,22 @@ const SnapshotPage = () => {
 
   if (isLoading) {
     return (
-      <Box sx={{ bgcolor: 'grey.50', minHeight: '70vh', py: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Paper elevation={0} sx={{ p: 4, maxWidth: 400, width: '100%', mx: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+      <Box
+        sx={{
+          bgcolor: 'background.default',
+          minHeight: '70vh',
+          py: 8,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Paper elevation={0} sx={{ p: 4, maxWidth: 400, width: '100%', mx: 2, ...sectionShellSx }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
             Loading snapshot
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Pulling your latest metrics and activity data…
+            Pulling checklist, gaps, activities, and readiness…
           </Typography>
           <LinearProgress sx={{ borderRadius: 1 }} />
         </Paper>
@@ -1055,15 +1123,24 @@ const SnapshotPage = () => {
 
   if (hasError) {
     return (
-      <Box sx={{ bgcolor: 'grey.50', minHeight: '70vh', py: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Paper elevation={0} sx={{ p: 4, maxWidth: 440, width: '100%', mx: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, textAlign: 'center' }}>
+      <Box
+        sx={{
+          bgcolor: 'background.default',
+          minHeight: '70vh',
+          py: 8,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Paper elevation={0} sx={{ p: 4, maxWidth: 440, width: '100%', mx: 2, ...sectionShellSx, textAlign: 'center' }}>
           <Typography variant="h6" gutterBottom color="error" sx={{ fontWeight: 600 }}>
             Couldn&apos;t load snapshot
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             Check your connection and try again.
           </Typography>
-          <Button variant="contained" onClick={() => setRetryCount(c => c + 1)} sx={{ mr: 1 }}>
+          <Button variant="contained" color="secondary" onClick={() => setRetryCount((c) => c + 1)} sx={{ mr: 1 }}>
             Retry
           </Button>
           <Button variant="outlined" onClick={() => window.location.reload()}>
@@ -1079,1258 +1156,987 @@ const SnapshotPage = () => {
       ? readinessScores[readinessScores.length - 1].score - readinessScores[0].score
       : 0;
 
+  const gapCompletionPct =
+    gapPlans.length > 0 ? Math.round((gapCompletedCount / gapPlans.length) * 100) : 0;
+
+  const kpiItems = [
+    ...(showPrsSection
+      ? [
+          {
+            label: 'Latest saved score',
+            value:
+              latestSavedScore != null
+                ? String(latestSavedScore.score)
+                : currentPRSScore !== null
+                  ? `${currentPRSScore}%`
+                  : '—',
+            caption:
+              latestSavedScore != null
+                ? scoreTrend !== 0
+                  ? `${scoreTrend > 0 ? '+' : ''}${scoreTrend} since first`
+                  : 'From Dashboard assessments'
+                : currentPRSScore !== null
+                  ? 'Live PRS (no saved scores yet)'
+                  : 'No scores yet',
+          },
+          {
+            label: 'Live PRS',
+            value: currentPRSScore !== null ? `${currentPRSScore}%` : '—',
+            caption: 'From current questionnaire',
+          },
+        ]
+      : []),
+    {
+      label: 'Checklist',
+      value: checklistMetrics.totalTasks > 0 ? checklistMetrics.kpiLabel : '—',
+      caption:
+        checklistMetrics.totalTasks > 0
+          ? `${checklistMetrics.overallPct}% complete`
+          : 'No tasks yet',
+    },
+    {
+      label: 'Gap plans',
+      value: String(gapPlans.length),
+      caption:
+        gapPlans.length > 0
+          ? `${gapPlans.length - gapCompletedCount} open · ${gapCompletedCount} done`
+          : 'None yet',
+    },
+    {
+      label: 'Activities',
+      value: String(activities.length),
+      caption: activities.length > 0 ? `${totalActivityHours.toFixed(1)} hrs logged` : 'None yet',
+    },
+    {
+      label: 'Sim gaps',
+      value: String(simulationGaps.length),
+      caption:
+        simulationGaps.length > 0
+          ? `${simulationGaps.length - simGapCompletedCount} open · ${simGapCompletedCount} done`
+          : 'None yet',
+    },
+  ];
+
   return (
     <>
-      <Box
-        sx={{
-          bgcolor: 'grey.50',
-          minHeight: '100%',
-          pb: { xs: 4, md: 6 },
-          borderBottom: '1px solid',
-          borderColor: 'divider'
-        }}
-      >
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, maxWidth: { xl: '1200px !important' } }}>
-        {/* Header — product-style hero */}
-        <Stack spacing={3} sx={{ mb: 3 }}>
-          <Paper
-            elevation={0}
-            sx={{
-              p: { xs: 2.5, md: 3.5 },
-              borderRadius: 2,
-              border: '1px solid',
-              borderColor: 'divider',
-              background: (theme) =>
-                `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${theme.palette.background.paper} 55%, ${alpha(theme.palette.grey[100], 0.5)} 100%)`
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-              <Box sx={{ maxWidth: { md: 'min(100%, 560px)' } }}>
-                <Typography
-                  variant="overline"
-                  sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 0.08, display: 'block', mb: 1 }}
-                >
-                  Performance overview
-                </Typography>
-                <Typography variant="h4" component="h1" sx={{ fontWeight: 700, letterSpacing: -0.02, mb: 1 }}>
-                  Snapshot
-                </Typography>
-                <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.65, fontSize: { xs: '0.95rem', sm: '1rem' } }}>
-                  One place for readiness trend, checklist and gap work, activities, and simulations—consistent with your other tabs.
-                  Export a PDF when you need to share progress offline.
-                </Typography>
-              </Box>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
-                <Button size="small" variant="outlined" onClick={() => navigate('/activities')}>
-                  Activities
-                </Button>
-                <Button size="small" variant="outlined" onClick={() => navigate('/milestones')}>
-                  Checklist
-                </Button>
-                <Button
-                  variant="contained"
-                  size="medium"
-                  startIcon={<PictureAsPdfIcon />}
-                  onClick={exportToComprehensivePDF}
-                  sx={{
-                    px: 2,
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    boxShadow: 'none',
-                    bgcolor: 'grey.900',
-                    '&:hover': { bgcolor: 'grey.800', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }
-                  }}
-                >
-                  Export PDF
-                </Button>
-              </Stack>
-            </Box>
-          </Paper>
-
-          {!effectiveHospitalId && (
-            <Alert severity="warning" variant="outlined">
-              Your account is not linked to a hospital site yet. Some metrics use personal saved data only. Ask your
-              mentor or manager to confirm hospital assignment in the CRM, then refresh this page.
-            </Alert>
-          )}
-
-          {checklistMetrics.source === 'site_checklist' && (
-            <Alert severity="info" variant="outlined">
-              Checklist progress is synced from your site checklist (same data as the Checklist tab).
-            </Alert>
-          )}
-
-          {/* Quick Stats Banner - Only show if PRS section is visible */}
-          {showPrsSection && readinessScores.length > 0 && (
-            <Alert 
-              severity="info" 
-              sx={{ 
-                mb: 3,
-                '& .MuiAlert-message': { width: '100%' }
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+        <Container
+          maxWidth={false}
+          sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+        >
+          <Stack spacing={{ xs: 2, md: 2.5 }}>
+            {/* Hero */}
+            <Paper
+              elevation={0}
+              sx={{
+                p: { xs: 2, md: 2.75 },
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                background: (t) =>
+                  `linear-gradient(120deg, ${alpha(t.palette.secondary.main, 0.07)} 0%, ${t.palette.background.paper} 42%, ${alpha(t.palette.primary.main, 0.04)} 100%)`,
               }}
             >
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                    Latest Assessment Score: {readinessScores[readinessScores.length - 1]?.score || 'N/A'}
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  gap: 2,
+                }}
+              >
+                <Box sx={{ maxWidth: { md: 640 } }}>
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
+                  >
+                    Site overview
                   </Typography>
-                  {readinessScores.length > 1 && (
-                    <Typography variant="body2">
-                      {scoreTrend > 0 ? (
-                        <Box component="span" sx={{ color: 'success.main', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                          <ArrowUpwardIcon fontSize="small" /> +{scoreTrend} points improvement
-                        </Box>
-                      ) : scoreTrend < 0 ? (
-                        <Box component="span" sx={{ color: 'error.main', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                          <ArrowDownwardIcon fontSize="small" /> {scoreTrend} points
-                        </Box>
-                      ) : (
-                        <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                          <RemoveIcon fontSize="small" /> No change
-                        </Box>
-                      )}
-                      {' '}since first assessment
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="h4"
+                    component="h1"
+                    sx={{
+                      fontWeight: 700,
+                      letterSpacing: -0.02,
+                      mb: 0.75,
+                      fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
+                    }}
+                  >
+                    Snapshot
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}>
+                    Summary of checklist, gaps, activities, simulations, and readiness for this site. Export a PDF to
+                    share with leadership.
+                  </Typography>
                 </Box>
-                {currentPRSScore !== null && (
-                  <Chip 
-                    label={`Current Live PRS: ${currentPRSScore}%`} 
-                    color="primary" 
-                    variant="outlined"
-                    sx={{ fontWeight: 'bold' }}
-                  />
-                )}
-              </Box>
-            </Alert>
-          )}
-        </Stack>
-
-        <Divider sx={{ my: 1 }} />
-
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.08, textTransform: 'uppercase', fontSize: '0.7rem' }}>
-            Key metrics
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            High-level numbers from your saved data. PRS cards appear when that section is enabled.
-          </Typography>
-        </Box>
-        <Box
-          sx={{
-            mb: 4,
-            display: 'grid',
-            gap: 2,
-            gridTemplateColumns: {
-              xs: '1fr',
-              sm: 'repeat(2, minmax(0, 1fr))',
-              md: showPrsSection ? 'repeat(5, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))'
-            }
-          }}
-        >
-          {showPrsSection && (
-            <Box>
-              <Card sx={metricCardSx}>
-                <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                  <Box sx={{ 
-                    display: 'inline-flex', 
-                    p: 1.5, 
-                    borderRadius: '50%', 
-                    bgcolor: (t) => alpha(t.palette.primary.main, 0.12), 
-                    mb: 2 
-                  }}>
-                    <TrendingUpIcon sx={{ fontSize: 28, color: 'primary.main' }} />
-                  </Box>
-                  <Typography variant="h3" color="primary" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                    {readinessScores.length > 0 
-                      ? readinessScores[readinessScores.length - 1]?.score || 'N/A' 
-                      : currentPRSScore !== null ? currentPRSScore : 'N/A'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                    Current Readiness Score
-                  </Typography>
-                  {readinessScores.length > 1 && (
-                    <Typography variant="caption" color={scoreTrend >= 0 ? 'success.main' : 'error.main'} sx={{ mt: 0.5, display: 'block' }}>
-                      {scoreTrend >= 0 ? '↑' : '↓'} {Math.abs(scoreTrend)} from first
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Box>
-          )}
-          
-          <Box>
-            <Card sx={metricCardSx}>
-              <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Box sx={{ 
-                  display: 'inline-flex', 
-                  p: 1.5, 
-                  borderRadius: '50%', 
-                  bgcolor: (t) => alpha(t.palette.success.main, 0.12), 
-                  mb: 2 
-                }}>
-                  <CheckCircleIcon sx={{ fontSize: 28, color: 'success.main' }} />
-                </Box>
-                <Typography variant="h3" color="success.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  {checklistMetrics.totalTasks > 0 ? checklistMetrics.kpiLabel : '—'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Checklist Progress
-                </Typography>
-                {checklistMetrics.totalTasks > 0 && (
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={checklistMetrics.overallPct}
-                    sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </Box>
-          
-          <Box>
-            <Card sx={metricCardSx}>
-              <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Box sx={{ 
-                  display: 'inline-flex', 
-                  p: 1.5, 
-                  borderRadius: '50%', 
-                  bgcolor: (t) => alpha(t.palette.warning.main, 0.15), 
-                  mb: 2 
-                }}>
-                  <AssessmentIcon sx={{ fontSize: 28, color: 'warning.main' }} />
-                </Box>
-                <Typography variant="h3" color="warning.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  {gapPlans.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Total Gap Plans
-                </Typography>
-                {gapPlans.length > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {gapPlans.filter((p: any) => isGapPlanCompleted(p)).length} completed
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Box>
-          
-          <Box>
-            <Card sx={metricCardSx}>
-              <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Box sx={{ 
-                  display: 'inline-flex', 
-                  p: 1.5, 
-                  borderRadius: '50%', 
-                  bgcolor: (t) => alpha(t.palette.info.main, 0.12), 
-                  mb: 2 
-                }}>
-                  <WorkIcon sx={{ fontSize: 28, color: 'info.main' }} />
-                </Box>
-                <Typography variant="h3" color="info.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  {activities.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Total Activities
-                </Typography>
-                {activities.length > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {activities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0).toFixed(1)} hours logged
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Box>
-
-          <Box>
-            <Card sx={metricCardSx}>
-              <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Box sx={{ 
-                  display: 'inline-flex', 
-                  p: 1.5, 
-                  borderRadius: '50%', 
-                  bgcolor: (t) => alpha(t.palette.secondary.main, 0.12), 
-                  mb: 2 
-                }}>
-                  <SlideshowIcon sx={{ fontSize: 28, color: 'secondary.main' }} />
-                </Box>
-                <Typography variant="h3" color="secondary.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  {simulationGaps.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Simulation Gaps
-                </Typography>
-                {simulationGaps.length > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {simulationGaps.filter((g: any) => isSimulationGapCompleted(g)).length} completed
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Box>
-        </Box>
-
-      {/* Progress Overview: Checklist (overall + by stage in one card) and Gap Plans */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ borderRadius: 2, height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Checklist Progress
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {checklistMetrics.source === 'site_checklist'
-                  ? 'Progress from your site checklist tasks (matches the Checklist tab).'
-                  : 'Milestone checklist completion. If your program uses stages with tasks, progress is counted by completed tasks.'}
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {checklistMetrics.totalTasks > 0 ? (
-                  <>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Overall Progress</Typography>
-                      <Typography variant="body2">{checklistMetrics.overallPct}%</Typography>
-                    </Box>
-                    <LinearProgress variant="determinate" value={checklistMetrics.overallPct} sx={{ height: 8, borderRadius: 4 }} />
-                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        {checklistMetrics.completedTasks} of {checklistMetrics.totalTasks} completed
-                      </Typography>
-                      <Button size="small" onClick={() => navigate('/milestones')}>
-                        Open checklist
-                      </Button>
-                    </Box>
-                    {checklistMetrics.source === 'milestones_staged' && milestones[0]?.tasks != null && (
-                      <>
-                        <Typography variant="subtitle2" sx={{ mt: 3, mb: 1.5, fontWeight: 600 }}>Progress by Stage</Typography>
-                        <Grid container spacing={2}>
-                          {milestones.map((stage: any) => {
-                            const totalTasks = stage.tasks?.length || 0;
-                            const completedTasks = stage.tasks?.filter((task: any) => task.completed)?.length || 0;
-                            const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                            return (
-                              <Grid item xs={12} sm={6} key={stage.id}>
-                                <Box sx={{ mb: 1 }}>
-                                  <Typography variant="body2" color="primary.main" sx={{ fontWeight: 500 }}>
-                                    {stage.title}
-                                  </Typography>
-                                  <Typography variant="body2" color="text.secondary">
-                                    {completedTasks} of {totalTasks} tasks · {progress}%
-                                  </Typography>
-                                  <LinearProgress
-                                    variant="determinate"
-                                    value={progress}
-                                    sx={{ mt: 0.5, height: 6, borderRadius: 3 }}
-                                  />
-                                </Box>
-                              </Grid>
-                            );
-                          })}
-                        </Grid>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      No checklist progress recorded yet.
-                    </Typography>
-                    <Button size="small" variant="outlined" onClick={() => navigate('/milestones')}>
-                      Go to Checklist
-                    </Button>
-                  </Box>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ borderRadius: 2, height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Gap Plan Completion Overview
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Counts by status from your gap plan list (same labels as the Gap Plan tab).
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {gapPlans.length > 0 ? (
-                  <>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">In Progress</Typography>
-                      <Typography variant="body2">
-                        {gapPlans.filter(p => gapPlanHasStatus(p, 'In Progress')).length}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Completed</Typography>
-                      <Typography variant="body2">
-                        {gapPlans.filter(p => gapPlanHasStatus(p, 'Completed')).length}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Needs Update</Typography>
-                      <Typography variant="body2">
-                        {gapPlans.filter(p => gapPlanHasStatus(p, 'Needs Update')).length}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Need to Develop</Typography>
-                      <Typography variant="body2">
-                        {gapPlans.filter(p => gapPlanHasStatus(p, 'Need to Develop')).length}
-                      </Typography>
-                    </Box>
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No gap plans data available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Recent Activities (with submitter)
-              </Typography>
-              {activities.length > 0 ? (
-                <Stack spacing={1}>
-                  {[...activities]
-                    .sort((a, b) => activityTime(b.date) - activityTime(a.date))
-                    .slice(0, 8)
-                    .map((a, idx) => (
-                      <Box key={`${a.id || idx}`} sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {a.activity || a.title || 'Activity'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatActivityDateLabel(a.date)} • {displayActivityCategories(a)}
-                        </Typography>
-                        {a.submitted_by && (
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            Entered by: {activitySubmitterById[a.submitted_by] || a.submitted_by}
-                          </Typography>
-                        )}
-                      </Box>
-                    ))}
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                  <Button size="small" variant="outlined" onClick={() => navigate('/milestones')}>
+                    Checklist
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => navigate('/gap-plan')}>
+                    Gap Plan
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => navigate('/activities')}>
+                    Activities
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    size="small"
+                    startIcon={<PictureAsPdfIcon />}
+                    onClick={exportToComprehensivePDF}
+                  >
+                    Export PDF
+                  </Button>
                 </Stack>
-              ) : (
-                <Typography variant="body2" color="text.secondary">No activities recorded</Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Divider sx={{ my: 3 }} />
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.12, color: 'text.secondary', display: 'block' }}>
-          Simulations
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Facilitation activity and participants from your Activities log.
-        </Typography>
-      </Box>
-
-      {/* Simulation Analytics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={6}>
-              <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Simulations by Type
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                    Includes Simulation Facilitation and SC-tagged activities
-                  </Typography>
-                  <SnapshotBarChart
-                    data={simulationTypeData}
-                    valueLabel="Simulations"
-                    emptyMessage="No simulation activities recorded"
-                  />
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Simulation Participants
-                  </Typography>
-                  <SnapshotBarChart
-                    data={simulationParticipantData}
-                    valueLabel="Participants"
-                    emptyMessage="No simulation activities recorded"
-                  />
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-
-
-
-
-
-      <Divider sx={{ my: 3 }} />
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.12, color: 'text.secondary', display: 'block' }}>
-          Gap plans — detail
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Status mix and priorities beyond the summary cards above.
-        </Typography>
-      </Box>
-
-      {/* Gap Plan Analytics - Action Planning Status */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Gap Plan Status Distribution
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
-                    {gapPlans.length > 0 ? (
-                      <>
-                        {(() => {
-                          const statusCounts = gapPlans.reduce((acc, plan) => {
-                            const status = plan.status || 'Not Set';
-                            acc[status] = (acc[status] || 0) + 1;
-                            return acc;
-                          }, {} as Record<string, number>);
-                          
-                          const totalPlans = gapPlans.length;
-                          const completedPlans = gapPlans.filter(isGapPlanCompleted).length;
-                          const completionRate = totalPlans > 0 ? Math.round((completedPlans / totalPlans) * 100) : 0;
-                          
-                          return (
-                            <>
-                              <Box sx={{ mb: 3, textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
-                                <Typography variant="h4" color="white">
-                                  {completionRate}%
-                                </Typography>
-                                <Typography variant="body2" color="white">
-                                  Completion Rate
-                                </Typography>
-                                <Typography variant="caption" color="white">
-                                  {completedPlans} of {totalPlans} plans completed
-                                </Typography>
-                              </Box>
-                              <Grid container spacing={1}>
-                                {Object.entries(statusCounts).map(([status, count]) => (
-                                  <Grid item xs={6} key={status}>
-                                    <Box sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                                      <Typography variant="h6" color="primary.main">
-                                        {count as number}
-                                      </Typography>
-                                      <Typography variant="caption" color="text.secondary">
-                                        {status as string}
-                                      </Typography>
-                                    </Box>
-                                  </Grid>
-                                ))}
-                              </Grid>
-                            </>
-                          );
-                        })()}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No gap plans available
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Gap Plan Priority Breakdown
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
-                    {gapPlans.length > 0 ? (
-                      <>
-                        {(() => {
-                          const priorityCounts = gapPlans.reduce((acc, plan) => {
-                            const priority = plan.priority || 'Not Set';
-                            acc[priority] = (acc[priority] || 0) + 1;
-                            return acc;
-                          }, {} as Record<string, number>);
-                          
-                          const highPriority = (priorityCounts['High Importance & High Urgency (Do Now)'] || 0) + 
-                                             (priorityCounts['High Importance & Low Urgency (Do Next)'] || 0);
-                          
-                          return (
-                            <>
-                              <Box sx={{ mb: 3, textAlign: 'center', p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
-                                <Typography variant="h4" color="white">
-                                  {highPriority}
-                                </Typography>
-                                <Typography variant="body2" color="white">
-                                  High Priority Plans
-                                </Typography>
-                              </Box>
-                              <Grid container spacing={1}>
-                                {Object.entries(priorityCounts).map(([priority, count]) => (
-                                  <Grid item xs={12} key={priority}>
-                                    <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <Typography variant="body2" sx={{ flex: 1 }}>
-                                        {(priority as string).replace(/\([^)]*\)/g, '').trim()}
-                                      </Typography>
-                                      <Typography variant="h6" color="primary.main">
-                                        {count as number}
-                                      </Typography>
-                                    </Box>
-                                  </Grid>
-                                ))}
-                              </Grid>
-                            </>
-                          );
-                        })()}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No gap plans available
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-      {/* Simulation Gaps Analytics - From Simulation tab */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Simulation Gaps by Status
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {simulationGaps.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {(() => {
-                      const statusCounts = simulationGaps.reduce((acc, g) => {
-                        const s = (g.status || 'identified') as string;
-                        acc[s] = (acc[s] || 0) + 1;
-                        return acc;
-                      }, {} as Record<string, number>);
-                      const total = simulationGaps.length;
-                      return Object.entries(statusCounts).map(([status, count]) => {
-                        const n = count as number;
-                        return (
-                        <Grid item xs={12} key={status}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                              {status.replace(/_/g, ' ')}
-                            </Typography>
-                            <Typography variant="body2" color="primary.main">
-                              {`${n} (${Math.round((n / total) * 100)}%)`}
-                            </Typography>
-                          </Box>
-                          <LinearProgress
-                            variant="determinate"
-                            value={(n / total) * 100}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                        </Grid>
-                      ); });
-                    })()}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No simulation gaps recorded. Add gaps from the Simulation tab.
-                  </Typography>
-                )}
               </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Simulation Gaps by Severity
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {simulationGaps.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {(() => {
-                      const severityCounts = simulationGaps.reduce((acc, g) => {
-                        const s = (g.severity || 'other') as string;
-                        acc[s] = (acc[s] || 0) + 1;
-                        return acc;
-                      }, {} as Record<string, number>);
-                      const total = simulationGaps.length;
-                      return Object.entries(severityCounts).map(([severity, count]) => {
-                        const n = count as number;
-                        return (
-                        <Grid item xs={12} key={severity}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                              {severity}
-                            </Typography>
-                            <Typography variant="body2" color="primary.main">
-                              {`${n} (${Math.round((n / total) * 100)}%)`}
-                            </Typography>
-                          </Box>
-                          <LinearProgress
-                            variant="determinate"
-                            value={(n / total) * 100}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                        </Grid>
-                      ); });
-                    })()}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No simulation gaps recorded
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+            </Paper>
 
-      <Divider sx={{ my: 3 }} />
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.12, color: 'text.secondary', display: 'block' }}>
-          Activities &amp; hours
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Category mix and time logged—same data as the Activities tab.
-        </Typography>
-      </Box>
+            {!effectiveHospitalId && (
+              <Alert severity="warning" variant="outlined">
+                Your account is not linked to a hospital site yet. Some metrics use personal saved data only. Ask your
+                mentor or manager to confirm hospital assignment in the CRM, then refresh this page.
+              </Alert>
+            )}
 
-      {/* Activity Analysis - Work Tracking and Insights */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} lg={7}>
-          <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                Activity categories
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Full category names with activity counts—optimized for leadership review and export.
-              </Typography>
-              {activityCategoryStats.length > 0 ? (
-                <SnapshotHorizontalBarChart
-                  data={activityCategoryStats.map((row) => ({
-                    label: row.label,
-                    value: row.count,
-                    sublabel: `${row.hours.toFixed(1)} hrs`,
-                  }))}
-                  valueLabel="Activities"
-                  minHeight={300}
-                />
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  No activities data available
+            {/* At a glance */}
+            <Paper elevation={0} sx={sectionShellSx}>
+              <Box
+                sx={{
+                  px: { xs: 2, md: 2.5 },
+                  py: 1.5,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                }}
+              >
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                >
+                  At a glance
                 </Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} lg={5}>
-          <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                Hours by category
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Where PECC time is invested across readiness work.
-              </Typography>
-              {activityCategoryStats.length > 0 ? (
-                <Stack spacing={1.25}>
-                  {activityCategoryStats.map((row, index) => (
-                    <Box
-                      key={row.label}
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                  Live totals from Checklist, Gap Plan, Activities, and Simulation
+                  {showPrsSection ? ', plus saved readiness scores' : ''}.
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: 'repeat(2, minmax(0, 1fr))',
+                    md: `repeat(${Math.min(kpiItems.length, 4)}, minmax(0, 1fr))`,
+                    lg: `repeat(${kpiItems.length}, minmax(0, 1fr))`,
+                  },
+                  '& > *': {
+                    borderRight: { xs: 'none', md: '1px solid' },
+                    borderBottom: { xs: '1px solid', lg: 'none' },
+                    borderColor: 'divider',
+                  },
+                  '& > *:nth-of-type(2n)': { borderRight: { xs: 'none' } },
+                  '& > *:last-child': { borderRight: 'none', borderBottom: 'none' },
+                }}
+              >
+                {kpiItems.map((item) => (
+                  <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75 }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontWeight: 600, letterSpacing: 0.04, textTransform: 'uppercase', fontSize: '0.65rem' }}
+                    >
+                      {item.label}
+                    </Typography>
+                    <Typography
                       sx={{
-                        p: 1.25,
-                        borderRadius: 1.5,
-                        bgcolor: index % 2 === 0 ? 'grey.50' : 'background.paper',
-                        border: '1px solid',
-                        borderColor: 'divider',
+                        fontWeight: 700,
+                        fontSize: '1.5rem',
+                        letterSpacing: -0.02,
+                        color: 'secondary.dark',
+                        fontVariantNumeric: 'tabular-nums',
+                        lineHeight: 1.15,
+                        mt: 0.5,
                       }}
                     >
-                      <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.45, mb: 0.5 }}>
-                        {row.label}
+                      {item.value}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.35 }}>
+                      {item.caption}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Paper>
+
+            {/* Checklist + Gap plans */}
+            <Grid container spacing={2}>
+              <Grid item xs={12} lg={6}>
+                <Paper elevation={0} sx={{ ...sectionShellSx, height: '100%' }}>
+                  <Box
+                    sx={{
+                      px: { xs: 2, md: 2.5 },
+                      py: 1.5,
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      gap: 1,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Box>
+                      <Typography
+                        variant="overline"
+                        sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                      >
+                        Checklist tab
                       </Typography>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          {row.count} {row.count === 1 ? 'activity' : 'activities'}
-                        </Typography>
-                        <Typography variant="caption" color="primary.main" sx={{ fontWeight: 700 }}>
-                          {row.hours.toFixed(1)} hrs
-                        </Typography>
-                      </Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.1rem' }}>
+                        Checklist progress
+                      </Typography>
+                    </Box>
+                    <Button size="small" onClick={() => navigate('/milestones')}>
+                      Open checklist
+                    </Button>
+                  </Box>
+                  <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+                    {checklistMetrics.source === 'site_checklist' && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                        Using site checklist data (same as the Checklist tab).
+                      </Typography>
+                    )}
+                    {checklistMetrics.totalTasks > 0 ? (
+                      <>
+                        <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            Overall
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {checklistMetrics.completedTasks} of {checklistMetrics.totalTasks} · {checklistMetrics.overallPct}%
+                          </Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={checklistMetrics.overallPct}
+                          sx={{ height: 8, borderRadius: 4, mb: 2 }}
+                        />
+                        {checklistMetrics.source === 'milestones_staged' && milestones[0]?.tasks != null && (
+                          <Stack spacing={1.25}>
+                            {milestones.map((stage: any) => {
+                              const totalTasks = stage.tasks?.length || 0;
+                              const completedTasks = stage.tasks?.filter((task: any) => task.completed)?.length || 0;
+                              const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                              return (
+                                <Box key={stage.id}>
+                                  <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.35 }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {stage.title}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {completedTasks}/{totalTasks} · {progress}%
+                                    </Typography>
+                                  </Stack>
+                                  <LinearProgress variant="determinate" value={progress} sx={{ height: 5, borderRadius: 3 }} />
+                                </Box>
+                              );
+                            })}
+                          </Stack>
+                        )}
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No checklist progress recorded yet.
+                      </Typography>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} lg={6}>
+                <Paper elevation={0} sx={{ ...sectionShellSx, height: '100%' }}>
+                  <Box
+                    sx={{
+                      px: { xs: 2, md: 2.5 },
+                      py: 1.5,
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      gap: 1,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Box>
+                      <Typography
+                        variant="overline"
+                        sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                      >
+                        Gap Plan tab
+                      </Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.1rem' }}>
+                        Gap plans — status &amp; priority
+                      </Typography>
+                    </Box>
+                    <Button size="small" onClick={() => navigate('/gap-plan')}>
+                      Open gap plan
+                    </Button>
+                  </Box>
+                  <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+                    {gapPlans.length > 0 ? (
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={4}>
+                          <Box
+                            sx={{
+                              p: 1.5,
+                              borderRadius: 1.5,
+                              bgcolor: alpha(theme.palette.secondary.main, 0.08),
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              textAlign: 'center',
+                              height: '100%',
+                            }}
+                          >
+                            <Typography sx={{ fontWeight: 700, fontSize: '1.75rem', color: 'secondary.dark', lineHeight: 1 }}>
+                              {gapCompletionPct}%
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Completion · {gapCompletedCount}/{gapPlans.length}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                              {highPriorityGapCount} high priority
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.04 }}>
+                            By status
+                          </Typography>
+                          <Stack spacing={0.75} sx={{ mt: 1 }}>
+                            {gapStatusRows.map(([status, count]) => (
+                              <Stack key={status as string} direction="row" justifyContent="space-between" spacing={1}>
+                                <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                                  {status as string}
+                                </Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                                  {count as number}
+                                </Typography>
+                              </Stack>
+                            ))}
+                          </Stack>
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.04 }}>
+                            By priority
+                          </Typography>
+                          <Stack spacing={0.75} sx={{ mt: 1 }}>
+                            {gapPriorityRows.map(([priority, count]) => (
+                              <Stack key={priority as string} direction="row" justifyContent="space-between" spacing={1}>
+                                <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                                  {String(priority).replace(/\([^)]*\)/g, '').trim()}
+                                </Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                                  {count as number}
+                                </Typography>
+                              </Stack>
+                            ))}
+                          </Stack>
+                        </Grid>
+                      </Grid>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No gap plans yet. Create them from the Gap Plan tab.
+                      </Typography>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            {/* Simulation */}
+            <Paper elevation={0} sx={sectionShellSx}>
+              <Box
+                sx={{
+                  px: { xs: 2, md: 2.5 },
+                  py: 1.5,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                  >
+                    Activities + Simulation tabs
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.1rem' }}>
+                    Simulation activity &amp; gaps
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                    Facilitation from Activities; gaps from the Simulation tab.
+                  </Typography>
+                </Box>
+                <Button size="small" onClick={() => navigate('/simulation')}>
+                  Open simulation
+                </Button>
+              </Box>
+              <Box sx={{ p: { xs: 2, md: 2.5 } }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      Simulations by type
+                    </Typography>
+                    <SnapshotBarChart
+                      data={simulationTypeData}
+                      valueLabel="Simulations"
+                      emptyMessage="No simulation activities recorded"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      Participants by type
+                    </Typography>
+                    <SnapshotBarChart
+                      data={simulationParticipantData}
+                      valueLabel="Participants"
+                      emptyMessage="No simulation activities recorded"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      Gaps by status
+                    </Typography>
+                    {simulationGaps.length > 0 ? (
+                      <Stack spacing={1}>
+                        {simGapStatusRows.map(([status, count]) => {
+                          const n = count as number;
+                          const pct = Math.round((n / simulationGaps.length) * 100);
+                          return (
+                            <Box key={status as string}>
+                              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.35 }}>
+                                <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                                  {String(status).replace(/_/g, ' ')}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {n} ({pct}%)
+                                </Typography>
+                              </Stack>
+                              <LinearProgress variant="determinate" value={pct} sx={{ height: 5, borderRadius: 3 }} />
+                            </Box>
+                          );
+                        })}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No simulation gaps recorded.
+                      </Typography>
+                    )}
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      Gaps by severity
+                    </Typography>
+                    {simulationGaps.length > 0 ? (
+                      <Stack spacing={1}>
+                        {simGapSeverityRows.map(([severity, count]) => {
+                          const n = count as number;
+                          const pct = Math.round((n / simulationGaps.length) * 100);
+                          return (
+                            <Box key={severity as string}>
+                              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.35 }}>
+                                <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                                  {severity as string}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {n} ({pct}%)
+                                </Typography>
+                              </Stack>
+                              <LinearProgress variant="determinate" value={pct} sx={{ height: 5, borderRadius: 3 }} />
+                            </Box>
+                          );
+                        })}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No simulation gaps recorded.
+                      </Typography>
+                    )}
+                  </Grid>
+                </Grid>
+              </Box>
+            </Paper>
+
+            {/* Activities */}
+            <Paper elevation={0} sx={sectionShellSx}>
+              <Box
+                sx={{
+                  px: { xs: 2, md: 2.5 },
+                  py: 1.5,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                  >
+                    Activities tab
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.1rem' }}>
+                    Time, categories &amp; recent work
+                  </Typography>
+                </Box>
+                <Button size="small" onClick={() => navigate('/activities')}>
+                  Open activities
+                </Button>
+              </Box>
+              <Box sx={{ p: { xs: 2, md: 2.5 } }}>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1.5}
+                  sx={{ mb: 2.5 }}
+                  useFlexGap
+                  flexWrap="wrap"
+                >
+                  {[
+                    { label: 'This month', value: workHours.thisMonthHours },
+                    { label: 'Last month', value: workHours.lastMonthHours },
+                    { label: 'This year', value: workHours.thisYearHours },
+                    { label: 'Total', value: workHours.totalHours },
+                  ].map((tile) => (
+                    <Box
+                      key={tile.label}
+                      sx={{
+                        flex: '1 1 120px',
+                        px: 1.5,
+                        py: 1.25,
+                        borderRadius: 1.5,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.04 }}>
+                        {tile.label}
+                      </Typography>
+                      <Typography sx={{ fontWeight: 700, fontSize: '1.25rem', color: 'secondary.dark', fontVariantNumeric: 'tabular-nums' }}>
+                        {Number(tile.value).toFixed(1)}h
+                      </Typography>
                     </Box>
                   ))}
                 </Stack>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  No activities recorded
-                </Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
 
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                PECC Work Hours Analysis
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {activities.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {[
-                      { label: 'This Month', value: workHours.thisMonthHours, bgcolor: 'primary.light' },
-                      { label: 'Last Month', value: workHours.lastMonthHours, bgcolor: 'secondary.light' },
-                      { label: 'This Year', value: workHours.thisYearHours, bgcolor: 'success.light' },
-                      { label: 'Total Hours', value: workHours.totalHours, bgcolor: 'warning.light' },
-                    ].map((tile) => (
-                      <Grid item xs={6} sm={3} key={tile.label}>
-                        <Box sx={{ textAlign: 'center', p: 2, bgcolor: tile.bgcolor, borderRadius: 1 }}>
-                          <Typography variant="h4" color="white">
-                            {Number(tile.value).toFixed(1)}
-                          </Typography>
-                          <Typography variant="body2" color="white">
-                            {tile.label}
-                          </Typography>
-                        </Box>
-                      </Grid>
-                    ))}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No activities recorded
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-      <Divider sx={{ my: 3 }} />
-      <Box sx={{ mb: 1 }}>
-        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.12, color: 'primary.main', display: 'block' }}>
-          Pediatric readiness
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 0 }}>
-          Score trends and charts align with your Dashboard readiness entries when this section is visible.
-        </Typography>
-      </Box>
-
-      {/* Readiness Score Trend & Progress - hidden by default; user can show */}
-      {showPrsSection && snapshotReadinessChartsVisible === false && (
-        <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            Readiness Score Trend and Readiness Score Progress Over Time are hidden.
-          </Typography>
-          <Button size="small" variant="text" onClick={() => setReadinessChartsVisiblePref(true)} sx={{ mt: 1, p: 0 }}>
-            Show Readiness Score Trend &amp; Progress
-          </Button>
-        </Box>
-      )}
-      {showPrsSection && snapshotReadinessChartsVisible !== false && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-          <Button size="small" variant="outlined" onClick={() => setReadinessChartsVisiblePref(false)}>
-            Hide Readiness Score Trend &amp; Progress
-          </Button>
-        </Box>
-      )}
-      {/* Readiness Assessment Progress - Core Mission Metrics - Only show if PRS and charts visible */}
-      {showPrsSection && snapshotReadinessChartsVisible !== false && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Readiness Score Trend
-                </Typography>
-              <Box sx={{ mt: 2 }}>
-                {readinessScores.length > 0 ? (
-                  <>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Latest Score</Typography>
-                      <Typography variant="body2" color="primary.main">
-                        {readinessScores[readinessScores.length - 1]?.score || 'N/A'}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Average Score</Typography>
-                      <Typography variant="body2">
-                        {Math.round(readinessScores.reduce((sum, score) => sum + score.score, 0) / readinessScores.length)}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Highest Score</Typography>
-                      <Typography variant="body2" color="success.main">
-                        {Math.max(...readinessScores.map(s => s.score))}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Total Assessments</Typography>
-                      <Typography variant="body2">
-                        {readinessScores.length}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Current Live PRS</Typography>
-                      <Typography variant="body2" color="warning.main" sx={{ fontWeight: 'bold' }}>
-                        {currentPRSScore !== null ? `${currentPRSScore}%` : 'N/A'}
-                      </Typography>
-                    </Box>
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No readiness scores available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        </Grid>
-      )}
-
-        {/* Readiness Score Progress Chart - Enhanced - Only show if PRS and charts visible */}
-        {showPrsSection && snapshotReadinessChartsVisible !== false && (
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                      Readiness Score Progress Over Time
+                <Grid container spacing={2} sx={{ mb: 2.5 }}>
+                  <Grid item xs={12} lg={7}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      By category
                     </Typography>
-                    {readinessScores.length > 0 && (
-                      <Chip 
-                        label={`${readinessScores.length} Assessment${readinessScores.length !== 1 ? 's' : ''}`}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
+                    {activityCategoryStats.length > 0 ? (
+                      <SnapshotHorizontalBarChart
+                        data={activityCategoryStats.map((row) => ({
+                          label: row.label,
+                          value: row.count,
+                          sublabel: `${row.hours.toFixed(1)} hrs`,
+                        }))}
+                        valueLabel="Activities"
+                        minHeight={260}
                       />
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No activities recorded.
+                      </Typography>
                     )}
-                  </Box>
-              
-                {/* Trend Metrics Section - Enhanced */}
-                {readinessScores.length > 0 && (
-                  <Box sx={{ mb: 3, p: 3, bgcolor: 'grey.50', borderRadius: 2 }}>
-                    <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
-                      Key Metrics
+                  </Grid>
+                  <Grid item xs={12} lg={5}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      Hours by category
                     </Typography>
-                    <Grid container spacing={3}>
-                      <Grid item xs={6} sm={3}>
-                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'white' }}>
-                          <Typography variant="h4" color="primary.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                            {readinessScores[readinessScores.length - 1]?.score || 0}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                            Latest Score
-                          </Typography>
-                          {readinessScores.length > 1 && (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                              {format(new Date(readinessScores[readinessScores.length - 1]?.date || new Date()), 'MMM d, yyyy')}
-                            </Typography>
-                          )}
-                        </Paper>
-                      </Grid>
-                      <Grid item xs={6} sm={3}>
-                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'white' }}>
-                          <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                            {Math.round(readinessScores.reduce((sum, score) => sum + score.score, 0) / readinessScores.length)}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                            Average Score
-                          </Typography>
-                        </Paper>
-                      </Grid>
-                      <Grid item xs={6} sm={3}>
-                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'white' }}>
-                          <Typography variant="h4" color="success.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                            {Math.max(...readinessScores.map(s => s.score))}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                            Highest Score
-                          </Typography>
-                        </Paper>
-                      </Grid>
-                      <Grid item xs={6} sm={3}>
-                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'white' }}>
-                          <Typography variant="h4" color="warning.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                            {currentPRSScore !== null ? `${currentPRSScore}%` : 'N/A'}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                            Current Live PRS
-                          </Typography>
-                        </Paper>
-                      </Grid>
-                    </Grid>
-                    
-                    {/* Progress Trend Summary */}
-                    {readinessScores.length >= 2 && (
-                      <Box sx={{ mt: 3, p: 2, bgcolor: scoreTrend >= 0 ? 'success.light' : 'error.light', borderRadius: 1 }}>
-                        <Grid container spacing={2} alignItems="center">
-                          <Grid item xs={12} sm={6}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              {scoreTrend > 0 && <ArrowUpwardIcon sx={{ color: 'success.main' }} />}
-                              {scoreTrend < 0 && <ArrowDownwardIcon sx={{ color: 'error.main' }} />}
-                              {scoreTrend === 0 && <RemoveIcon sx={{ color: 'text.secondary' }} />}
-                              <Typography variant="body1" sx={{ fontWeight: 'bold', color: scoreTrend >= 0 ? 'success.dark' : 'error.dark' }}>
-                                Progress Trend: {scoreTrend > 0 ? `+${scoreTrend.toFixed(1)}` : scoreTrend < 0 ? scoreTrend.toFixed(1) : '0'} points 
-                                {scoreTrend > 0 ? ' improvement' : scoreTrend < 0 ? ' decline' : ' change'} since first assessment
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Typography variant="body2" color="text.secondary">
-                              Total Assessments: {readinessScores.length} • 
-                              First: {format(new Date(readinessScores[0]?.date || new Date()), 'MMM d, yyyy')} • 
-                              Latest: {format(new Date(readinessScores[readinessScores.length - 1]?.date || new Date()), 'MMM d, yyyy')}
-                            </Typography>
-                          </Grid>
-                        </Grid>
-                      </Box>
-                    )}
-                  </Box>
-                )}
-              
-              <PeccReadinessTrendChart
-                scores={readinessScores}
-                liveScore={currentPRSScore}
-                height={400}
-              />
-              {/* Assessment list - same card, below chart (no duplicate section) */}
-              {readinessScores.length > 0 && (
-                <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Assessment History</Typography>
-                  {[...readinessScores]
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .map((score, index, sorted) => (
-                      <Box key={score.id || `${score.date}-${index}`} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                            Assessment #{index + 1}
-                          </Typography>
-                          <Typography variant="h6" color="primary.main">
-                            {score.score}%
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            {formatActivityDateLabel(score.date)}
-                          </Typography>
-                          {index > 0 && (
-                            <Typography
-                              variant="caption"
-                              color={score.score > sorted[index - 1].score ? 'success.main' : 'error.main'}
-                              sx={{ fontWeight: 500 }}
+                    {activityCategoryStats.length > 0 ? (
+                      <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow
+                              sx={{
+                                '& th': {
+                                  fontWeight: 600,
+                                  fontSize: '0.7rem',
+                                  textTransform: 'uppercase',
+                                  color: 'text.secondary',
+                                  bgcolor: alpha(theme.palette.primary.main, 0.03),
+                                },
+                              }}
                             >
-                              {score.score > sorted[index - 1].score ? '↗' : '↘'}
-                              {Math.abs(score.score - sorted[index - 1].score).toFixed(1)} pts
-                            </Typography>
-                          )}
-                        </Box>
-                        {score.notes && (
-                          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                            Notes: {score.notes}
-                          </Typography>
-                        )}
-                      </Box>
-                    ))}
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
-                    <Typography variant="body2" color="primary.main">
-                      Progress Trend: {readinessScores.length < 2 ? 'Insufficient data' : (() => {
-                        const firstScore = readinessScores[0].score;
-                        const lastScore = readinessScores[readinessScores.length - 1].score;
-                        const improvement = lastScore - firstScore;
-                        if (improvement > 0) return `+${improvement.toFixed(1)} points improvement`;
-                        if (improvement < 0) return `${improvement.toFixed(1)} points decline`;
-                        return 'No change';
-                      })()}
-                    </Typography>
-                    <Typography variant="body2" color="primary.main">
-                      Total Assessments: {readinessScores.length}
-                    </Typography>
-                  </Box>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-        </Grid>
-      )}
+                              <TableCell>Category</TableCell>
+                              <TableCell align="right">#</TableCell>
+                              <TableCell align="right">Hours</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {activityCategoryStats.map((row) => (
+                              <TableRow key={row.label} hover>
+                                <TableCell sx={{ fontSize: '0.8125rem' }}>{row.label}</TableCell>
+                                <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                                  {row.count}
+                                </TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                                  {row.hours.toFixed(1)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No hours logged.
+                      </Typography>
+                    )}
+                  </Grid>
+                </Grid>
 
-
-
-        {/* Domain Performance Analysis - Only show if PRS section is visible */}
-        {showPrsSection && domainScores && (
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                      Domain Performance Analysis
-                    </Typography>
-                    <Chip 
-                      label="Based on Current PRS Assessment" 
-                      color="primary" 
-                      size="small"
-                      variant="outlined"
-                    />
-                  </Box>
-                  
-                  <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-                    {/* Header Row */}
-                    <Box sx={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr 1fr' },
-                      bgcolor: 'primary.main',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      '& > div': { p: 2 }
-                    }}>
-                      <Box>Domain of Pediatric Readiness</Box>
-                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Your Points</Box>
-                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Total Possible</Box>
-                      <Box sx={{ textAlign: 'center', display: { xs: 'none', md: 'block' } }}>Percentage</Box>
-                    </Box>
-                    
-                    {/* Data Rows */}
-                    {Object.entries(domainScores).map(([domain, data], index) => {
-                      const getColorForPercentage = (pct: number) => {
-                        if (pct >= 80) return 'success.main';
-                        if (pct >= 60) return 'warning.main';
-                        return 'error.main';
-                      };
-                      
-                      return (
-                        <Box 
-                          key={domain}
-                          sx={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr 1fr' },
-                            borderBottom: index < Object.keys(domainScores).length - 1 ? '1px solid' : 'none',
-                            borderColor: 'divider',
-                            '&:hover': { bgcolor: 'action.hover' },
-                            '& > div': { p: 2, display: 'flex', alignItems: 'center' }
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                  Recent activities
+                </Typography>
+                {recentActivities.length > 0 ? (
+                  <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                    <Table size="small" aria-label="Recent activities">
+                      <TableHead>
+                        <TableRow
+                          sx={{
+                            '& th': {
+                              fontWeight: 600,
+                              fontSize: '0.7rem',
+                              textTransform: 'uppercase',
+                              color: 'text.secondary',
+                              bgcolor: alpha(theme.palette.primary.main, 0.03),
+                            },
                           }}
                         >
-                          <Box sx={{ fontWeight: 600 }}>{domain}</Box>
-                          <Box sx={{ justifyContent: 'center', display: { xs: 'none', md: 'flex' } }}>
-                            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                              {data.earned.toFixed(1)}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ justifyContent: 'center', display: { xs: 'none', md: 'flex' } }}>
-                            <Typography variant="body2" color="text.secondary">
-                              {data.total}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ justifyContent: 'space-between', flexDirection: { xs: 'column', md: 'row' }, gap: 1 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-                              <LinearProgress 
-                                variant="determinate" 
-                                value={data.percentage} 
-                                sx={{ 
-                                  flex: 1, 
-                                  height: 8, 
-                                  borderRadius: 4,
-                                  bgcolor: 'grey.200',
-                                  '& .MuiLinearProgress-bar': {
-                                    bgcolor: getColorForPercentage(data.percentage)
-                                  }
-                                }}
-                              />
-                              <Typography 
-                                variant="body1" 
-                                sx={{ 
-                                  fontWeight: 'bold',
-                                  minWidth: '50px',
-                                  textAlign: 'right',
-                                  color: getColorForPercentage(data.percentage)
-                                }}
-                              >
-                                {data.percentage}%
-                              </Typography>
-                            </Box>
-                            {/* Mobile view */}
-                            <Box sx={{ display: { xs: 'flex', md: 'none' }, justifyContent: 'space-between', fontSize: '0.875rem', color: 'text.secondary' }}>
-                              <span>{data.earned.toFixed(1)} / {data.total} points</span>
-                            </Box>
-                          </Box>
-                        </Box>
-                      );
-                    })}
-                  </Paper>
-                  
-                  {!domainScores && (
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      Complete your PRS assessment to see domain-specific performance breakdown.
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        )}
+                          <TableCell>Date</TableCell>
+                          <TableCell>Activity</TableCell>
+                          <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Categories</TableCell>
+                          <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Entered by</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {recentActivities.map((a, idx) => (
+                          <TableRow key={`${a.id || idx}`} hover>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8125rem' }}>
+                              {formatActivityDateLabel(a.date)}
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                              {a.activity || a.title || 'Activity'}
+                            </TableCell>
+                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, fontSize: '0.8125rem', color: 'text.secondary' }}>
+                              {displayActivityCategories(a)}
+                            </TableCell>
+                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' }, fontSize: '0.8125rem', color: 'text.secondary' }}>
+                              {a.submitted_by
+                                ? activitySubmitterById[a.submitted_by] || a.submitted_by
+                                : '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No activities recorded.
+                  </Typography>
+                )}
+              </Box>
+            </Paper>
 
-        {showPrsSection && domainScores && (
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2 }}>
-                <CardContent>
-                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
-                    Domain Performance Visualization
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Percentage score by PRS domain from your current assessment
-                  </Typography>
-                  <SnapshotHorizontalBarChart
-                    data={domainBarData}
-                    valueLabel="%"
-                    minHeight={320}
-                  />
-                  <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, mt: 2, flexWrap: 'wrap' }}>
-                    <Typography variant="caption" color="text.secondary">
-                      ≥80% excellent · 60–79% good · &lt;60% needs improvement
+            {/* Pediatric readiness */}
+            {showPrsSection && (
+              <Paper elevation={0} sx={sectionShellSx}>
+                <Box
+                  sx={{
+                    px: { xs: 2, md: 2.5 },
+                    py: 1.5,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    flexWrap: 'wrap',
+                    gap: 1,
+                  }}
+                >
+                  <Box>
+                    <Typography
+                      variant="overline"
+                      sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                    >
+                      Dashboard + PRS
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.1rem' }}>
+                      Pediatric readiness
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                      Saved assessment scores and live PRS from the questionnaire.
                     </Typography>
                   </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        )}
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" variant="outlined" onClick={() => navigate('/dashboard')}>
+                      Dashboard scores
+                    </Button>
+                    {snapshotReadinessChartsVisible !== false ? (
+                      <Button size="small" onClick={() => setReadinessChartsVisiblePref(false)}>
+                        Hide charts
+                      </Button>
+                    ) : (
+                      <Button size="small" onClick={() => setReadinessChartsVisiblePref(true)}>
+                        Show charts
+                      </Button>
+                    )}
+                  </Stack>
+                </Box>
 
+                {snapshotReadinessChartsVisible === false ? (
+                  <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Readiness charts and assessment history are hidden.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ p: { xs: 2, md: 2.5 } }}>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1.5}
+                      useFlexGap
+                      flexWrap="wrap"
+                      sx={{ mb: 2 }}
+                    >
+                      {[
+                        {
+                          label: 'Latest saved',
+                          value: latestSavedScore != null ? String(latestSavedScore.score) : '—',
+                        },
+                        { label: 'Average', value: readinessAverage != null ? String(readinessAverage) : '—' },
+                        { label: 'Highest', value: readinessHighest != null ? String(readinessHighest) : '—' },
+                        {
+                          label: 'Live PRS',
+                          value: currentPRSScore !== null ? `${currentPRSScore}%` : '—',
+                        },
+                      ].map((stat) => (
+                        <Box
+                          key={stat.label}
+                          sx={{
+                            flex: '1 1 110px',
+                            px: 1.5,
+                            py: 1.1,
+                            borderRadius: 1.5,
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.04 }}>
+                            {stat.label}
+                          </Typography>
+                          <Typography sx={{ fontWeight: 700, fontSize: '1.2rem', color: 'secondary.dark', fontVariantNumeric: 'tabular-nums' }}>
+                            {stat.value}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
 
-      </Container>
+                    {readinessScores.length >= 2 && (
+                      <Alert
+                        severity={scoreTrend >= 0 ? 'success' : 'warning'}
+                        variant="outlined"
+                        icon={
+                          scoreTrend > 0 ? (
+                            <ArrowUpwardIcon fontSize="inherit" />
+                          ) : scoreTrend < 0 ? (
+                            <ArrowDownwardIcon fontSize="inherit" />
+                          ) : (
+                            <RemoveIcon fontSize="inherit" />
+                          )
+                        }
+                        sx={{ mb: 2 }}
+                      >
+                        Change since first assessment:{' '}
+                        <strong>
+                          {scoreTrend > 0 ? '+' : ''}
+                          {scoreTrend.toFixed(1)} pts
+                        </strong>
+                        {' · '}
+                        {readinessScores.length} assessments · First{' '}
+                        {format(new Date(readinessScores[0]?.date || new Date()), 'MMM d, yyyy')} · Latest{' '}
+                        {format(
+                          new Date(readinessScores[readinessScores.length - 1]?.date || new Date()),
+                          'MMM d, yyyy'
+                        )}
+                      </Alert>
+                    )}
+
+                    <PeccReadinessTrendChart scores={readinessScores} liveScore={currentPRSScore} height={360} />
+
+                    {readinessScores.length > 0 && (
+                      <Box sx={{ mt: 2.5 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                          Assessment history
+                        </Typography>
+                        <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow
+                                sx={{
+                                  '& th': {
+                                    fontWeight: 600,
+                                    fontSize: '0.7rem',
+                                    textTransform: 'uppercase',
+                                    color: 'text.secondary',
+                                    bgcolor: alpha(theme.palette.primary.main, 0.03),
+                                  },
+                                }}
+                              >
+                                <TableCell>#</TableCell>
+                                <TableCell>Date</TableCell>
+                                <TableCell align="right">Score</TableCell>
+                                <TableCell align="right">Change</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {[...readinessScores]
+                                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                .map((score, index, sorted) => {
+                                  const delta = index > 0 ? score.score - sorted[index - 1].score : null;
+                                  return (
+                                    <TableRow key={score.id || `${score.date}-${index}`} hover>
+                                      <TableCell>{index + 1}</TableCell>
+                                      <TableCell sx={{ color: 'text.secondary' }}>
+                                        {formatActivityDateLabel(score.date)}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontWeight: 700, color: 'secondary.dark', fontVariantNumeric: 'tabular-nums' }}>
+                                        {score.score}
+                                      </TableCell>
+                                      <TableCell
+                                        align="right"
+                                        sx={{
+                                          fontVariantNumeric: 'tabular-nums',
+                                          color:
+                                            delta == null
+                                              ? 'text.secondary'
+                                              : delta > 0
+                                                ? 'success.main'
+                                                : delta < 0
+                                                  ? 'error.main'
+                                                  : 'text.secondary',
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}`}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Box>
+                    )}
+
+                    {domainScores && (
+                      <Box sx={{ mt: 3 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                          PRS by domain
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                          From your current PRS questionnaire answers.
+                        </Typography>
+                        <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, mb: 2 }}>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow
+                                sx={{
+                                  '& th': {
+                                    fontWeight: 600,
+                                    fontSize: '0.7rem',
+                                    textTransform: 'uppercase',
+                                    color: 'text.secondary',
+                                    bgcolor: alpha(theme.palette.primary.main, 0.03),
+                                  },
+                                }}
+                              >
+                                <TableCell>Domain</TableCell>
+                                <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                                  Points
+                                </TableCell>
+                                <TableCell align="right">%</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {Object.entries(domainScores).map(([domain, data]) => (
+                                <TableRow key={domain} hover>
+                                  <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem' }}>{domain}</TableCell>
+                                  <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' }, color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
+                                    {data.earned.toFixed(1)} / {data.total}
+                                  </TableCell>
+                                  <TableCell align="right" sx={{ minWidth: 140 }}>
+                                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                                      <LinearProgress
+                                        variant="determinate"
+                                        value={data.percentage}
+                                        sx={{ width: 72, height: 6, borderRadius: 3, display: { xs: 'none', md: 'block' } }}
+                                      />
+                                      <Typography sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', minWidth: 40, textAlign: 'right' }}>
+                                        {data.percentage}%
+                                      </Typography>
+                                    </Stack>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                        <SnapshotHorizontalBarChart data={domainBarData} valueLabel="%" minHeight={280} />
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, textAlign: 'center' }}>
+                          ≥80% strong · 60–79% fair · &lt;60% needs focus
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {!domainScores && readinessScores.length === 0 && (
+                      <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
+                        Add readiness scores on the Dashboard, or complete the PRS questionnaire, to populate this
+                        section.
+                      </Alert>
+                    )}
+                  </Box>
+                )}
+              </Paper>
+            )}
+          </Stack>
+        </Container>
       </Box>
+
       <Snackbar
         open={pdfSnackbar.open}
         autoHideDuration={6000}
-        onClose={() => setPdfSnackbar(s => ({ ...s, open: false }))}
+        onClose={() => setPdfSnackbar((s) => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
           severity={pdfSnackbar.severity}
-          onClose={() => setPdfSnackbar(s => ({ ...s, open: false }))}
+          onClose={() => setPdfSnackbar((s) => ({ ...s, open: false }))}
           sx={{ width: '100%' }}
         >
           {pdfSnackbar.message}
@@ -2341,3 +2147,4 @@ const SnapshotPage = () => {
 };
 
 export default SnapshotPage;
+
