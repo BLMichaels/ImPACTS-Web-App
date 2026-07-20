@@ -253,6 +253,18 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
   };
   const handleRemoveTag = (tag: string) => setForm((f) => ({ ...f, tags: f.tags.filter((t) => t !== tag) }));
 
+  const filterByCategory = (category: string) => {
+    const next = category.trim();
+    if (!next) return;
+    setSelectedCategory((prev) => (prev === next ? 'All' : next));
+  };
+
+  const filterByTag = (tag: string) => {
+    const next = tag.trim();
+    if (!next) return;
+    setSelectedTags((prev) => (prev.includes(next) ? prev.filter((t) => t !== next) : [...prev, next]));
+  };
+
   const handleResourceClick = (url: string) => {
     window.open(formatResourceUrl(url), '_blank', 'noopener,noreferrer');
   };
@@ -613,7 +625,15 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                   </TableCell>
                   <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                     {r.category ? (
-                      <Chip label={r.category} size="small" variant="outlined" />
+                      <Chip
+                        label={r.category}
+                        size="small"
+                        variant={selectedCategory === r.category.trim() ? 'filled' : 'outlined'}
+                        color={selectedCategory === r.category.trim() ? 'secondary' : 'default'}
+                        onClick={() => filterByCategory(r.category)}
+                        clickable
+                        sx={{ cursor: 'pointer' }}
+                      />
                     ) : (
                       <Typography variant="body2" color="text.secondary">
                         —
@@ -623,9 +643,21 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                   <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
                     {r.tags?.length ? (
                       <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                        {r.tags.slice(0, 3).map((t) => (
-                          <Chip key={t} label={t} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                        ))}
+                        {r.tags.slice(0, 3).map((t) => {
+                          const active = selectedTags.includes(t);
+                          return (
+                            <Chip
+                              key={t}
+                              label={t}
+                              size="small"
+                              variant={active ? 'filled' : 'outlined'}
+                              color={active ? 'secondary' : 'default'}
+                              onClick={() => filterByTag(t)}
+                              clickable
+                              sx={{ fontSize: '0.7rem', cursor: 'pointer' }}
+                            />
+                          );
+                        })}
                         {r.tags.length > 3 ? (
                           <Chip label={`+${r.tags.length - 3}`} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
                         ) : null}
@@ -689,7 +721,17 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                           '& .MuiChip-icon': { color: 'secondary.dark' },
                         }}
                       />
-                      {r.category ? <Chip label={r.category} size="small" variant="outlined" /> : null}
+                      {r.category ? (
+                        <Chip
+                          label={r.category}
+                          size="small"
+                          variant={selectedCategory === r.category.trim() ? 'filled' : 'outlined'}
+                          color={selectedCategory === r.category.trim() ? 'secondary' : 'default'}
+                          onClick={() => filterByCategory(r.category)}
+                          clickable
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ) : null}
                     </Stack>
                     <Box sx={{ flexShrink: 0 }}>
                       <IconButton size="small" onClick={() => handleEdit(r)} aria-label={`Edit ${r.title}`}>
@@ -712,9 +754,21 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                   )}
                   {r.tags?.length > 0 && (
                     <Box sx={{ mb: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {r.tags.map((t) => (
-                        <Chip key={t} label={t} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                      ))}
+                      {r.tags.map((t) => {
+                        const active = selectedTags.includes(t);
+                        return (
+                          <Chip
+                            key={t}
+                            label={t}
+                            size="small"
+                            variant={active ? 'filled' : 'outlined'}
+                            color={active ? 'secondary' : 'default'}
+                            onClick={() => filterByTag(t)}
+                            clickable
+                            sx={{ fontSize: '0.7rem', cursor: 'pointer' }}
+                          />
+                        );
+                      })}
                     </Box>
                   )}
                   <Box sx={{ mt: 'auto' }}>
