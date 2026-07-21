@@ -812,7 +812,7 @@ const ActivitiesPage = () => {
                   variant="overline"
                   sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
                 >
-                  PECC work log
+                  Time tracking
                 </Typography>
                 <Typography
                   variant="h4"
@@ -827,7 +827,7 @@ const ActivitiesPage = () => {
                   Activities
                 </Typography>
                 <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}>
-                  Log readiness work, time, and linked gaps. Hours and categories here roll up on Snapshot.
+                  Record what you did, how long it took, and any related gap plans. Your totals appear on Snapshot.
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
