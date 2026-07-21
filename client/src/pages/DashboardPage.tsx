@@ -25,6 +25,7 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
+  Tooltip,
   alpha,
   Alert,
 } from '@mui/material';
@@ -50,6 +51,9 @@ import GapPlanReminderBanner from '../components/GapPlanReminderBanner';
 import DashboardResources from '../components/DashboardResources';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import ChecklistRtlIcon from '@mui/icons-material/ChecklistRtl';
 import InsightsIcon from '@mui/icons-material/Insights';
 import EventNoteIcon from '@mui/icons-material/EventNote';
@@ -218,6 +222,8 @@ const sectionShellSx = {
     key: keyof DepartmentContact;
     direction: 'asc' | 'desc';
   } | null>(null);
+  const [draggedContactId, setDraggedContactId] = useState<string | null>(null);
+  const [dragOverContactIndex, setDragOverContactIndex] = useState<number | null>(null);
   const [effectiveHospitalId, setEffectiveHospitalId] = useState<string | null>(null);
   const [contactsHydrated, setContactsHydrated] = useState(false);
 
@@ -392,6 +398,59 @@ const sectionShellSx = {
     });
   };
 
+  /** Reorder the displayed list; clears column sort so array order becomes canonical. */
+  const moveContact = (fromIndex: number, toIndex: number) => {
+    const list = getSortedContacts();
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= list.length ||
+      toIndex >= list.length ||
+      fromIndex === toIndex
+    ) {
+      return;
+    }
+    const reordered = [...list];
+    const [removed] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, removed);
+    setSortConfig(null);
+    setDepartmentContacts(reordered);
+  };
+
+  const handleContactDragStart = (e: React.DragEvent, contactId: string) => {
+    setDraggedContactId(contactId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', contactId);
+  };
+
+  const handleContactDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverContactIndex(index);
+  };
+
+  const handleContactDragLeave = () => setDragOverContactIndex(null);
+
+  const handleContactDrop = (e: React.DragEvent, toIndex: number) => {
+    e.preventDefault();
+    setDragOverContactIndex(null);
+    const contactId = e.dataTransfer.getData('text/plain') || draggedContactId;
+    if (!contactId) return;
+    const list = getSortedContacts();
+    const fromIndex = list.findIndex((c) => c.id === contactId);
+    if (fromIndex === -1 || fromIndex === toIndex) {
+      setDraggedContactId(null);
+      return;
+    }
+    moveContact(fromIndex, toIndex);
+    setDraggedContactId(null);
+  };
+
+  const handleContactDragEnd = () => {
+    setDraggedContactId(null);
+    setDragOverContactIndex(null);
+  };
+
   const addNewContact = () => {
     const newId = (Math.max(...departmentContacts.map(c => parseInt(c.id))) + 1).toString();
     const newContact: DepartmentContact = {
@@ -435,6 +494,8 @@ const sectionShellSx = {
       contactName: ''
     });
   };
+
+  const sortedContacts = getSortedContacts();
 
   return (
     <Box
@@ -862,8 +923,8 @@ const sectionShellSx = {
               </AccordionSummary>
               <AccordionDetails sx={{ px: { xs: 2, md: 3 }, pt: 0, pb: { xs: 2.5, md: 3 } }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.6 }}>
-                  Sort by column headers. Edit fields inline. Staff and role names belong here—do not put patient names
-                  or other patient PHI in Notes.
+                  Drag rows or use arrows to reorder. Sort by column headers when needed. Edit fields inline. Staff
+                  and role names belong here—do not put patient names or other patient PHI in Notes.
                 </Typography>
                 {phiContactsBlocked && (
                   <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPhiContactsBlocked(false)}>
@@ -896,6 +957,7 @@ const sectionShellSx = {
                           },
                         }}
                       >
+                        <TableCell sx={{ width: 44, px: 0.5 }} aria-label="Reorder" />
                         {(
                           [
                             ['department', 'Department'],
@@ -915,22 +977,56 @@ const sectionShellSx = {
                             </TableSortLabel>
                           </TableCell>
                         ))}
-                        {isEditMode && (
-                          <TableCell align="center" sx={{ width: 72 }}>
-                            Actions
-                          </TableCell>
-                        )}
+                        <TableCell align="right" sx={{ width: isEditMode ? 140 : 96 }}>
+                          {isEditMode ? 'Actions' : 'Order'}
+                        </TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {getSortedContacts().map((contact) => (
+                      {sortedContacts.map((contact, index) => (
                         <TableRow
                           key={contact.id}
                           hover
+                          onDragOver={(e) => handleContactDragOver(e, index)}
+                          onDragLeave={handleContactDragLeave}
+                          onDrop={(e) => handleContactDrop(e, index)}
                           sx={{
+                            opacity: draggedContactId === contact.id ? 0.5 : 1,
+                            bgcolor:
+                              dragOverContactIndex === index
+                                ? alpha(theme.palette.secondary.main, 0.08)
+                                : undefined,
                             '& td': { borderBottomColor: 'divider', verticalAlign: 'middle', py: 0.75 },
                           }}
                         >
+                          <TableCell
+                            sx={{ width: 44, px: 0.5 }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Tooltip title="Drag to reorder">
+                              <Box
+                                component="span"
+                                draggable
+                                onDragStart={(e) => handleContactDragStart(e, contact.id)}
+                                onDragEnd={handleContactDragEnd}
+                                sx={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  color: 'secondary.dark',
+                                  opacity: 0.55,
+                                  cursor: 'grab',
+                                  touchAction: 'none',
+                                  '&:active': { cursor: 'grabbing' },
+                                  '&:hover': { opacity: 0.9 },
+                                }}
+                                aria-label={`Drag to reorder ${contact.department}`}
+                                role="button"
+                                tabIndex={0}
+                              >
+                                <DragIndicatorIcon sx={{ fontSize: 18 }} />
+                              </Box>
+                            </Tooltip>
+                          </TableCell>
                           <TableCell
                             sx={{
                               fontWeight: 600,
@@ -992,8 +1088,34 @@ const sectionShellSx = {
                               onChange={(e) => handleContactUpdate(contact.id, 'notes', e.target.value)}
                             />
                           </TableCell>
-                          {isEditMode && (
-                            <TableCell align="center">
+                          <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                            <Tooltip title="Move up">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={index === 0}
+                                  onClick={() => moveContact(index, index - 1)}
+                                  aria-label={`Move ${contact.department} up`}
+                                  sx={{ color: 'secondary.dark' }}
+                                >
+                                  <KeyboardArrowUpIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Move down">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={index === sortedContacts.length - 1}
+                                  onClick={() => moveContact(index, index + 1)}
+                                  aria-label={`Move ${contact.department} down`}
+                                  sx={{ color: 'secondary.dark' }}
+                                >
+                                  <KeyboardArrowDownIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            {isEditMode && (
                               <IconButton
                                 size="small"
                                 color="error"
@@ -1002,8 +1124,8 @@ const sectionShellSx = {
                               >
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
-                            </TableCell>
-                          )}
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
