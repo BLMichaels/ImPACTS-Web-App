@@ -73,6 +73,7 @@ import {
   isQueryableHospitalRef,
 } from '../../utils/hospitalId';
 import { buildReportCsvContent, downloadReportCsv } from '../../utils/reportCsvExport';
+import { adminSectionShellSx } from '../admin/AdminPageChrome';
 import {
   buildLongitudinalColumnList,
   formatPrsTimeline,
@@ -995,6 +996,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const dragColumnIdRef = useRef<string | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   const prevDatasetForColumnsRef = useRef<ReportDataset | null>(null);
+  const loadGenerationRef = useRef(0);
 
   const columnMetas = useMemo(
     () => buildColumnList(dataset, hospitalCustomDefs, orgCustomDefs),
@@ -1104,6 +1106,8 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
 
   const load = useCallback(async () => {
     if (!actorUserId) return;
+    const loadId = ++loadGenerationRef.current;
+    const isStale = () => loadId !== loadGenerationRef.current;
     setLoading(true);
     setError(null);
     setProgramIdsByRow({});
@@ -1111,6 +1115,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setPeccAudit(null);
     try {
       const hospitalScope = await resolveHospitalIdsForScope(scope, actorUserId);
+      if (isStale()) return;
       const adminGlobalDataset =
         dataset === 'internal_staff' || dataset === 'user_hospital_system' || dataset === 'user_hiring_group';
       const longitudinalNoHospitalRequired =
@@ -1120,8 +1125,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           dataset === 'wages' ||
           dataset === 'cohort_discussions');
       if (hospitalScope && hospitalScope.length === 0 && !adminGlobalDataset && !longitudinalNoHospitalRequired) {
+        if (isStale()) return;
         setRows([]);
         setPeccAudit(null);
+        setError(
+          scope === 'admin'
+            ? 'No hospitals found for this report. Check hospital data, then Refresh.'
+            : 'No hospitals in your current scope. Assign sites or ask an admin for access, then Refresh.'
+        );
         setLoading(false);
         return;
       }
@@ -1133,6 +1144,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       } catch (e) {
         console.warn('programs/cohorts list:', e);
       }
+      if (isStale()) return;
       setPrograms(progList);
       setCohorts(coList);
       const progMap = new Map(progList.map((p) => [p.id, p.name]));
@@ -1230,6 +1242,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           actorUserId,
           hospitalScope,
         });
+        if (isStale()) return;
         setRows(longitudinalRows);
       } else {
         await loadPlatformUsersByRoles({
@@ -1242,18 +1255,22 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         });
       }
     } catch (e: unknown) {
+      if (isStale()) return;
       console.error(e);
       const errMsg = e instanceof Error ? e.message : 'Failed to load report data';
       setError(errMsg);
       setRows([]);
       setPeccAudit(null);
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [scope, actorUserId, activityPreset, dataset, staffRoleFilter, includePlatformAdminAccounts]);
 
   useEffect(() => {
-    load();
+    void load();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [load]);
 
   // Selection is tied to the currently loaded dataset rows.
@@ -1913,12 +1930,19 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   };
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'visible', boxShadow: (t) => t.shadows[1] }}>
+    <Paper
+      elevation={0}
+      sx={{
+        ...adminSectionShellSx,
+        mb: 0,
+        overflow: 'visible',
+      }}
+    >
       <Box
         sx={{
-          px: 2.5,
-          py: 2.5,
-          bgcolor: (t) => alpha(t.palette.primary.main, 0.06),
+          px: { xs: 2, md: 2.5 },
+          py: 2,
+          bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
           borderBottom: 1,
           borderColor: 'divider',
           overflow: 'visible',
@@ -1926,10 +1950,16 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       >
         <Stack spacing={1.5}>
           <Box>
-            <Typography variant="h6" fontWeight={700}>
+            <Typography
+              variant="overline"
+              sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+            >
+              Datasets
+            </Typography>
+            <Typography variant="h6" fontWeight={700} sx={{ letterSpacing: -0.015 }}>
               Advanced reports
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 920 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 920, mt: 0.5 }}>
               Build exports for program operations, platform analytics, and research — PECCs, sites, staff, checklists,
               gap plans, activities, PRS, and CRM custom fields. PDF, Excel, and CSV; enable de-identified export for
               manuscripts and IRB submissions.
@@ -2412,7 +2442,15 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         </Stack>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => void load()}>
+                Retry
+              </Button>
+            }
+          >
             {error}
           </Alert>
         )}
@@ -2448,6 +2486,12 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             <Typography variant="caption" color="text.secondary" display="block">
               Visible now: {filtered.length} of {rows.length} loaded rows. Program and cohort filters apply to user accounts only. Platform activity filters apply to user accounts; for &quot;No activity in last 30 days&quot;, hospital/CRM rows without a login are still listed. CRM PECCs can exist in more than one place; this report merges user accounts, hospital_contacts, and crm_organizations (contact_type=pecc).
             </Typography>
+          </Alert>
+        )}
+
+        {!loading && !error && displayRows.length === 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            No rows match the current dataset and filters. Clear filters or choose another dataset, then Refresh.
           </Alert>
         )}
 

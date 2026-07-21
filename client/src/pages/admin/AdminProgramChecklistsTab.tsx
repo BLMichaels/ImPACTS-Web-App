@@ -240,7 +240,7 @@ function ColorSwatch({ color, label }: { color: string; label: string }) {
   );
 }
 
-export default function AdminProgramChecklistsTab() {
+export default function AdminProgramChecklistsTab({ embedded = false }: { embedded?: boolean }) {
   const { runWithPhiGuard } = usePhiGuard();
   const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
   const [checklists, setChecklists] = useState<(ProgramChecklist & { stages?: ProgramChecklistStage[] })[]>([]);
@@ -766,11 +766,15 @@ export default function AdminProgramChecklistsTab() {
 
   return (
     <Box>
-      <Typography variant="h6" gutterBottom>Program Checklists</Typography>
-      <Typography color="textSecondary" sx={{ mb: 2 }}>
-        Checklist content is editable here. Templates can be seeded for all programs, and each checklist can be toggled on/off and reordered.
-      </Typography>
-      <Box sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+      {!embedded && (
+        <>
+          <Typography variant="h6" gutterBottom>Program Checklists</Typography>
+          <Typography color="textSecondary" sx={{ mb: 2 }}>
+            Checklist content is editable here. Templates can be seeded for all programs, and each checklist can be toggled on/off and reordered.
+          </Typography>
+        </>
+      )}
+      <Box sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.paper' }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Default Stage Accordion Palette</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           These colors control Stage 1-4 accordion headers in the PECC checklist pages.
@@ -807,7 +811,7 @@ export default function AdminProgramChecklistsTab() {
         </Button>
       </Box>
 
-      <TableContainer component={Paper} sx={{ mb: 2 }}>
+      <TableContainer component={Paper} elevation={0} sx={{ mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -914,7 +918,7 @@ export default function AdminProgramChecklistsTab() {
       ))}
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingChecklist ? 'Edit checklist' : 'New checklist'}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>{editingChecklist ? 'Edit checklist' : 'New checklist'}</DialogTitle>
         <DialogContent>
           <TextField fullWidth label="Checklist name" value={formName} onChange={(e) => setFormName(e.target.value)} margin="dense" />
           <FormControl fullWidth margin="dense">
@@ -937,7 +941,7 @@ export default function AdminProgramChecklistsTab() {
       </Dialog>
 
       <Dialog open={stageDialogOpen} onClose={() => setStageDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingStage ? 'Edit stage' : 'New stage'}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>{editingStage ? 'Edit stage' : 'New stage'}</DialogTitle>
         <DialogContent>
           <TextField fullWidth label="Stage title" value={stageForm.title} onChange={(e) => setStageForm((f) => ({ ...f, title: e.target.value }))} margin="dense" required />
           <TextField fullWidth label="Subtitle" value={stageForm.subtitle} onChange={(e) => setStageForm((f) => ({ ...f, subtitle: e.target.value }))} margin="dense" />
@@ -962,7 +966,7 @@ export default function AdminProgramChecklistsTab() {
       </Dialog>
 
       <Dialog open={taskDialogOpen} onClose={() => setTaskDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingTask ? 'Edit checklist item' : 'New checklist item'}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>{editingTask ? 'Edit checklist item' : 'New checklist item'}</DialogTitle>
         <DialogContent>
           <FormControl fullWidth margin="dense" sx={{ mb: 1 }}>
             <InputLabel>Item type</InputLabel>

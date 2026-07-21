@@ -59,7 +59,7 @@ const initialFormData: ProgramFormData = {
   logo_file: null
 };
 
-const AdminProgramsPage: React.FC = () => {
+const AdminProgramsPage: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const { userProfile } = useUserProfile();
   const [programs, setPrograms] = useState<ProgramWithStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -292,10 +292,16 @@ const AdminProgramsPage: React.FC = () => {
   );
 
   // Program detail view and list view both render; Create/Edit Dialog is always mounted so Edit works from detail
+  const shellSx = embedded
+    ? { py: { xs: 2, md: 2.5 }, px: { xs: 2, md: 2.5 }, maxWidth: '100%' as const }
+    : { py: 4 };
+  const Shell: React.ElementType = embedded ? Box : Container;
+  const shellProps = embedded ? { sx: shellSx } : { maxWidth: 'lg' as const, sx: shellSx };
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       {selectedProgramId ? (
-        <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Shell {...shellProps}>
           <ProgramDetail
             programId={selectedProgramId}
             onBack={() => setSelectedProgramId(null)}
@@ -304,24 +310,31 @@ const AdminProgramsPage: React.FC = () => {
               if (program) handleOpenEdit(program);
             }}
           />
-        </Container>
+        </Shell>
       ) : (
-        <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Shell {...shellProps}>
         {/* Header */}
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-          <Box display="flex" alignItems="center" gap={2}>
-            <ProgramIcon sx={{ fontSize: 40, color: 'secondary.main' }} />
-            <Box>
-              <Typography variant="h4" component="h1" fontWeight="bold">
-                Manage Programs
-              </Typography>
-              <Typography variant="body1" color="text.secondary">
-                Create and manage programs
-              </Typography>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={embedded ? 2 : 4}>
+          {!embedded ? (
+            <Box display="flex" alignItems="center" gap={2}>
+              <ProgramIcon sx={{ fontSize: 40, color: 'secondary.main' }} />
+              <Box>
+                <Typography variant="h4" component="h1" fontWeight="bold">
+                  Manage Programs
+                </Typography>
+                <Typography variant="body1" color="text.secondary">
+                  Create and manage programs
+                </Typography>
+              </Box>
             </Box>
-          </Box>
+          ) : (
+            <Typography variant="subtitle2" color="text.secondary">
+              Search, filter, and open a program to edit details.
+            </Typography>
+          )}
           <Button
             variant="contained"
+            size={embedded ? 'small' : 'medium'}
             startIcon={<AddIcon />}
             onClick={handleOpenCreate}
           >
@@ -395,7 +408,7 @@ const AdminProgramsPage: React.FC = () => {
             ))}
           </Grid>
         )}
-        </Container>
+        </Shell>
       )}
 
       {/* Create/Edit Dialog — always mounted so Edit works from program detail view */}
@@ -405,7 +418,7 @@ const AdminProgramsPage: React.FC = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             {editingProgram ? 'Edit Program' : 'Create Program'}
             <IconButton onClick={() => setDialogOpen(false)} size="small">

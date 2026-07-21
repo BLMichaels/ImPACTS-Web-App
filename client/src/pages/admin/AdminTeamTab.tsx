@@ -33,7 +33,8 @@ import {
   List,
   ListItem,
   ListItemText,
-  Snackbar
+  Snackbar,
+  alpha,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -45,7 +46,8 @@ import {
   Save as SaveIcon,
   Settings as SettingsIcon,
   Visibility as VisibilityIcon,
-  Download as DownloadIcon
+  Download as DownloadIcon,
+  Group as GroupIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
@@ -60,6 +62,7 @@ import {
   syncCohortManagersForMentorSupervisors,
   syncProgramManagersForMentorSupervisors,
 } from '../../utils/cohortMembershipSync';
+import { adminSectionShellSx } from '../../components/admin/AdminPageChrome';
 
 interface User {
   id: string;
@@ -612,20 +615,27 @@ const AdminTeamTab: React.FC = () => {
   };
 
   return (
-    <Box sx={{ py: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">Team</Typography>
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Box>
+          <Typography variant="overline" sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}>
+            CRM
+          </Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: { xs: '1.1rem', sm: '1.2rem' } }}>
+            Team
+          </Typography>
+        </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={exportUserAccessCsv} disabled={users.length === 0}>
             Export access report
           </Button>
-          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+          <Button variant="contained" color="secondary" size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
             Add User
           </Button>
         </Box>
       </Box>
 
-      <Paper sx={{ p: 2, mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+      <Paper elevation={0} sx={{ ...adminSectionShellSx, p: 1.75, mb: 1.75, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           size="small"
           placeholder="Search users..."
@@ -659,26 +669,30 @@ const AdminTeamTab: React.FC = () => {
           <CircularProgress />
         </Box>
       ) : (
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} elevation={0} sx={adminSectionShellSx}>
           <Table size="small">
             <TableHead>
-              <TableRow>
-                <TableCell>User</TableCell>
-                <TableCell>Email</TableCell>
-                <TableCell>Phone</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell>Reports to</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Last Login</TableCell>
-                <TableCell>Actions</TableCell>
+              <TableRow sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>User</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Email</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Phone</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Role</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Reports to</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Last Login</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
-                    <Typography color="textSecondary">
-                      {users.length === 0 ? 'No users yet. Add your first user above.' : 'No users match your search or filters.'}
+                  <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                    <GroupIcon sx={{ fontSize: 40, color: 'action.disabled', display: 'block', mx: 'auto', mb: 1 }} />
+                    <Typography variant="subtitle1" fontWeight={700} color="text.primary" gutterBottom>
+                      {users.length === 0 ? 'No users yet' : 'No users match your filters'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 340, mx: 'auto' }}>
+                      {users.length === 0 ? 'Invite managers, mentors, and PECCs to build your team.' : 'Try clearing search or changing the role filter.'}
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -786,8 +800,8 @@ const AdminTeamTab: React.FC = () => {
           const editingSelf = selectedUser.id === userProfile?.id;
           return (
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">{profileEditMode ? 'Edit User' : 'User Profile'}</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, pb: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="h6" fontWeight={700}>{profileEditMode ? 'Edit User' : 'User Profile'}</Typography>
               <IconButton onClick={() => { setProfileDrawerOpen(false); setProfileEditMode(false); }}><CloseIcon /></IconButton>
             </Box>
             {profileError && (

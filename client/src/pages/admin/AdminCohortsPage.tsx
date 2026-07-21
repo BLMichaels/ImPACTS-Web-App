@@ -49,7 +49,7 @@ import { supabase } from '../../supabase';
 import { CohortCard, CohortDetail, PendingInvitationsPanel } from '../../components/cohorts';
 import { format } from 'date-fns';
 
-const AdminCohortsPage: React.FC = () => {
+const AdminCohortsPage: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const { userProfile } = useUserProfile();
   const [cohorts, setCohorts] = useState<CohortWithStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -539,10 +539,15 @@ const AdminCohortsPage: React.FC = () => {
 
   // Get all cohort IDs for pending invitations
   const allCohortIds = cohorts.map(c => c.id);
+  const shellSx = embedded
+    ? { py: { xs: 2, md: 2.5 }, px: { xs: 2, md: 2.5 }, maxWidth: '100%' as const }
+    : { py: 4 };
+  const Shell: React.ElementType = embedded ? Box : Container;
+  const shellProps = embedded ? { sx: shellSx } : { maxWidth: 'lg' as const, sx: shellSx };
 
   if (selectedCohort) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Shell {...shellProps}>
         <CohortDetail
           cohort={selectedCohort}
           onBack={() => {
@@ -557,7 +562,7 @@ const AdminCohortsPage: React.FC = () => {
 
         {/* Edit Dialog */}
         <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-          <DialogTitle>Edit Cohort</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>Edit Cohort</DialogTitle>
           <DialogContent>
             {formError && (
               <Alert severity="error" sx={{ mb: 2 }}>
@@ -605,24 +610,31 @@ const AdminCohortsPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-      </Container>
+      </Shell>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Shell {...shellProps}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
-            Cohorts Management
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: embedded ? 2 : 4 }}>
+        {!embedded ? (
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+              Cohorts Management
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Create and manage cohorts, assign managers, and oversee all cohort activities
+            </Typography>
+          </Box>
+        ) : (
+          <Typography variant="subtitle2" color="text.secondary">
+            Search, filter, and open a cohort to manage members and settings.
           </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Create and manage cohorts, assign managers, and oversee all cohort activities
-          </Typography>
-        </Box>
+        )}
         <Button
           variant="contained"
+          size={embedded ? 'small' : 'medium'}
           startIcon={<AddIcon />}
           onClick={handleOpenCreateDialog}
         >
@@ -826,7 +838,7 @@ const AdminCohortsPage: React.FC = () => {
 
       {/* Create Dialog */}
       <Dialog open={dialogOpen && !editingCohort} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Cohort</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>Create Cohort</DialogTitle>
         <DialogContent>
           {formError && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -870,7 +882,7 @@ const AdminCohortsPage: React.FC = () => {
 
       {/* Assign Managers Dialog */}
       <Dialog open={assignDialogOpen} onClose={handleCloseAssignDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Manage Managers - {assigningCohort?.name}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>Manage Managers - {assigningCohort?.name}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Assign managers who can manage this cohort, post announcements, and approve invitations.
@@ -972,7 +984,7 @@ const AdminCohortsPage: React.FC = () => {
 
       {/* Mentors who can invite to this cohort */}
       <Dialog open={inviteMentorsDialogOpen} onClose={handleCloseInviteMentorsDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Mentors who can invite PECCs to {inviteMentorsCohort?.name}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>Mentors who can invite PECCs to {inviteMentorsCohort?.name}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Only mentors listed here will see this cohort when inviting a PECC (e.g. from Hospital Contacts or Send Invitation). Add mentors who should be able to invite PECCs to this cohort.
@@ -1056,7 +1068,7 @@ const AdminCohortsPage: React.FC = () => {
 
       {/* Delete Confirmation */}
       <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
-        <DialogTitle>Delete Cohort</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>Delete Cohort</DialogTitle>
         <DialogContent>
           <Typography>
             Are you sure you want to delete <strong>{deletingCohort?.name}</strong>?
@@ -1080,7 +1092,7 @@ const AdminCohortsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </Shell>
   );
 };
 

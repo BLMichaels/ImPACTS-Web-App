@@ -3,8 +3,6 @@ import JSZip from 'jszip';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -68,6 +66,8 @@ type ScormPackage = {
 
 export interface ScormPackagesSectionProps {
   title?: string;
+  /** Hide the section title row (parent provides chrome). */
+  hideTitle?: boolean;
   /** When set, only packages with this placement are shown (viewer mode). */
   placement?: ScormPlacement;
   /** When placement is "cohort", only show packages that apply to this cohort. */
@@ -97,7 +97,7 @@ const guessContentType = (path: string): string => {
 };
 
 export default function ScormPackagesSection(props: ScormPackagesSectionProps) {
-  const { title = 'Learning Modules', placement: placementProp, cohortId } = props;
+  const { title = 'Learning Modules', hideTitle = false, placement: placementProp, cohortId } = props;
   const { currentUser } = useAuth();
   const { userRole, siteId } = useUserProfile();
 
@@ -515,27 +515,49 @@ export default function ScormPackagesSection(props: ScormPackagesSectionProps) {
   };
 
   return (
-    <Card variant="outlined" sx={{ mt: 3 }}>
-      <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-          <Box>
-            <Typography variant="h6">{title}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {isAdminMode
-                ? 'Full control: set placement (Education, Cohort, Simulation, Checklist) and exactly who can see each module.'
-                : 'Launch learning modules (SCORM) that apply to you in this section.'}
-            </Typography>
+    <>
+    <Paper
+      elevation={0}
+      variant={hideTitle ? undefined : 'outlined'}
+      sx={{
+        mt: hideTitle ? 0 : 3,
+        borderRadius: hideTitle ? 0 : 2,
+        border: hideTitle ? 'none' : '1px solid',
+        borderColor: 'divider',
+        overflow: 'hidden',
+        bgcolor: hideTitle ? 'transparent' : 'background.paper',
+      }}
+    >
+      <Box sx={{ p: hideTitle ? 0 : { xs: 2, md: 2.5 } }}>
+        {!hideTitle ? (
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+            <Box>
+              <Typography variant="h6">{title}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {isAdminMode
+                  ? 'Full control: set placement (Education, Cohort, Simulation, Checklist) and exactly who can see each module.'
+                  : 'Launch learning modules (SCORM) that apply to you in this section.'}
+              </Typography>
+            </Box>
+            {canManage && (
+              <Button startIcon={<AddIcon />} variant="contained" onClick={openAdd}>
+                Add Learning Module
+              </Button>
+            )}
           </Box>
-          {canManage && (
-            <Button startIcon={<AddIcon />} variant="contained" onClick={openAdd}>
-              Add Learning Module
-            </Button>
-          )}
-        </Box>
+        ) : (
+          canManage && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+              <Button size="small" startIcon={<AddIcon />} variant="contained" onClick={openAdd}>
+                Add module
+              </Button>
+            </Box>
+          )
+        )}
 
-        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+        {error && <Alert severity="error" sx={{ mt: hideTitle ? 0 : 2 }}>{error}</Alert>}
 
-        <Divider sx={{ my: 2 }} />
+        {!hideTitle && <Divider sx={{ my: 2 }} />}
 
         {loading ? (
           <Box sx={{ py: 3, display: 'flex', justifyContent: 'center' }}>
@@ -633,10 +655,11 @@ export default function ScormPackagesSection(props: ScormPackagesSectionProps) {
             </Box>
           </Box>
         )}
-      </CardContent>
+      </Box>
+    </Paper>
 
       <Dialog open={open} onClose={() => (!uploading ? setOpen(false) : null)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingId ? 'Edit Learning Module' : 'Add Learning Module (SCORM)'}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: '1.15rem' }}>{editingId ? 'Edit Learning Module' : 'Add Learning Module (SCORM)'}</DialogTitle>
         <DialogContent aria-describedby={undefined}>
           <Box sx={{ mt: 1, display: 'grid', gap: 2 }}>
             <TextField
@@ -785,7 +808,7 @@ export default function ScormPackagesSection(props: ScormPackagesSectionProps) {
           </Button>
         </DialogActions>
       </Dialog>
-    </Card>
+    </>
   );
 }
 

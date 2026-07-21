@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -66,6 +66,13 @@ import {
   UsageEventTypesBar,
   ClicksByRoleBar,
 } from '../../components/admin/AdminReportCharts';
+import {
+  AdminPageShell,
+  AdminHero,
+  AdminSection,
+  adminSectionShellSx,
+  adminSectionHeaderSx,
+} from '../../components/admin/AdminPageChrome';
 import { supabase } from '../../supabase';
 import { isSupabaseMissingRelationError } from '../../utils/supabaseErrors';
 import { useAuth } from '../../context/AuthContext';
@@ -94,6 +101,80 @@ const MENTOR_HOURS_PERIODS = [
 ];
 
 const TABLE_LIMITS = [5, 10, 15, 25, 50];
+
+type KpiAccent = 'primary' | 'secondary' | 'info' | 'success' | 'warning';
+
+function KpiTile({
+  icon,
+  title,
+  value,
+  caption,
+  accent = 'primary',
+  children,
+}: {
+  icon?: ReactNode;
+  title: string;
+  value: ReactNode;
+  caption?: ReactNode;
+  accent?: KpiAccent;
+  children?: ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        height: '100%',
+        px: 1.75,
+        py: 1.5,
+        borderRadius: 1.5,
+        border: '1px solid',
+        borderColor: 'divider',
+        borderLeft: 3,
+        borderLeftColor: `${accent}.main`,
+        bgcolor: 'background.paper',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+        {icon}
+        <Typography variant="subtitle2" fontWeight={600} sx={{ lineHeight: 1.3 }}>
+          {title}
+        </Typography>
+      </Box>
+      <Typography
+        variant="h4"
+        color={`${accent}.main`}
+        sx={{ fontSize: { xs: '1.45rem', sm: '1.7rem' }, fontWeight: 700, lineHeight: 1.2 }}
+      >
+        {value}
+      </Typography>
+      {caption != null && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+          {caption}
+        </Typography>
+      )}
+      {children}
+    </Box>
+  );
+}
+
+function ChartPanel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Box
+      sx={{
+        height: '100%',
+        p: 1.75,
+        borderRadius: 1.5,
+        border: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+      }}
+    >
+      <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+        {title}
+      </Typography>
+      {children}
+    </Box>
+  );
+}
 
 function chunkIds<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -177,11 +258,16 @@ interface AggregatedPlatformData {
   avgPrsLatest: number;
 }
 
+function parseReportsTab(raw: string | null): 0 | 1 | 2 | 3 {
+  const n = Number(raw ?? '0');
+  if (Number.isInteger(n) && n >= 0 && n <= 3) return n as 0 | 1 | 2 | 3;
+  return 0;
+}
+
 export default function AdminSnapshotPage() {
   const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = Number(searchParams.get('tab') ?? '0');
-  const activeTab = (tabParam >= 0 && tabParam <= 3 ? tabParam : 0) as 0 | 1 | 2 | 3;
+  const activeTab = parseReportsTab(searchParams.get('tab'));
   const setActiveTab = useCallback(
     (v: 0 | 1 | 2 | 3) => {
       setSearchParams(
@@ -195,25 +281,43 @@ export default function AdminSnapshotPage() {
     },
     [setSearchParams]
   );
+
+  // Keep URL ?tab= in sync when param is missing or invalid (browser nav / deep links).
+  useEffect(() => {
+    const raw = searchParams.get('tab');
+    const parsed = parseReportsTab(raw);
+    if (raw === String(parsed)) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', String(parsed));
+        return next;
+      },
+      { replace: true }
+    );
+  }, [searchParams, setSearchParams]);
   const [periodValue, setPeriodValue] = useState<string>('30');
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
   const [mentorHoursPeriod, setMentorHoursPeriod] = useState<string>('month');
   const [tableLimit, setTableLimit] = useState(10);
   const [events, setEvents] = useState<UsageEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [aggregatedRetry, setAggregatedRetry] = useState(0);
   const [aggregated, setAggregated] = useState<AggregatedPlatformData | null>(null);
   const [programBreakdowns, setProgramBreakdowns] = useState<ProgramBreakdown[]>([]);
   const [cohortBreakdowns, setCohortBreakdowns] = useState<CohortBreakdown[]>([]);
-  const [aggregatedLoading, setAggregatedLoading] = useState(true);
+  const [aggregatedLoading, setAggregatedLoading] = useState(false);
   const [aggregatedError, setAggregatedError] = useState<string | null>(null);
   const [breakdownSearch, setBreakdownSearch] = useState('');
   const [breakdownFilterProgram, setBreakdownFilterProgram] = useState<string>('all');
   const [usageSearch, setUsageSearch] = useState('');
 
+  // Usage analytics: load only when that tab is active (avoids heavy fetch on Reports landing)
   useEffect(() => {
+    if (activeTab !== 3) return;
     let mounted = true;
     setLoading(true);
     setError(null);
@@ -228,6 +332,14 @@ export default function AdminSnapshotPage() {
       if (periodValue === 'all') {
         // No date filter
       } else if (periodValue === 'custom' && customFrom && customTo) {
+        if (customFrom > customTo) {
+          if (mounted) {
+            setError('Custom range: From date must be on or before To date.');
+            setLoading(false);
+            setEvents([]);
+          }
+          return;
+        }
         const fromIso = new Date(customFrom + 'T00:00:00.000Z').toISOString();
         const toEnd = new Date(customTo + 'T23:59:59.999Z').toISOString();
         query = query.gte('created_at', fromIso).lte('created_at', toEnd);
@@ -238,29 +350,39 @@ export default function AdminSnapshotPage() {
         query = query.gte('created_at', since.toISOString());
       } else {
         // custom but missing dates – don't fetch
-        setLoading(false);
-        setEvents([]);
+        if (mounted) {
+          setLoading(false);
+          setEvents([]);
+        }
         return;
       }
 
-      query.then(({ data, error: err }) => {
-        if (!mounted) return;
-        if (err) {
-          setError(err.message);
+      void Promise.resolve(query)
+        .then(({ data, error: err }) => {
+          if (!mounted) return;
+          if (err) {
+            setError(err.message);
+            setEvents([]);
+          } else {
+            setEvents((data as UsageEvent[]) || []);
+          }
+          setLoading(false);
+        })
+        .catch((e: unknown) => {
+          if (!mounted) return;
+          setError(e instanceof Error ? e.message : 'Failed to load usage events');
           setEvents([]);
-        } else {
-          setEvents((data as UsageEvent[]) || []);
-        }
-        setLoading(false);
-      });
+          setLoading(false);
+        });
     };
 
     runQuery();
     return () => { mounted = false; };
-  }, [periodValue, customFrom, customTo, retryCount]);
+  }, [activeTab, periodValue, customFrom, customTo, retryCount]);
 
-  // Load aggregated platform data (managers, mentors, PECCs, sites, contacts, progress)
+  // Platform overview + program/cohort: load when those tabs are active
   useEffect(() => {
+    if (activeTab !== 1 && activeTab !== 2) return;
     let mounted = true;
     setAggregatedLoading(true);
     setAggregatedError(null);
@@ -306,6 +428,21 @@ export default function AdminSnapshotPage() {
         ]);
         if (!mounted) return;
 
+        const criticalError = [
+          managersRes.error,
+          mentorsRes.error,
+          peccsRes.error,
+          assignmentsRes.error,
+          hospitalsRes.error,
+          programsListRes.error,
+          cohortsListRes.error,
+          programMembersRes.error,
+          cohortMembersRes.error,
+        ].find((err) => err && !isSupabaseMissingRelationError(err));
+        if (criticalError) {
+          throw new Error(criticalError.message);
+        }
+
         if (contactsRes.error && !isSupabaseMissingRelationError(contactsRes.error)) {
           console.warn('Admin snapshot: hospital_contacts', contactsRes.error);
         }
@@ -314,6 +451,12 @@ export default function AdminSnapshotPage() {
         }
         if (peccActivitiesRes.error && !isSupabaseMissingRelationError(peccActivitiesRes.error)) {
           console.warn('Admin snapshot: pecc_activities', peccActivitiesRes.error);
+        }
+        if (crmPeopleRes.error && !isSupabaseMissingRelationError(crmPeopleRes.error)) {
+          console.warn('Admin snapshot: crm_organizations people', crmPeopleRes.error);
+        }
+        if (invitationsRes.error && !isSupabaseMissingRelationError(invitationsRes.error)) {
+          console.warn('Admin snapshot: invitations', invitationsRes.error);
         }
 
         const managerUsers = (managersRes.data || []) as { id: string; email: string | null }[];
@@ -369,7 +512,10 @@ export default function AdminSnapshotPage() {
         const totalHospitals = hospitalsRes.count ?? 0;
         const activeAssignments = assignmentsData.length;
         const assignedMentorIds = new Set(assignmentsData.map((a) => a.mentor_id));
-        const mentorsWithoutAssignments = mentors - assignedMentorIds.size;
+        const mentorsWithoutAssignments = Math.max(
+          0,
+          mentorUsers.filter((m) => !assignedMentorIds.has(m.id)).length
+        );
         const programs = programsRes.count ?? 0;
         const cohorts = cohortsRes.count ?? 0;
         const invitationsData = (invitationsRes.data || []) as { status: string; accepted_at: string | null }[];
@@ -618,7 +764,7 @@ export default function AdminSnapshotPage() {
       }
     })();
     return () => { mounted = false; };
-  }, [retryCount]);
+  }, [activeTab, aggregatedRetry]);
 
   const metrics = useMemo(() => {
     const logins = events.filter((e) => e.event_type === 'login');
@@ -863,111 +1009,96 @@ export default function AdminSnapshotPage() {
   };
 
   return (
-    <Box sx={{ py: 3 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TimelineIcon fontSize="large" />
-          Reports
-        </Typography>
-        <Typography color="text.secondary" sx={{ maxWidth: 720, mb: 2 }}>
-          One place for program improvement, platform health, and research-ready exports — custom datasets, KPIs,
-          cohort breakdowns, and usage analytics.
-        </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Typography variant="subtitle2" fontWeight={700} gutterBottom>Program improvement</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  PECC progress, mentor hours, site milestones, gap plans, and cohort comparisons.
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
-              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Typography variant="subtitle2" fontWeight={700} gutterBottom>Software improvement</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Usage analytics, page flows, login patterns, and feature adoption by role.
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'secondary.main' }}>
-              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Typography variant="subtitle2" fontWeight={700} gutterBottom>Research &amp; journals</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  CSV exports with optional de-identification, PRS metrics, and activity aggregates.
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </Box>
+    <AdminPageShell>
+      <AdminHero
+        overline="Admin"
+        title="Reports"
+        description="Program improvement (PECC progress, mentor hours, milestones, gap plans), platform health (usage analytics and adoption by role), and research-ready CSV exports with optional de-identification — plus custom datasets, KPIs, and cohort breakdowns."
+      />
 
-      <Tabs
-        value={activeTab}
-        onChange={(_, v: number) => setActiveTab(v as 0 | 1 | 2 | 3)}
-        sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
-      >
-        <Tab icon={<AssessmentIcon />} iconPosition="start" label="Reports" />
-        <Tab icon={<DashboardIcon />} iconPosition="start" label="Platform overview" />
-        <Tab icon={<TableChartIcon />} iconPosition="start" label="By program & cohort" />
-        <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Usage analytics" />
-      </Tabs>
+      <Paper elevation={0} sx={adminSectionShellSx}>
+        <Box sx={{ ...adminSectionHeaderSx, py: 0, alignItems: 'stretch' }}>
+          <Tabs
+            value={activeTab}
+            onChange={(_, v: number) => setActiveTab(v as 0 | 1 | 2 | 3)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{
+              minHeight: 48,
+              width: '100%',
+              '& .MuiTab-root': {
+                minHeight: 48,
+                py: 1,
+                px: { xs: 1.25, sm: 1.75 },
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+              },
+            }}
+          >
+            <Tab icon={<AssessmentIcon />} iconPosition="start" label="Reports" />
+            <Tab icon={<DashboardIcon />} iconPosition="start" label="Platform overview" />
+            <Tab icon={<TableChartIcon />} iconPosition="start" label="By program & cohort" />
+            <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Usage analytics" />
+          </Tabs>
+        </Box>
+      </Paper>
 
-      {activeTab === 0 && currentUser?.id && (
-        <Stack spacing={3}>
-          <StateMetricsMapPanel />
-          <StaffPeccReportBuilder scope="admin" actorUserId={currentUser.id} />
-        </Stack>
+      {activeTab === 0 && (
+        currentUser?.id ? (
+          <Stack spacing={2.5}>
+            <StateMetricsMapPanel />
+            <StaffPeccReportBuilder scope="admin" actorUserId={currentUser.id} />
+          </Stack>
+        ) : (
+          <Alert severity="info">Sign in to build and export reports.</Alert>
+        )
       )}
 
       {activeTab === 1 && (
-        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-          <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-              <Box>
-                <Typography variant="h6" fontWeight={600}>Platform overview</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Aggregated counts from managers, mentors, and PECC tiers.
-                </Typography>
-              </Box>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <FormControl size="small" sx={{ minWidth: 140 }}>
-                  <InputLabel>Mentor hours</InputLabel>
-                  <Select
-                    value={mentorHoursPeriod}
-                    label="Mentor hours"
-                    onChange={(e: SelectChangeEvent) => setMentorHoursPeriod(e.target.value)}
-                  >
-                    {MENTOR_HOURS_PERIODS.map((p) => (
-                      <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <Button
-                  size="small"
-                  startIcon={<RefreshIcon />}
-                  onClick={() => setRetryCount((c) => c + 1)}
-                  disabled={aggregatedLoading}
+        <AdminSection
+          overline="Platform"
+          title="Platform overview"
+          description="Aggregated counts from managers, mentors, and PECC tiers."
+          disableBodyPadding
+          actions={
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel>Mentor hours</InputLabel>
+                <Select
+                  value={mentorHoursPeriod}
+                  label="Mentor hours"
+                  onChange={(e: SelectChangeEvent) => setMentorHoursPeriod(e.target.value)}
                 >
-                  Refresh
-                </Button>
-              </Stack>
-            </Box>
-          </Box>
-          <Box sx={{ p: 3 }}>
+                  {MENTOR_HOURS_PERIODS.map((p) => (
+                    <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={() => setAggregatedRetry((c) => c + 1)}
+                disabled={aggregatedLoading}
+              >
+                Refresh
+              </Button>
+            </Stack>
+          }
+        >
+          <Box sx={{ p: { xs: 2, md: 2.5 } }}>
             {aggregatedError && (
               <Alert severity="error" sx={{ mb: 2 }} action={
-                <Button color="inherit" size="small" onClick={() => { setAggregatedError(null); setRetryCount((c) => c + 1); }}>
+                <Button color="inherit" size="small" onClick={() => { setAggregatedError(null); setAggregatedRetry((c) => c + 1); }}>
                   Retry
                 </Button>
               }>
                 {aggregatedError}
               </Alert>
+            )}
+            {!aggregated && !aggregatedLoading && !aggregatedError && (
+              <Alert severity="info" sx={{ mb: 2 }}>No platform overview data yet. Click Refresh to load.</Alert>
             )}
             {aggregatedLoading ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 2 }}>
@@ -1262,13 +1393,17 @@ export default function AdminSnapshotPage() {
               </>
             ) : null}
           </Box>
-        </Paper>
+        </AdminSection>
       )}
 
       {activeTab === 2 && (
-        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-          <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+        <AdminSection
+          overline="Breakdown"
+          title="By program & cohort"
+          description="Compare mentors, PECCs, sites, and hours across programs and cohorts."
+          disableBodyPadding
+          actions={
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
               <TextField
                 size="small"
                 placeholder="Search programs & cohorts..."
@@ -1281,9 +1416,9 @@ export default function AdminSnapshotPage() {
                     </InputAdornment>
                   )
                 }}
-                sx={{ minWidth: 240 }}
+                sx={{ minWidth: 200 }}
               />
-              <FormControl size="small" sx={{ minWidth: 180 }}>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
                 <InputLabel>Cohorts by program</InputLabel>
                 <Select
                   value={breakdownFilterProgram}
@@ -1307,41 +1442,47 @@ export default function AdminSnapshotPage() {
               <Button
                 size="small"
                 startIcon={<RefreshIcon />}
-                onClick={() => setRetryCount((c) => c + 1)}
+                onClick={() => setAggregatedRetry((c) => c + 1)}
                 disabled={aggregatedLoading}
               >
                 Refresh
               </Button>
-            </Box>
-          </Box>
-          <Box sx={{ p: 3 }}>
+            </Stack>
+          }
+        >
+          <Box sx={{ p: { xs: 2, md: 2.5 } }}>
+            {aggregatedError && (
+              <Alert severity="error" sx={{ mb: 2 }} action={
+                <Button color="inherit" size="small" onClick={() => { setAggregatedError(null); setAggregatedRetry((c) => c + 1); }}>
+                  Retry
+                </Button>
+              }>
+                {aggregatedError}
+              </Alert>
+            )}
             {aggregatedLoading ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 2 }}>
                 <CircularProgress />
                 <Typography variant="body2" color="text.secondary">Loading breakdowns...</Typography>
               </Box>
-            ) : (
+            ) : aggregatedError ? null : (
               <>
                 <Grid container spacing={2} sx={{ mb: 3 }}>
                   <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          Programs: mentors, PECCs, and sites
-                        </Typography>
-                        <ProgramBreakdownGroupedBar programs={filteredProgramBreakdowns} />
-                      </CardContent>
-                    </Card>
+                    <Paper elevation={0} sx={{ ...adminSectionShellSx, p: 2 }}>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                        Programs: mentors, PECCs, and sites
+                      </Typography>
+                      <ProgramBreakdownGroupedBar programs={filteredProgramBreakdowns} />
+                    </Paper>
                   </Grid>
                   <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          Cohorts: mentors, PECCs, and sites
-                        </Typography>
-                        <CohortBreakdownGroupedBar cohorts={filteredCohortBreakdowns} />
-                      </CardContent>
-                    </Card>
+                    <Paper elevation={0} sx={{ ...adminSectionShellSx, p: 2 }}>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                        Cohorts: mentors, PECCs, and sites
+                      </Typography>
+                      <CohortBreakdownGroupedBar cohorts={filteredCohortBreakdowns} />
+                    </Paper>
                   </Grid>
                 </Grid>
                 <Typography variant="subtitle1" fontWeight={600} gutterBottom>By program</Typography>
@@ -1416,13 +1557,17 @@ export default function AdminSnapshotPage() {
               </>
             )}
           </Box>
-        </Paper>
+        </AdminSection>
       )}
 
       {activeTab === 3 && (
-        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-          <Box sx={{ px: 3, py: 2, bgcolor: (t) => alpha(t.palette.primary.main, 0.04), borderBottom: 1, borderColor: 'divider' }}>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+        <AdminSection
+          overline="Usage"
+          title="Usage analytics"
+          description="Logins, page views, clicks, and feature adoption by role for the selected period."
+          disableBodyPadding
+          actions={
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
               <TextField
                 size="small"
                 placeholder="Search tables..."
@@ -1435,9 +1580,9 @@ export default function AdminSnapshotPage() {
                     </InputAdornment>
                   )
                 }}
-                sx={{ minWidth: 200 }}
+                sx={{ minWidth: 180 }}
               />
-              <FormControl size="small" sx={{ minWidth: 160 }}>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
                 <InputLabel>Period</InputLabel>
                 <Select
                   value={periodValue}
@@ -1458,7 +1603,7 @@ export default function AdminSnapshotPage() {
                     value={customFrom}
                     onChange={(e) => setCustomFrom(e.target.value)}
                     InputLabelProps={{ shrink: true }}
-                    sx={{ width: 150 }}
+                    sx={{ width: 140 }}
                   />
                   <TextField
                     size="small"
@@ -1467,11 +1612,11 @@ export default function AdminSnapshotPage() {
                     value={customTo}
                     onChange={(e) => setCustomTo(e.target.value)}
                     InputLabelProps={{ shrink: true }}
-                    sx={{ width: 150 }}
+                    sx={{ width: 140 }}
                   />
                 </>
               )}
-              <FormControl size="small" sx={{ minWidth: 120 }}>
+              <FormControl size="small" sx={{ minWidth: 110 }}>
                 <InputLabel>Table rows</InputLabel>
                 <Select
                   value={String(tableLimit)}
@@ -1500,10 +1645,10 @@ export default function AdminSnapshotPage() {
               >
                 Chart data (CSV)
               </Button>
-            </Box>
-          </Box>
-
-          <Box sx={{ p: 3 }}>
+            </Stack>
+          }
+        >
+          <Box sx={{ p: { xs: 2, md: 2.5 } }}>
             {error && (
               <Alert severity="error" sx={{ mb: 2 }} action={
                 <Button color="inherit" size="small" onClick={() => { setError(null); setRetryCount((c) => c + 1); }}>
@@ -1511,6 +1656,11 @@ export default function AdminSnapshotPage() {
                 </Button>
               }>
                 {error}
+              </Alert>
+            )}
+            {!loading && !error && events.length === 0 && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                No usage events for this period. Try a wider date range or click Refresh.
               </Alert>
             )}
             {!loading && !error && events.length >= 40000 && (
@@ -1832,8 +1982,8 @@ export default function AdminSnapshotPage() {
               </>
             )}
           </Box>
-        </Paper>
+        </AdminSection>
       )}
-    </Box>
+    </AdminPageShell>
   );
 }

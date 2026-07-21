@@ -63,9 +63,11 @@ type PermissionPresetKey = 'role-default' | 'pecc-standard' | 'mentor-standard' 
 interface GranularPermissionsManagerProps {
   mode: 'admin' | 'manager';  // Admin can manage all, Manager can only manage their team
   initialSelectedUserId?: string;  // When opening from CRM "Manage permissions", pre-select this user
+  /** When true, omit page-level title (parent AdminSection provides chrome). */
+  hideHeader?: boolean;
 }
 
-const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({ mode, initialSelectedUserId }) => {
+const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({ mode, initialSelectedUserId, hideHeader = false }) => {
   const { userProfile, refreshProfile, enterViewAsUser, viewAsUserId } = useUserProfile();
   const [activeTab, setActiveTab] = useState(0);  // 0: Users, 1: Cohorts, 2: Programs, 3: Tabs
   
@@ -808,25 +810,36 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   
   return (
     <Box>
-      <Typography variant="h6" gutterBottom>
-        {mode === 'admin' ? 'Granular Permissions Management' : 'Team Permissions Management'}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        {mode === 'admin' 
-          ? 'Set permissions and tab visibility for specific users, cohorts, and programs.'
-          : 'Manage permissions and tab visibility for your team members, cohorts, and programs.'}
-      </Typography>
+      {!hideHeader && (
+        <>
+          <Typography variant="h6" gutterBottom>
+            {mode === 'admin' ? 'Granular Permissions Management' : 'Team Permissions Management'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            {mode === 'admin' 
+              ? 'Set permissions and tab visibility for specific users, cohorts, and programs.'
+              : 'Manage permissions and tab visibility for your team members, cohorts, and programs.'}
+          </Typography>
+        </>
+      )}
       
-      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }} aria-label="Granular permissions sections">
-        <Tab label="User Permissions" id="granular-tab-0" aria-controls="granular-panel-0" />
-        <Tab label="Cohort Permissions" id="granular-tab-1" aria-controls="granular-panel-1" />
-        <Tab label="Program Permissions" id="granular-tab-2" aria-controls="granular-panel-2" />
-        <Tab label="Tab Visibility" id="granular-tab-3" aria-controls="granular-panel-3" />
+      <Tabs
+        value={activeTab}
+        onChange={(_, v) => setActiveTab(v)}
+        sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40, textTransform: 'none', fontWeight: 600, fontSize: '0.8125rem' } }}
+        aria-label="Granular permissions sections"
+        variant="scrollable"
+        scrollButtons="auto"
+      >
+        <Tab label="Users" id="granular-tab-0" aria-controls="granular-panel-0" />
+        <Tab label="Cohorts" id="granular-tab-1" aria-controls="granular-panel-1" />
+        <Tab label="Programs" id="granular-tab-2" aria-controls="granular-panel-2" />
+        <Tab label="Tab visibility" id="granular-tab-3" aria-controls="granular-panel-3" />
       </Tabs>
       
       {/* User Permissions Tab */}
       {activeTab === 0 && (
-        <Paper sx={{ p: 3 }}>
+        <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Search users by name or email</Typography>
           <Autocomplete
             value={users.find(u => u.id === selectedUserId) ?? null}
@@ -1084,7 +1097,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
 
       {/* Cohort Permissions Tab */}
       {activeTab === 1 && (
-        <Paper sx={{ p: 3 }}>
+        <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Typography variant="subtitle1" gutterBottom sx={{ mb: 1 }}>Select a cohort to set permissions and tab visibility for its members</Typography>
           <Autocomplete
             value={cohorts.find(c => c.id === selectedCohortId) ?? null}
@@ -1223,7 +1236,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       
       {/* Program Permissions Tab */}
       {activeTab === 2 && (
-        <Paper sx={{ p: 3 }}>
+        <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Typography variant="subtitle1" gutterBottom sx={{ mb: 1 }}>Select a program to set permissions and tab visibility for its members</Typography>
           <Autocomplete
             value={programs.find(p => p.id === selectedProgramId) ?? null}
@@ -1350,7 +1363,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
       
       {/* Tab Visibility Tab */}
       {activeTab === 3 && (
-        <Paper sx={{ p: 3 }}>
+        <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
             Control which tabs and sections are visible
           </Typography>

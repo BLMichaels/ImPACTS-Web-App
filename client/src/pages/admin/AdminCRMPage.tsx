@@ -41,6 +41,11 @@ import {
 } from '../../utils/syncPortalLoginEmail';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { ContactGranularPermissions } from '../../components/admin/ContactGranularPermissions';
+import {
+  AdminPageShell,
+  AdminHero,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
 import { CRM_CONTACT_TYPE_LABELS as TYPE_LABELS, CRM_CONTACT_TYPE_COLORS as TYPE_COLORS } from '../../utils/crmLabels';
 import {
   Alert,
@@ -91,7 +96,8 @@ import {
   Switch,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Stack,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -4619,51 +4625,56 @@ const AdminCRMPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ py: 3 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
-        <Box>
-          <Typography variant="h4" fontWeight={600}>CRM</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Manage organizations, hospitals, and contacts
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {canSeeReminders && (
-            <Tooltip title="View your follow-up reminders across all contacts">
-              <Button startIcon={<NotificationsIcon />} onClick={() => { prepareModalOpen(); setMyRemindersOpen(true); }} size="medium" color={reminders.length > 0 ? 'primary' : 'inherit'}>
-                My reminders {reminders.length > 0 ? `(${reminders.length})` : ''}
+    <AdminPageShell spacing={false}>
+      <Stack spacing={{ xs: 2, md: 2.5 }}>
+      <AdminHero
+        overline="Admin"
+        title="CRM"
+        description="Manage organizations, hospitals, and contacts across the platform."
+        actions={
+          <>
+            {canSeeReminders && (
+              <Tooltip title="View your follow-up reminders across all contacts">
+                <Button startIcon={<NotificationsIcon />} onClick={() => { prepareModalOpen(); setMyRemindersOpen(true); }} size="small" color={reminders.length > 0 ? 'secondary' : 'inherit'} variant="outlined">
+                  My reminders {reminders.length > 0 ? `(${reminders.length})` : ''}
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip title={duplicatesScanning ? 'Scanning…' : 'Scan for duplicate contacts'}>
+              <Button startIcon={duplicatesScanning ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />} onClick={scanForDuplicates} size="small" color={detectedDuplicates.length > 0 ? 'warning' : 'inherit'} disabled={duplicatesScanning} variant="outlined">
+                Find Duplicates {duplicatesScanning ? '…' : detectedDuplicates.length > 0 ? `(${detectedDuplicates.length})` : ''}
               </Button>
             </Tooltip>
-          )}
-          <Tooltip title={duplicatesScanning ? 'Scanning…' : 'Scan for duplicate contacts'}>
-            <Button startIcon={duplicatesScanning ? <CircularProgress size={18} color="inherit" /> : <SearchIcon />} onClick={scanForDuplicates} size="medium" color={detectedDuplicates.length > 0 ? 'warning' : 'inherit'} disabled={duplicatesScanning}>
-              Find Duplicates {duplicatesScanning ? '…' : detectedDuplicates.length > 0 ? `(${detectedDuplicates.length})` : ''}
+            <Tooltip title="Import contacts from a CSV file">
+              <Button startIcon={<UploadIcon />} onClick={() => { prepareModalOpen(); setImportDialogOpen(true); setImportData([]); setImportHeaders([]); setImportColumnMapping({}); setImportError(null); setImportSuccess(null); setImportMappingConfirmed(false); }} size="small" variant="outlined">
+                Import
+              </Button>
+            </Tooltip>
+            <Tooltip title="Choose columns and export all filtered or selected contacts">
+              <Button startIcon={<DownloadIcon />} onClick={() => { prepareModalOpen(); setExportDialogOpen(true); }} size="small" variant="outlined">
+                Export
+              </Button>
+            </Tooltip>
+            <Tooltip title="Add or remove custom fields for contacts (Admins only)">
+              <Button startIcon={<SettingsIcon />} onClick={() => { prepareModalOpen(); setCustomFieldsDialogOpen(true); }} size="small" variant="outlined">
+                Manage custom fields
+              </Button>
+            </Tooltip>
+            <Button
+              variant="contained"
+              color="secondary"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedManagerIds: [], assignedMentorIds: [], assignedPeccIds: [] }); setSaveError(null); prepareModalOpen(); setDialogOpen(true); }}
+            >
+              Add Contact
             </Button>
-          </Tooltip>
-          <Tooltip title="Import contacts from a CSV file">
-            <Button startIcon={<UploadIcon />} onClick={() => { prepareModalOpen(); setImportDialogOpen(true); setImportData([]); setImportHeaders([]); setImportColumnMapping({}); setImportError(null); setImportSuccess(null); setImportMappingConfirmed(false); }} size="medium">
-              Import
-            </Button>
-          </Tooltip>
-          <Tooltip title="Choose columns and export all filtered or selected contacts">
-            <Button startIcon={<DownloadIcon />} onClick={() => { prepareModalOpen(); setExportDialogOpen(true); }} size="medium">
-              Export
-            </Button>
-          </Tooltip>
-          <Tooltip title="Add or remove custom fields for contacts (Admins only)">
-            <Button startIcon={<SettingsIcon />} onClick={() => { prepareModalOpen(); setCustomFieldsDialogOpen(true); }} size="medium" variant="outlined">
-              Manage custom fields
-            </Button>
-          </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedManagerIds: [], assignedMentorIds: [], assignedPeccIds: [] }); setSaveError(null); prepareModalOpen(); setDialogOpen(true); }}>
-            Add Contact
-          </Button>
-        </Box>
-      </Box>
+          </>
+        }
+      />
 
       {loadError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+        <Alert severity="error" onClose={() => setLoadError(null)}>
           Could not load CRM contacts: {loadError}. Check your connection and try refreshing.
           <Button size="small" sx={{ ml: 1 }} onClick={() => { setLoadError(null); void loadAllContactsFromSupabase(); }}>
             Retry
@@ -4671,7 +4682,7 @@ const AdminCRMPage: React.FC = () => {
         </Alert>
       )}
       {usersLoadError && tabValue !== TEAM_TAB_INDEX && (
-        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setUsersLoadError(null)}>
+        <Alert severity="warning" onClose={() => setUsersLoadError(null)}>
           Team members (managers, mentors, PECCs) could not be loaded: {usersLoadError}. Check your connection and that you have access. You can manage users in the Team tab.
           <Button size="small" sx={{ ml: 1 }} onClick={() => { setUsersLoadError(null); void loadAllContactsFromSupabase(); }}>
             Retry
@@ -4680,7 +4691,7 @@ const AdminCRMPage: React.FC = () => {
       )}
       {/* Summary cards – single row (hidden on Team tab) */}
       {tabValue !== TEAM_TAB_INDEX && (
-      <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1.5, mb: 3, overflowX: 'auto', pb: 0.5 }}>
+      <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1, overflowX: 'auto', pb: 0.5 }}>
         {[
           { key: 'all', label: 'All', count: summaryCounts.all },
           {
@@ -4697,12 +4708,13 @@ const AdminCRMPage: React.FC = () => {
         ].map(({ key, label, count }) => {
           const isAll = key === 'all';
           const isActive = isAll ? crmQuickTypeFilter === 'all' : crmQuickTypeFilter === key;
-          const borderColor = isAll
-            ? theme.palette.primary.main
+          const typeAccent = isAll
+            ? theme.palette.secondary.main
             : TYPE_COLORS[(key === 'organizationGroup' ? 'organization' : key) as ContactType] || theme.palette.grey[400];
           return (
             <Paper
               key={key}
+              elevation={0}
               onClick={() => {
                 if (isAll) {
                   setCrmTab(0);
@@ -4727,28 +4739,36 @@ const AdminCRMPage: React.FC = () => {
               }}
               sx={{
                 flex: '1 1 0',
-                minWidth: 0,
-                p: 1.5,
+                minWidth: 84,
+                px: 1.25,
+                py: 1.1,
                 textAlign: 'center',
                 cursor: 'pointer',
-                borderTop: 3,
-                borderColor,
-                bgcolor: isActive ? alpha(theme.palette.primary.main, 0.04) : 'background.paper',
-                '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) }
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: isActive ? 'secondary.main' : 'divider',
+                borderTop: '3px solid',
+                borderTopColor: typeAccent,
+                bgcolor: isActive ? alpha(theme.palette.secondary.main, 0.08) : 'background.paper',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease',
+                '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.06) },
               }}
             >
               {loading ? (
-                <Skeleton variant="text" width={32} height={28} sx={{ mx: 'auto' }} />
+                <Skeleton variant="text" width={28} height={24} sx={{ mx: 'auto' }} />
               ) : (
                 <Typography
-                  variant="h6"
+                  variant="subtitle1"
                   fontWeight={700}
-                  sx={{ color: isAll ? 'primary.main' : TYPE_COLORS[(key === 'organizationGroup' ? 'organization' : key) as ContactType] || 'text.primary' }}
+                  sx={{
+                    lineHeight: 1.2,
+                    color: isActive ? 'secondary.dark' : (isAll ? 'secondary.main' : typeAccent),
+                  }}
                 >
                   {count}
                 </Typography>
               )}
-              <Typography variant="caption" display="block" color="text.secondary" sx={{ lineHeight: 1.2 }}>{label}</Typography>
+              <Typography variant="caption" display="block" color="text.secondary" sx={{ lineHeight: 1.2, mt: 0.25, fontSize: '0.7rem' }}>{label}</Typography>
             </Paper>
           );
         })}
@@ -4756,9 +4776,29 @@ const AdminCRMPage: React.FC = () => {
       )}
 
       {/* Toolbar: tabs, view mode, search, filters */}
-      <Paper sx={{ mb: 2 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2, pt: 1 }}>
-          <Tabs value={tabValue} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
+      <Paper elevation={0} sx={{ ...adminSectionShellSx, mb: 0 }}>
+        <Box
+          sx={{
+            px: { xs: 1.5, md: 2 },
+            pt: 0.5,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+          }}
+        >
+          <Tabs
+            value={tabValue}
+            onChange={handleTabChange}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{
+              minHeight: 42,
+              '& .MuiTab-root': { minHeight: 42, py: 1, textTransform: 'none', fontWeight: 600, fontSize: '0.875rem' },
+              '& .Mui-selected': { color: 'secondary.dark' },
+              '& .MuiTabs-indicator': { bgcolor: 'secondary.main' },
+            }}
+          >
             <Tab label="All" />
             <Tab label="Organizations" />
             <Tab label="Hospitals" />
@@ -4771,11 +4811,11 @@ const AdminCRMPage: React.FC = () => {
           </Tabs>
         </Box>
         {tabValue === TEAM_TAB_INDEX ? (
-          <Box sx={{ p: 2 }}>
+          <Box sx={{ px: { xs: 1.5, md: 2 }, py: { xs: 1.5, md: 2 } }}>
             <AdminTeamTab />
           </Box>
         ) : (
-        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, p: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, px: { xs: 1.5, md: 2 }, py: 1.5 }}>
           <TextField
             size="small"
             placeholder="Search name, email, organization, region..."
@@ -4784,13 +4824,13 @@ const AdminCRMPage: React.FC = () => {
             InputProps={{
               startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>
             }}
-            sx={{ minWidth: 280 }}
+            sx={{ minWidth: 260, flex: '1 1 220px', maxWidth: 420 }}
           />
           <Button
             size="small"
             startIcon={<FilterIcon />}
             onClick={(e) => setFilterMenuAnchor(e.currentTarget)}
-            color={hasActiveFilters ? 'primary' : 'inherit'}
+            color={hasActiveFilters ? 'secondary' : 'inherit'}
             variant={hasActiveFilters ? 'contained' : 'outlined'}
           >
             Filters {hasActiveFilters ? `(${activeFilterCount})` : ''}
@@ -4883,13 +4923,13 @@ const AdminCRMPage: React.FC = () => {
               </MenuItem>
             ))}
           </Menu>
-          <Button size="small" startIcon={<TableIcon />} onClick={() => setViewMode('table')} variant={viewMode === 'table' ? 'contained' : 'outlined'}>
+          <Button size="small" startIcon={<TableIcon />} onClick={() => setViewMode('table')} variant={viewMode === 'table' ? 'contained' : 'outlined'} color={viewMode === 'table' ? 'secondary' : 'inherit'}>
             Table
           </Button>
-          <Button size="small" startIcon={<GridIcon />} onClick={() => setViewMode('grid')} variant={viewMode === 'grid' ? 'contained' : 'outlined'}>
+          <Button size="small" startIcon={<GridIcon />} onClick={() => setViewMode('grid')} variant={viewMode === 'grid' ? 'contained' : 'outlined'} color={viewMode === 'grid' ? 'secondary' : 'inherit'}>
             Cards
           </Button>
-          <FormControl size="small" sx={{ minWidth: 100 }}>
+          <FormControl size="small" sx={{ minWidth: 88 }}>
             <Select value={pageSize} onChange={(e) => setPageSize(e.target.value as PageSize)} displayEmpty variant="outlined">
               {PAGE_SIZE_OPTIONS.map((n) => (
                 <MenuItem key={String(n)} value={n}>{n === 'all' ? 'All' : n}</MenuItem>
@@ -4898,9 +4938,9 @@ const AdminCRMPage: React.FC = () => {
           </FormControl>
           <Box sx={{ flexGrow: 1 }} />
           {selectedIds.size > 0 && (
-            <Chip label={`${selectedIds.size} selected`} onDelete={() => setSelectedIds(new Set())} sx={{ mr: 1 }} />
+            <Chip label={`${selectedIds.size} selected`} onDelete={() => setSelectedIds(new Set())} size="small" color="secondary" variant="outlined" sx={{ mr: 0.5 }} />
           )}
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem' }}>
             {filteredAndSortedContacts.length === 0 ? '0 contacts' : pageSize === 'all' ? `${filteredAndSortedContacts.length} contact${filteredAndSortedContacts.length !== 1 ? 's' : ''}` : `Showing 1–${displayedContacts.length} of ${filteredAndSortedContacts.length}`}
           </Typography>
         </Box>
@@ -4909,8 +4949,21 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Bulk actions bar (contacts only) */}
       {tabValue !== TEAM_TAB_INDEX && selectedIds.size > 0 && (
-        <Paper sx={{ mb: 2, py: 1.5, px: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', bgcolor: alpha(theme.palette.primary.main, 0.06), border: '1px solid', borderColor: 'primary.main' }}>
-          <Chip label={`${selectedIds.size} selected`} color="primary" onDelete={() => setSelectedIds(new Set())} />
+        <Paper
+          elevation={0}
+          sx={{
+            ...adminSectionShellSx,
+            py: 1.25,
+            px: { xs: 1.5, md: 2 },
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            flexWrap: 'wrap',
+            bgcolor: alpha(theme.palette.secondary.main, 0.06),
+            borderColor: 'secondary.main',
+          }}
+        >
+          <Chip label={`${selectedIds.size} selected`} color="secondary" size="small" onDelete={() => setSelectedIds(new Set())} />
           <Button size="small" variant="outlined" startIcon={<FilterIcon />} onClick={(e) => setBulkStatusAnchor(e.currentTarget)}>
             Change status
           </Button>
@@ -4925,6 +4978,7 @@ const AdminCRMPage: React.FC = () => {
           <Button
             size="small"
             variant="contained"
+            color="secondary"
             disabled={
               selectedContacts.length !== 2 ||
               selectedContacts[0].type !== selectedContacts[1].type
@@ -4945,63 +4999,99 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Content (contacts only; Team tab shows AdminTeamTab above) */}
       {tabValue !== TEAM_TAB_INDEX && (loading ? (
-        <Paper sx={{ p: 4 }}>
-          <Grid container spacing={2}>
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, p: { xs: 2, md: 3 } }}>
+          <Grid container spacing={1.5}>
             {[1, 2, 3, 4, 5].map(i => (
-              <Grid item xs={12} key={i}><Skeleton variant="rectangular" height={52} /></Grid>
+              <Grid item xs={12} key={i}><Skeleton variant="rectangular" height={44} sx={{ borderRadius: 1 }} /></Grid>
             ))}
           </Grid>
         </Paper>
       ) : viewMode === 'grid' ? (
-        <Grid container spacing={2}>
+        <Grid container spacing={1.5}>
           {filteredAndSortedContacts.length === 0 ? (
             <Grid item xs={12}>
-              <Paper sx={{ py: 10, px: 3, textAlign: 'center' }}>
-                <ContactsIcon sx={{ fontSize: 80, color: 'action.disabled', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" gutterBottom>
+              <Paper elevation={0} sx={{ ...adminSectionShellSx, py: 8, px: 3, textAlign: 'center' }}>
+                <ContactsIcon sx={{ fontSize: 56, color: 'action.disabled', mb: 1.5 }} />
+                <Typography variant="h6" fontWeight={700} color="text.primary" gutterBottom sx={{ fontSize: '1.1rem' }}>
                   {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mx: 'auto', mb: 3 }}>
-                  {hasActiveFilters ? 'Try clearing filters or search, or add a new contact.' : 'Add organizations, hospitals, and people to build your CRM.'}
+                <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 380, mx: 'auto', mb: 2.5, lineHeight: 1.55 }}>
+                  {hasActiveFilters
+                    ? 'Clear filters or search to see more results, or add a new contact.'
+                    : 'Add organizations, hospitals, and people to build your CRM directory.'}
                 </Typography>
-                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedManagerIds: [], assignedMentorIds: [], assignedPeccIds: [] }); }} variant="contained" size="large">
-                  {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
-                </Button>
+                <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" useFlexGap>
+                  {hasActiveFilters && (
+                    <Button size="small" variant="outlined" startIcon={<ClearIcon />} onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  )}
+                  <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedManagerIds: [], assignedMentorIds: [], assignedPeccIds: [] }); }} variant="contained" color="secondary" size="small">
+                    {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
+                  </Button>
+                </Stack>
               </Paper>
             </Grid>
           ) : (
             displayedContacts.map((contact) => (
               <Grid item xs={12} sm={6} md={4} lg={3} key={contact.id}>
                 <Paper
+                  elevation={0}
                   sx={{
-                    p: 2,
+                    ...adminSectionShellSx,
+                    p: 1.75,
                     cursor: 'pointer',
-                    '&:hover': { boxShadow: 2 },
-                    borderLeft: 4,
-                    borderColor: TYPE_COLORS[contact.type]
+                    borderLeft: '3px solid',
+                    borderLeftColor: TYPE_COLORS[contact.type],
+                    transition: 'background-color 0.15s ease',
+                    '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.04) },
                   }}
                   onClick={() => openDetail(contact)}
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                    <Avatar sx={{ bgcolor: TYPE_COLORS[contact.type], width: 40, height: 40 }}>
+                    <Avatar sx={{ bgcolor: TYPE_COLORS[contact.type], width: 36, height: 36, fontSize: '0.9rem' }}>
                       {(contactDisplayName(contact) || '?')[0].toUpperCase()}
                     </Avatar>
-                    <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: alpha(TYPE_COLORS[contact.type], 0.2), color: TYPE_COLORS[contact.type] }} />
+                    <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: alpha(TYPE_COLORS[contact.type], 0.15), color: TYPE_COLORS[contact.type], height: 22, fontSize: '0.7rem' }} />
                   </Box>
-                  <Typography variant="subtitle1" fontWeight={600} noWrap>{contactDisplayName(contact)}</Typography>
-                  <Typography variant="body2" color="text.secondary" noWrap>{contact.organization || '—'}</Typography>
-                  <Typography variant="body2" noWrap sx={{ mt: 0.5 }}>{contact.email}</Typography>
-                  <Chip label={contact.status} size="small" color={contact.status === 'Active' ? 'success' : 'default'} sx={{ mt: 1 }} />
+                  <Typography variant="subtitle2" fontWeight={700} noWrap>{contactDisplayName(contact)}</Typography>
+                  <Typography variant="body2" color="text.secondary" noWrap sx={{ fontSize: '0.8rem' }}>{contact.organization || '—'}</Typography>
+                  <Typography variant="body2" noWrap sx={{ mt: 0.35, fontSize: '0.8rem' }}>{contact.email}</Typography>
+                  <Chip label={contact.status} size="small" color={contact.status === 'Active' ? 'success' : 'default'} sx={{ mt: 1, height: 22 }} />
                 </Paper>
               </Grid>
             ))
           )}
         </Grid>
       ) : (
-        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
-          <Table size="medium" sx={{ minWidth: 140 * (orderedDataColumnIds.length + (visibleColumns.has('actions') ? 1 : 0) + 1) }}>
+        <Paper elevation={0} sx={adminSectionShellSx}>
+          {filteredAndSortedContacts.length === 0 ? (
+            <Box sx={{ py: 8, px: 3, textAlign: 'center' }}>
+              <ContactsIcon sx={{ fontSize: 56, color: 'action.disabled', display: 'block', mx: 'auto', mb: 1.5 }} />
+              <Typography variant="h6" fontWeight={700} color="text.primary" gutterBottom sx={{ fontSize: '1.1rem' }}>
+                {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 380, mx: 'auto', mb: 2.5, lineHeight: 1.55 }}>
+                {hasActiveFilters
+                  ? 'Clear filters or search to see more results, or add a new contact.'
+                  : 'Add organizations, hospitals, and people to build your CRM directory.'}
+              </Typography>
+              <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" useFlexGap>
+                {hasActiveFilters && (
+                  <Button size="small" variant="outlined" startIcon={<ClearIcon />} onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
+                <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedManagerIds: [], assignedMentorIds: [], assignedPeccIds: [] }); }} variant="contained" color="secondary" size="small">
+                  {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
+                </Button>
+              </Stack>
+            </Box>
+          ) : (
+          <TableContainer sx={{ overflowX: 'auto' }}>
+          <Table size="small" sx={{ minWidth: 140 * (orderedDataColumnIds.length + (visibleColumns.has('actions') ? 1 : 0) + 1) }}>
             <TableHead>
-              <TableRow>
+              <TableRow sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}>
                 <TableCell padding="checkbox" sx={{ minWidth: 48 }}>
                   <Checkbox
                     checked={displayedContacts.length > 0 && selectedIds.size === displayedContacts.length}
@@ -5016,7 +5106,7 @@ const AdminCRMPage: React.FC = () => {
                   return (
                     <TableCell
                       key={colId}
-                      sx={{ minWidth: 120, whiteSpace: 'nowrap', cursor: 'grab', userSelect: 'none', opacity: isDragging ? 0.6 : 1, bgcolor: isDragging ? 'action.hover' : undefined }}
+                      sx={{ minWidth: 120, whiteSpace: 'nowrap', cursor: 'grab', userSelect: 'none', opacity: isDragging ? 0.6 : 1, bgcolor: isDragging ? 'action.hover' : undefined, fontWeight: 700, fontSize: '0.75rem' }}
                       draggable
                       onDragStart={handleColumnDragStart(colId)}
                       onDragEnd={handleColumnDragEnd}
@@ -5039,24 +5129,11 @@ const AdminCRMPage: React.FC = () => {
                     </TableCell>
                   );
                 })}
-                {visibleColumns.has('actions') && <TableCell align="right" sx={{ minWidth: 56 }}>Actions</TableCell>}
+                {visibleColumns.has('actions') && <TableCell align="right" sx={{ minWidth: 56, fontWeight: 700, fontSize: '0.75rem' }}>Actions</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredAndSortedContacts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={1 + orderedDataColumnIds.length + (visibleColumns.has('actions') ? 1 : 0)} align="center" sx={{ py: 10 }}>
-                    <ContactsIcon sx={{ fontSize: 64, color: 'action.disabled', display: 'block', mx: 'auto', mb: 1 }} />
-                    <Typography variant="h6" color="text.secondary">
-                      {hasActiveFilters ? 'No contacts match your filters' : 'No contacts yet'}
-                    </Typography>
-                    <Button startIcon={<AddIcon />} onClick={() => { trackClick?.('CRM - Add contact'); setSaveError(null); prepareModalOpen(); setDialogOpen(true); setEditingContact(null); setFormData({ type: 'other', name: '', firstName: '', lastName: '', organization: '', email: '', phone: '', status: 'Active', region: '', state: '', notes: '', hospitalSystem: '', programs: [], cohorts: [], linkedOrganizationIds: [], linkedHospitalIds: [], linkedSystemIds: [], linkedSystemId: '', customFields: {}, address: '', address2: '', city: '', county: '', zip: '', facilityId: '', is_admin: false, assignedManagerIds: [], assignedMentorIds: [], assignedPeccIds: [] }); }} variant="contained" sx={{ mt: 2 }}>
-                      {hasActiveFilters ? 'Add contact' : 'Add your first contact'}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                displayedContacts.map((contact) => (
+                {displayedContacts.map((contact) => (
                   <TableRow
                     key={contact.id}
                     hover
@@ -5082,11 +5159,12 @@ const AdminCRMPage: React.FC = () => {
                       </TableCell>
                     )}
                   </TableRow>
-                ))
-              )}
+                ))}
             </TableBody>
           </Table>
-        </TableContainer>
+          </TableContainer>
+          )}
+        </Paper>
       ))}
 
       {/* Row actions menu */}
@@ -5138,7 +5216,7 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Delete confirmation */}
       <Dialog disableRestoreFocus open={deleteConfirmOpen} onClose={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); setDeleteConfirmTyped(''); }}>
-        <DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.01 }}>
           {deleteTarget?.bulk ? `Delete ${deleteTarget.bulk.size} contacts?` : 'Delete contact?'}
         </DialogTitle>
         <DialogContent>
@@ -5210,7 +5288,7 @@ const AdminCRMPage: React.FC = () => {
 
       {/* My reminders – per-user, Mentor/Manager/Admin only */}
       <Dialog disableRestoreFocus open={myRemindersOpen} onClose={() => setMyRemindersOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>My follow-up reminders</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.01 }}>My follow-up reminders</DialogTitle>
         <DialogContent>
           {remindersLoading ? (
             <Typography color="text.secondary">Loading…</Typography>
@@ -5262,9 +5340,22 @@ const AdminCRMPage: React.FC = () => {
         slotProps={{ root: { 'aria-hidden': false } }}
       >
         {detailContact && (
-          <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-              <Typography variant="subtitle2" color="text.secondary">Quick view</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Box
+              sx={{
+                px: 2,
+                py: 1.25,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+              }}
+            >
+              <Typography variant="overline" sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, lineHeight: 1.2 }}>
+                Quick view
+              </Typography>
               <IconButton
                 size="small"
                 onClick={() => {
@@ -5275,7 +5366,8 @@ const AdminCRMPage: React.FC = () => {
                 <CloseIcon />
               </IconButton>
             </Box>
-            <Box sx={{ p: 1.5, mb: 2, borderRadius: 1, bgcolor: 'grey.50', border: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'auto' }}>
+            <Box sx={{ p: 1.5, mb: 2, borderRadius: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <Avatar sx={{ width: 48, height: 48, bgcolor: TYPE_COLORS[detailContact.type], fontSize: '1.125rem' }}>
                   {(contactDisplayName(detailContact) || '?')[0].toUpperCase()}
@@ -5672,6 +5764,7 @@ const AdminCRMPage: React.FC = () => {
                 )}
               </Box>
             </Box>
+          </Box>
           </Box>
         )}
       </Drawer>
@@ -7123,7 +7216,7 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Manage custom fields (Admins only) */}
       <Dialog disableRestoreFocus open={customFieldsDialogOpen} onClose={() => { setCustomFieldsDialogOpen(false); setEditingDefId(null); setNewDefLabel(''); setNewDefApplicableTypes(['hospital']); setNewDefFieldType('short_answer'); setNewDefOptions(''); setNewDefAllowMultiple(false); setNewDefShowInCrm('both'); setCsvUploadError(null); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Manage custom fields</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.01 }}>Manage custom fields</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Define fields and which contact types they apply to (e.g. trauma level for hospitals only). Values are saved per contact.
@@ -7267,7 +7360,7 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Export – choose scope and columns */}
       <Dialog disableRestoreFocus open={exportDialogOpen} onClose={() => setExportDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Export contacts</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.01 }}>Export contacts</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle2" sx={{ mt: 0.5, mb: 1 }}>What to export</Typography>
           <FormControl component="fieldset" fullWidth sx={{ mb: 2 }}>
@@ -7355,7 +7448,7 @@ const AdminCRMPage: React.FC = () => {
 
       {/* Import – upload CSV file */}
       <Dialog disableRestoreFocus open={importDialogOpen} onClose={() => !importInProgress && setImportDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Import contacts from CSV</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.01 }}>Import contacts from CSV</DialogTitle>
         <DialogContent>
           {importData.length === 0 ? (
             <>
@@ -7536,7 +7629,7 @@ const AdminCRMPage: React.FC = () => {
       
       {/* Duplicates Detection Dialog */}
       <Dialog disableRestoreFocus open={duplicatesDialogOpen} onClose={() => setDuplicatesDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Duplicate Contacts Detected</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.01 }}>Duplicate Contacts Detected</DialogTitle>
         <DialogContent>
           {detectedDuplicates.length === 0 ? (
             <Alert severity="success">No duplicates found!</Alert>
@@ -7643,7 +7736,7 @@ const AdminCRMPage: React.FC = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Merge Contacts</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: -0.01 }}>Merge Contacts</DialogTitle>
         <DialogContent>
           {mergeSource && mergeTarget && (
             <>
@@ -7782,7 +7875,8 @@ const AdminCRMPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+      </Stack>
+    </AdminPageShell>
   );
 };
 

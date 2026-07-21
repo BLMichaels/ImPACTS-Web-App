@@ -37,7 +37,7 @@ type PhiEventRow = {
 
 const PHI_EVENT_TYPES = ['phi_input_blocked', 'phi_input_warned', 'phi_input_acknowledged'] as const;
 
-const AdminPhiEventsPanel: React.FC = () => {
+const AdminPhiEventsPanel: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const [rows, setRows] = useState<PhiEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,15 +78,19 @@ const AdminPhiEventsPanel: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h6" gutterBottom>
-        PHI screening events
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Automated scans of free-text for HIPAA Safe Harbor identifiers. Raw match text is never stored — only
-        category numbers and redacted metadata. Client screening is the primary UX; database triggers also
-        reject high-severity patterns on narrative saves (user/hospital data, CRM notes, checklist tasks).
-        Heuristic only; not a guarantee of zero PHI. File/image contents are not OCR-scanned.
-      </Typography>
+      {!embedded && (
+        <>
+          <Typography variant="h6" gutterBottom>
+            PHI screening events
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Automated scans of free-text for HIPAA Safe Harbor identifiers. Raw match text is never stored — only
+            category numbers and redacted metadata. Client screening is the primary UX; database triggers also
+            reject high-severity patterns on narrative saves (user/hospital data, CRM notes, checklist tasks).
+            Heuristic only; not a guarantee of zero PHI. File/image contents are not OCR-scanned.
+          </Typography>
+        </>
+      )}
       <Alert severity="info" sx={{ mb: 2 }}>
         Categories follow the HIPAA Safe Harbor 18 identifiers (e.g. #7 SSN, #8 MRN). See{' '}
         <a href="https://cphs.berkeley.edu/hipaa/hipaa18.html" target="_blank" rel="noreferrer">
@@ -94,7 +98,7 @@ const AdminPhiEventsPanel: React.FC = () => {
         </a>
         .
       </Alert>
-      <Button startIcon={<RefreshIcon />} onClick={() => void load()} sx={{ mb: 2 }} disabled={loading}>
+      <Button size="small" startIcon={<RefreshIcon />} onClick={() => void load()} sx={{ mb: 2 }} disabled={loading}>
         Refresh
       </Button>
       {error ? (
@@ -108,11 +112,11 @@ const AdminPhiEventsPanel: React.FC = () => {
           <Typography variant="body2">Loading…</Typography>
         </Box>
       ) : rows.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          No PHI screening events yet.
-        </Typography>
+        <Box sx={{ py: 4, textAlign: 'center', color: 'text.secondary', border: '1px dashed', borderColor: 'divider', borderRadius: 2 }}>
+          <Typography variant="body2">No PHI screening events yet.</Typography>
+        </Box>
       ) : (
-        <TableContainer component={Paper} variant="outlined">
+        <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -127,7 +131,7 @@ const AdminPhiEventsPanel: React.FC = () => {
               {rows.map((row) => {
                 const cats = row.metadata?.categories || [];
                 return (
-                  <TableRow key={row.id}>
+                  <TableRow key={row.id} hover>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {new Date(row.created_at).toLocaleString()}
                     </TableCell>

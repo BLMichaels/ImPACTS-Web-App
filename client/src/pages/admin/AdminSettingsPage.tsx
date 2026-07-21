@@ -4,6 +4,7 @@ import {
   Box,
   Typography,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -51,6 +52,25 @@ import ScormPackagesSection from '../../components/ScormPackagesSection';
 import { useAuth } from '../../context/AuthContext';
 import EducationRichTextEditor from '../../components/admin/EducationRichTextEditor';
 import { EDUCATION_BUCKETS } from '../../constants/educationBuckets';
+import {
+  AdminPageShell,
+  AdminHero,
+  AdminSection,
+  adminSectionShellSx,
+  adminSectionHeaderSx,
+} from '../../components/admin/AdminPageChrome';
+
+const SETTINGS_DIALOG_TITLE_SX = {
+  fontWeight: 700,
+  letterSpacing: -0.015,
+  fontSize: '1.15rem',
+  pb: 1,
+} as const;
+
+const denseTablePaperSx = {
+  ...adminSectionShellSx,
+  borderRadius: 1.5,
+} as const;
 
 // Lazy load Programs and Cohorts pages to embed in settings
 const AdminProgramsContent = lazy(() => import('./AdminProgramsPage'));
@@ -138,6 +158,9 @@ export default function AdminSettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [tierUsers, setTierUsers] = useState<TierUser[]>([]);
   const [tierUsersLoading, setTierUsersLoading] = useState(false);
+  const [tierUsersLoaded, setTierUsersLoaded] = useState(false);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+  const [simulationsLoaded, setSimulationsLoaded] = useState(false);
 
   // Map tab query param to index
   const tabParamToIndex: Record<string, number> = useMemo(() => ({
@@ -342,7 +365,7 @@ export default function AdminSettingsPage() {
     })();
   }, []);
 
-  const loadSimulations = async () => {
+  const loadSimulations = useCallback(async () => {
     setSimulationsLoading(true);
     try {
       const { data, error } = await supabase
@@ -363,45 +386,58 @@ export default function AdminSettingsPage() {
           : [],
         display_order: Number(r.display_order) ?? 0
       })));
+      setSimulationsLoaded(true);
     } catch (e) {
       console.error('Load pecc_simulations:', e);
       setSimulationsList([]);
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to load simulations', severity: 'error' });
     } finally {
       setSimulationsLoading(false);
     }
-  };
-  useEffect(() => { loadSimulations(); }, []);
+  }, []);
+
+  // Load simulations only when Simulations tab is first opened (or after explicit refresh)
+  useEffect(() => {
+    if (tabIndex === 9 && !simulationsLoaded) {
+      void loadSimulations();
+    }
+  }, [tabIndex, simulationsLoaded, loadSimulations]);
 
   // Load all app settings from Supabase (syncs across devices)
   const loadAppSettings = useCallback(async () => {
-    const keys = ['email_confirmation_message', 'pecc_activity_categories', 'mentor_activity_categories', 'education_questions'];
-    const { data: rows } = await supabase.from('app_settings').select('key, value').in('key', keys);
-    const byKey = new Map((rows || []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
-    if (byKey.has('email_confirmation_message') && byKey.get('email_confirmation_message') != null) {
-      setEmailConfirmationMessage(String(byKey.get('email_confirmation_message')));
-    }
-    const peccVal = byKey.get('pecc_activity_categories');
-    if (peccVal != null && Array.isArray(peccVal)) {
-      setPeccCategories(peccVal as string[]);
-    } else {
-      setPeccCategories(DEFAULT_PECC_CATEGORIES);
-    }
-    const mentorVal = byKey.get('mentor_activity_categories');
-    if (mentorVal != null && Array.isArray(mentorVal)) {
-      setMentorCategories(mentorVal as Array<{ value: string; label: string }>);
-    } else {
-      setMentorCategories(DEFAULT_ACTIVITY_CATEGORIES);
-    }
-    const eduVal = byKey.get('education_questions');
-    if (eduVal != null && Array.isArray(eduVal)) {
-      setEducationQuestions((eduVal as any[]).map((q: any) => ({
-        ...q,
-        domain: q.domain ?? '',
-        category: q.category ?? '',
-        is_scored: q.is_scored !== false
-      })));
-    } else {
-      setEducationQuestions([]);
+    try {
+      const keys = ['email_confirmation_message', 'pecc_activity_categories', 'mentor_activity_categories', 'education_questions'];
+      const { data: rows, error } = await supabase.from('app_settings').select('key, value').in('key', keys);
+      if (error) throw error;
+      const byKey = new Map((rows || []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
+      if (byKey.has('email_confirmation_message') && byKey.get('email_confirmation_message') != null) {
+        setEmailConfirmationMessage(String(byKey.get('email_confirmation_message')));
+      }
+      const peccVal = byKey.get('pecc_activity_categories');
+      if (peccVal != null && Array.isArray(peccVal)) {
+        setPeccCategories(peccVal as string[]);
+      } else {
+        setPeccCategories(DEFAULT_PECC_CATEGORIES);
+      }
+      const mentorVal = byKey.get('mentor_activity_categories');
+      if (mentorVal != null && Array.isArray(mentorVal)) {
+        setMentorCategories(mentorVal as Array<{ value: string; label: string }>);
+      } else {
+        setMentorCategories(DEFAULT_ACTIVITY_CATEGORIES);
+      }
+      const eduVal = byKey.get('education_questions');
+      if (eduVal != null && Array.isArray(eduVal)) {
+        setEducationQuestions((eduVal as any[]).map((q: any) => ({
+          ...q,
+          domain: q.domain ?? '',
+          category: q.category ?? '',
+          is_scored: q.is_scored !== false
+        })));
+      } else {
+        setEducationQuestions([]);
+      }
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to load settings', severity: 'error' });
     }
   }, []);
 
@@ -409,19 +445,17 @@ export default function AdminSettingsPage() {
     loadAppSettings();
   }, [loadAppSettings]);
 
-  // Load Hospital System & Hiring Group users when Tiers tab is selected
-  useEffect(() => {
-    if (tabIndex !== 10) return;
-    let cancelled = false;
+  const loadTier = useCallback(async () => {
     setTierUsersLoading(true);
-    (async () => {
+    try {
       const { data: usersData, error: usersErr } = await supabase
         .from('users')
         .select('id, email, first_name, last_name, role')
         .in('role', ['hospital_system', 'hiring_group']);
-      if (cancelled || usersErr || !usersData?.length) {
-        if (!cancelled) setTierUsers([]);
-        setTierUsersLoading(false);
+      if (usersErr) throw usersErr;
+      if (!usersData?.length) {
+        setTierUsers([]);
+        setTierUsersLoaded(true);
         return;
       }
       const list: TierUser[] = [];
@@ -439,17 +473,29 @@ export default function AdminSettingsPage() {
           systemNames
         });
       }
-      if (!cancelled) setTierUsers(list);
+      setTierUsers(list);
+      setTierUsersLoaded(true);
+    } catch (e) {
+      setTierUsers([]);
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to load tier users', severity: 'error' });
+    } finally {
       setTierUsersLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [tabIndex]);
+    }
+  }, []);
+
+  // Load Hospital System & Hiring Group users once when Tiers tab is first selected
+  useEffect(() => {
+    if (tabIndex === 10 && !tierUsersLoaded) {
+      void loadTier();
+    }
+  }, [tabIndex, tierUsersLoaded, loadTier]);
 
   const saveAppSetting = async (key: string, value: unknown) => {
-    await supabase.from('app_settings').upsert(
+    const { error } = await supabase.from('app_settings').upsert(
       { key, value: value as any, updated_at: new Date().toISOString() },
       { onConflict: 'key' }
     );
+    if (error) throw error;
   };
   
   const handleOpenEducationDialog = (question?: EducationQuestion) => {
@@ -494,30 +540,47 @@ export default function AdminSettingsPage() {
       const { notes: _n, ...rest } = q as Record<string, unknown> & { notes?: string };
       return rest;
     });
-    await saveAppSetting('education_questions', toSave);
-    setEducationDialogOpen(false);
-    setSnackbar({ open: true, message: 'Education question saved', severity: 'success' });
+    try {
+      await saveAppSetting('education_questions', toSave);
+      setEducationDialogOpen(false);
+      setSnackbar({ open: true, message: 'Education question saved', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to save education question', severity: 'error' });
+    }
   };
   
   const handleDeleteEducationQuestion = async (questionId: string) => {
     if (!window.confirm(`Delete education content for Question ${questionId}?`)) return;
+    const previous = educationQuestions;
     const updated = educationQuestions.filter(q => q.questionId !== questionId);
     setEducationQuestions(updated);
-    await saveAppSetting('education_questions', updated);
-    setSnackbar({ open: true, message: 'Education question deleted', severity: 'success' });
+    try {
+      await saveAppSetting('education_questions', updated);
+      setSnackbar({ open: true, message: 'Education question deleted', severity: 'success' });
+    } catch (e) {
+      setEducationQuestions(previous);
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to delete education question', severity: 'error' });
+    }
   };
 
   const moveEducationQuestion = async (fromIndex: number, direction: 'up' | 'down') => {
     const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
     if (toIndex < 0 || toIndex >= educationQuestions.length) return;
+    const previous = educationQuestions;
     const next = [...educationQuestions];
     [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
     setEducationQuestions(next);
-    await saveAppSetting('education_questions', next);
-    setSnackbar({ open: true, message: 'Order updated', severity: 'success' });
+    try {
+      await saveAppSetting('education_questions', next);
+      setSnackbar({ open: true, message: 'Order updated', severity: 'success' });
+    } catch (e) {
+      setEducationQuestions(previous);
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to update order', severity: 'error' });
+    }
   };
 
   const handleToggleEducationScored = async (questionId: string, isScored: boolean) => {
+    const previous = educationQuestions;
     const next = educationQuestions.map(q =>
       q.questionId === questionId ? { ...q, is_scored: isScored } : q
     );
@@ -526,8 +589,13 @@ export default function AdminSettingsPage() {
       const { notes: _n, ...rest } = q as Record<string, unknown> & { notes?: string };
       return rest;
     });
-    await saveAppSetting('education_questions', toSave);
-    setSnackbar({ open: true, message: isScored ? 'Question marked as scored' : 'Question marked as unscored', severity: 'success' });
+    try {
+      await saveAppSetting('education_questions', toSave);
+      setSnackbar({ open: true, message: isScored ? 'Question marked as scored' : 'Question marked as unscored', severity: 'success' });
+    } catch (e) {
+      setEducationQuestions(previous);
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to update scored flag', severity: 'error' });
+    }
   };
 
   const openSimDialog = (sim?: PeccSimulation) => {
@@ -621,10 +689,14 @@ export default function AdminSettingsPage() {
   };
   
   const handleSaveEmailSettings = async () => {
-    await saveAppSetting('email_confirmation_message', emailConfirmationMessage);
-    setSnackbar({ open: true, message: 'Email settings saved successfully', severity: 'success' });
+    try {
+      await saveAppSetting('email_confirmation_message', emailConfirmationMessage);
+      setSnackbar({ open: true, message: 'Email settings saved successfully', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to save email settings', severity: 'error' });
+    }
   };
-  // Load role_permissions from DB when Permissions tab is shown
+  // Load role_permissions from DB when Permissions tab is shown (once per session unless refreshed)
   const loadRolePermissions = useCallback(async () => {
     setPermissionsLoading(true);
     try {
@@ -643,6 +715,7 @@ export default function AdminSettingsPage() {
       });
       setPermissions(init);
       setHasChanges(false);
+      setPermissionsLoaded(true);
     } catch (e) {
       console.error('Load role_permissions:', e);
       const init: PermissionState = {};
@@ -651,6 +724,7 @@ export default function AdminSettingsPage() {
         Object.values(PERMISSIONS).forEach(perm => { init[role][perm] = DEFAULT_ROLE_PERMISSIONS[role]?.includes(perm) || false; });
       });
       setPermissions(init);
+      setPermissionsLoaded(true);
       setSnackbar({ open: true, message: 'Could not load permissions; showing defaults.', severity: 'error' });
     } finally {
       setPermissionsLoading(false);
@@ -658,8 +732,10 @@ export default function AdminSettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (tabIndex === 1) loadRolePermissions();
-  }, [tabIndex, loadRolePermissions]);
+    if (tabIndex === 1 && !permissionsLoaded) {
+      void loadRolePermissions();
+    }
+  }, [tabIndex, permissionsLoaded, loadRolePermissions]);
 
   const openAdd = () => {
     setEditingId(null);
@@ -749,10 +825,12 @@ export default function AdminSettingsPage() {
       }
       setDialogOpen(false);
       loadQuestions();
+      setSnackbar({ open: true, message: editingId ? 'Question updated' : 'Question added', severity: 'success' });
     } catch (e: unknown) {
       const err = e as { message?: string; details?: string; hint?: string };
       const msg = err?.message || (e instanceof Error ? e.message : 'Failed to save');
       setRegError(msg);
+      setSnackbar({ open: true, message: msg, severity: 'error' });
     }
   };
   const handleRegDelete = async (id: string) => {
@@ -761,8 +839,11 @@ export default function AdminSettingsPage() {
       const { error: err } = await supabase.from('registration_questions').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', id);
       if (err) throw err;
       loadQuestions();
+      setSnackbar({ open: true, message: 'Question deactivated', severity: 'success' });
     } catch (e) {
-      setRegError(e instanceof Error ? e.message : 'Failed to deactivate');
+      const msg = e instanceof Error ? e.message : 'Failed to deactivate';
+      setRegError(msg);
+      setSnackbar({ open: true, message: msg, severity: 'error' });
     }
   };
 
@@ -826,688 +907,768 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <Box sx={{ py: 3 }}>
-      <Typography variant="h4" gutterBottom>Settings</Typography>
-      <Typography color="textSecondary" sx={{ mb: 2 }}>
-        Registration form, role permissions, and other configuration.
-      </Typography>
+    <AdminPageShell>
+      <AdminHero
+        overline="Admin"
+        title="Settings"
+        description="Configure registration, permissions, programs, cohorts, learning modules, and platform defaults."
+      />
 
-      <Tabs 
-        value={tabIndex} 
-        onChange={handleTabChange} 
-        sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
-        variant="scrollable"
-        scrollButtons="auto"
-        allowScrollButtonsMobile
-      >
-        <Tab label="Registration Questions" />
-        <Tab label="Permissions" />
-        <Tab label="Granular Permissions" />
-        <Tab label="Email Settings" />
-        <Tab label="Learning Modules" />
-        <Tab label="Programs" />
-        <Tab label="Cohorts" />
-        <Tab label="Activity Categories" />
-        <Tab label="Gap Closure" />
-        <Tab label="Simulations" />
-        <Tab label="Tiers" />
-        <Tab label="Program Checklists" />
-        <Tab label="PHI Events" />
-      </Tabs>
-
-      {/* Registration Questions */}
+      <Paper elevation={0} sx={adminSectionShellSx}>
+        <Box sx={{ ...adminSectionHeaderSx, py: 0, alignItems: 'stretch' }}>
+          <Tabs
+            value={tabIndex}
+            onChange={handleTabChange}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{
+              minHeight: 44,
+              width: '100%',
+              '& .MuiTab-root': {
+                minHeight: 44,
+                py: 1,
+                px: { xs: 1.25, sm: 1.75 },
+                fontSize: '0.8125rem',
+                fontWeight: 600,
+                textTransform: 'none',
+              },
+            }}
+          >
+            <Tab label="Registration" />
+            <Tab label="Permissions" />
+            <Tab label="Granular" />
+            <Tab label="Email" />
+            <Tab label="Modules" />
+            <Tab label="Programs" />
+            <Tab label="Cohorts" />
+            <Tab label="Activities" />
+            <Tab label="Gap Closure" />
+            <Tab label="Simulations" />
+            <Tab label="Tiers" />
+            <Tab label="Checklists" />
+            <Tab label="PHI Events" />
+          </Tabs>
+        </Box>
+        <Box sx={{ p: { xs: 2, md: 2.5 } }}>
       {tabIndex === 0 && (
-        <Box>
-          <Typography variant="h6" gutterBottom>Registration Questions</Typography>
-          <Typography color="textSecondary" sx={{ mb: 2 }}>
-            Add, edit, or remove questions on the registration form. Questions can be targeted to specific user roles (PECC, Mentor, Manager, Admin).
-          </Typography>
+        <AdminSection
+          overline="Forms"
+          title="Registration questions"
+          description="Questions on the signup form. Target by role, program, or cohort; optionally link answers to CRM fields."
+          actions={
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadQuestions()} disabled={questionsLoading}>
+                Refresh
+              </Button>
+              <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={openAdd}>
+                Add question
+              </Button>
+            </Stack>
+          }
+        >
           {regError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setRegError('')}>{regError}</Alert>}
-          <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>Add question</Button>
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>Filter by role</InputLabel>
-              <Select
-                value={regRoleFilter}
-                onChange={(e) => setRegRoleFilter(e.target.value)}
-                label="Filter by role"
-              >
-                <MenuItem value="all">All roles</MenuItem>
-                <MenuItem value="pecc">PECC</MenuItem>
-                <MenuItem value="mentor">Mentor</MenuItem>
-                <MenuItem value="manager">Manager</MenuItem>
-                <MenuItem value="admin">Admin</MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
-          {questionsLoading ? (
-            <Typography>Loading…</Typography>
+                    <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <FormControl size="small" sx={{ minWidth: 200 }}>
+                        <InputLabel>Filter by role</InputLabel>
+                        <Select
+                          value={regRoleFilter}
+                          onChange={(e) => setRegRoleFilter(e.target.value)}
+                          label="Filter by role"
+                        >
+                          <MenuItem value="all">All roles</MenuItem>
+                          <MenuItem value="pecc">PECC</MenuItem>
+                          <MenuItem value="mentor">Mentor</MenuItem>
+                          <MenuItem value="manager">Manager</MenuItem>
+                          <MenuItem value="admin">Admin</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+                    {questionsLoading ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 3 }}><CircularProgress size={22} /><Typography variant="body2">Loading…</Typography></Box>
+                    ) : (
+                      <TableContainer component={Paper} elevation={0} sx={denseTablePaperSx}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Order</TableCell>
+                              <TableCell>Label</TableCell>
+                              <TableCell>Type</TableCell>
+                              <TableCell>CRM field</TableCell>
+                              <TableCell>Programs / Cohorts</TableCell>
+                              <TableCell>In CRM</TableCell>
+                              <TableCell>Target Roles</TableCell>
+                              <TableCell>Required</TableCell>
+                              <TableCell>Options</TableCell>
+                              <TableCell>Status</TableCell>
+                              <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {questions
+                              .filter(q => {
+                                if (regRoleFilter === 'all') return true;
+                                return q.target_roles?.includes(regRoleFilter) || (!q.target_roles && regRoleFilter === 'pecc');
+                              })
+                              .map(q => (
+                              <TableRow key={q.id}>
+                                <TableCell>{q.sort_order}</TableCell>
+                                <TableCell>{q.label}</TableCell>
+                                <TableCell>{QUESTION_TYPES.find(t => t.value === q.question_type)?.label ?? q.question_type}</TableCell>
+                                <TableCell>{q.linked_crm_field ? (CRM_FIELD_OPTIONS.find(o => o.value === q.linked_crm_field)?.label ?? q.linked_crm_field) : (q.display_in_crm ? '—' : '—')}</TableCell>
+                                <TableCell>
+                                  {((q.target_program_ids?.length ?? 0) + (q.target_cohort_ids?.length ?? 0)) > 0 ? (
+                                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 160 }}>
+                                      {(q.target_program_ids || []).map(pid => (
+                                        <Chip key={pid} label={programsList.find(p => p.id === pid)?.name || pid} size="small" variant="outlined" />
+                                      ))}
+                                      {(q.target_cohort_ids || []).map(cid => (
+                                        <Chip key={cid} label={cohortsList.find(c => c.id === cid)?.name || cid} size="small" variant="outlined" color="primary" />
+                                      ))}
+                                    </Box>
+                                  ) : (
+                                    <Typography variant="caption" color="text.secondary">All</Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell>{q.display_in_crm ? 'Yes' : '—'}</TableCell>
+                                <TableCell>
+                                  {q.target_roles && q.target_roles.length > 0 ? (
+                                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                      {q.target_roles.map(role => (
+                                        <Chip key={role} label={role.toUpperCase()} size="small" variant="outlined" />
+                                      ))}
+                                    </Box>
+                                  ) : (
+                                    <Chip label="All" size="small" variant="outlined" color="default" />
+                                  )}
+                                </TableCell>
+                                <TableCell>{q.required ? 'Yes' : 'No'}</TableCell>
+                                <TableCell>{(q.options || []).length ? (q.options as string[]).join(', ') : '—'}</TableCell>
+                                <TableCell><Chip label={q.is_active ? 'Active' : 'Inactive'} size="small" color={q.is_active ? 'success' : 'default'} /></TableCell>
+                                <TableCell align="right">
+                                  <IconButton size="small" onClick={() => openEdit(q)}><EditIcon fontSize="small" /></IconButton>
+                                  {q.is_active && <IconButton size="small" color="error" onClick={() => handleRegDelete(q.id)}><DeleteIcon fontSize="small" /></IconButton>}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                        {questions.length === 0 && <Box sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}>No registration questions yet.</Box>}
+                      </TableContainer>
+                    )}
+        </AdminSection>
+      )}
+
+      {tabIndex === 1 && (
+        <AdminSection
+          overline="Access"
+          title="Role permissions"
+          description="Features each role can access. Admins always have full access. Applies to Manager, Mentor, and PECC only."
+          actions={
+            !permissionsLoading ? (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadRolePermissions()}>
+                  Reload
+                </Button>
+                <Button size="small" onClick={handlePermReset}>
+                  Reset defaults
+                </Button>
+                <Button size="small" variant="contained" startIcon={<SaveIcon />} onClick={handlePermSave} disabled={!hasChanges}>
+                  Save
+                </Button>
+              </Stack>
+            ) : undefined
+          }
+        >
+          {permissionsLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 4 }}>
+              <CircularProgress size={24} />
+              <Typography>Loading permissions…</Typography>
+            </Box>
           ) : (
-            <TableContainer component={Paper}>
+            <>
+              {hasChanges && <Alert severity="warning" sx={{ mb: 2 }}>You have unsaved changes.</Alert>}
+              <Alert severity="info" sx={{ mb: 2 }}>These settings affect Manager, Mentor, and PECC only.</Alert>
+              {Object.entries(PERMISSION_GROUPS).map(([groupName, groupPermissions]) => (
+                <Accordion
+                  key={groupName}
+                  defaultExpanded
+                  disableGutters
+                  elevation={0}
+                  sx={{ border: '1px solid', borderColor: 'divider', mb: 1, '&:before': { display: 'none' } }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle1" fontWeight={600}>{groupName}</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 0, pb: 0 }}>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ width: '40%' }}>Permission</TableCell>
+                            {ROLES.map(role => (
+                              <TableCell key={role} align="center">
+                                <Chip label={role.toUpperCase()} size="small" sx={{ bgcolor: getRoleColorHex(role), color: 'white' }} />
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {groupPermissions.map(perm => (
+                            <TableRow key={perm} hover>
+                              <TableCell><Typography variant="body2">{formatPermissionLabel(perm)}</Typography></TableCell>
+                              {ROLES.map(role => (
+                                <TableCell key={`${role}-${perm}`} align="center">
+                                  <Switch
+                                    size="small"
+                                    checked={permissions[role]?.[perm] || false}
+                                    onChange={() => handleTogglePermission(role, perm)}
+                                    color="primary"
+                                  />
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </AccordionDetails>
+                </Accordion>
+              ))}
+              <Paper elevation={0} sx={{ ...denseTablePaperSx, p: 2, mt: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>Summary</Typography>
+                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                  {ROLES.map(role => (
+                    <Box key={role}>
+                      <Chip label={role.toUpperCase()} size="small" sx={{ bgcolor: getRoleColorHex(role), color: 'white', mb: 0.5 }} />
+                      <Typography variant="body2">
+                        {Object.values(permissions[role] || {}).filter(Boolean).length} of {Object.values(PERMISSIONS).length} enabled
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Paper>
+            </>
+          )}
+        </AdminSection>
+      )}
+
+      {tabIndex === 2 && (
+        <AdminSection
+          overline="Access"
+          title="Granular permissions"
+          description="Override permissions and tab visibility for specific users, cohorts, and programs."
+        >
+          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
+                    <GranularPermissionsManager mode="admin" hideHeader initialSelectedUserId={searchParams.get('userId') || undefined} />
+                  </Suspense>
+        </AdminSection>
+      )}
+
+      {tabIndex === 3 && (
+        <AdminSection
+          overline="Messaging"
+          title="Email settings"
+          description="Customize the post-registration confirmation message shown to users. Email templates themselves live in Supabase Auth."
+          actions={
+            <Button size="small" variant="contained" startIcon={<SaveIcon />} onClick={() => void handleSaveEmailSettings()}>
+              Save
+            </Button>
+          }
+        >
+          <Alert severity="info" sx={{ mb: 3 }}>
+                      <Typography variant="body2" gutterBottom>
+                        <strong>Note:</strong> Email templates are managed through Supabase Dashboard → Authentication → Email Templates.
+                      </Typography>
+                      <Typography variant="body2">
+                        However, you can customize the notification message shown to users after they create an account below.
+                      </Typography>
+                    </Alert>
+          
+                    <Paper elevation={0} sx={{ ...adminSectionShellSx, p: { xs: 2, md: 2.5 }, mb: 2 }}>
+                      <Typography variant="subtitle1" gutterBottom>Account Confirmation Message</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        This message is shown to users after they complete registration via an invitation link. It informs them about the email confirmation step.
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={4}
+                        value={emailConfirmationMessage}
+                        onChange={(e) => setEmailConfirmationMessage(e.target.value)}
+                        placeholder="After completing registration, you will receive an email to confirm your account. Please check your inbox and click the confirmation link before logging in."
+                        sx={{ mb: 2 }}
+                      />
+                      </Paper>
+          
+                    <Paper elevation={0} sx={{ ...adminSectionShellSx, p: { xs: 2, md: 2.5 } }}>
+                      <Typography variant="subtitle1" gutterBottom>Invitation Email Preview</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        When you send an invitation, the user receives an email with a link to complete registration. The email template can be customized in Supabase Dashboard.
+                      </Typography>
+                      <Alert severity="warning">
+                        To customize the actual email template, go to Supabase Dashboard → Authentication → Email Templates → Confirm signup.
+                      </Alert>
+                    </Paper>
+        </AdminSection>
+      )}
+
+      {tabIndex === 4 && (
+        <AdminSection
+          overline="Learning"
+          title="Learning modules"
+          description="Upload and manage SCORM packages. Only admins can add modules; users see modules that apply to their hospital or program."
+        >
+          <ScormPackagesSection title="" hideTitle />
+        </AdminSection>
+      )}
+
+      {tabIndex === 5 && (
+        <AdminSection
+          overline="Structure"
+          title="Programs"
+          description="Create and manage programs, managers, and logos."
+          disableBodyPadding
+        >
+          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
+                    <AdminProgramsContent embedded />
+                  </Suspense>
+        </AdminSection>
+      )}
+
+      {tabIndex === 6 && (
+        <AdminSection
+          overline="Structure"
+          title="Cohorts"
+          description="Create and manage cohorts, assign managers, and oversee cohort membership."
+          disableBodyPadding
+        >
+          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
+                    <AdminCohortsContent embedded />
+                  </Suspense>
+        </AdminSection>
+      )}
+
+      {tabIndex === 7 && (
+        <AdminSection
+          overline="Activities"
+          title="Activity categories"
+          description="Categories for PECC and Mentor activity logging. Changes apply immediately on Activities pages."
+          actions={
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button size="small" variant={categoryType === 'pecc' ? 'contained' : 'outlined'} onClick={() => setCategoryType('pecc')}>
+                PECC
+              </Button>
+              <Button size="small" variant={categoryType === 'mentor' ? 'contained' : 'outlined'} onClick={() => setCategoryType('mentor')}>
+                Mentor
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => {
+                  setEditingCategoryIndex(null);
+                  setNewCategoryValue('');
+                  setNewCategoryLabel('');
+                  setCategoryDialogOpen(true);
+                }}
+              >
+                Add category
+              </Button>
+            </Stack>
+          }
+        >
+          {categoryType === 'pecc' ? (
+            <TableContainer component={Paper} elevation={0} sx={denseTablePaperSx}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Order</TableCell>
-                    <TableCell>Label</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>CRM field</TableCell>
-                    <TableCell>Programs / Cohorts</TableCell>
-                    <TableCell>In CRM</TableCell>
-                    <TableCell>Target Roles</TableCell>
-                    <TableCell>Required</TableCell>
-                    <TableCell>Options</TableCell>
-                    <TableCell>Status</TableCell>
+                    <TableCell>Category name</TableCell>
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {questions
-                    .filter(q => {
-                      if (regRoleFilter === 'all') return true;
-                      return q.target_roles?.includes(regRoleFilter) || (!q.target_roles && regRoleFilter === 'pecc');
-                    })
-                    .map(q => (
-                    <TableRow key={q.id}>
-                      <TableCell>{q.sort_order}</TableCell>
-                      <TableCell>{q.label}</TableCell>
-                      <TableCell>{QUESTION_TYPES.find(t => t.value === q.question_type)?.label ?? q.question_type}</TableCell>
-                      <TableCell>{q.linked_crm_field ? (CRM_FIELD_OPTIONS.find(o => o.value === q.linked_crm_field)?.label ?? q.linked_crm_field) : (q.display_in_crm ? '—' : '—')}</TableCell>
-                      <TableCell>
-                        {((q.target_program_ids?.length ?? 0) + (q.target_cohort_ids?.length ?? 0)) > 0 ? (
-                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 160 }}>
-                            {(q.target_program_ids || []).map(pid => (
-                              <Chip key={pid} label={programsList.find(p => p.id === pid)?.name || pid} size="small" variant="outlined" />
-                            ))}
-                            {(q.target_cohort_ids || []).map(cid => (
-                              <Chip key={cid} label={cohortsList.find(c => c.id === cid)?.name || cid} size="small" variant="outlined" color="primary" />
-                            ))}
-                          </Box>
-                        ) : (
-                          <Typography variant="caption" color="text.secondary">All</Typography>
-                        )}
+                  {peccCategories.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={2} align="center">
+                        <Typography color="text.secondary" sx={{ py: 2 }}>No PECC categories yet.</Typography>
                       </TableCell>
-                      <TableCell>{q.display_in_crm ? 'Yes' : '—'}</TableCell>
-                      <TableCell>
-                        {q.target_roles && q.target_roles.length > 0 ? (
-                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            {q.target_roles.map(role => (
-                              <Chip key={role} label={role.toUpperCase()} size="small" variant="outlined" />
-                            ))}
-                          </Box>
-                        ) : (
-                          <Chip label="All" size="small" variant="outlined" color="default" />
-                        )}
-                      </TableCell>
-                      <TableCell>{q.required ? 'Yes' : 'No'}</TableCell>
-                      <TableCell>{(q.options || []).length ? (q.options as string[]).join(', ') : '—'}</TableCell>
-                      <TableCell><Chip label={q.is_active ? 'Active' : 'Inactive'} size="small" color={q.is_active ? 'success' : 'default'} /></TableCell>
+                    </TableRow>
+                  ) : peccCategories.map((category, index) => (
+                    <TableRow key={index} hover>
+                      <TableCell>{category}</TableCell>
                       <TableCell align="right">
-                        <IconButton size="small" onClick={() => openEdit(q)}><EditIcon fontSize="small" /></IconButton>
-                        {q.is_active && <IconButton size="small" color="error" onClick={() => handleRegDelete(q.id)}><DeleteIcon fontSize="small" /></IconButton>}
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setEditingCategoryIndex(index);
+                            setNewCategoryValue(category);
+                            setCategoryDialogOpen(true);
+                          }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete "${category}"?`)) return;
+                            const previous = peccCategories;
+                            const updated = peccCategories.filter((_, i) => i !== index);
+                            setPeccCategories(updated);
+                            try {
+                              await saveAppSetting('pecc_activity_categories', updated);
+                              setSnackbar({ open: true, message: 'Category deleted', severity: 'success' });
+                            } catch (e) {
+                              setPeccCategories(previous);
+                              setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to delete category', severity: 'error' });
+                            }
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-              {questions.length === 0 && <Box sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}>No registration questions yet.</Box>}
+            </TableContainer>
+          ) : (
+            <TableContainer component={Paper} elevation={0} sx={denseTablePaperSx}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Value</TableCell>
+                    <TableCell>Label</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {mentorCategories.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} align="center">
+                        <Typography color="text.secondary" sx={{ py: 2 }}>No Mentor categories yet.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : mentorCategories.map((category, index) => (
+                    <TableRow key={index} hover>
+                      <TableCell>{category.value}</TableCell>
+                      <TableCell>{category.label}</TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setEditingCategoryIndex(index);
+                            setNewCategoryValue(category.value);
+                            setNewCategoryLabel(category.label);
+                            setCategoryDialogOpen(true);
+                          }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete "${category.label}"?`)) return;
+                            const previous = mentorCategories;
+                            const updated = mentorCategories.filter((_, i) => i !== index);
+                            setMentorCategories(updated);
+                            try {
+                              await saveAppSetting('mentor_activity_categories', updated);
+                              setSnackbar({ open: true, message: 'Category deleted', severity: 'success' });
+                            } catch (e) {
+                              setMentorCategories(previous);
+                              setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to delete category', severity: 'error' });
+                            }
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </TableContainer>
           )}
-        </Box>
+        </AdminSection>
       )}
 
-      {/* Permissions */}
-      {tabIndex === 1 && (
-        <Box>
-          {permissionsLoading ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 4 }}><CircularProgress size={24} /><Typography>Loading permissions…</Typography></Box>
-          ) : (
-          <>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Box>
-              <Typography variant="h6">Role Permissions</Typography>
-              <Typography color="textSecondary">Configure which features each role can access. Admins always have full access.</Typography>
-            </Box>
-            <Box>
-              <Button startIcon={<RefreshIcon />} onClick={handlePermReset} sx={{ mr: 1 }}>Reset to Defaults</Button>
-              <Button variant="contained" startIcon={<SaveIcon />} onClick={handlePermSave} disabled={!hasChanges}>Save Changes</Button>
-            </Box>
-          </Box>
-          {hasChanges && <Alert severity="warning" sx={{ mb: 2 }}>You have unsaved changes.</Alert>}
-          <Alert severity="info" sx={{ mb: 2 }}>These settings affect Manager, Mentor, and PECC only.</Alert>
-          {Object.entries(PERMISSION_GROUPS).map(([groupName, groupPermissions]) => (
-            <Accordion key={groupName} defaultExpanded>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}><Typography variant="subtitle1">{groupName}</Typography></AccordionSummary>
-              <AccordionDetails>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ width: '40%' }}>Permission</TableCell>
-                        {ROLES.map(role => <TableCell key={role} align="center"><Chip label={role.toUpperCase()} size="small" sx={{ bgcolor: getRoleColorHex(role), color: 'white' }} /></TableCell>)}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {groupPermissions.map(perm => (
-                        <TableRow key={perm}>
-                          <TableCell><Typography variant="body2">{formatPermissionLabel(perm)}</Typography></TableCell>
-                          {ROLES.map(role => (
-                            <TableCell key={`${role}-${perm}`} align="center">
-                              <Switch checked={permissions[role]?.[perm] || false} onChange={() => handleTogglePermission(role, perm)} color="primary" />
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-          <Paper sx={{ p: 2, mt: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>Summary</Typography>
-            <Box sx={{ display: 'flex', gap: 3 }}>
-              {ROLES.map(role => (
-                <Box key={role}>
-                  <Chip label={role.toUpperCase()} size="small" sx={{ bgcolor: getRoleColorHex(role), color: 'white', mb: 0.5 }} />
-                  <Typography variant="body2">{Object.values(permissions[role] || {}).filter(Boolean).length} of {Object.values(PERMISSIONS).length} enabled</Typography>
-                </Box>
-              ))}
-            </Box>
-          </Paper>
-          </>
-          )}
-        </Box>
-      )}
-
-      {/* Granular Permissions */}
-      {tabIndex === 2 && (
-        <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
-          <GranularPermissionsManager mode="admin" initialSelectedUserId={searchParams.get('userId') || undefined} />
-        </Suspense>
-      )}
-
-      {/* Email Settings */}
-      {tabIndex === 3 && (
-        <Box>
-          <Typography variant="h6" gutterBottom>Email Settings</Typography>
-          <Typography color="textSecondary" sx={{ mb: 2 }}>
-            Customize email messages sent to users during account creation and invitation acceptance.
-          </Typography>
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2" gutterBottom>
-              <strong>Note:</strong> Email templates are managed through Supabase Dashboard → Authentication → Email Templates.
-            </Typography>
-            <Typography variant="body2">
-              However, you can customize the notification message shown to users after they create an account below.
-            </Typography>
-          </Alert>
-          
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="subtitle1" gutterBottom>Account Confirmation Message</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              This message is shown to users after they complete registration via an invitation link. It informs them about the email confirmation step.
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              value={emailConfirmationMessage}
-              onChange={(e) => setEmailConfirmationMessage(e.target.value)}
-              placeholder="After completing registration, you will receive an email to confirm your account. Please check your inbox and click the confirmation link before logging in."
-              sx={{ mb: 2 }}
-            />
-            <Button variant="contained" onClick={handleSaveEmailSettings} startIcon={<SaveIcon />}>
-              Save Email Settings
-            </Button>
-          </Paper>
-          
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="subtitle1" gutterBottom>Invitation Email Preview</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              When you send an invitation, the user receives an email with a link to complete registration. The email template can be customized in Supabase Dashboard.
-            </Typography>
-            <Alert severity="warning">
-              To customize the actual email template, go to Supabase Dashboard → Authentication → Email Templates → Confirm signup.
-            </Alert>
-          </Paper>
-        </Box>
-      )}
-
-      {/* Learning Modules (SCORM) */}
-      {tabIndex === 4 && (
-        <Box>
-          <Typography variant="h6" gutterBottom>Learning Modules</Typography>
-          <Typography color="textSecondary" sx={{ mb: 2 }}>
-            Upload and manage SCORM learning modules. Only Admins can add modules; all users can launch any modules that apply to their hospital/program.
-          </Typography>
-          <ScormPackagesSection title="Learning Modules" />
-        </Box>
-      )}
-
-      {/* Programs */}
-      {tabIndex === 5 && (
-        <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
-          <AdminProgramsContent />
-        </Suspense>
-      )}
-
-      {/* Cohorts */}
-      {tabIndex === 6 && (
-        <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}>
-          <AdminCohortsContent />
-        </Suspense>
-      )}
-
-      {/* Activity Categories */}
-      {tabIndex === 7 && (
-        <Box>
-          <Typography variant="h6" gutterBottom>Activity Categories</Typography>
-          <Typography color="textSecondary" sx={{ mb: 3 }}>
-            Manage activity categories for PECC and Mentor activity logging. Changes will be reflected immediately in the Activities pages.
-          </Typography>
-          
-          <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-            <Button
-              variant={categoryType === 'pecc' ? 'contained' : 'outlined'}
-              onClick={() => setCategoryType('pecc')}
-            >
-              PECC Categories
-            </Button>
-            <Button
-              variant={categoryType === 'mentor' ? 'contained' : 'outlined'}
-              onClick={() => setCategoryType('mentor')}
-            >
-              Mentor Categories
-            </Button>
-          </Box>
-
-          {/* PECC Categories */}
-          {categoryType === 'pecc' && (
-            <Paper sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1">PECC Activity Categories</Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => {
-                    setEditingCategoryIndex(null);
-                    setNewCategoryValue('');
-                    setCategoryDialogOpen(true);
-                  }}
-                >
-                  Add Category
-                </Button>
-              </Box>
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Category Name</TableCell>
-                      <TableCell align="right">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {peccCategories.map((category, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{category}</TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              setEditingCategoryIndex(index);
-                              setNewCategoryValue(category);
-                              setCategoryDialogOpen(true);
-                            }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              if (window.confirm(`Delete "${category}"?`)) {
-                                const updated = peccCategories.filter((_, i) => i !== index);
-                                setPeccCategories(updated);
-                                saveAppSetting('pecc_activity_categories', updated);
-                                setSnackbar({ open: true, message: 'Category deleted', severity: 'success' });
-                              }
-                            }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          )}
-
-          {/* Mentor Categories */}
-          {categoryType === 'mentor' && (
-            <Paper sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1">Mentor Activity Categories</Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => {
-                    setEditingCategoryIndex(null);
-                    setNewCategoryValue('');
-                    setNewCategoryLabel('');
-                    setCategoryDialogOpen(true);
-                  }}
-                >
-                  Add Category
-                </Button>
-              </Box>
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Value</TableCell>
-                      <TableCell>Label</TableCell>
-                      <TableCell align="right">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {mentorCategories.map((category, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{category.value}</TableCell>
-                        <TableCell>{category.label}</TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              setEditingCategoryIndex(index);
-                              setNewCategoryValue(category.value);
-                              setNewCategoryLabel(category.label);
-                              setCategoryDialogOpen(true);
-                            }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              if (window.confirm(`Delete "${category.label}"?`)) {
-                                const updated = mentorCategories.filter((_, i) => i !== index);
-                                setMentorCategories(updated);
-                                saveAppSetting('mentor_activity_categories', updated);
-                                setSnackbar({ open: true, message: 'Category deleted', severity: 'success' });
-                              }
-                            }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          )}
-        </Box>
-      )}
-
-      {/* Gap Closure (education questions by bucket) */}
       {tabIndex === 8 && (
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
-            <Box>
-              <Typography variant="h6">Gap Closure – Questions</Typography>
-              <Typography color="textSecondary">
-                Manage educational content for PRS questions. Assign each question to a category (bucket); they appear in that section on the Gap Plan page. Mark questions as <strong>Scored</strong> or <strong>Unscored</strong> and filter the list below.
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <FormControl size="small" sx={{ minWidth: 160 }}>
+        <AdminSection
+          overline="Education"
+          title="Gap Closure questions"
+          description="Educational content for PRS questions. Assign each to a domain bucket; mark scored or unscored for the assessment."
+          actions={
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
                 <InputLabel>Show</InputLabel>
                 <Select
                   value={gapClosureShowFilter}
                   label="Show"
                   onChange={(e) => setGapClosureShowFilter(e.target.value as 'all' | 'scored' | 'unscored')}
                 >
-                  <MenuItem value="all">All questions</MenuItem>
-                  <MenuItem value="scored">Scored only</MenuItem>
-                  <MenuItem value="unscored">Unscored only</MenuItem>
+                  <MenuItem value="all">All</MenuItem>
+                  <MenuItem value="scored">Scored</MenuItem>
+                  <MenuItem value="unscored">Unscored</MenuItem>
                 </Select>
               </FormControl>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => handleOpenEducationDialog()}
-              >
-                Add Question
+              <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenEducationDialog()}>
+                Add question
               </Button>
-            </Box>
-          </Box>
+            </Stack>
+          }
+        >
           {(() => {
-            const filtered = gapClosureShowFilter === 'all'
-              ? educationQuestions
-              : educationQuestions.filter(q => gapClosureShowFilter === 'scored' ? (q.is_scored !== false) : (q.is_scored === false));
-            return (
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Question ID / Category</TableCell>
-                      <TableCell>Domain (accordion)</TableCell>
-                      <TableCell>Scored</TableCell>
-                      <TableCell>Question Preview</TableCell>
-                      <TableCell align="right">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {educationQuestions.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} align="center">
-                          <Typography color="textSecondary">No education questions yet. Add your first question.</Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : filtered.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} align="center">
-                          <Typography color="textSecondary">No questions match the current filter. Change &quot;Show&quot; to see all.</Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filtered.map((eq) => {
-                        const fullIndex = educationQuestions.findIndex(q => q.questionId === eq.questionId);
-                        return (
-                          <TableRow key={eq.questionId}>
-                            <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                                {eq.category?.trim() ? `Question ${eq.questionId}: ${eq.category}` : `Question ${eq.questionId}`}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {eq.domain || '—'}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <FormControlLabel
-                                control={
-                                  <Switch
-                                    size="small"
-                                    checked={eq.is_scored !== false}
-                                    onChange={(_, checked) => handleToggleEducationScored(eq.questionId, checked)}
-                                  />
-                                }
-                                label={eq.is_scored !== false ? 'Scored' : 'Unscored'}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" sx={{
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical'
-                              }}>
-                                {eq.question || '—'}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="right">
-                              <IconButton
-                                size="small"
-                                title="Move up"
-                                disabled={fullIndex <= 0}
-                                onClick={() => moveEducationQuestion(fullIndex, 'up')}
-                              >
-                                <ArrowUpwardIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                title="Move down"
-                                disabled={fullIndex >= educationQuestions.length - 1}
-                                onClick={() => moveEducationQuestion(fullIndex, 'down')}
-                              >
-                                <ArrowDownwardIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                onClick={() => handleOpenEducationDialog(eq)}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDeleteEducationQuestion(eq.questionId)}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            );
-          })()}
-        </Box>
+                      const filtered = gapClosureShowFilter === 'all'
+                        ? educationQuestions
+                        : educationQuestions.filter(q => gapClosureShowFilter === 'scored' ? (q.is_scored !== false) : (q.is_scored === false));
+                      return (
+                        <TableContainer component={Paper} elevation={0} sx={denseTablePaperSx}>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Question ID / Category</TableCell>
+                                <TableCell>Domain (accordion)</TableCell>
+                                <TableCell>Scored</TableCell>
+                                <TableCell>Question Preview</TableCell>
+                                <TableCell align="right">Actions</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {educationQuestions.length === 0 ? (
+                                <TableRow>
+                                  <TableCell colSpan={5} align="center">
+                                    <Typography color="textSecondary">No education questions yet. Add your first question.</Typography>
+                                  </TableCell>
+                                </TableRow>
+                              ) : filtered.length === 0 ? (
+                                <TableRow>
+                                  <TableCell colSpan={5} align="center">
+                                    <Typography color="textSecondary">No questions match the current filter. Change &quot;Show&quot; to see all.</Typography>
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                filtered.map((eq) => {
+                                  const fullIndex = educationQuestions.findIndex(q => q.questionId === eq.questionId);
+                                  return (
+                                    <TableRow key={eq.questionId}>
+                                      <TableCell>
+                                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                          {eq.category?.trim() ? `Question ${eq.questionId}: ${eq.category}` : `Question ${eq.questionId}`}
+                                        </Typography>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {eq.domain || '—'}
+                                        </Typography>
+                                      </TableCell>
+                                      <TableCell>
+                                        <FormControlLabel
+                                          control={
+                                            <Switch
+                                              size="small"
+                                              checked={eq.is_scored !== false}
+                                              onChange={(_, checked) => handleToggleEducationScored(eq.questionId, checked)}
+                                            />
+                                          }
+                                          label={eq.is_scored !== false ? 'Scored' : 'Unscored'}
+                                        />
+                                      </TableCell>
+                                      <TableCell>
+                                        <Typography variant="body2" sx={{
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          display: '-webkit-box',
+                                          WebkitLineClamp: 2,
+                                          WebkitBoxOrient: 'vertical'
+                                        }}>
+                                          {eq.question || '—'}
+                                        </Typography>
+                                      </TableCell>
+                                      <TableCell align="right">
+                                        <IconButton
+                                          size="small"
+                                          title="Move up"
+                                          disabled={fullIndex <= 0}
+                                          onClick={() => moveEducationQuestion(fullIndex, 'up')}
+                                        >
+                                          <ArrowUpwardIcon fontSize="small" />
+                                        </IconButton>
+                                        <IconButton
+                                          size="small"
+                                          title="Move down"
+                                          disabled={fullIndex >= educationQuestions.length - 1}
+                                          onClick={() => moveEducationQuestion(fullIndex, 'down')}
+                                        >
+                                          <ArrowDownwardIcon fontSize="small" />
+                                        </IconButton>
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handleOpenEducationDialog(eq)}
+                                        >
+                                          <EditIcon fontSize="small" />
+                                        </IconButton>
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handleDeleteEducationQuestion(eq.questionId)}
+                                        >
+                                          <DeleteIcon fontSize="small" />
+                                        </IconButton>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      );
+                    })()}
+        </AdminSection>
       )}
 
-      {/* Simulations (PECC Simulation tab list) */}
       {tabIndex === 9 && (
-        <Box>
-          <Typography variant="h6" gutterBottom>Simulations</Typography>
-          <Typography color="textSecondary" sx={{ mb: 2 }}>
-            Manage the list of simulations shown on the PECC Simulation tab. All fields are optional.
-          </Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => openSimDialog()} sx={{ mb: 2 }}>
-            Add simulation
-          </Button>
+        <AdminSection
+          overline="Education"
+          title="Simulations"
+          description="Simulations listed on the PECC Simulation tab. All fields are optional."
+          actions={
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadSimulations()} disabled={simulationsLoading}>
+                Refresh
+              </Button>
+              <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => openSimDialog()}>
+                Add simulation
+              </Button>
+            </Stack>
+          }
+        >
           {simulationsLoading ? (
-            <Typography>Loading…</Typography>
-          ) : (
-            <TableContainer component={Paper}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>URL</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {simulationsList.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} align="center">
-                        <Typography color="textSecondary">No simulations yet. Add one to show on the Simulation tab.</Typography>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    simulationsList.map((s, idx) => (
-                      <TableRow key={s.id}>
-                        <TableCell>{s.name || '—'}</TableCell>
-                        <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.url || '—'}</TableCell>
-                        <TableCell align="right">
-                          <IconButton size="small" title="Move up" disabled={idx === 0} onClick={() => moveSimulation(idx, 'up')}><ArrowUpwardIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" title="Move down" disabled={idx === simulationsList.length - 1} onClick={() => moveSimulation(idx, 'down')}><ArrowDownwardIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => openSimDialog(s)}><EditIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => handleDeleteSim(s.id)}><DeleteIcon fontSize="small" /></IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 3 }}><CircularProgress size={22} /><Typography variant="body2">Loading…</Typography></Box>
+                    ) : (
+                      <TableContainer component={Paper} elevation={0} sx={denseTablePaperSx}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Name</TableCell>
+                              <TableCell>URL</TableCell>
+                              <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {simulationsList.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={3} align="center">
+                                  <Typography color="textSecondary">No simulations yet. Add one to show on the Simulation tab.</Typography>
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              simulationsList.map((s, idx) => (
+                                <TableRow key={s.id}>
+                                  <TableCell>{s.name || '—'}</TableCell>
+                                  <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.url || '—'}</TableCell>
+                                  <TableCell align="right">
+                                    <IconButton size="small" title="Move up" disabled={idx === 0} onClick={() => moveSimulation(idx, 'up')}><ArrowUpwardIcon fontSize="small" /></IconButton>
+                                    <IconButton size="small" title="Move down" disabled={idx === simulationsList.length - 1} onClick={() => moveSimulation(idx, 'down')}><ArrowDownwardIcon fontSize="small" /></IconButton>
+                                    <IconButton size="small" onClick={() => openSimDialog(s)}><EditIcon fontSize="small" /></IconButton>
+                                    <IconButton size="small" onClick={() => handleDeleteSim(s.id)}><DeleteIcon fontSize="small" /></IconButton>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+        </AdminSection>
       )}
 
-      {/* Tiers: Hospital System & Hiring Group */}
       {tabIndex === 10 && (
-        <Box>
-          <Typography variant="h6" gutterBottom>Tiers</Typography>
-          <Typography color="textSecondary" sx={{ mb: 2 }}>
-            Two additional access tiers: <strong>Hospital System</strong> (see PECC data and aggregated data for their assigned systems) and <strong>Hiring Group</strong> (read-only snapshot view for assigned systems). Assign users and their hospital systems from the CRM Team tab.
-          </Typography>
+        <AdminSection
+          overline="Access"
+          title="Access tiers"
+          description="Hospital System and Hiring Group roles. Assign users and hospital systems from CRM → Team."
+          actions={
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadTier()} disabled={tierUsersLoading}>
+                Refresh
+              </Button>
+              <Button size="small" variant="contained" onClick={() => navigate('/admin/crm?tab=team')}>
+                Open CRM Team
+              </Button>
+            </Stack>
+          }
+        >
           <Alert severity="info" sx={{ mb: 2 }}>
-            To add or edit users with these roles and assign them to hospital systems, go to <strong>CRM → Team</strong>. Set a user&apos;s role to &quot;Hospital System&quot; or &quot;Hiring Group&quot; and choose one or more <strong>Assigned hospital systems</strong> (from the Hospital system field on hospitals in the CRM).
-          </Alert>
-          <Button variant="contained" onClick={() => navigate('/admin/crm?tab=team')} sx={{ mb: 2 }}>
-            Open CRM Team to manage users &amp; assignments
-          </Button>
-          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Users with Hospital System or Hiring Group role</Typography>
-          {tierUsersLoading ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={20} /><Typography variant="body2">Loading…</Typography></Box>
-          ) : tierUsers.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">No users with Hospital System or Hiring Group role yet. Use CRM → Team to set a user&apos;s role and assign hospital systems.</Typography>
-          ) : (
-            <TableContainer component={Paper} variant="outlined">
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Tier</TableCell>
-                    <TableCell>Assigned hospital systems</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {tierUsers.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell>{(u.firstName || u.lastName)?.trim() ? getUserDisplayName(u) : '—'}</TableCell>
-                      <TableCell>{u.email}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={u.role === 'hospital_system' ? 'Hospital System' : 'Hiring Group'}
-                          size="small"
-                          color={u.role === 'hospital_system' ? 'success' : 'info'}
-                        />
-                      </TableCell>
-                      <TableCell>{u.systemNames.length ? u.systemNames.join(', ') : <Typography variant="caption" color="text.secondary">None assigned</Typography>}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </Box>
+                      To add or edit users with these roles and assign them to hospital systems, go to <strong>CRM → Team</strong>. Set a user&apos;s role to &quot;Hospital System&quot; or &quot;Hiring Group&quot; and choose one or more <strong>Assigned hospital systems</strong> (from the Hospital system field on hospitals in the CRM).
+                    </Alert>
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Users with Hospital System or Hiring Group role</Typography>
+                    {tierUsersLoading ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={20} /><Typography variant="body2">Loading…</Typography></Box>
+                    ) : tierUsers.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary">No users with Hospital System or Hiring Group role yet. Use CRM → Team to set a user&apos;s role and assign hospital systems.</Typography>
+                    ) : (
+                      <TableContainer component={Paper} elevation={0} sx={denseTablePaperSx}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Name</TableCell>
+                              <TableCell>Email</TableCell>
+                              <TableCell>Tier</TableCell>
+                              <TableCell>Assigned hospital systems</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {tierUsers.map((u) => (
+                              <TableRow key={u.id}>
+                                <TableCell>{(u.firstName || u.lastName)?.trim() ? getUserDisplayName(u) : '—'}</TableCell>
+                                <TableCell>{u.email}</TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={u.role === 'hospital_system' ? 'Hospital System' : 'Hiring Group'}
+                                    size="small"
+                                    color={u.role === 'hospital_system' ? 'success' : 'info'}
+                                  />
+                                </TableCell>
+                                <TableCell>{u.systemNames.length ? u.systemNames.join(', ') : <Typography variant="caption" color="text.secondary">None assigned</Typography>}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+        </AdminSection>
       )}
 
       {tabIndex === 11 && (
-        <Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={24} /></Box>}>
-          <AdminProgramChecklistsTab />
-        </Suspense>
+        <AdminSection
+          overline="Programs"
+          title="Program checklists"
+          description="Editable checklist templates per program, stage palette, and ordering."
+        >
+          <Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={24} /></Box>}>
+                    <AdminProgramChecklistsTab embedded />
+                  </Suspense>
+        </AdminSection>
       )}
 
       {tabIndex === 12 && (
-        <Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={24} /></Box>}>
-          <AdminPhiEventsPanel />
-        </Suspense>
+        <AdminSection
+          overline="Security"
+          title="PHI screening events"
+          description="Automated HIPAA Safe Harbor identifier scans. Raw match text is never stored."
+        >
+          <Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={24} /></Box>}>
+            <AdminPhiEventsPanel embedded />
+          </Suspense>
+        </AdminSection>
       )}
+        </Box>
+      </Paper>
 
       {/* Simulation Add/Edit Dialog */}
       <Dialog open={simDialogOpen} onClose={() => setSimDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingSimId ? 'Edit simulation' : 'Add simulation'}</DialogTitle>
+        <DialogTitle sx={SETTINGS_DIALOG_TITLE_SX}>{editingSimId ? 'Edit simulation' : 'Add simulation'}</DialogTitle>
         <DialogContent>
           <TextField fullWidth label="Name" value={simForm.name} onChange={e => setSimForm(prev => ({ ...prev, name: e.target.value }))} margin="normal" placeholder="Optional" inputProps={{ dir: 'ltr' }} />
           <TextField fullWidth label="URL" value={simForm.url} onChange={e => setSimForm(prev => ({ ...prev, url: e.target.value }))} margin="normal" placeholder="Optional — name will link here" inputProps={{ dir: 'ltr' }} />
@@ -1532,7 +1693,7 @@ export default function AdminSettingsPage() {
 
       {/* Education Question Edit Dialog */}
       <Dialog open={educationDialogOpen} onClose={() => setEducationDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
+        <DialogTitle sx={SETTINGS_DIALOG_TITLE_SX}>
           {editingEducationId ? `Edit Question ${editingEducationId}` : 'Add Education Question'}
         </DialogTitle>
         <DialogContent aria-describedby={undefined}>
@@ -1680,7 +1841,7 @@ export default function AdminSettingsPage() {
 
       {/* Category Edit Dialog */}
       <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
+        <DialogTitle sx={SETTINGS_DIALOG_TITLE_SX}>
           {editingCategoryIndex !== null ? 'Edit Category' : 'Add Category'}
         </DialogTitle>
         <DialogContent aria-describedby={undefined}>
@@ -1721,41 +1882,51 @@ export default function AdminSettingsPage() {
           <Button
             variant="contained"
             onClick={() => {
-              if (categoryType === 'pecc') {
-                if (!newCategoryValue.trim()) {
-                  setSnackbar({ open: true, message: 'Category name is required', severity: 'error' });
-                  return;
+              void (async () => {
+                const previousPecc = peccCategories;
+                const previousMentor = mentorCategories;
+                try {
+                  if (categoryType === 'pecc') {
+                    if (!newCategoryValue.trim()) {
+                      setSnackbar({ open: true, message: 'Category name is required', severity: 'error' });
+                      return;
+                    }
+                    let updated: string[];
+                    if (editingCategoryIndex !== null) {
+                      updated = [...peccCategories];
+                      updated[editingCategoryIndex] = newCategoryValue.trim();
+                    } else {
+                      updated = [...peccCategories, newCategoryValue.trim()];
+                    }
+                    setPeccCategories(updated);
+                    await saveAppSetting('pecc_activity_categories', updated);
+                    setSnackbar({ open: true, message: 'Category saved', severity: 'success' });
+                  } else {
+                    if (!newCategoryValue.trim() || !newCategoryLabel.trim()) {
+                      setSnackbar({ open: true, message: 'Both value and label are required', severity: 'error' });
+                      return;
+                    }
+                    let updated: Array<{ value: string; label: string }>;
+                    if (editingCategoryIndex !== null) {
+                      updated = [...mentorCategories];
+                      updated[editingCategoryIndex] = { value: newCategoryValue.trim().toUpperCase(), label: newCategoryLabel.trim() };
+                    } else {
+                      updated = [...mentorCategories, { value: newCategoryValue.trim().toUpperCase(), label: newCategoryLabel.trim() }];
+                    }
+                    setMentorCategories(updated);
+                    await saveAppSetting('mentor_activity_categories', updated);
+                    setSnackbar({ open: true, message: 'Category saved', severity: 'success' });
+                  }
+                  setCategoryDialogOpen(false);
+                  setEditingCategoryIndex(null);
+                  setNewCategoryValue('');
+                  setNewCategoryLabel('');
+                } catch (e) {
+                  setPeccCategories(previousPecc);
+                  setMentorCategories(previousMentor);
+                  setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to save category', severity: 'error' });
                 }
-                let updated: string[];
-                if (editingCategoryIndex !== null) {
-                  updated = [...peccCategories];
-                  updated[editingCategoryIndex] = newCategoryValue.trim();
-                } else {
-                  updated = [...peccCategories, newCategoryValue.trim()];
-                }
-                setPeccCategories(updated);
-                saveAppSetting('pecc_activity_categories', updated);
-                setSnackbar({ open: true, message: 'Category saved', severity: 'success' });
-              } else {
-                if (!newCategoryValue.trim() || !newCategoryLabel.trim()) {
-                  setSnackbar({ open: true, message: 'Both value and label are required', severity: 'error' });
-                  return;
-                }
-                let updated: Array<{ value: string; label: string }>;
-                if (editingCategoryIndex !== null) {
-                  updated = [...mentorCategories];
-                  updated[editingCategoryIndex] = { value: newCategoryValue.trim().toUpperCase(), label: newCategoryLabel.trim() };
-                } else {
-                  updated = [...mentorCategories, { value: newCategoryValue.trim().toUpperCase(), label: newCategoryLabel.trim() }];
-                }
-                setMentorCategories(updated);
-                saveAppSetting('mentor_activity_categories', updated);
-                setSnackbar({ open: true, message: 'Category saved', severity: 'success' });
-              }
-              setCategoryDialogOpen(false);
-              setEditingCategoryIndex(null);
-              setNewCategoryValue('');
-              setNewCategoryLabel('');
+              })();
             }}
           >
             Save
@@ -1764,7 +1935,7 @@ export default function AdminSettingsPage() {
       </Dialog>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingId ? 'Edit question' : 'Add question'}</DialogTitle>
+        <DialogTitle sx={SETTINGS_DIALOG_TITLE_SX}>{editingId ? 'Edit question' : 'Add question'}</DialogTitle>
         <DialogContent aria-describedby={undefined}>
           <TextField fullWidth margin="normal" label="Label" value={formLabel} onChange={e => setFormLabel(e.target.value)} required />
           <FormControl fullWidth margin="normal">
@@ -1881,6 +2052,6 @@ export default function AdminSettingsPage() {
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}>
         <Alert severity={snackbar.severity} onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}>{snackbar.message}</Alert>
       </Snackbar>
-    </Box>
+    </AdminPageShell>
   );
 }

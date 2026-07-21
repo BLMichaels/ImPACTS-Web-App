@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -26,6 +26,7 @@ import PublicIcon from '@mui/icons-material/Public';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { downloadTableCsv } from '../../utils/reportCsvExport';
+import { adminSectionShellSx } from '../admin/AdminPageChrome';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
 import { geoCentroid } from 'd3-geo';
 import statesTopo from 'us-atlas/states-10m.json';
@@ -234,7 +235,11 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
   const [mapCenter, setMapCenter] = useState<[number, number]>([-97, 38]);
   const [mapZoom, setMapZoom] = useState(1);
 
+  const loadGenerationRef = useRef(0);
+
   const loadStateMetrics = useCallback(async () => {
+    const loadId = ++loadGenerationRef.current;
+    const isStale = () => loadId !== loadGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -295,6 +300,7 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
             .range(from, to)
         ),
       ]);
+      if (isStale()) return;
 
       const validHospitals = hospitalRows
         .map((h) => ({
@@ -580,16 +586,21 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
           hospitalsList: [...state.hospitalsList].sort((a, b) => a.name.localeCompare(b.name)),
         };
       });
+      if (isStale()) return;
       setStateMetrics(metrics.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (e) {
+      if (isStale()) return;
       setError(e instanceof Error ? e.message : 'Failed to load state metrics');
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [hospitalScopeKeys]);
 
   useEffect(() => {
     void loadStateMetrics();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [loadStateMetrics]);
 
   const metricsByCode = useMemo(() => {
@@ -730,11 +741,25 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
   };
 
   return (
-    <Paper variant="outlined" sx={{ mb: 3, overflow: 'hidden' }}>
-      <Box sx={{ px: 3, py: 2, borderBottom: 1, borderColor: 'divider', bgcolor: (t) => alpha(t.palette.primary.main, 0.04) }}>
+    <Paper elevation={0} sx={{ ...adminSectionShellSx, mb: 0 }}>
+      <Box
+        sx={{
+          px: { xs: 2, md: 2.5 },
+          py: 1.75,
+          borderBottom: 1,
+          borderColor: 'divider',
+          bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+        }}
+      >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
           <Box>
-            <Typography variant="h6" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography
+              variant="overline"
+              sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+            >
+              Geography
+            </Typography>
+            <Typography variant="h6" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1, letterSpacing: -0.015 }}>
               <PublicIcon fontSize="small" />
               {title}
             </Typography>
@@ -742,8 +767,8 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
               {subtitle}
             </Typography>
           </Box>
-          <Stack direction="row" spacing={1}>
-            <FormControl size="small" sx={{ minWidth: 260 }}>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <FormControl size="small" sx={{ minWidth: 220 }}>
               <InputLabel>Color metric</InputLabel>
               <Select
                 value={metricKey}
@@ -756,6 +781,7 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
               </Select>
             </FormControl>
             <Button
+              size="small"
               variant="outlined"
               startIcon={<FileDownloadIcon />}
               onClick={exportStateMetricsCsv}
@@ -764,6 +790,7 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
               Export CSV
             </Button>
             <Button
+              size="small"
               variant="outlined"
               startIcon={<RestartAltIcon />}
               onClick={resetZoom}
@@ -775,7 +802,7 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
         </Stack>
       </Box>
 
-      <Box sx={{ p: 2.5 }}>
+      <Box sx={{ p: { xs: 2, md: 2.5 } }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} action={
             <Button color="inherit" size="small" onClick={() => void loadStateMetrics()}>
@@ -785,13 +812,18 @@ const StateMetricsMapPanel: React.FC<StateMetricsMapPanelProps> = ({
             {error}
           </Alert>
         )}
+        {!loading && !error && stateMetrics.length === 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            No state metrics available for the current scope.
+          </Alert>
+        )}
         {loading ? (
           <Box sx={{ py: 8, display: 'flex', justifyContent: 'center' }}>
             <CircularProgress />
           </Box>
         ) : (
           <>
-            <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: '#f8fbff', mb: 2 }}>
+            <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: 'background.default', mb: 2 }}>
               <ComposableMap projection="geoAlbersUsa" width={980} height={580} style={{ width: '100%', height: 'auto' }}>
                 <ZoomableGroup center={mapCenter} zoom={mapZoom} minZoom={1} maxZoom={8}>
                   <Geographies geography={statesTopo as any}>
