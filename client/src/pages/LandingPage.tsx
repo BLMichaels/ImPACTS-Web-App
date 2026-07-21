@@ -94,12 +94,6 @@ const CORE_TABS: CoreTab[] = [
   },
 ];
 
-const HERO_STATS = [
-  { value: '4', label: 'Core areas' },
-  { value: '1', label: 'Unified dashboard' },
-  { value: 'QI', label: 'Purpose-built' },
-];
-
 const SECURITY_NOTES = [
   {
     icon: <NoPhiIcon sx={{ fontSize: 22 }} />,
@@ -370,46 +364,6 @@ const LandingPage: React.FC = () => {
         {/* Hero — Mobbin-style centered display */}
         <Container maxWidth="md" sx={{ px: { xs: 2, sm: 3 }, pt: { xs: 6, md: 10 }, pb: { xs: 4, md: 6 }, textAlign: 'center' }}>
           <Stack spacing={{ xs: 2.5, md: 3 }} alignItems="center">
-            {/* Product specimen badge */}
-            <Box
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 1.25,
-                px: 2,
-                py: 1,
-                borderRadius: 3,
-                bgcolor: '#fff',
-                border: '1px solid',
-                borderColor: alpha(SLATE, 0.1),
-                boxShadow: `0 2px 12px ${alpha(SLATE, 0.06)}`,
-              }}
-            >
-              <Box
-                sx={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 2,
-                  display: 'grid',
-                  placeItems: 'center',
-                  background: `linear-gradient(135deg, ${TEAL_DARK} 0%, ${TEAL} 100%)`,
-                  color: '#fff',
-                  fontSize: '0.875rem',
-                  fontWeight: 700,
-                }}
-              >
-                P
-              </Box>
-              <Box sx={{ textAlign: 'left' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2, color: INK }}>
-                  PECC Support Tool
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }}>
-                  From the ImPACTS program
-                </Typography>
-              </Box>
-            </Box>
-
             <Typography
               component="h1"
               sx={{
@@ -473,35 +427,6 @@ const LandingPage: React.FC = () => {
               >
                 Request an invitation
               </Button>
-            </Stack>
-
-            {/* Trust stats */}
-            <Stack
-              direction="row"
-              spacing={{ xs: 3, md: 5 }}
-              sx={{ pt: { xs: 2, md: 3 } }}
-              divider={
-                <Box sx={{ width: '1px', bgcolor: alpha(SLATE, 0.15), alignSelf: 'stretch', my: 0.5 }} />
-              }
-            >
-              {HERO_STATS.map((stat) => (
-                <Box key={stat.label} sx={{ textAlign: 'center' }}>
-                  <Typography
-                    sx={{
-                      fontSize: { xs: '1.75rem', md: '2rem' },
-                      fontWeight: 650,
-                      letterSpacing: '-0.02em',
-                      lineHeight: 1,
-                      color: INK,
-                    }}
-                  >
-                    {stat.value}
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500, mt: 0.5, display: 'block' }}>
-                    {stat.label}
-                  </Typography>
-                </Box>
-              ))}
             </Stack>
           </Stack>
         </Container>
