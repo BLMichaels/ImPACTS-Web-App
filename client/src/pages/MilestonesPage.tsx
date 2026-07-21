@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Container,
   Typography,
@@ -11,8 +11,14 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Button
+  Button,
+  Paper,
+  Stack,
+  LinearProgress,
+  Alert,
+  useTheme,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
@@ -34,6 +40,15 @@ import {
   isValidHexColor,
   type ChecklistEntryType,
 } from '../utils/checklistEntries';
+
+const sectionShellSx = {
+  borderRadius: 2,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  overflow: 'hidden',
+} as const;
+
 const DEFAULT_STAGE_PALETTE: Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string> = {
   stage1: '#2196F3',
   stage2: '#4CAF50',
@@ -677,283 +692,535 @@ const MilestonesPage = () => {
     if (!hospitalId && milestonesUserId) setUserData(milestonesUserId, 'milestones', newStages);
   };
 
+  const theme = useTheme();
+
   const getStageProgress = (stage: MilestoneStage) => {
     const taskRows = stage.tasks.filter((task) => (task.entry_type || 'task') === 'task');
     const completedTasks = taskRows.filter(task => task.completed).length;
-    const totalTasks = taskRows.length || 1;
-    const percentage = Math.round((completedTasks / totalTasks) * 100);
+    const totalTasks = taskRows.length;
+    const percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
     return { completedTasks, totalTasks, percentage };
   };
 
+  const getStageColor = (s: MilestoneStage) => {
+    if (s.color_hex) return s.color_hex;
+    switch (s.id) {
+      case 'stage1': return stagePalette.stage1;
+      case 'stage2': return stagePalette.stage2;
+      case 'stage3': return stagePalette.stage3;
+      case 'stage4': return stagePalette.stage4;
+      default: return stagePalette.stage1;
+    }
+  };
+
+  const overallProgress = useMemo(() => {
+    let completedTasks = 0;
+    let totalTasks = 0;
+    stages.forEach((stage) => {
+      const p = getStageProgress(stage);
+      completedTasks += p.completedTasks;
+      totalTasks += p.totalTasks;
+    });
+    const percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    return { completedTasks, totalTasks, percentage };
+  }, [stages]);
+
+  const stageProgressRows = useMemo(
+    () =>
+      stages.map((stage) => ({
+        stage,
+        progress: getStageProgress(stage),
+        color: getStageColor(stage),
+      })),
+    [stages, stagePalette]
+  );
+
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Typography variant="h3" component="h1" gutterBottom color="primary">
-        Step-by-Step Task Checklist
-      </Typography>
-      
-      <Typography variant="h6" gutterBottom sx={{ mb: 4, color: 'text.secondary' }}>
-        Use this checklist to track your progress through the stages.
-      </Typography>
-      
-      <Typography variant="body1" paragraph sx={{ mb: 4, lineHeight: 1.6 }}>
-        This staged approach is designed to guide Pediatric Emergency Care Coordinators (PECCs) in strengthening Pediatric Readiness through mentorship, simulation, and continuous quality improvement. At each stage, PECCs are supported by a Pediatric Readiness Improvement & Simulation Mentor (PRISM), who provides tailored guidance from foundational learning to sustained leadership.
-      </Typography>
-      {hasProgramChecklistStages && (
-        <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-          Checklist stage and task content for this page is managed in Program Checklists.
-        </Typography>
-      )}
-
-      {/* Export Buttons */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-        <Button
-          variant="outlined"
-          startIcon={<TableChartIcon />}
-          onClick={exportToExcel}
-          sx={{ borderColor: 'success.main', color: 'success.main', '&:hover': { borderColor: 'success.dark', bgcolor: 'success.light' } }}
-        >
-          Export to Excel
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<PictureAsPdfIcon />}
-          onClick={exportToPDF}
-          sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
-        >
-          Export to PDF
-        </Button>
-      </Box>
-      
-      <ScormPackagesSection title="Checklist learning modules" placement="checklist" />
-
-      {stages.map((stage) => {
-        const progress = getStageProgress(stage);
-        
-        // Define unique colors for each stage header
-        const getStageColor = (s: MilestoneStage) => {
-          if (s.color_hex) return s.color_hex;
-          switch (s.id) {
-            case 'stage1': return stagePalette.stage1;
-            case 'stage2': return stagePalette.stage2;
-            case 'stage3': return stagePalette.stage3;
-            case 'stage4': return stagePalette.stage4;
-            default: return stagePalette.stage1;
-          }
-        };
-        
-        return (
-          <Box key={stage.id}>
-            {stage.program_checklist_first_stage && stage.program_checklist_name && (
-              <Box sx={{ mt: 2.5, mb: 1.25 }}>
-                <Divider sx={{ mb: 1 }} />
-                <Typography variant="h5" color="primary" sx={{ fontWeight: 700 }}>
-                  {stage.program_checklist_name} Checklist
-                </Typography>
-              </Box>
-            )}
-          <Accordion sx={{ mb: 2, boxShadow: 2 }}>
-            <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
+    <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+      <Container
+        maxWidth={false}
+        sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+      >
+        <Stack spacing={{ xs: 2, md: 2.5 }}>
+          {/* Hero */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2, md: 2.75 },
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              background: (t) =>
+                `linear-gradient(120deg, ${alpha(t.palette.secondary.main, 0.07)} 0%, ${t.palette.background.paper} 42%, ${alpha(t.palette.primary.main, 0.04)} 100%)`,
+            }}
+          >
+            <Box
               sx={{
-                bgcolor: getStageColor(stage),
-                color: 'white',
-                '&:hover': {
-                  bgcolor: getStageColor(stage),
-                  opacity: 0.9
-                }
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+                gap: 2,
               }}
             >
-              <Box sx={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="h4" fontWeight="bold" color="white">
-                  {stage.title}
+              <Box sx={{ maxWidth: { md: 720 } }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
+                >
+                  PECC milestones
                 </Typography>
-                
-                {/* Progress */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Chip 
-                    label={`${progress.percentage}% Complete`}
-                    color="primary"
-                    variant="outlined"
-                    sx={{ 
-                      bgcolor: 'white', 
-                      color: getStageColor(stage),
-                      borderColor: 'white',
-                      '& .MuiChip-label': { color: getStageColor(stage) }
+                <Typography
+                  variant="h4"
+                  component="h1"
+                  sx={{
+                    fontWeight: 700,
+                    letterSpacing: -0.02,
+                    mb: 0.75,
+                    fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
+                  }}
+                >
+                  Checklist
+                </Typography>
+                <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}>
+                  Track progress through staged PECC milestones—from foundational learning with your PRISM mentor through
+                  sustained pediatric readiness leadership.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                <Button size="small" variant="outlined" startIcon={<TableChartIcon />} onClick={exportToExcel}>
+                  Excel
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="secondary"
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={exportToPDF}
+                >
+                  PDF
+                </Button>
+              </Stack>
+            </Box>
+          </Paper>
+
+          {hasProgramChecklistStages && (
+            <Alert severity="info" variant="outlined" icon={false} sx={{ bgcolor: alpha(theme.palette.secondary.main, 0.04) }}>
+              Checklist stage and task content for this page is managed in Program Checklists.
+            </Alert>
+          )}
+
+          {/* At a glance */}
+          <Paper elevation={0} sx={sectionShellSx}>
+            <Box
+              sx={{
+                px: { xs: 2, md: 2.5 },
+                py: 1.5,
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: alpha(theme.palette.secondary.main, 0.04),
+              }}
+            >
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+              >
+                At a glance
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Overall completion across all checklist stages
+              </Typography>
+            </Box>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+              {overallProgress.totalTasks > 0 ? (
+                <>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    spacing={0.75}
+                    sx={{ mb: 0.75 }}
+                  >
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      Overall
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {overallProgress.completedTasks} of {overallProgress.totalTasks} · {overallProgress.percentage}%
+                    </Typography>
+                  </Stack>
+                  <LinearProgress
+                    variant="determinate"
+                    value={overallProgress.percentage}
+                    sx={{
+                      height: 8,
+                      borderRadius: 4,
+                      mb: 2,
+                      bgcolor: alpha(theme.palette.secondary.main, 0.12),
+                      '& .MuiLinearProgress-bar': {
+                        borderRadius: 4,
+                        bgcolor: 'secondary.main',
+                      },
                     }}
                   />
-                  <Typography variant="body2" sx={{ color: 'white' }}>
-                    {progress.completedTasks} of {progress.totalTasks} tasks completed
-                  </Typography>
-                </Box>
-              </Box>
-            </AccordionSummary>
-            
-            <AccordionDetails sx={{ p: 3 }}>
-              {/* Objectives */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="h6" gutterBottom color="primary" sx={{ fontWeight: 500 }}>
-                  Objectives:
-                </Typography>
-                <Grid container spacing={1}>
-                  {stage.objectives.map((objective, idx) => (
-                    <Grid item xs={12} key={idx}>
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                        <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                          • {objective}
-                        </Typography>
+                  <Stack spacing={1.25}>
+                    {stageProgressRows.map(({ stage, progress, color }) => (
+                      <Box key={stage.id}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.35 }} spacing={1}>
+                          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                            <Box
+                              sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                bgcolor: color,
+                                flexShrink: 0,
+                              }}
+                              aria-hidden
+                            />
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: 600,
+                                color,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {stage.title}
+                            </Typography>
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                            {progress.completedTasks}/{progress.totalTasks || 0} · {progress.percentage}%
+                          </Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={progress.percentage}
+                          sx={{
+                            height: 6,
+                            borderRadius: 3,
+                            bgcolor: alpha(color, 0.15),
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 3,
+                              bgcolor: color,
+                            },
+                          }}
+                        />
                       </Box>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Box>
-              
-              {/* Goal */}
-              <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
-                <Typography variant="h6" color="primary" sx={{ display: 'inline' }}>
-                  Goal:&nbsp;
+                    ))}
+                  </Stack>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No checklist tasks yet.
                 </Typography>
-                <Typography variant="body1" sx={{ fontStyle: 'italic', display: 'inline' }}>
-                  {stage.goal}
-                </Typography>
-              </Box>
-              
-              <Divider sx={{ my: 2 }} />
-              
-              {/* Tasks */}
-              <Typography variant="h6" gutterBottom color="primary">
-                Step-by-Step Task Checklist:
-              </Typography>
-              
-              <Box sx={{ mt: 2 }}>
-                {stage.tasks.map((task) => {
-                  const entryType = task.entry_type || 'task';
-                  if (entryType !== 'task') {
-                    const accentColor = task.entry_color && isValidHexColor(task.entry_color) ? task.entry_color : getStageColor(stage);
-                    const accentBackground = `${accentColor}1A`;
-                    return (
-                      <Box
-                        key={task.id}
-                        sx={{
+              )}
+            </Box>
+          </Paper>
+
+          <Box sx={{ '& > .MuiCard-root': { mt: 0 } }}>
+            <ScormPackagesSection title="Checklist learning modules" placement="checklist" />
+          </Box>
+
+          {/* Stages */}
+          <Stack spacing={1.5}>
+            {stages.map((stage, stageIndex) => {
+              const progress = getStageProgress(stage);
+              const stageColor = getStageColor(stage);
+
+              return (
+                <Box key={stage.id}>
+                  {stage.program_checklist_first_stage && stage.program_checklist_name && (
+                    <Box sx={{ mb: 1.25, mt: stageIndex === 0 ? 0 : 1 }}>
+                      <Typography
+                        variant="overline"
+                        sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                      >
+                        {stage.program_checklist_name} Checklist
+                      </Typography>
+                    </Box>
+                  )}
+                  <Accordion
+                    disableGutters
+                    elevation={0}
+                    sx={{
+                      ...sectionShellSx,
+                      '&:before': { display: 'none' },
+                      borderLeft: '4px solid',
+                      borderLeftColor: stageColor,
+                    }}
+                  >
+                    <AccordionSummary
+                      expandIcon={<ExpandMoreIcon sx={{ color: 'text.secondary' }} />}
+                      sx={{
+                        px: { xs: 1.5, md: 2 },
+                        py: 0.5,
+                        minHeight: 56,
+                        bgcolor: alpha(stageColor, 0.06),
+                        '&:hover': { bgcolor: alpha(stageColor, 0.1) },
+                        '& .MuiAccordionSummary-content': {
                           my: 1.25,
-                          px: 1.25,
-                          py: entryType === 'divider' ? 0.75 : 1,
-                          borderLeft: entryType === 'subnote' ? '3px solid' : undefined,
-                          borderColor: entryType === 'subnote' ? accentColor : undefined,
-                          bgcolor:
-                            entryType === 'banner'
-                              ? accentBackground
-                              : entryType === 'footnote'
-                                ? 'grey.100'
-                                : entryType === 'subnote'
-                                  ? accentBackground
-                                  : 'transparent'
+                          alignItems: 'center',
+                          gap: 1.5,
+                          flexWrap: 'wrap',
+                        },
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 1.5,
+                          flexWrap: 'wrap',
+                          pr: 1,
                         }}
                       >
-                        {entryType === 'divider' && <Divider sx={{ mb: 1 }} />}
+                        <Box sx={{ minWidth: 0, flex: '1 1 200px' }}>
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              fontWeight: 700,
+                              letterSpacing: -0.015,
+                              fontSize: { xs: '1rem', sm: '1.1rem' },
+                              color: 'text.primary',
+                            }}
+                          >
+                            {stage.title}
+                          </Typography>
+                          {stage.subtitle && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ display: 'block', mt: 0.25, lineHeight: 1.35 }}
+                            >
+                              {stage.subtitle}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Chip
+                            size="small"
+                            label={`${progress.percentage}%`}
+                            sx={{
+                              fontWeight: 700,
+                              fontVariantNumeric: 'tabular-nums',
+                              bgcolor: alpha(stageColor, 0.12),
+                              color: stageColor,
+                              border: '1px solid',
+                              borderColor: alpha(stageColor, 0.35),
+                            }}
+                          />
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontVariantNumeric: 'tabular-nums', display: { xs: 'none', sm: 'block' } }}
+                          >
+                            {progress.completedTasks} of {progress.totalTasks} tasks
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    </AccordionSummary>
+
+                    <AccordionDetails sx={{ px: { xs: 1.5, md: 2.5 }, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                      {stage.objectives.length > 0 && (
+                        <Box sx={{ mb: 2 }}>
+                          <Typography
+                            variant="overline"
+                            sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.75 }}
+                          >
+                            Objectives
+                          </Typography>
+                          <Grid container spacing={0.75}>
+                            {stage.objectives.map((objective, idx) => (
+                              <Grid item xs={12} key={idx}>
+                                <Typography variant="body2" sx={{ fontSize: '0.875rem', lineHeight: 1.5, color: 'text.secondary' }}>
+                                  • {objective}
+                                </Typography>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        </Box>
+                      )}
+
+                      {stage.goal && (
                         <Box
                           sx={{
-                            '& p': { my: 0.25 },
-                            '& ul, & ol': { my: 0.25, pl: 2.5 }
-                          }}
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }}
-                        />
-                      </Box>
-                    );
-                  }
-                  return (
-                    <FormControlLabel
-                      key={task.id}
-                      control={
-                        <Checkbox
-                          checked={task.completed}
-                          onChange={() => handleTaskToggle(stage.id, task.id)}
-                        />
-                      }
-                      label={
-                        <Typography
-                          variant="body1"
-                          component="span"
-                          sx={{
-                            textDecoration: task.completed ? 'line-through' : 'none',
-                            color: task.completed ? 'text.secondary' : 'text.primary',
-                            fontWeight: 500,
-                            whiteSpace: 'pre-line',
-                            '& p': { my: 0.25 },
-                            '& ul, & ol': { my: 0.25, pl: 2.5 }
+                            mb: 2,
+                            px: 1.5,
+                            py: 1.25,
+                            borderRadius: 1.5,
+                            bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                            border: '1px solid',
+                            borderColor: 'divider',
                           }}
                         >
-                          {task.text && task.text.includes('<') ? (
-                            <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }} />
-                          ) : task.links && task.links.length > 0 ? (
-                            (() => {
-                              let result = task.text;
-                              const elements: React.ReactNode[] = [];
-                              let lastIndex = 0;
-                              
-                              task.links.forEach((link, index) => {
-                                const linkIndex = result.indexOf(link.text, lastIndex);
-                                if (linkIndex !== -1) {
-                                  if (linkIndex > lastIndex) {
-                                    elements.push(result.slice(lastIndex, linkIndex));
-                                  }
-                                  elements.push(
-                                    <Box
-                                      key={index}
-                                      component="a"
-                                      href={link.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      sx={{
-                                        color: 'primary.main',
-                                        textDecoration: 'underline',
-                                        cursor: 'pointer',
-                                        '&:hover': { textDecoration: 'underline', opacity: 0.8 }
-                                      }}
-                                    >
-                                      {link.text}
-                                    </Box>
-                                  );
-                                  lastIndex = linkIndex + link.text.length;
-                                }
-                              });
-                              if (lastIndex < result.length) {
-                                elements.push(result.slice(lastIndex));
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: 'secondary.dark', textTransform: 'uppercase', letterSpacing: 0.04 }}>
+                            Goal
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 0.35, lineHeight: 1.5 }}>
+                            {stage.goal}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      <Divider sx={{ my: 1.5 }} />
+
+                      <Typography
+                        variant="overline"
+                        sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 1 }}
+                      >
+                        Tasks
+                      </Typography>
+
+                      <Box>
+                        {stage.tasks.map((task) => {
+                          const entryType = task.entry_type || 'task';
+                          if (entryType !== 'task') {
+                            const accentColor = task.entry_color && isValidHexColor(task.entry_color) ? task.entry_color : stageColor;
+                            const accentBackground = `${accentColor}1A`;
+                            return (
+                              <Box
+                                key={task.id}
+                                sx={{
+                                  my: 1,
+                                  px: 1.25,
+                                  py: entryType === 'divider' ? 0.75 : 1,
+                                  borderRadius: 1,
+                                  borderLeft: entryType === 'subnote' ? '3px solid' : undefined,
+                                  borderColor: entryType === 'subnote' ? accentColor : undefined,
+                                  bgcolor:
+                                    entryType === 'banner'
+                                      ? accentBackground
+                                      : entryType === 'footnote'
+                                        ? alpha(theme.palette.primary.main, 0.04)
+                                        : entryType === 'subnote'
+                                          ? accentBackground
+                                          : 'transparent'
+                                }}
+                              >
+                                {entryType === 'divider' && <Divider sx={{ mb: 1 }} />}
+                                <Box
+                                  sx={{
+                                    fontSize: '0.9rem',
+                                    '& p': { my: 0.25 },
+                                    '& ul, & ol': { my: 0.25, pl: 2.5 }
+                                  }}
+                                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }}
+                                />
+                              </Box>
+                            );
+                          }
+                          return (
+                            <FormControlLabel
+                              key={task.id}
+                              control={
+                                <Checkbox
+                                  size="small"
+                                  checked={task.completed}
+                                  onChange={() => handleTaskToggle(stage.id, task.id)}
+                                  sx={{
+                                    color: alpha(stageColor, 0.55),
+                                    '&.Mui-checked': { color: stageColor },
+                                  }}
+                                />
                               }
-                              return elements.length > 0 ? elements : result;
-                            })()
-                          ) : (
-                            task.text
-                          )}
-                        </Typography>
-                      }
-                      sx={{ 
-                        display: 'flex',
-                        margin: 0,
-                        mb: 0.5,
-                        width: '100%',
-                        alignItems: 'center',
-                        '& .MuiFormControlLabel-label': {
-                          marginLeft: 1,
-                          flex: 1,
-                          display: 'flex',
-                          alignItems: 'center'
-                        },
-                        '& .MuiCheckbox-root': {
-                          alignSelf: 'flex-start',
-                          marginTop: '2px'
-                        }
-                      }}
-                    />
-                  );
-                })}
-              </Box>
-            </AccordionDetails>
-          </Accordion>
-          </Box>
-        );
-      })}
-    </Container>
+                              label={
+                                <Typography
+                                  variant="body2"
+                                  component="span"
+                                  sx={{
+                                    textDecoration: task.completed ? 'line-through' : 'none',
+                                    color: task.completed ? 'text.secondary' : 'text.primary',
+                                    fontWeight: 500,
+                                    whiteSpace: 'pre-line',
+                                    lineHeight: 1.45,
+                                    '& p': { my: 0.25 },
+                                    '& ul, & ol': { my: 0.25, pl: 2.5 }
+                                  }}
+                                >
+                                  {task.text && task.text.includes('<') ? (
+                                    <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.text) }} />
+                                  ) : task.links && task.links.length > 0 ? (
+                                    (() => {
+                                      let result = task.text;
+                                      const elements: React.ReactNode[] = [];
+                                      let lastIndex = 0;
+
+                                      task.links.forEach((link, index) => {
+                                        const linkIndex = result.indexOf(link.text, lastIndex);
+                                        if (linkIndex !== -1) {
+                                          if (linkIndex > lastIndex) {
+                                            elements.push(result.slice(lastIndex, linkIndex));
+                                          }
+                                          elements.push(
+                                            <Box
+                                              key={index}
+                                              component="a"
+                                              href={link.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              sx={{
+                                                color: 'secondary.dark',
+                                                textDecoration: 'underline',
+                                                cursor: 'pointer',
+                                                '&:hover': { textDecoration: 'underline', opacity: 0.8 }
+                                              }}
+                                            >
+                                              {link.text}
+                                            </Box>
+                                          );
+                                          lastIndex = linkIndex + link.text.length;
+                                        }
+                                      });
+                                      if (lastIndex < result.length) {
+                                        elements.push(result.slice(lastIndex));
+                                      }
+                                      return elements.length > 0 ? elements : result;
+                                    })()
+                                  ) : (
+                                    task.text
+                                  )}
+                                </Typography>
+                              }
+                              sx={{
+                                display: 'flex',
+                                margin: 0,
+                                mb: 0.25,
+                                py: 0.35,
+                                px: 0.5,
+                                borderRadius: 1,
+                                width: '100%',
+                                alignItems: 'flex-start',
+                                '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.03) },
+                                '& .MuiFormControlLabel-label': {
+                                  marginLeft: 0.5,
+                                  flex: 1,
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                },
+                                '& .MuiCheckbox-root': {
+                                  alignSelf: 'flex-start',
+                                  marginTop: '1px',
+                                  padding: '4px'
+                                }
+                              }}
+                            />
+                          );
+                        })}
+                      </Box>
+                    </AccordionDetails>
+                  </Accordion>
+                </Box>
+              );
+            })}
+          </Stack>
+        </Stack>
+      </Container>
+    </Box>
   );
 };
-  
-  export default MilestonesPage;
+
+export default MilestonesPage;
