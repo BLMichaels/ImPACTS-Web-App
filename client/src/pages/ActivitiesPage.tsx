@@ -1206,11 +1206,23 @@ const ActivitiesPage = () => {
                 filterControls
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  Use the filter button above to refine date, category, and sort.
+                  Use the filter button above to refine date, category, gaps, and sort.
                   {filterCategory ? (
                     <>
                       {' '}
-                      Active category: <strong>{filterCategory}</strong>
+                      Category: <strong>{filterCategory}</strong>.
+                    </>
+                  ) : null}
+                  {filterGapPlanId ? (
+                    <>
+                      {' '}
+                      Gap closure filter on.
+                    </>
+                  ) : null}
+                  {filterSimulationGapId ? (
+                    <>
+                      {' '}
+                      Simulation gap filter on.
                     </>
                   ) : null}
                 </Typography>
