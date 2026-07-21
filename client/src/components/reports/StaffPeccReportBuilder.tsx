@@ -1742,6 +1742,10 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   );
 
   const exportPdf = () => {
+    if (visibleColumnIds.length === 0) {
+      setError('Select at least one column before exporting.');
+      return;
+    }
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
@@ -1767,6 +1771,10 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   };
 
   const exportExcel = () => {
+    if (visibleColumnIds.length === 0) {
+      setError('Select at least one column before exporting.');
+      return;
+    }
     const head = visibleColumnIds.map((id) => columnMetas.find((c) => c.id === id)?.label || id);
     const aoa: string[][] = [head];
     exportRows.forEach((r) => {
@@ -1779,6 +1787,10 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   };
 
   const exportCsv = () => {
+    if (visibleColumnIds.length === 0) {
+      setError('Select at least one column before exporting.');
+      return;
+    }
     const columnLabels = visibleColumnIds.map((id) => columnMetas.find((c) => c.id === id)?.label || id);
     const modeLine = exportModeDescription(exportMode, {
       filtered: sorted.length,
