@@ -1645,7 +1645,12 @@ export default function AdminSnapshotPage() {
                 {error}
               </Alert>
             )}
-            {!loading && !error && events.length === 0 && (
+            {periodValue === 'custom' && (!customFrom || !customTo) && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Choose both From and To dates to load a custom range.
+              </Alert>
+            )}
+            {!loading && !error && events.length === 0 && !(periodValue === 'custom' && (!customFrom || !customTo)) && (
               <Alert severity="info" sx={{ mb: 2 }}>
                 No usage events for this period. Try a wider date range or click Refresh.
               </Alert>
