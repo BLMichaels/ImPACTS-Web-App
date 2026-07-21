@@ -101,14 +101,14 @@ const TOOL_AREAS: {
       'Log PECC work, simulations, and training. Track time and impact on pediatric readiness.',
   },
   {
-    title: 'Gap Plan',
+    title: 'Gap Closures',
     path: '/gap-plan',
     Icon: TrackChangesIcon,
     description:
-      'Prioritize gap-reduction actions from your assessment and monitor progress toward readiness goals.',
+      'Prioritize assessment gap actions and monitor progress toward readiness goals.',
   },
   {
-    title: 'Simulation',
+    title: 'Simulation Gaps',
     path: '/simulation',
     Icon: ScienceIcon,
     description:
@@ -124,11 +124,11 @@ const TOOL_AREAS: {
 ];
 
 const sectionShellSx = {
-  p: { xs: 2, md: 2.5 },
   borderRadius: 2,
   border: '1px solid',
   borderColor: 'divider',
   bgcolor: 'background.paper',
+  overflow: 'hidden',
 } as const;
 
   const DashboardPage = () => {
@@ -519,96 +519,120 @@ const sectionShellSx = {
           </Paper>
 
           {/* How this tool works */}
-          <Box sx={sectionShellSx}>
-            <Typography
-              variant="overline"
-              sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
+          <Paper elevation={0} sx={sectionShellSx}>
+            <Box
+              sx={{
+                px: { xs: 2, md: 2.5 },
+                py: 1.5,
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: alpha(theme.palette.secondary.main, 0.04),
+              }}
             >
-              Getting started
-            </Typography>
-            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015, mb: 0.5, fontSize: { xs: '1.2rem', md: '1.35rem' } }}>
-              How this tool works
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 820, lineHeight: 1.6 }}>
-              Your {primaryProgramName} PECC Tracker guides you through the Pediatric Emergency Care Coordinator
-              journey. Start with Checklist and Snapshot, then use Gap Plan and Activities to close gaps and document
-              your work.
-            </Typography>
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+              >
+                Getting started
+              </Typography>
+              <Typography
+                variant="h6"
+                component="h2"
+                sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: { xs: '1.1rem', sm: '1.2rem' }, mt: 0.25 }}
+              >
+                How this tool works
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 820, lineHeight: 1.55 }}>
+                Your {primaryProgramName} PECC Tracker guides you through the Pediatric Emergency Care Coordinator
+                journey. Start with Checklist and Snapshot, then use Gap Closures and Activities to close gaps and
+                document your work.
+              </Typography>
+            </Box>
 
-            <Grid container spacing={{ xs: 1.25, md: 1.5 }}>
-              {TOOL_AREAS.map(({ title, path, Icon, description }) => (
-                <Grid item xs={12} sm={6} md={4} lg={2} key={path}>
-                  <Box
-                    component="button"
-                    type="button"
-                    onClick={() => navigate(path)}
-                    sx={{
-                      width: '100%',
-                      height: '100%',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 2,
-                      bgcolor: alpha(theme.palette.secondary.main, 0.03),
-                      p: 1.75,
-                      transition: 'border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease',
-                      '&:hover': {
-                        borderColor: alpha(theme.palette.secondary.main, 0.4),
-                        bgcolor: alpha(theme.palette.secondary.main, 0.07),
-                        boxShadow: `0 4px 16px ${alpha(theme.palette.secondary.main, 0.1)}`,
-                      },
-                      '&:focus-visible': {
-                        outline: `2px solid ${theme.palette.secondary.main}`,
-                        outlineOffset: 2,
-                      },
-                    }}
-                  >
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-                      <Box
-                        sx={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: 1,
-                          display: 'grid',
-                          placeItems: 'center',
-                          bgcolor: alpha(theme.palette.secondary.main, 0.12),
-                          color: 'secondary.dark',
-                          flexShrink: 0,
-                        }}
+            <Box sx={{ px: { xs: 1.5, md: 2 }, py: { xs: 1.5, md: 2 } }}>
+              <Grid container spacing={{ xs: 1, md: 1.25 }}>
+                {TOOL_AREAS.map(({ title, path, Icon, description }) => (
+                  <Grid item xs={12} sm={6} md={4} lg={2} key={path}>
+                    <Box
+                      component="button"
+                      type="button"
+                      onClick={() => navigate(path)}
+                      sx={{
+                        width: '100%',
+                        height: '100%',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1.5,
+                        bgcolor: 'background.paper',
+                        p: { xs: 1.5, md: 1.6 },
+                        transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
+                        '&:hover': {
+                          borderColor: 'secondary.light',
+                          bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                          boxShadow: '0 2px 10px rgba(61, 85, 96, 0.08)',
+                        },
+                        '&:focus-visible': {
+                          outline: `2px solid ${theme.palette.secondary.main}`,
+                          outlineOffset: 2,
+                        },
+                      }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                        <Box
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 1,
+                            display: 'grid',
+                            placeItems: 'center',
+                            bgcolor: alpha(theme.palette.secondary.main, 0.12),
+                            color: 'secondary.dark',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Icon sx={{ fontSize: 16 }} aria-hidden />
+                        </Box>
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 700, letterSpacing: -0.01, lineHeight: 1.25, color: 'text.primary' }}
+                        >
+                          {title}
+                        </Typography>
+                      </Stack>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ lineHeight: 1.45, fontSize: '0.8rem' }}
                       >
-                        <Icon sx={{ fontSize: 16 }} aria-hidden />
-                      </Box>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, letterSpacing: -0.01, lineHeight: 1.2 }}>
-                        {title}
+                        {description}
                       </Typography>
-                    </Stack>
-                    <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5, fontSize: '0.8125rem' }}>
-                      {description}
-                    </Typography>
-                  </Box>
-                </Grid>
-              ))}
-            </Grid>
+                    </Box>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
 
             <Typography
               variant="body2"
               color="text.secondary"
               sx={{
-                mt: 2,
-                pt: 1.75,
+                px: { xs: 2, md: 2.5 },
+                py: 1.5,
                 borderTop: '1px solid',
                 borderColor: 'divider',
+                bgcolor: alpha(theme.palette.primary.main, 0.03),
                 lineHeight: 1.55,
               }}
             >
-              <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
+              <Box component="span" sx={{ fontWeight: 700, color: 'secondary.dark' }}>
                 Tip:{' '}
               </Box>
-              Use Snapshot to review progress, build Gap Plans from assessment gaps, and log Activities as you
-              go. Your pediatric readiness mentor can guide each stage.
+              Use Snapshot to review progress, build Gap Closures from assessment gaps, track Simulation Gaps, and
+              log Activities as you go. Your pediatric readiness mentor can guide each stage.
             </Typography>
-          </Box>
+          </Paper>
 
           {/* Pediatric Readiness Scores — dense full-width table */}
           {showPrsSection && (
