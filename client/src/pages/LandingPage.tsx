@@ -28,8 +28,11 @@ import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { UserRole } from '../types/database';
 
+const INK = '#141414';
 const SLATE = '#455a64';
 const SLATE_DARK = '#2f3e46';
+const TEAL = '#0e7490';
+const TEAL_DARK = '#3d5560';
 
 type CoreTabId = 'activities' | 'gaps' | 'cohorts' | 'snapshot';
 
@@ -46,6 +49,17 @@ interface CoreTab {
 
 const CORE_TABS: CoreTab[] = [
   {
+    id: 'snapshot',
+    navLabel: 'Snapshot',
+    title: 'Snapshot metrics',
+    headline: 'See your readiness story at a glance',
+    description:
+      'Pull together checklist progress, activity volume, gap closure, simulation work, and readiness scores — one dashboard for you and your leadership.',
+    icon: <SnapshotIcon sx={{ fontSize: 28 }} />,
+    accent: '#1d4ed8',
+    bullets: ['Readiness & gap metrics', 'Activity and simulation counts', 'Printable summary views'],
+  },
+  {
     id: 'activities',
     navLabel: 'Activities',
     title: 'Activity tracking',
@@ -58,7 +72,7 @@ const CORE_TABS: CoreTab[] = [
   },
   {
     id: 'gaps',
-    navLabel: 'Gap Closure',
+    navLabel: 'Gap Closures',
     title: 'Gap closure',
     headline: 'Close gaps and institutionalize what you learn',
     description:
@@ -78,17 +92,12 @@ const CORE_TABS: CoreTab[] = [
     accent: '#6d28d9',
     bullets: ['Discussion threads & replies', 'Program announcements', 'Shared learning resources'],
   },
-  {
-    id: 'snapshot',
-    navLabel: 'Snapshot',
-    title: 'Snapshot metrics',
-    headline: 'See your readiness story at a glance',
-    description:
-      'Pull together checklist progress, activity volume, gap closure, simulation work, and readiness scores — one dashboard for you and your leadership.',
-    icon: <SnapshotIcon sx={{ fontSize: 28 }} />,
-    accent: '#1d4ed8',
-    bullets: ['Readiness & gap metrics', 'Activity and simulation counts', 'Printable summary views'],
-  },
+];
+
+const HERO_STATS = [
+  { value: '4', label: 'Core areas' },
+  { value: '1', label: 'Unified dashboard' },
+  { value: 'QI', label: 'Purpose-built' },
 ];
 
 const SECURITY_NOTES = [
@@ -110,7 +119,7 @@ const SECURITY_NOTES = [
   {
     icon: <ShieldIcon sx={{ fontSize: 22 }} />,
     title: 'Readiness & QI purpose',
-    text: 'The PECC Support Tool is for pediatric emergency readiness improvement and coordination — not a clinical record or EHR.',
+    text: 'The PECC Support Tool is for pediatric emergency care readiness improvement and coordination — not a clinical record or EHR.',
   },
 ];
 
@@ -149,12 +158,12 @@ function TabPreview({ tab }: { tab: CoreTab }) {
                 alignItems: 'flex-start',
                 p: 1.5,
                 borderRadius: 2,
-                bgcolor: 'rgba(255,255,255,0.85)',
+                bgcolor: '#fff',
                 border: '1px solid',
-                borderColor: alpha(tab.accent, 0.15),
+                borderColor: alpha(tab.accent, 0.12),
               }}
             >
-              <Chip label={row.type} size="small" sx={{ bgcolor: alpha(tab.accent, 0.12), color: tab.accent, fontWeight: 600 }} />
+              <Chip label={row.type} size="small" sx={{ bgcolor: alpha(tab.accent, 0.1), color: tab.accent, fontWeight: 600 }} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
                   {row.title}
@@ -179,9 +188,9 @@ function TabPreview({ tab }: { tab: CoreTab }) {
               sx={{
                 p: 1.5,
                 borderRadius: 2,
-                bgcolor: 'rgba(255,255,255,0.85)',
+                bgcolor: '#fff',
                 border: '1px solid',
-                borderColor: alpha(tab.accent, 0.15),
+                borderColor: alpha(tab.accent, 0.12),
               }}
             >
               <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.75, lineHeight: 1.35 }}>
@@ -198,7 +207,7 @@ function TabPreview({ tab }: { tab: CoreTab }) {
     case 'cohorts':
       return (
         <Stack spacing={1.25}>
-          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(tab.accent, 0.08), border: '1px solid', borderColor: alpha(tab.accent, 0.2) }}>
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(tab.accent, 0.06), border: '1px solid', borderColor: alpha(tab.accent, 0.15) }}>
             <Typography variant="caption" sx={{ fontWeight: 700, color: tab.accent, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Announcement
             </Typography>
@@ -212,9 +221,9 @@ function TabPreview({ tab }: { tab: CoreTab }) {
               sx={{
                 p: 1.5,
                 borderRadius: 2,
-                bgcolor: 'rgba(255,255,255,0.85)',
+                bgcolor: '#fff',
                 border: '1px solid',
-                borderColor: alpha(tab.accent, 0.15),
+                borderColor: alpha(tab.accent, 0.12),
               }}
             >
               <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
@@ -242,9 +251,9 @@ function TabPreview({ tab }: { tab: CoreTab }) {
                 sx={{
                   p: 1.5,
                   borderRadius: 2,
-                  bgcolor: 'rgba(255,255,255,0.85)',
+                  bgcolor: '#fff',
                   border: '1px solid',
-                  borderColor: alpha(tab.accent, 0.15),
+                  borderColor: alpha(tab.accent, 0.12),
                   textAlign: 'center',
                 }}
               >
@@ -271,7 +280,7 @@ const LandingPage: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { currentUser, loading: authLoading } = useAuth();
   const { userProfile, isLoading: profileLoading } = useUserProfile();
-  const [activeTab, setActiveTab] = useState<CoreTabId>('activities');
+  const [activeTab, setActiveTab] = useState<CoreTabId>('snapshot');
 
   const tab = CORE_TABS.find((t) => t.id === activeTab) ?? CORE_TABS[0];
 
@@ -296,11 +305,11 @@ const LandingPage: React.FC = () => {
         minHeight: '100vh',
         width: '100%',
         position: 'relative',
-        overflow: 'hidden',
-        color: SLATE_DARK,
+        bgcolor: '#fafbfc',
+        color: INK,
       }}
     >
-      {/* Full-viewport background — fixed so it always fills the browser */}
+      {/* Subtle ambient gradient */}
       <Box
         aria-hidden
         sx={{
@@ -309,228 +318,319 @@ const LandingPage: React.FC = () => {
           zIndex: 0,
           pointerEvents: 'none',
           background: `
-            radial-gradient(ellipse 90% 60% at 8% -10%, ${alpha('#93c5fd', 0.55)} 0%, transparent 55%),
-            radial-gradient(ellipse 70% 50% at 95% 5%, ${alpha('#fda4af', 0.4)} 0%, transparent 50%),
-            radial-gradient(ellipse 80% 55% at 50% 100%, ${alpha('#5eead4', 0.35)} 0%, transparent 55%),
-            linear-gradient(165deg, #f8fafc 0%, #eef2ff 38%, #f0fdfa 72%, #f8fafc 100%)
+            radial-gradient(ellipse 60% 40% at 50% -5%, ${alpha(TEAL, 0.08)} 0%, transparent 60%),
+            radial-gradient(ellipse 40% 30% at 90% 20%, ${alpha('#93c5fd', 0.06)} 0%, transparent 50%)
           `,
-        }}
-      />
-      <Box
-        aria-hidden
-        sx={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 0,
-          pointerEvents: 'none',
-          opacity: 0.35,
-          backgroundImage: `
-            linear-gradient(${alpha(SLATE, 0.06)} 1px, transparent 1px),
-            linear-gradient(90deg, ${alpha(SLATE, 0.06)} 1px, transparent 1px)
-          `,
-          backgroundSize: '48px 48px',
-          maskImage: 'linear-gradient(180deg, black 0%, black 70%, transparent 100%)',
         }}
       />
 
       <Box sx={{ position: 'relative', zIndex: 1 }}>
-        {/* Top bar */}
+        {/* Floating nav */}
         <Box
           component="header"
           sx={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
             px: { xs: 2, sm: 3, lg: 5 },
-            py: { xs: 2, md: 2.5 },
+            py: { xs: 1.5, md: 2 },
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            bgcolor: alpha('#fafbfc', 0.85),
+            backdropFilter: 'blur(12px)',
+            borderBottom: '1px solid',
+            borderColor: alpha(SLATE, 0.08),
           }}
         >
           <Box
             component="img"
             src="/impacts-logo.png"
             alt="ImPACTS"
-            sx={{
-              height: { xs: 42, sm: 48 },
-              width: 'auto',
-              display: 'block',
-            }}
+            sx={{ height: { xs: 38, sm: 44 }, width: 'auto', display: 'block' }}
           />
           <Button
-            variant="outlined"
+            variant="contained"
             onClick={() => navigate('/login')}
             sx={{
-              borderColor: alpha(SLATE, 0.25),
-              color: SLATE_DARK,
+              borderRadius: 999,
+              px: 2.5,
+              py: 0.85,
               fontWeight: 600,
-              '&:hover': { borderColor: SLATE, bgcolor: alpha(SLATE, 0.04) },
+              fontSize: '0.875rem',
+              bgcolor: INK,
+              boxShadow: 'none',
+              '&:hover': { bgcolor: SLATE_DARK, boxShadow: 'none' },
             }}
           >
             Sign in
           </Button>
         </Box>
 
-        {/* Hero */}
-        <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3, lg: 5 }, pb: { xs: 6, md: 8 } }}>
-          <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center" sx={{ pt: { xs: 2, md: 4 }, pb: { xs: 5, md: 7 } }}>
-            <Grid item xs={12} md={6}>
-              <Stack spacing={2.5}>
-                <Chip
-                  label="Built for Pediatric Emergency Care Coordinators"
-                  size="small"
-                  sx={{
-                    alignSelf: 'flex-start',
-                    bgcolor: alpha(SLATE, 0.08),
-                    color: SLATE,
-                    fontWeight: 600,
-                    border: '1px solid',
-                    borderColor: alpha(SLATE, 0.12),
-                  }}
-                />
-                <Typography
-                  component="h1"
-                  variant="h1"
-                  sx={{
-                    fontSize: { xs: '2.1rem', sm: '2.75rem', md: '3.25rem' },
-                    lineHeight: { xs: 1.12, md: 1.08 },
-                    maxWidth: 540,
-                  }}
-                >
-                  Track work. Close gaps. Learn with peers. See your progress.
-                </Typography>
-                <Typography
-                  variant="body1"
-                  color="text.secondary"
-                  sx={{ maxWidth: 520, fontSize: { xs: '1rem', md: '1.0625rem' }, lineHeight: 1.65 }}
-                >
-                  The PECC Support Tool is organized around Activities, Gap Closure, Cohorts, and Snapshot — the four
-                  areas that support pediatric emergency care readiness work at your hospital.
-                </Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 0.5 }}>
-                  <Button
-                    size="large"
-                    variant="contained"
-                    endIcon={<ArrowForwardIcon />}
-                    onClick={() => navigate('/login')}
-                    sx={{
-                      px: 3.5,
-                      py: 1.35,
-                      fontWeight: 700,
-                      bgcolor: SLATE,
-                      boxShadow: `0 12px 32px ${alpha(SLATE, 0.28)}`,
-                      '&:hover': { bgcolor: SLATE_DARK },
-                    }}
-                  >
-                    Enter platform
-                  </Button>
-                  <Button
-                    size="large"
-                    variant="outlined"
-                    onClick={() => navigate('/register')}
-                    sx={{
-                      px: 3.5,
-                      py: 1.35,
-                      fontWeight: 600,
-                      borderColor: alpha(SLATE, 0.3),
-                      color: SLATE_DARK,
-                    }}
-                  >
-                    Request an invitation
-                  </Button>
-                </Stack>
-              </Stack>
-            </Grid>
-
-            {/* Live preview panel */}
-            <Grid item xs={12} md={6}>
-              <Box
-                sx={{
-                  borderRadius: 4,
-                  p: { xs: 2, sm: 2.5 },
-                  background: 'rgba(255,255,255,0.72)',
-                  backdropFilter: 'blur(16px)',
-                  border: '1px solid',
-                  borderColor: alpha('#fff', 0.8),
-                  boxShadow: `0 24px 64px ${alpha(SLATE, 0.12)}, inset 0 1px 0 ${alpha('#fff', 0.9)}`,
-                }}
-              >
-                <Stack
-                  direction="row"
-                  spacing={0.5}
-                  sx={{
-                    mb: 2,
-                    p: 0.5,
-                    borderRadius: 2,
-                    bgcolor: alpha(SLATE, 0.06),
-                    overflowX: 'auto',
-                  }}
-                  role="tablist"
-                  aria-label="Platform tabs"
-                >
-                  {CORE_TABS.map((t) => {
-                    const selected = t.id === activeTab;
-                    return (
-                      <Box
-                        key={t.id}
-                        role="tab"
-                        aria-selected={selected}
-                        tabIndex={selected ? 0 : -1}
-                        onClick={() => setActiveTab(t.id)}
-                        onKeyDown={(e) => handleTabKeyDown(e, t.id)}
-                        sx={{
-                          px: 1.5,
-                          py: 0.85,
-                          borderRadius: 1.5,
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                          fontSize: '0.8125rem',
-                          fontWeight: selected ? 600 : 500,
-                          color: selected ? '#fff' : SLATE,
-                          bgcolor: selected ? t.accent : 'transparent',
-                          transition: 'background-color 0.15s, color 0.15s',
-                          outline: 'none',
-                          '&:focus-visible': {
-                            boxShadow: `0 0 0 2px ${t.accent}`,
-                          },
-                        }}
-                      >
-                        {t.navLabel}
-                      </Box>
-                    );
-                  })}
-                </Stack>
-
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5, color: tab.accent }}>
-                  {tab.headline}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.55 }}>
-                  {tab.description}
-                </Typography>
-                <TabPreview tab={tab} />
-              </Box>
-            </Grid>
-          </Grid>
-
-          {/* Core tab cards */}
-          <Box sx={{ mb: { xs: 5, md: 7 } }}>
-            <Typography
-              component="h2"
-              variant="h3"
+        {/* Hero — Mobbin-style centered display */}
+        <Container maxWidth="md" sx={{ px: { xs: 2, sm: 3 }, pt: { xs: 6, md: 10 }, pb: { xs: 4, md: 6 }, textAlign: 'center' }}>
+          <Stack spacing={{ xs: 2.5, md: 3 }} alignItems="center">
+            {/* Product specimen badge */}
+            <Box
               sx={{
-                mb: 0.75,
-                textAlign: { xs: 'left', md: 'center' },
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 1.25,
+                px: 2,
+                py: 1,
+                borderRadius: 3,
+                bgcolor: '#fff',
+                border: '1px solid',
+                borderColor: alpha(SLATE, 0.1),
+                boxShadow: `0 2px 12px ${alpha(SLATE, 0.06)}`,
               }}
             >
-              How the PECC Support Tool is organized
-            </Typography>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 2,
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: `linear-gradient(135deg, ${TEAL_DARK} 0%, ${TEAL} 100%)`,
+                  color: '#fff',
+                  fontSize: '0.875rem',
+                  fontWeight: 700,
+                }}
+              >
+                P
+              </Box>
+              <Box sx={{ textAlign: 'left' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2, color: INK }}>
+                  PECC Support Tool
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }}>
+                  From the ImPACTS program
+                </Typography>
+              </Box>
+            </Box>
+
             <Typography
-              variant="body1"
-              color="text.secondary"
-              sx={{ maxWidth: 640, mx: { md: 'auto' }, mb: 3.5, textAlign: { xs: 'left', md: 'center' }, lineHeight: 1.6 }}
+              component="h1"
+              sx={{
+                fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' },
+                fontWeight: 650,
+                lineHeight: { xs: 1.08, md: 1.02 },
+                letterSpacing: { xs: '-0.02em', md: '-0.03em' },
+                maxWidth: 720,
+                color: INK,
+              }}
             >
-              Select a tab in the preview{isMobile ? '' : ' on the right'} or choose a section below to learn what each area is for.
+              Pediatric emergency readiness, organized.
             </Typography>
 
-            <Grid container spacing={2}>
+            <Typography
+              variant="body1"
+              sx={{
+                maxWidth: 560,
+                fontSize: { xs: '1.0625rem', md: '1.25rem' },
+                lineHeight: 1.55,
+                color: alpha(INK, 0.62),
+                fontWeight: 400,
+              }}
+            >
+              Track your work, close assessment gaps, collaborate with peers, and show leadership the progress you&apos;re making — all in one place.
+            </Typography>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 0.5 }}>
+              <Button
+                size="large"
+                variant="contained"
+                endIcon={<ArrowForwardIcon />}
+                onClick={() => navigate('/login')}
+                sx={{
+                  borderRadius: 999,
+                  px: 3.5,
+                  py: 1.35,
+                  fontWeight: 600,
+                  fontSize: '0.9375rem',
+                  bgcolor: INK,
+                  boxShadow: 'none',
+                  '&:hover': { bgcolor: SLATE_DARK, boxShadow: 'none' },
+                }}
+              >
+                Enter platform
+              </Button>
+              <Button
+                size="large"
+                variant="outlined"
+                onClick={() => navigate('/register')}
+                sx={{
+                  borderRadius: 999,
+                  px: 3.5,
+                  py: 1.35,
+                  fontWeight: 600,
+                  fontSize: '0.9375rem',
+                  borderColor: alpha(INK, 0.2),
+                  color: INK,
+                  '&:hover': { borderColor: INK, bgcolor: alpha(INK, 0.03) },
+                }}
+              >
+                Request an invitation
+              </Button>
+            </Stack>
+
+            {/* Trust stats */}
+            <Stack
+              direction="row"
+              spacing={{ xs: 3, md: 5 }}
+              sx={{ pt: { xs: 2, md: 3 } }}
+              divider={
+                <Box sx={{ width: '1px', bgcolor: alpha(SLATE, 0.15), alignSelf: 'stretch', my: 0.5 }} />
+              }
+            >
+              {HERO_STATS.map((stat) => (
+                <Box key={stat.label} sx={{ textAlign: 'center' }}>
+                  <Typography
+                    sx={{
+                      fontSize: { xs: '1.75rem', md: '2rem' },
+                      fontWeight: 650,
+                      letterSpacing: '-0.02em',
+                      lineHeight: 1,
+                      color: INK,
+                    }}
+                  >
+                    {stat.value}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500, mt: 0.5, display: 'block' }}>
+                    {stat.label}
+                  </Typography>
+                </Box>
+              ))}
+            </Stack>
+          </Stack>
+        </Container>
+
+        {/* Product preview specimen — hero centerpiece */}
+        <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3, lg: 5 }, pb: { xs: 8, md: 12 } }}>
+          <Box
+            sx={{
+              borderRadius: { xs: 3, md: 4 },
+              p: { xs: 2, sm: 2.5, md: 3 },
+              bgcolor: '#fff',
+              border: '1px solid',
+              borderColor: alpha(SLATE, 0.1),
+              boxShadow: `
+                0 0 0 1px ${alpha('#fff', 0.5)},
+                0 24px 80px ${alpha(SLATE, 0.1)},
+                0 8px 24px ${alpha(SLATE, 0.06)}
+              `,
+            }}
+          >
+            {/* Browser chrome */}
+            <Stack direction="row" spacing={0.75} sx={{ mb: 2, px: 0.5 }}>
+              {[alpha('#ef4444', 0.7), alpha('#eab308', 0.7), alpha('#22c55e', 0.7)].map((c, i) => (
+                <Box key={i} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c }} />
+              ))}
+              <Box
+                sx={{
+                  flex: 1,
+                  mx: 2,
+                  height: 10,
+                  borderRadius: 999,
+                  bgcolor: alpha(SLATE, 0.06),
+                  maxWidth: 280,
+                  alignSelf: 'center',
+                }}
+              />
+            </Stack>
+
+            <Stack
+              direction="row"
+              spacing={0.5}
+              sx={{
+                mb: 2.5,
+                p: 0.5,
+                borderRadius: 2,
+                bgcolor: alpha(SLATE, 0.04),
+                overflowX: 'auto',
+              }}
+              role="tablist"
+              aria-label="Platform tabs"
+            >
+              {CORE_TABS.map((t) => {
+                const selected = t.id === activeTab;
+                return (
+                  <Box
+                    key={t.id}
+                    role="tab"
+                    aria-selected={selected}
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => setActiveTab(t.id)}
+                    onKeyDown={(e) => handleTabKeyDown(e, t.id)}
+                    sx={{
+                      px: 2,
+                      py: 0.85,
+                      borderRadius: 1.5,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      fontSize: '0.8125rem',
+                      fontWeight: selected ? 600 : 500,
+                      color: selected ? '#fff' : SLATE,
+                      bgcolor: selected ? t.accent : 'transparent',
+                      transition: 'background-color 0.15s, color 0.15s',
+                      outline: 'none',
+                      '&:focus-visible': { boxShadow: `0 0 0 2px ${t.accent}` },
+                    }}
+                  >
+                    {t.navLabel}
+                  </Box>
+                );
+              })}
+            </Stack>
+
+            <Grid container spacing={{ xs: 2, md: 3 }}>
+              <Grid item xs={12} md={5}>
+                <Typography variant="overline" sx={{ color: tab.accent, fontWeight: 700, letterSpacing: '0.06em' }}>
+                  {tab.navLabel}
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 650, mb: 1, lineHeight: 1.3, letterSpacing: '-0.01em' }}>
+                  {tab.headline}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                  {tab.description}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} md={7}>
+                <TabPreview tab={tab} />
+              </Grid>
+            </Grid>
+          </Box>
+        </Container>
+
+        {/* Features section */}
+        <Box sx={{ bgcolor: '#fff', borderTop: '1px solid', borderColor: alpha(SLATE, 0.08) }}>
+          <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3, lg: 5 }, py: { xs: 8, md: 10 } }}>
+            <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
+              <Typography
+                component="h2"
+                sx={{
+                  fontSize: { xs: '1.75rem', md: '2.25rem' },
+                  fontWeight: 650,
+                  letterSpacing: '-0.02em',
+                  mb: 1.5,
+                  color: INK,
+                }}
+              >
+                Four areas. One readiness workflow.
+              </Typography>
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                sx={{ maxWidth: 560, mx: 'auto', lineHeight: 1.6, fontSize: '1.0625rem' }}
+              >
+                {isMobile
+                  ? 'Tap a section below to preview it above.'
+                  : 'Select a tab in the preview or explore each area below.'}
+              </Typography>
+            </Box>
+
+            <Grid container spacing={2.5}>
               {CORE_TABS.map((t) => {
                 const selected = t.id === activeTab;
                 return (
@@ -542,51 +642,49 @@ const LandingPage: React.FC = () => {
                       aria-pressed={selected}
                       sx={{
                         width: '100%',
+                        height: '100%',
                         textAlign: 'left',
                         cursor: 'pointer',
                         border: '1px solid',
-                        borderColor: selected ? alpha(t.accent, 0.45) : alpha(SLATE, 0.12),
+                        borderColor: selected ? alpha(t.accent, 0.35) : alpha(SLATE, 0.1),
                         borderRadius: 3,
-                        p: 2.5,
-                        bgcolor: selected ? alpha(t.accent, 0.06) : 'rgba(255,255,255,0.65)',
-                        backdropFilter: 'blur(8px)',
+                        p: 3,
+                        bgcolor: selected ? alpha(t.accent, 0.03) : '#fff',
                         transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
-                        boxShadow: selected ? `0 12px 32px ${alpha(t.accent, 0.1)}` : 'none',
+                        boxShadow: selected ? `0 8px 32px ${alpha(t.accent, 0.08)}` : 'none',
                         '&:hover': {
-                          transform: 'translateY(-1px)',
-                          boxShadow: `0 8px 24px ${alpha(SLATE, 0.08)}`,
+                          transform: 'translateY(-2px)',
+                          boxShadow: `0 12px 40px ${alpha(SLATE, 0.08)}`,
+                          borderColor: alpha(t.accent, 0.25),
                         },
-                        '&:focus-visible': {
-                          outline: `2px solid ${t.accent}`,
-                          outlineOffset: 2,
-                        },
+                        '&:focus-visible': { outline: `2px solid ${t.accent}`, outlineOffset: 2 },
                       }}
                     >
-                      <Stack spacing={1.5}>
+                      <Stack spacing={2}>
                         <Stack direction="row" spacing={1.5} alignItems="center">
                           <Box
                             sx={{
                               width: 44,
                               height: 44,
-                              borderRadius: 1.5,
+                              borderRadius: 2,
                               display: 'grid',
                               placeItems: 'center',
-                              bgcolor: alpha(t.accent, 0.12),
+                              bgcolor: alpha(t.accent, 0.1),
                               color: t.accent,
                             }}
                           >
                             {t.icon}
                           </Box>
                           <Box>
-                            <Typography variant="overline" sx={{ color: t.accent, fontWeight: 600, letterSpacing: '0.04em' }}>
+                            <Typography variant="overline" sx={{ color: t.accent, fontWeight: 700, letterSpacing: '0.05em' }}>
                               {t.navLabel}
                             </Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 600, lineHeight: 1.25 }}>
+                            <Typography variant="h6" sx={{ fontWeight: 650, lineHeight: 1.25 }}>
                               {t.title}
                             </Typography>
                           </Box>
                         </Stack>
-                        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
                           {t.description}
                         </Typography>
                         <Stack spacing={0.75}>
@@ -603,45 +701,58 @@ const LandingPage: React.FC = () => {
                 );
               })}
             </Grid>
-          </Box>
+          </Container>
+        </Box>
 
-          {/* Security & data use */}
+        {/* Security */}
+        <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3, lg: 5 }, py: { xs: 8, md: 10 } }}>
           <Box
             sx={{
-              mb: { xs: 5, md: 7 },
-              p: { xs: 2.5, md: 3.5 },
+              p: { xs: 3, md: 4 },
               borderRadius: 3,
               border: '1px solid',
-              borderColor: alpha(SLATE, 0.12),
-              bgcolor: 'rgba(255,255,255,0.7)',
-              backdropFilter: 'blur(8px)',
+              borderColor: alpha(SLATE, 0.1),
+              bgcolor: '#fff',
             }}
           >
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-              <ShieldIcon sx={{ color: SLATE, fontSize: 22 }} />
-              <Typography component="h2" variant="h5" sx={{ fontWeight: 600 }}>
-                Security &amp; appropriate use
-              </Typography>
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 2,
+                  display: 'grid',
+                  placeItems: 'center',
+                  bgcolor: alpha(TEAL, 0.1),
+                  color: TEAL_DARK,
+                }}
+              >
+                <ShieldIcon sx={{ fontSize: 22 }} />
+              </Box>
+              <Box>
+                <Typography component="h2" variant="h5" sx={{ fontWeight: 650, letterSpacing: '-0.01em' }}>
+                  Security &amp; appropriate use
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Built for quality improvement — not clinical documentation.
+                </Typography>
+              </Box>
             </Stack>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 720, lineHeight: 1.6 }}>
-              The PECC Support Tool is designed for quality-improvement and readiness work. Treat it like any other
-              program tool: no real patient data, and only share what you would put in a de-identified QI report.
-            </Typography>
-            <Grid container spacing={2}>
+            <Grid container spacing={3} sx={{ mt: 1 }}>
               {SECURITY_NOTES.map((note) => (
                 <Grid item xs={12} sm={6} key={note.title}>
                   <Stack direction="row" spacing={1.5} alignItems="flex-start">
                     <Box
                       sx={{
                         mt: 0.25,
-                        color: SLATE,
+                        color: TEAL_DARK,
                         flexShrink: 0,
                         width: 36,
                         height: 36,
                         borderRadius: 1.5,
                         display: 'grid',
                         placeItems: 'center',
-                        bgcolor: alpha(SLATE, 0.08),
+                        bgcolor: alpha(SLATE, 0.06),
                       }}
                       aria-hidden
                     >
@@ -660,32 +771,44 @@ const LandingPage: React.FC = () => {
               ))}
             </Grid>
           </Box>
+        </Container>
 
-          {/* CTA band */}
-          <Box
-            sx={{
-              borderRadius: 3,
-              px: { xs: 3, md: 5 },
-              py: { xs: 4, md: 5 },
-              textAlign: 'center',
-              background: `linear-gradient(135deg, ${SLATE} 0%, ${SLATE_DARK} 100%)`,
-              color: '#fff',
-              boxShadow: `0 16px 48px ${alpha(SLATE, 0.22)}`,
-            }}
-          >
-            <Typography variant="h4" sx={{ fontWeight: 600, mb: 1.5 }}>
-              The PECC Support Tool is ready when you are
+        {/* CTA */}
+        <Box sx={{ bgcolor: '#fff', borderTop: '1px solid', borderColor: alpha(SLATE, 0.08) }}>
+          <Container maxWidth="md" sx={{ px: { xs: 2, sm: 3 }, py: { xs: 8, md: 10 }, textAlign: 'center' }}>
+            <Typography
+              component="h2"
+              sx={{
+                fontSize: { xs: '1.75rem', md: '2.25rem' },
+                fontWeight: 650,
+                letterSpacing: '-0.02em',
+                mb: 1.5,
+                color: INK,
+              }}
+            >
+              Ready to get started?
             </Typography>
-            <Typography variant="body1" sx={{ opacity: 0.88, maxWidth: 560, mx: 'auto', mb: 3, lineHeight: 1.6 }}>
-              Sign in to continue your hospital&apos;s readiness work. New users need an invitation from an ImPACTS
-              program administrator.
+            <Typography
+              variant="body1"
+              color="text.secondary"
+              sx={{ maxWidth: 480, mx: 'auto', mb: 3.5, lineHeight: 1.6, fontSize: '1.0625rem' }}
+            >
+              Sign in to continue your hospital&apos;s readiness work. New users need an invitation from an ImPACTS program administrator.
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center">
               <Button
                 size="large"
                 variant="contained"
                 onClick={() => navigate('/login')}
-                sx={{ bgcolor: '#fff', color: SLATE_DARK, fontWeight: 700, '&:hover': { bgcolor: alpha('#fff', 0.92) } }}
+                sx={{
+                  borderRadius: 999,
+                  px: 3.5,
+                  py: 1.35,
+                  fontWeight: 600,
+                  bgcolor: INK,
+                  boxShadow: 'none',
+                  '&:hover': { bgcolor: SLATE_DARK, boxShadow: 'none' },
+                }}
               >
                 Sign in
               </Button>
@@ -693,22 +816,30 @@ const LandingPage: React.FC = () => {
                 size="large"
                 variant="outlined"
                 onClick={() => navigate('/register')}
-                sx={{ borderColor: alpha('#fff', 0.5), color: '#fff', fontWeight: 600, '&:hover': { borderColor: '#fff', bgcolor: alpha('#fff', 0.08) } }}
+                sx={{
+                  borderRadius: 999,
+                  px: 3.5,
+                  py: 1.35,
+                  fontWeight: 600,
+                  borderColor: alpha(INK, 0.2),
+                  color: INK,
+                  '&:hover': { borderColor: INK, bgcolor: alpha(INK, 0.03) },
+                }}
               >
                 Request an invitation
               </Button>
             </Stack>
-          </Box>
+          </Container>
+        </Box>
 
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', textAlign: 'center', mt: 3, maxWidth: 720, mx: 'auto', lineHeight: 1.55 }}
-          >
-            Screening is heuristic and does not guarantee detection of all PHI. You remain responsible for never
-            entering real patient data. See Terms of Service after sign-in.
-          </Typography>
-        </Container>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: 'block', textAlign: 'center', py: 4, px: 2, maxWidth: 720, mx: 'auto', lineHeight: 1.55 }}
+        >
+          Screening is heuristic and does not guarantee detection of all PHI. You remain responsible for never
+          entering real patient data. See Terms of Service after sign-in.
+        </Typography>
       </Box>
     </Box>
   );
