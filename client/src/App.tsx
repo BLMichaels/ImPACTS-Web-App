@@ -53,7 +53,6 @@ const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage')
 const AdminCRMPage = lazy(() => import('./pages/admin/AdminCRMPage'));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 const AdminSnapshotPage = lazy(() => import('./pages/admin/AdminSnapshotPage'));
-const AdminProjectPipelinePage = lazy(() => import('./pages/admin/AdminProjectPipelinePage'));
 const AdminCohortsPage = lazy(() => import('./pages/admin/AdminCohortsPage'));
 
 // Cohorts Page (shared for PECC/Mentor)
@@ -346,7 +345,6 @@ function AppShell() {
                     }
                   />
                   <Route path="/admin/snapshot" element={<Navigate to="/admin/reports" replace />} />
-                  <Route path="/admin/pipeline" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminProjectPipelinePage /></ProtectedRoute>} />
                   <Route path="/admin/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminCohortsPage /></ProtectedRoute>} />
                   {/* Programs is a tab in Settings - redirect old URL */}
                   <Route path="/admin/programs" element={<Navigate to="/admin/settings?tab=programs" replace />} />

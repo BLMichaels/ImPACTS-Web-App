@@ -34,7 +34,6 @@ import {
   Timeline as TimelineIcon,
   AttachMoney as MoneyIcon,
   Settings as SettingsIcon,
-  AccountTree as PipelineIcon,
   Groups as CohortsIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon
@@ -214,7 +213,6 @@ const Navbar: React.FC = () => {
         return [
           { path: '/admin/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/admin/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
-          { path: '/admin/pipeline', label: 'Project Pipeline', icon: <PipelineIcon /> },
           { path: '/admin/reports', label: 'Reports', icon: <TimelineIcon /> },
           { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon /> }
         ];

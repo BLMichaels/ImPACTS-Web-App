@@ -51,7 +51,6 @@ ROUTES=(
   "/admin/settings"
   "/admin/reports"
   "/admin/snapshot"
-  "/admin/pipeline"
   "/admin/cohorts"
   "/admin/programs"
   "/hospital-system/dashboard"

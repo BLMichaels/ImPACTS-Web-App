@@ -146,17 +146,6 @@ const AdminDashboardPage: React.FC = () => {
             <Grid item xs={12} md={6}>
               <Box sx={{ p: 1 }}>
                 <Typography variant="h6" gutterBottom color="primary">
-                  📊 Project Pipeline
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Track SimBox cases and project development status. Monitor progress, filter by status, and manage project workflows.
-                </Typography>
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Box sx={{ p: 1 }}>
-                <Typography variant="h6" gutterBottom color="primary">
                   📈 Analytics & Reporting
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -189,7 +178,7 @@ const AdminDashboardPage: React.FC = () => {
               <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
                 <Typography variant="subtitle1" fontWeight="bold" color="primary" gutterBottom>Admin</Typography>
                 <Typography variant="body2" color="text.secondary" component="span">Tabs: </Typography>
-                <Typography variant="body2" color="text.secondary" component="span">Support Tool (home), CRM, Cohorts, Project Pipeline, Snapshot, Settings.</Typography>
+                <Typography variant="body2" color="text.secondary" component="span">Support Tool (home), CRM, Cohorts, Snapshot, Settings.</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                   Full access: manage users, contacts, hospitals, invitations, roles (including Hospital System and Hiring Group), permissions, settings, and resources. Assign Hospital System / Hiring Group users and their assigned systems in <strong>CRM → Team</strong>.
                 </Typography>
