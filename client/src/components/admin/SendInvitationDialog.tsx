@@ -531,11 +531,14 @@ export const SendInvitationDialog: React.FC<SendInvitationDialogProps> = ({
   
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth disableRestoreFocus>
-      <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, fontWeight: 700, letterSpacing: -0.01 }}>
         <Box>
+          <Typography component="span" variant="overline" sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}>
+            Admin
+          </Typography>
           Send Account Invitation
           {contactName && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 400 }}>
               For: {contactName}
             </Typography>
           )}

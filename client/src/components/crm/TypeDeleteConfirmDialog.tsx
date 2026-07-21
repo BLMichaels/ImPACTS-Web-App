@@ -51,9 +51,11 @@ export const TypeDeleteConfirmDialog: React.FC<TypeDeleteConfirmDialogProps> = (
       aria-labelledby="type-delete-confirm-title"
       disableRestoreFocus
     >
-      <DialogTitle id="type-delete-confirm-title">{title}</DialogTitle>
+      <DialogTitle id="type-delete-confirm-title" sx={{ fontWeight: 700, letterSpacing: -0.01 }}>
+        {title}
+      </DialogTitle>
       <DialogContent>
-        <Typography variant="body2">{description}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>{description}</Typography>
         {children}
         <TextField
           autoFocus

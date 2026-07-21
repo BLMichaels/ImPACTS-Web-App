@@ -659,7 +659,7 @@ const AdminTeamTab: React.FC = () => {
           </Select>
         </FormControl>
         <Box sx={{ flexGrow: 1 }} />
-        <Typography variant="body2" color="textSecondary" sx={{ alignSelf: 'center' }}>
+        <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center', fontSize: '0.8125rem' }}>
           {filteredUsers.length} users
         </Typography>
       </Paper>
