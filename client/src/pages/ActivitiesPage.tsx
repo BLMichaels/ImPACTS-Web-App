@@ -186,6 +186,8 @@ const ActivitiesPage = () => {
   const [filterDateStart, setFilterDateStart] = useState<string>('');
   const [filterDateEnd, setFilterDateEnd] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('');
+  const [filterGapPlanId, setFilterGapPlanId] = useState<string>('');
+  const [filterSimulationGapId, setFilterSimulationGapId] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
@@ -530,6 +532,10 @@ const ActivitiesPage = () => {
       if (filterDateStart && activity.date < filterDateStart) return false;
       if (filterDateEnd && activity.date > filterDateEnd) return false;
       if (filterCategory && !getActivityCategories(activity).includes(filterCategory)) return false;
+      if (filterGapPlanId && !(activity.associatedGaps || []).includes(filterGapPlanId)) return false;
+      if (filterSimulationGapId && !(activity.associatedSimulationGaps || []).includes(filterSimulationGapId)) {
+        return false;
+      }
       return true;
     })
     .sort((a, b) => {
@@ -580,8 +586,28 @@ const ActivitiesPage = () => {
     setFilterDateStart('');
     setFilterDateEnd('');
     setFilterCategory('');
+    setFilterGapPlanId('');
+    setFilterSimulationGapId('');
     setSortBy('date');
     setSortOrder('desc');
+  };
+
+  const getGapClosureFilterLabel = (gapPlan: GapPlan): string => {
+    const question =
+      educationCategories[gapPlan.questionId]?.trim() ||
+      gapPlan.questionText?.trim() ||
+      `Question ${gapPlan.questionId}`;
+    const action = gapPlan.action?.trim();
+    if (!action) return `${question} (Q${gapPlan.questionId})`;
+    const shortAction = action.length > 56 ? `${action.slice(0, 56)}…` : action;
+    return `${question} · ${shortAction}`;
+  };
+
+  const getSimulationGapFilterLabel = (gap: { id?: string; description?: string; category?: string }): string => {
+    const description = String(gap.description || '').trim() || 'Untitled simulation gap';
+    const category = String(gap.category || '').trim();
+    const shortDesc = description.length > 64 ? `${description.slice(0, 64)}…` : description;
+    return category ? `${category} · ${shortDesc}` : shortDesc;
   };
 
   const formatDate = (dateString: string) => {
@@ -746,6 +772,116 @@ const ActivitiesPage = () => {
               {category}
             </MenuItem>
           ))}
+        </Select>
+      </FormControl>
+      <FormControl size="small" sx={{ minWidth: 240, maxWidth: 360, flex: '1 1 240px' }}>
+        <InputLabel>Gap closure</InputLabel>
+        <Select
+          value={filterGapPlanId}
+          label="Gap closure"
+          onChange={(e: SelectChangeEvent) => setFilterGapPlanId(e.target.value)}
+          renderValue={(selected) => {
+            if (!selected) return 'All gap plans';
+            const gapPlan = gapPlans.find((gp) => gp.id === selected);
+            return gapPlan ? getGapClosureFilterLabel(gapPlan) : selected;
+          }}
+          MenuProps={{
+            PaperProps: {
+              sx: { maxHeight: 360, maxWidth: 'min(480px, 92vw)' },
+            },
+          }}
+        >
+          <MenuItem value="">All gap plans</MenuItem>
+          {gapPlans.length === 0 ? (
+            <MenuItem value="__none__" disabled>
+              No gap plans yet
+            </MenuItem>
+          ) : (
+            gapPlans.map((gapPlan) => (
+              <MenuItem key={gapPlan.id} value={gapPlan.id} sx={{ whiteSpace: 'normal', py: 1, alignItems: 'flex-start' }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.25 }}>
+                    {educationCategories[gapPlan.questionId]?.trim() ||
+                      gapPlan.questionText?.trim() ||
+                      `Question ${gapPlan.questionId}`}
+                    <Box component="span" sx={{ fontWeight: 500, color: 'text.secondary', ml: 0.75 }}>
+                      · Q{gapPlan.questionId}
+                    </Box>
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontStyle: 'italic',
+                      color: 'text.secondary',
+                      lineHeight: 1.25,
+                      mt: 0.15,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {gapPlan.action?.trim() || 'No action description yet'}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))
+          )}
+        </Select>
+      </FormControl>
+      <FormControl size="small" sx={{ minWidth: 240, maxWidth: 360, flex: '1 1 240px' }}>
+        <InputLabel>Simulation gap</InputLabel>
+        <Select
+          value={filterSimulationGapId}
+          label="Simulation gap"
+          onChange={(e: SelectChangeEvent) => setFilterSimulationGapId(e.target.value)}
+          renderValue={(selected) => {
+            if (!selected) return 'All simulation gaps';
+            const gap = simulationGaps.find((sg: { id: string }) => sg.id === selected);
+            return gap ? getSimulationGapFilterLabel(gap) : selected;
+          }}
+          MenuProps={{
+            PaperProps: {
+              sx: { maxHeight: 360, maxWidth: 'min(480px, 92vw)' },
+            },
+          }}
+        >
+          <MenuItem value="">All simulation gaps</MenuItem>
+          {simulationGaps.length === 0 ? (
+            <MenuItem value="__none__" disabled>
+              No simulation gaps yet
+            </MenuItem>
+          ) : (
+            simulationGaps.map((gap: { id: string; description?: string; category?: string; severity?: string }) => (
+              <MenuItem key={gap.id} value={gap.id} sx={{ whiteSpace: 'normal', py: 1, alignItems: 'flex-start' }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.25 }}>
+                    {String(gap.category || 'Simulation').trim()}
+                    {gap.severity ? (
+                      <Box component="span" sx={{ fontWeight: 500, color: 'text.secondary', ml: 0.75 }}>
+                        · {String(gap.severity)}
+                      </Box>
+                    ) : null}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontStyle: 'italic',
+                      color: 'text.secondary',
+                      lineHeight: 1.25,
+                      mt: 0.15,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {String(gap.description || '').trim() || 'No description'}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))
+          )}
         </Select>
       </FormControl>
       <FormControl size="small" sx={{ minWidth: 120 }}>
