@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -17,7 +17,9 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Chip
+  Chip,
+  Collapse,
+  Badge
 } from '@mui/material';
 import {
   Work as WorkIcon,
@@ -25,7 +27,6 @@ import {
   Logout as LogoutIcon,
   Assignment as AssignmentIcon,
   Menu as MenuIcon,
-  PlayArrow as PlayIcon,
   Dashboard as DashboardIcon,
   LocalHospital as HospitalIcon,
   People as PeopleIcon,
@@ -34,7 +35,9 @@ import {
   AttachMoney as MoneyIcon,
   Settings as SettingsIcon,
   AccountTree as PipelineIcon,
-  Groups as CohortsIcon
+  Groups as CohortsIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -44,12 +47,60 @@ import { UserRole } from '../types/database';
 import { getRoleColorHex, getRoleLabel } from '../utils/roleUtils';
 import { getUserDisplayName } from '../utils/displayName';
 import { useCohortNotifications } from '../hooks/useCohortNotifications';
-import { Badge } from '@mui/material';
+
+interface NavChild {
+  path: string;
+  label: string;
+  tab?: string; // view_tabs key for filtering
+}
 
 interface NavItem {
   path: string;
   label: string;
   icon: React.ReactNode;
+  tab?: string;
+  children?: NavChild[];
+}
+
+const HOVER_MENU_CLOSE_DELAY_MS = 150;
+
+function filterNavItemByTabs(item: NavItem, visibleTabs: string[]): NavItem | null {
+  if (!item.children?.length) {
+    if (item.tab && !visibleTabs.includes(item.tab)) return null;
+    return item;
+  }
+
+  const visibleChildren = item.children.filter(
+    (c) => !c.tab || visibleTabs.includes(c.tab)
+  );
+  const parentVisible = !item.tab || visibleTabs.includes(item.tab);
+
+  if (!parentVisible && visibleChildren.length === 0) return null;
+
+  const effectivePath =
+    parentVisible
+      ? item.path
+      : (visibleChildren[0]?.path ?? item.path);
+
+  return {
+    ...item,
+    path: effectivePath,
+    children: visibleChildren.length > 0 ? visibleChildren : undefined
+  };
+}
+
+function isNavItemActive(item: NavItem, pathname: string): boolean {
+  if (pathname === item.path) return true;
+  return Boolean(item.children?.some((c) => c.path === pathname));
+}
+
+function findNavLabel(items: NavItem[], path: string): string | undefined {
+  for (const item of items) {
+    if (item.path === path) return item.label;
+    const child = item.children?.find((c) => c.path === path);
+    if (child) return child.label;
+  }
+  return undefined;
 }
 
 const Navbar: React.FC = () => {
@@ -66,6 +117,38 @@ const Navbar: React.FC = () => {
   const isTablet = useMediaQuery(theme.breakpoints.down('lg'));
   const isSmallDesktop = useMediaQuery(theme.breakpoints.down('xl'));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedMobilePaths, setExpandedMobilePaths] = useState<Record<string, boolean>>({});
+  const [hoverMenuKey, setHoverMenuKey] = useState<string | null>(null);
+  const [hoverAnchorEl, setHoverAnchorEl] = useState<null | HTMLElement>(null);
+  const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearHoverCloseTimer = () => {
+    if (hoverCloseTimerRef.current) {
+      clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+  };
+
+  const openHoverMenu = (key: string, el: HTMLElement) => {
+    clearHoverCloseTimer();
+    setHoverMenuKey(key);
+    setHoverAnchorEl(el);
+  };
+
+  const scheduleCloseHoverMenu = () => {
+    clearHoverCloseTimer();
+    hoverCloseTimerRef.current = setTimeout(() => {
+      setHoverMenuKey(null);
+      setHoverAnchorEl(null);
+      hoverCloseTimerRef.current = null;
+    }, HOVER_MENU_CLOSE_DELAY_MS);
+  };
+
+  const closeHoverMenu = () => {
+    clearHoverCloseTimer();
+    setHoverMenuKey(null);
+    setHoverAnchorEl(null);
+  };
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -94,12 +177,22 @@ const Navbar: React.FC = () => {
     setMobileMenuOpen(false);
   };
 
-  const handleMobileNavigation = (path: string) => {
+  const handleMobileNavigation = (path: string, label?: string) => {
     const items = getNavigationItems();
-    const item = items.find((i) => i.path === path);
-    trackLinkClick(path, item?.label ?? path, 'navbar');
+    const resolvedLabel = label ?? findNavLabel(items, path) ?? path;
+    trackLinkClick(path, resolvedLabel, 'navbar');
     navigate(path);
     setMobileMenuOpen(false);
+  };
+
+  const handleDesktopNavigation = (path: string, label: string) => {
+    trackLinkClick(path, label, 'navbar');
+    navigate(path);
+    closeHoverMenu();
+  };
+
+  const toggleMobileExpand = (path: string) => {
+    setExpandedMobilePaths((prev) => ({ ...prev, [path]: !prev[path] }));
   };
 
   const handleToggleMentorWorkMode = () => {
@@ -166,20 +259,40 @@ const Navbar: React.FC = () => {
       case UserRole.PECC:
       default: {
         const peccItems: NavItem[] = [
-          { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
-          { path: '/activities', label: 'Activities', icon: <WorkIcon /> },
-          { path: '/milestones', label: 'Checklist', icon: <AssignmentIcon /> },
-          { path: '/gap-plan', label: 'Gap Closure', icon: <AssignmentIcon /> },
-          { path: '/simulation', label: 'Simulation', icon: <PlayIcon /> }
+          { path: '/snapshot', label: 'Snapshot', icon: <TimelineIcon />, tab: 'snapshot' },
+          {
+            path: '/activities',
+            label: 'Activities',
+            icon: <WorkIcon />,
+            tab: 'activities',
+            children: [
+              { path: '/activities', label: 'Activity Log', tab: 'activities' },
+              { path: '/milestones', label: 'PECC Checklist', tab: 'milestones' }
+            ]
+          },
+          {
+            path: '/gap-plan',
+            label: 'Gap Closures',
+            icon: <AssignmentIcon />,
+            tab: 'gap-plan',
+            children: [
+              { path: '/gap-plan', label: 'Assessment Gaps', tab: 'gap-plan' },
+              { path: '/simulation', label: 'Simulation Gaps', tab: 'simulation' }
+            ]
+          }
         ];
-        const pathToTab: Record<string, string> = { '/snapshot': 'snapshot', '/activities': 'activities', '/milestones': 'milestones', '/gap-plan': 'gap-plan', '/simulation': 'simulation' };
         // During profile hydration and any unexpected empty tab visibility state,
-        // keep core PECC tabs visible instead of leaving only Cohorts in nav.
-        let filteredItems = profileLoading
-          ? peccItems
-          : peccItems.filter(item => visibleTabs.includes(pathToTab[item.path] ?? ''));
-        if (!profileLoading && filteredItems.length === 0) {
+        // keep core PECC tabs visible (with children) instead of leaving only Cohorts in nav.
+        let filteredItems: NavItem[];
+        if (profileLoading) {
           filteredItems = peccItems;
+        } else {
+          filteredItems = peccItems
+            .map((item) => filterNavItemByTabs(item, visibleTabs))
+            .filter((item): item is NavItem => item !== null);
+          if (filteredItems.length === 0) {
+            filteredItems = peccItems;
+          }
         }
         // Cohorts is always available (not site-specific)
         filteredItems.push({ path: '/cohorts', label: 'Cohorts', icon: <CohortsIcon /> });
@@ -210,6 +323,7 @@ const Navbar: React.FC = () => {
   };
 
   const navigationItems = getNavigationItems();
+  const hoverMenuItem = navigationItems.find((i) => i.label === hoverMenuKey && i.children?.length);
 
   // Mobile Drawer
   const MobileDrawer = () => (
@@ -241,27 +355,74 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
                 {item.icon}
               </Badge>
             ) : item.icon;
-            
+            const active = isNavItemActive(item, location.pathname);
+            const hasChildren = Boolean(item.children?.length);
+            const expanded = Boolean(expandedMobilePaths[item.path]);
+
             return (
-              <ListItem 
-                key={item.path}
-                button
-                onClick={() => handleMobileNavigation(item.path)}
-                sx={{
-                  borderRadius: 1,
-                  mb: 0.5,
-                  backgroundColor: location.pathname === item.path ? 'primary.light' : 'transparent',
-                  '&:hover': { backgroundColor: 'primary.light' }
-                }}
-              >
-                <ListItemIcon sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}>
-                  {icon}
-                </ListItemIcon>
-                <ListItemText 
-                  primary={item.label}
-                  sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}
-                />
-              </ListItem>
+              <React.Fragment key={`${item.path}-${item.label}`}>
+                <ListItem
+                  button
+                  onClick={() => handleMobileNavigation(item.path, item.label)}
+                  sx={{
+                    borderRadius: 1,
+                    mb: 0.5,
+                    backgroundColor: active ? 'primary.light' : 'transparent',
+                    '&:hover': { backgroundColor: 'primary.light' },
+                    pr: hasChildren ? 0.5 : undefined
+                  }}
+                >
+                  <ListItemIcon sx={{ color: active ? 'primary.main' : 'inherit' }}>
+                    {icon}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={item.label}
+                    sx={{ color: active ? 'primary.main' : 'inherit' }}
+                  />
+                  {hasChildren && (
+                    <IconButton
+                      size="small"
+                      edge="end"
+                      aria-label={expanded ? `Collapse ${item.label}` : `Expand ${item.label}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleMobileExpand(item.path);
+                      }}
+                      sx={{ color: active ? 'primary.main' : 'inherit' }}
+                    >
+                      {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    </IconButton>
+                  )}
+                </ListItem>
+                {hasChildren && (
+                  <Collapse in={expanded} timeout="auto" unmountOnExit>
+                    <List component="div" disablePadding>
+                      {item.children!.map((child) => {
+                        const childActive = location.pathname === child.path;
+                        return (
+                          <ListItem
+                            key={`${child.path}-${child.label}`}
+                            button
+                            onClick={() => handleMobileNavigation(child.path, child.label)}
+                            sx={{
+                              pl: 4,
+                              borderRadius: 1,
+                              mb: 0.5,
+                              backgroundColor: childActive ? 'primary.light' : 'transparent',
+                              '&:hover': { backgroundColor: 'primary.light' }
+                            }}
+                          >
+                            <ListItemText
+                              primary={child.label}
+                              sx={{ color: childActive ? 'primary.main' : 'inherit' }}
+                            />
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  </Collapse>
+                )}
+              </React.Fragment>
             );
           })}
         </List>
@@ -443,18 +604,26 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
                   {item.icon}
                 </Badge>
               ) : item.icon;
-              
+              const active = isNavItemActive(item, location.pathname);
+              const hasVisibleChildren = Boolean(item.children?.length);
+
               return (
                 <Button
-                  key={item.path}
+                  key={`${item.path}-${item.label}`}
                   color="inherit"
                   startIcon={isTablet ? null : icon}
-                  onClick={() => {
-                    trackLinkClick(item.path, item.label, 'navbar');
-                    navigate(item.path);
+                  endIcon={hasVisibleChildren && !isTablet ? <ExpandMoreIcon sx={{ fontSize: '1rem !important', ml: -0.5 }} /> : undefined}
+                  onClick={() => handleDesktopNavigation(item.path, item.label)}
+                  onMouseEnter={(e) => {
+                    if (hasVisibleChildren) {
+                      openHoverMenu(item.label, e.currentTarget);
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    if (hasVisibleChildren) scheduleCloseHoverMenu();
                   }}
                   sx={{
-                    backgroundColor: location.pathname === item.path ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                    backgroundColor: active ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
                     '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.2)' },
                     borderRadius: 1,
                     px: isSmallDesktop ? 1 : 2,
@@ -469,6 +638,40 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
                 </Button>
               );
             })}
+
+            {/* Hover dropdown for items with children */}
+            <Menu
+              anchorEl={hoverAnchorEl}
+              open={Boolean(hoverMenuItem && hoverAnchorEl)}
+              onClose={closeHoverMenu}
+              MenuListProps={{
+                onMouseEnter: clearHoverCloseTimer,
+                onMouseLeave: scheduleCloseHoverMenu,
+                sx: { py: 0.5 }
+              }}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              disableAutoFocusItem
+              disableRestoreFocus
+              slotProps={{
+                paper: {
+                  onMouseEnter: clearHoverCloseTimer,
+                  onMouseLeave: scheduleCloseHoverMenu,
+                  sx: { mt: 0.5, minWidth: 180 }
+                }
+              }}
+              sx={{ pointerEvents: 'none', '& .MuiPaper-root': { pointerEvents: 'auto' } }}
+            >
+              {hoverMenuItem?.children?.map((child) => (
+                <MenuItem
+                  key={`${child.path}-${child.label}`}
+                  selected={location.pathname === child.path}
+                  onClick={() => handleDesktopNavigation(child.path, child.label)}
+                >
+                  {child.label}
+                </MenuItem>
+              ))}
+            </Menu>
           </Box>
         )}
 
