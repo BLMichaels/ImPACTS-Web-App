@@ -40,6 +40,9 @@ import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import ViewListIcon from '@mui/icons-material/ViewList';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { getUserData, setUserData } from '../utils/userData';
 
 export interface DashboardResource {
@@ -98,6 +101,8 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
     tags: [] as string[],
     category: ''
   });
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -269,6 +274,65 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
     window.open(formatResourceUrl(url), '_blank', 'noopener,noreferrer');
   };
 
+  /** Reorder within the filtered view, then write back into the full list's filtered slots. */
+  const applyFilteredReorder = (reorderedFiltered: DashboardResource[]) => {
+    const filteredIds = new Set(reorderedFiltered.map((r) => r.id));
+    const filteredIndices = resources
+      .map((r, i) => (filteredIds.has(r.id) ? i : -1))
+      .filter((i) => i >= 0);
+    const next = [...resources];
+    reorderedFiltered.forEach((item, j) => {
+      if (filteredIndices[j] !== undefined) next[filteredIndices[j]] = item;
+    });
+    setResources(next);
+    persist(next);
+  };
+
+  const moveFilteredItem = (fromIndex: number, toIndex: number) => {
+    const list = getFiltered();
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= list.length || toIndex >= list.length || fromIndex === toIndex) {
+      return;
+    }
+    const reordered = [...list];
+    const [removed] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, removed);
+    applyFilteredReorder(reordered);
+  };
+
+  const handleDragStart = (e: React.DragEvent, resourceId: string) => {
+    setDraggedId(resourceId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', resourceId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => setDragOverIndex(null);
+
+  const handleDrop = (e: React.DragEvent, toIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+    const resourceId = e.dataTransfer.getData('text/plain') || draggedId;
+    if (!resourceId) return;
+    const list = getFiltered();
+    const fromIndex = list.findIndex((r) => r.id === resourceId);
+    if (fromIndex === -1 || fromIndex === toIndex) {
+      setDraggedId(null);
+      return;
+    }
+    moveFilteredItem(fromIndex, toIndex);
+    setDraggedId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+    setDragOverIndex(null);
+  };
+
   const filtered = getFiltered();
 
   const renderFormFields = (isEdit: boolean) => (
@@ -398,6 +462,7 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.55 }}>
             Quick access to the web links you use most
+            {viewMode === 'list' ? ' · drag rows or use arrows to reorder' : ''}
           </Typography>
         </Box>
         <Stack
@@ -584,23 +649,60 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                   },
                 }}
               >
+                <TableCell sx={{ width: 44, px: 0.5 }} aria-label="Reorder" />
                 <TableCell>Title</TableCell>
                 <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Category</TableCell>
                 <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Tags</TableCell>
-                <TableCell align="right" sx={{ width: 140 }}>
+                <TableCell align="right" sx={{ width: 180 }}>
                   Actions
                 </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filtered.map((r) => (
+              {filtered.map((r, index) => (
                 <TableRow
                   key={r.id}
                   hover
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, index)}
                   sx={{
+                    opacity: draggedId === r.id ? 0.5 : 1,
+                    bgcolor:
+                      dragOverIndex === index
+                        ? alpha(theme.palette.secondary.main, 0.08)
+                        : undefined,
                     '& td': { borderBottomColor: 'divider', py: 1.1, verticalAlign: 'middle' },
                   }}
                 >
+                  <TableCell
+                    sx={{ width: 44, px: 0.5 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Tooltip title="Drag to reorder">
+                      <Box
+                        component="span"
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, r.id)}
+                        onDragEnd={handleDragEnd}
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          color: 'secondary.dark',
+                          opacity: 0.55,
+                          cursor: 'grab',
+                          touchAction: 'none',
+                          '&:active': { cursor: 'grabbing' },
+                          '&:hover': { opacity: 0.9 },
+                        }}
+                        aria-label={`Drag to reorder ${r.title}`}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <DragIndicatorIcon sx={{ fontSize: 18 }} />
+                      </Box>
+                    </Tooltip>
+                  </TableCell>
                   <TableCell>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, letterSpacing: -0.01, lineHeight: 1.3 }}>
                       {r.title}
@@ -668,7 +770,33 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
                       </Typography>
                     )}
                   </TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                    <Tooltip title="Move up">
+                      <span>
+                        <IconButton
+                          size="small"
+                          disabled={index === 0}
+                          onClick={() => moveFilteredItem(index, index - 1)}
+                          aria-label={`Move ${r.title} up`}
+                          sx={{ color: 'secondary.dark' }}
+                        >
+                          <KeyboardArrowUpIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Move down">
+                      <span>
+                        <IconButton
+                          size="small"
+                          disabled={index === filtered.length - 1}
+                          onClick={() => moveFilteredItem(index, index + 1)}
+                          aria-label={`Move ${r.title} down`}
+                          sx={{ color: 'secondary.dark' }}
+                        >
+                          <KeyboardArrowDownIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                     <Tooltip title="Open in a new tab">
                       <IconButton size="small" onClick={() => handleResourceClick(r.url)} aria-label={`Open ${r.title}`}>
                         <LinkIcon fontSize="small" />
