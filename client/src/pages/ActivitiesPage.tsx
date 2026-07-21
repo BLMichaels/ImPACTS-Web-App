@@ -991,10 +991,6 @@ const ActivitiesPage = () => {
                         filterCategory === row.label
                           ? alpha(theme.palette.secondary.main, 0.1)
                           : 'transparent',
-                      backgroundColor:
-                        filterCategory === row.label
-                          ? alpha(theme.palette.secondary.main, 0.1)
-                          : 'transparent',
                       transition: 'background-color 0.15s ease',
                       '&:hover': {
                         bgcolor: alpha(theme.palette.secondary.main, 0.06),
