@@ -919,7 +919,7 @@ const ActivitiesPage = () => {
                 { label: 'Total hours', value: `${Number(workHours.totalHours).toFixed(1)}h` },
                 { label: 'Activities', value: String(activities.length) },
               ].map((item) => (
-                <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75 }}>
+                <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75, textAlign: 'center' }}>
                   <Typography
                     variant="caption"
                     color="text.secondary"
