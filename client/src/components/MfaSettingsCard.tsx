@@ -3,12 +3,12 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
   Divider,
   Typography,
+  alpha,
+  useTheme,
 } from '@mui/material';
 import { PhonelinkLock as MfaIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +20,7 @@ import {
 import MfaEnrollmentForm from './MfaEnrollmentForm';
 
 const MfaSettingsCard: React.FC = () => {
+  const theme = useTheme();
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [enrolled, setEnrolled] = useState(false);
@@ -60,22 +61,44 @@ const MfaSettingsCard: React.FC = () => {
   };
 
   return (
-    <Card variant="outlined" sx={{ mt: 2 }}>
-      <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <MfaIcon color="primary" />
-          <Typography variant="h6" component="h3">
-            Multi-factor authentication (MFA)
-          </Typography>
-          {loading ? null : (
-            <Chip
-              size="small"
-              color={enrolled ? 'success' : 'warning'}
-              label={enrolled ? 'Enabled' : 'Required — not set up'}
-            />
-          )}
-        </Box>
-        <Typography variant="body2" color="text.secondary" paragraph>
+    <Box
+      sx={{
+        mt: 0.5,
+        borderRadius: 1.5,
+        border: '1px solid',
+        borderColor: 'divider',
+        overflow: 'hidden',
+        bgcolor: 'background.paper',
+      }}
+    >
+      <Box
+        sx={{
+          px: { xs: 1.75, md: 2 },
+          py: 1.25,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          bgcolor: alpha(theme.palette.secondary.main, 0.04),
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          flexWrap: 'wrap',
+        }}
+      >
+        <MfaIcon sx={{ color: 'secondary.dark', fontSize: 20 }} />
+        <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 700, letterSpacing: -0.01 }}>
+          Multi-factor authentication (MFA)
+        </Typography>
+        {loading ? null : (
+          <Chip
+            size="small"
+            color={enrolled ? 'success' : 'warning'}
+            label={enrolled ? 'Enabled' : 'Required — not set up'}
+            sx={{ ml: { xs: 0, sm: 'auto' } }}
+          />
+        )}
+      </Box>
+      <Box sx={{ px: { xs: 1.75, md: 2 }, py: 1.75 }}>
+        <Typography variant="body2" color="text.secondary" paragraph sx={{ mb: 1.5 }}>
           The PECC Support Tool requires MFA with a free authenticator app. If you have not set it up yet, follow the
           numbered steps below. Password reset on the login page is not affected.
         </Typography>
@@ -104,8 +127,8 @@ const MfaSettingsCard: React.FC = () => {
               ))}
             </Box>
             <Alert severity="info" sx={{ mb: 2 }}>
-              MFA is mandatory for all users. To remove or replace an authenticator, contact your
-              ImPACTS program administrator.
+              MFA is mandatory for all users. To remove or replace an authenticator, contact your ImPACTS program
+              administrator.
             </Alert>
             {!showAddBackup ? (
               <Button variant="outlined" onClick={() => setShowAddBackup(true)}>
@@ -134,8 +157,8 @@ const MfaSettingsCard: React.FC = () => {
             onEnrolled={handleEnrolled}
           />
         )}
-      </CardContent>
-    </Card>
+      </Box>
+    </Box>
   );
 };
 
