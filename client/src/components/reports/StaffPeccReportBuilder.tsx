@@ -993,6 +993,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   const [savedMenuAnchor, setSavedMenuAnchor] = useState<null | HTMLElement>(null);
   const skipColumnResetRef = useRef(false);
   const skipSortResetRef = useRef(false);
+  const skipFilterResetRef = useRef(false);
   const dragColumnIdRef = useRef<string | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   const prevDatasetForColumnsRef = useRef<ReportDataset | null>(null);
@@ -1022,6 +1023,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     setColumnFilters(snap.columnFilters ?? []);
     skipColumnResetRef.current = true;
     skipSortResetRef.current = true;
+    skipFilterResetRef.current = true;
   }, []);
 
   useLayoutEffect(() => {
@@ -1085,7 +1087,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           setHospitalCustomDefs([]);
           setOrgCustomDefs([]);
         } else {
-          console.warn('crm_custom_field_definitions:', error.message);
+          setError(`Custom field columns unavailable: ${error.message}`);
         }
         return;
       }
@@ -1273,12 +1275,28 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
     };
   }, [load]);
 
-  // Selection is tied to the currently loaded dataset rows.
+  // Selection / filters tied to the currently loaded dataset.
   useEffect(() => {
+    if (skipFilterResetRef.current) {
+      skipFilterResetRef.current = false;
+      setSelectedRowIds([]);
+      setSelectedOnly(false);
+      setEditDialogOpen(false);
+      setEditRow(null);
+      setEditDraft({});
+      setEditError(null);
+      return;
+    }
     setSelectedRowIds([]);
     setSelectedOnly(false);
     setExportMode('filtered');
     setPeccSourceFilter('all');
+    setProgramFilter('all');
+    setCohortFilter('all');
+    setActivityPreset('any');
+    setStateFilter([]);
+    setColumnFilters([]);
+    setSearch('');
     setEditDialogOpen(false);
     setEditRow(null);
     setEditDraft({});
@@ -1964,11 +1982,6 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               gap plans, activities, PRS, and CRM custom fields. PDF, Excel, and CSV; enable de-identified export for
               manuscripts and IRB submissions.
             </Typography>
-            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1} sx={{ mt: 1 }}>
-              <Chip size="small" variant="outlined" label="Program improvement" />
-              <Chip size="small" variant="outlined" label="Software analytics" />
-              <Chip size="small" variant="outlined" label="Research / journal data" />
-            </Stack>
           </Box>
           <Stack spacing={1.25} sx={{ width: '100%', alignItems: 'flex-start' }}>
             <Stack

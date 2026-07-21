@@ -1110,46 +1110,33 @@ export default function AdminSnapshotPage() {
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
                   People by tier
                 </Typography>
-                <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
                   <Grid item xs={12} sm={6} md={4}>
-                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-                          <PeopleIcon color="primary" />
-                          <Typography variant="subtitle1" fontWeight={600}>Managers</Typography>
-                        </Box>
-                        <Typography variant="h4" color="primary">{aggregated.managers}</Typography>
-                        <Typography variant="caption" color="text.secondary">Active platform-wide</Typography>
-                      </CardContent>
-                    </Card>
+                    <KpiTile
+                      icon={<PeopleIcon color="primary" fontSize="small" />}
+                      title="Managers"
+                      value={aggregated.managers}
+                      caption="Active platform-wide"
+                    />
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
-                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-                          <AssignmentIcon color="primary" />
-                          <Typography variant="subtitle1" fontWeight={600}>Mentors</Typography>
-                        </Box>
-                        <Typography variant="h4" color="primary">{aggregated.mentors}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {aggregated.managers > 0 ? `~${(aggregated.mentors / aggregated.managers).toFixed(0)} per manager` : 'Active platform-wide'}
-                        </Typography>
-                      </CardContent>
-                    </Card>
+                    <KpiTile
+                      icon={<AssignmentIcon color="primary" fontSize="small" />}
+                      title="Mentors"
+                      value={aggregated.mentors}
+                      caption={aggregated.managers > 0 ? `~${(aggregated.mentors / aggregated.managers).toFixed(0)} per manager` : 'Active platform-wide'}
+                    />
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
-                    <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-                          <GroupIcon color="primary" />
-                          <Typography variant="subtitle1" fontWeight={600}>PECCs</Typography>
-                        </Box>
-                        <Typography variant="h4" color="primary">{aggregated.peccs}</Typography>
-                        <Typography variant="caption" color="text.secondary">At assigned sites</Typography>
-                      </CardContent>
-                    </Card>
+                    <KpiTile
+                      icon={<GroupIcon color="primary" fontSize="small" />}
+                      title="PECCs"
+                      value={aggregated.peccs}
+                      caption="At assigned sites"
+                    />
                   </Grid>
                 </Grid>
+
 
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
                   Sites & contacts
@@ -1157,7 +1144,7 @@ export default function AdminSnapshotPage() {
                 <Grid container spacing={2} sx={{ mb: 3 }}>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <LocalHospitalIcon color="info" />
                           <Typography variant="subtitle1" fontWeight={600}>Sites (assigned)</Typography>
@@ -1171,7 +1158,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'secondary.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <PeopleIcon color="secondary" />
                           <Typography variant="subtitle1" fontWeight={600}>Contacts</Typography>
@@ -1185,7 +1172,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <AssignmentIcon color="info" fontSize="small" />
                           <Typography variant="subtitle1" fontWeight={600}>Active assignments</Typography>
@@ -1197,7 +1184,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: aggregated.mentorsWithoutAssignments > 0 ? 'warning.main' : 'success.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           {aggregated.mentorsWithoutAssignments > 0 ? <WarningAmberIcon color="warning" /> : <PeopleIcon color="success" />}
                           <Typography variant="subtitle1" fontWeight={600}>Mentors unassigned</Typography>
@@ -1215,7 +1202,7 @@ export default function AdminSnapshotPage() {
                 <Grid container spacing={2} sx={{ mb: 3 }}>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <SchoolIcon color="primary" />
                           <Typography variant="subtitle1" fontWeight={600}>Programs</Typography>
@@ -1227,7 +1214,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <GroupIcon color="primary" />
                           <Typography variant="subtitle1" fontWeight={600}>Cohorts</Typography>
@@ -1239,7 +1226,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <MailIcon color="info" />
                           <Typography variant="subtitle1" fontWeight={600}>Invitations pending</Typography>
@@ -1251,7 +1238,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'success.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <EventIcon color="success" />
                           <Typography variant="subtitle1" fontWeight={600}>Accepted this month</Typography>
@@ -1269,7 +1256,7 @@ export default function AdminSnapshotPage() {
                 <Grid container spacing={2} sx={{ mb: 3 }}>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <FlagIcon color="primary" />
                           <Typography variant="subtitle1" fontWeight={600}>Site milestones</Typography>
@@ -1281,7 +1268,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'secondary.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <WorkIcon color="secondary" />
                           <Typography variant="subtitle1" fontWeight={600}>PECC hours (this month)</Typography>
@@ -1293,7 +1280,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'info.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <AssignmentIcon color="info" />
                           <Typography variant="subtitle1" fontWeight={600}>Simulations</Typography>
@@ -1307,7 +1294,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'success.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <FlagIcon color="success" />
                           <Typography variant="subtitle1" fontWeight={600}>Gap plans completed</Typography>
@@ -1324,7 +1311,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <AssessmentIcon color="primary" />
                           <Typography variant="subtitle1" fontWeight={600}>Avg latest PRS</Typography>
@@ -1344,7 +1331,7 @@ export default function AdminSnapshotPage() {
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={6}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'success.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <TimelineIcon color="success" />
                           <Typography variant="subtitle1" fontWeight={600}>PECC checklist progress</Typography>
@@ -1364,7 +1351,7 @@ export default function AdminSnapshotPage() {
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Card variant="outlined" sx={{ height: '100%', borderLeft: 3, borderLeftColor: 'primary.main' }}>
-                      <CardContent>
+                      <CardContent sx={{ py: 1.5, px: 1.75, '&:last-child': { pb: 1.5 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                           <WorkIcon color="primary" />
                           <Typography variant="subtitle1" fontWeight={600}>
@@ -1675,62 +1662,48 @@ export default function AdminSnapshotPage() {
               </Box>
             ) : (
               <>
-                <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <PeopleIcon color="primary" fontSize="small" />
-                          <Typography variant="subtitle2" fontWeight={600}>Logins</Typography>
-                        </Box>
-                        <Typography variant="h5" color="primary">{metrics.totalLogins}</Typography>
+                    <KpiTile
+                      icon={<PeopleIcon color="primary" fontSize="small" />}
+                      title="Logins"
+                      value={metrics.totalLogins}
+                    >
+                      <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {Object.entries(metrics.uniqueLoginsByRole).map(([role, set]) => (
+                          <Chip key={role} label={`${role}: ${set.size}`} size="small" variant="outlined" />
+                        ))}
+                      </Box>
+                    </KpiTile>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KpiTile
+                      icon={<PageviewIcon color="primary" fontSize="small" />}
+                      title="Page views"
+                      value={metrics.totalPageViews}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KpiTile
+                      icon={<TouchAppIcon color="primary" fontSize="small" />}
+                      title="Clicks"
+                      value={metrics.totalClicks}
+                    >
+                      {Object.keys(metrics.clickCountByRole).length > 0 && (
                         <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {Object.entries(metrics.uniqueLoginsByRole).map(([role, set]) => (
-                            <Chip key={role} label={`${role}: ${set.size}`} size="small" variant="outlined" />
+                          {Object.entries(metrics.clickCountByRole).map(([role, count]) => (
+                            <Chip key={role} label={`${role}: ${count}`} size="small" variant="outlined" />
                           ))}
                         </Box>
-                      </CardContent>
-                    </Card>
+                      )}
+                    </KpiTile>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <PageviewIcon color="primary" fontSize="small" />
-                          <Typography variant="subtitle2" fontWeight={600}>Page views</Typography>
-                        </Box>
-                        <Typography variant="h5" color="primary">{metrics.totalPageViews}</Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <TouchAppIcon color="primary" fontSize="small" />
-                          <Typography variant="subtitle2" fontWeight={600}>Clicks</Typography>
-                        </Box>
-                        <Typography variant="h5" color="primary">{metrics.totalClicks}</Typography>
-                        {Object.keys(metrics.clickCountByRole).length > 0 && (
-                          <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {Object.entries(metrics.clickCountByRole).map(([role, count]) => (
-                              <Chip key={role} label={`${role}: ${count}`} size="small" variant="outlined" />
-                            ))}
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <LinkIcon color="primary" fontSize="small" />
-                          <Typography variant="subtitle2" fontWeight={600}>Link clicks</Typography>
-                        </Box>
-                        <Typography variant="h5" color="primary">{metrics.totalLinkClicks}</Typography>
-                      </CardContent>
-                    </Card>
+                    <KpiTile
+                      icon={<LinkIcon color="primary" fontSize="small" />}
+                      title="Link clicks"
+                      value={metrics.totalLinkClicks}
+                    />
                   </Grid>
                 </Grid>
 
@@ -1739,54 +1712,29 @@ export default function AdminSnapshotPage() {
                 </Typography>
                 <Grid container spacing={2} sx={{ mb: 3 }}>
                   <Grid item xs={12} lg={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          Event volume by day
-                        </Typography>
-                        <UsageActivityVolumeChart byDay={usageByDay} />
-                      </CardContent>
-                    </Card>
+                    <ChartPanel title="Event volume by day">
+                      <UsageActivityVolumeChart byDay={usageByDay} />
+                    </ChartPanel>
                   </Grid>
                   <Grid item xs={12} lg={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          Unique logins by role
-                        </Typography>
-                        <UsageUniqueLoginsPie byRole={uniqueLoginsPieData} />
-                      </CardContent>
-                    </Card>
+                    <ChartPanel title="Unique logins by role">
+                      <UsageUniqueLoginsPie byRole={uniqueLoginsPieData} />
+                    </ChartPanel>
                   </Grid>
                   <Grid item xs={12} lg={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          Events by type
-                        </Typography>
-                        <UsageEventTypesBar rows={eventTypeBreakdown} />
-                      </CardContent>
-                    </Card>
+                    <ChartPanel title="Events by type">
+                      <UsageEventTypesBar rows={eventTypeBreakdown} />
+                    </ChartPanel>
                   </Grid>
                   <Grid item xs={12} lg={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          Top pages (views)
-                        </Typography>
-                        <UsageTopPagesBar pages={filterUsageTable(metrics.mostUsedPages, usageSearch)} pathLabel={pathLabel} />
-                      </CardContent>
-                    </Card>
+                    <ChartPanel title="Top pages (views)">
+                      <UsageTopPagesBar pages={filterUsageTable(metrics.mostUsedPages, usageSearch)} pathLabel={pathLabel} />
+                    </ChartPanel>
                   </Grid>
                   <Grid item xs={12}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                          UI clicks by role
-                        </Typography>
-                        <ClicksByRoleBar byRole={clicksByRoleData} />
-                      </CardContent>
-                    </Card>
+                    <ChartPanel title="UI clicks by role">
+                      <ClicksByRoleBar byRole={clicksByRoleData} />
+                    </ChartPanel>
                   </Grid>
                 </Grid>
 

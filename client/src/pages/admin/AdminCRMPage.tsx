@@ -4630,19 +4630,19 @@ const AdminCRMPage: React.FC = () => {
       <AdminHero
         overline="Admin"
         title="CRM"
-        description="Manage organizations, hospitals, and contacts across the platform."
+        description="Manage organizations, hospitals, and contacts across ImPACTS — import, export, and keep records up to date."
         actions={
           <>
             {canSeeReminders && (
               <Tooltip title="View your follow-up reminders across all contacts">
                 <Button startIcon={<NotificationsIcon />} onClick={() => { prepareModalOpen(); setMyRemindersOpen(true); }} size="small" color={reminders.length > 0 ? 'secondary' : 'inherit'} variant="outlined">
-                  My reminders {reminders.length > 0 ? `(${reminders.length})` : ''}
+                  Reminders {reminders.length > 0 ? `(${reminders.length})` : ''}
                 </Button>
               </Tooltip>
             )}
             <Tooltip title={duplicatesScanning ? 'Scanning…' : 'Scan for duplicate contacts'}>
               <Button startIcon={duplicatesScanning ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />} onClick={scanForDuplicates} size="small" color={detectedDuplicates.length > 0 ? 'warning' : 'inherit'} disabled={duplicatesScanning} variant="outlined">
-                Find Duplicates {duplicatesScanning ? '…' : detectedDuplicates.length > 0 ? `(${detectedDuplicates.length})` : ''}
+                Duplicates {duplicatesScanning ? '…' : detectedDuplicates.length > 0 ? `(${detectedDuplicates.length})` : ''}
               </Button>
             </Tooltip>
             <Tooltip title="Import contacts from a CSV file">
@@ -5166,6 +5166,8 @@ const AdminCRMPage: React.FC = () => {
           )}
         </Paper>
       ))}
+
+      </Stack>
 
       {/* Row actions menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
@@ -7875,7 +7877,6 @@ const AdminCRMPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-      </Stack>
     </AdminPageShell>
   );
 };
