@@ -528,54 +528,33 @@ const sectionShellSx = {
                 `linear-gradient(120deg, ${alpha(t.palette.secondary.main, 0.07)} 0%, ${t.palette.background.paper} 42%, ${alpha(t.palette.primary.main, 0.04)} 100%)`,
             }}
           >
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                flexWrap: 'wrap',
-                gap: 2,
-              }}
-            >
-              <Box sx={{ maxWidth: { md: 640 } }}>
-                <Typography
-                  variant="overline"
-                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
-                >
-                  PECC Support Tool
-                </Typography>
-                <Typography
-                  variant="h4"
-                  component="h1"
-                  sx={{
-                    fontWeight: 700,
-                    letterSpacing: -0.02,
-                    mb: 0.75,
-                    color: 'text.primary',
-                    fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
-                  }}
-                >
-                  Welcome back, {firstName}
-                </Typography>
-                <Typography
-                  variant="body1"
-                  color="text.secondary"
-                  sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}
-                >
-                  Your home base for readiness work—progress, hospital contacts, and the tools you use most.
-                </Typography>
-              </Box>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
-                <Button size="small" variant="outlined" onClick={() => navigate('/milestones')}>
-                  Checklist
-                </Button>
-                <Button size="small" variant="outlined" onClick={() => navigate('/snapshot')}>
-                  Snapshot
-                </Button>
-                <Button size="small" variant="outlined" onClick={() => navigate('/activities')}>
-                  Activities
-                </Button>
-              </Stack>
+            <Box sx={{ maxWidth: { md: 640 } }}>
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
+              >
+                PECC Support Tool
+              </Typography>
+              <Typography
+                variant="h4"
+                component="h1"
+                sx={{
+                  fontWeight: 700,
+                  letterSpacing: -0.02,
+                  mb: 0.75,
+                  color: 'text.primary',
+                  fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
+                }}
+              >
+                Welcome back, {firstName}
+              </Typography>
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}
+              >
+                Your home base for readiness work—progress, hospital contacts, and the tools you use most.
+              </Typography>
             </Box>
           </Paper>
 
