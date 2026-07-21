@@ -25,14 +25,15 @@ import {
   Stepper,
   Step,
   StepLabel,
-  StepContent
+  StepContent,
+  Paper,
+  Stack,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   PlayArrow as PlayIcon,
   Add as AddIcon,
   Assessment as AssessmentIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
   School as SchoolIcon,
   Build as BuildIcon,
   Policy as PolicyIcon,
@@ -55,6 +56,14 @@ import {
   writeContinuityData,
   getContinuityData,
 } from '../utils/userData';
+
+const sectionShellSx = {
+  borderRadius: 2,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  overflow: 'hidden',
+} as const;
 
 interface SimulationCase {
   id: string;
@@ -1022,353 +1031,407 @@ const SimulationPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Container maxWidth="xl">
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-          <CircularProgress />
-        </Box>
-      </Container>
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+        <Container
+          maxWidth={false}
+          sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+            <CircularProgress color="secondary" />
+          </Box>
+        </Container>
+      </Box>
     );
   }
 
   if (!currentUser) {
     return (
-      <Container maxWidth="xl">
-        <Box sx={{ textAlign: 'center', py: 6 }}>
-          <Typography variant="h6" color="text.secondary">
-            Please log in to view simulation cases.
-          </Typography>
-        </Box>
-      </Container>
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+        <Container
+          maxWidth={false}
+          sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+        >
+          <Paper elevation={0} sx={{ ...sectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
+            <Typography variant="h6" color="text.secondary">
+              Please log in to view simulation cases.
+            </Typography>
+          </Paper>
+        </Container>
+      </Box>
     );
   }
 
+  const resolvedGapsCount = gaps.filter((g) => g.status === 'completed').length;
+  const completionRate = Math.round((resolvedGapsCount / Math.max(gaps.length, 1)) * 100);
+
   return (
-    <Container maxWidth="xl">
-      <Box sx={{ mb: 4, mt: 3 }}>
-        {/* Header */}
-        <Box sx={{ mb: 3 }}>
-          <Typography variant={isMobile ? "h4" : "h3"} component="h1" gutterBottom color="primary">
-            Simulation Debriefing & Gap Analysis
-          </Typography>
-          <Typography variant="h6" gutterBottom sx={{ mb: 2, color: 'text.secondary' }}>
-            SimBox Pediatric Cases
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Practice pediatric emergency scenarios and systematically identify gaps in your team's readiness. 
-            Use the structured debriefing process to track improvements and link to your activities.
-          </Typography>
-          <Alert severity="info" sx={{ mt: 2 }} icon={false}>
-            <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in sessions, debrief notes, or gap descriptions. Staff assignee names are allowed. {PHI_SCAN_HINT}
+    <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: isMobile ? 10 : 4, md: 5 } }}>
+      <Container
+        maxWidth={false}
+        sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+      >
+        <Stack spacing={{ xs: 2, md: 2.5 }}>
+          <Alert severity="info" variant="outlined" icon={false} sx={{ bgcolor: alpha(theme.palette.secondary.main, 0.04) }}>
+            <strong>No PHI.</strong> Do not include Protected Health Information or real patient data in sessions,
+            debrief notes, or gap descriptions. Staff assignee names are allowed. {PHI_SCAN_HINT}
           </Alert>
-        </Box>
 
-        <ScormPackagesSection title="SCORM simulation modules" placement="simulation" />
-
-        {/* Statistics Cards */}
-        <Grid container spacing={isMobile ? 2 : 3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <PlayIcon sx={{ fontSize: 40, color: 'primary.main', mr: 2 }} />
-                  <Box>
-                    <Typography variant="h4" color="primary">
-                      {sessions.length}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Sessions Completed
-                    </Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <WarningIcon sx={{ fontSize: 40, color: 'warning.main', mr: 2 }} />
-                  <Box>
-                    <Typography variant="h4" color="warning.main">
-                      {gaps.length}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Gaps Identified
-                    </Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <CheckCircleIcon sx={{ fontSize: 40, color: 'success.main', mr: 2 }} />
-                  <Box>
-                    <Typography variant="h4" color="success.main">
-                      {gaps.filter(g => g.status === 'completed').length}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Gaps Resolved
-                    </Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <AssessmentIcon sx={{ fontSize: 40, color: 'info.main', mr: 2 }} />
-                  <Box>
-                    <Typography variant="h4" color="info.main">
-                      {Math.round((gaps.filter(g => g.status === 'completed').length / Math.max(gaps.length, 1)) * 100)}%
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Completion Rate
-                    </Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-
-        {/* Quick Actions */}
-        <Box sx={{ mb: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <Button
-            variant="contained"
-            startIcon={<AssessmentIcon />}
-            onClick={() => {
-              const gapsSection = document.getElementById('all-identified-gaps');
-              if (gapsSection) {
-                gapsSection.scrollIntoView({ behavior: 'smooth' });
-              }
+          {/* Hero */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2, md: 2.75 },
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              background: (t) =>
+                `linear-gradient(120deg, ${alpha(t.palette.secondary.main, 0.07)} 0%, ${t.palette.background.paper} 42%, ${alpha(t.palette.primary.main, 0.04)} 100%)`,
             }}
-            sx={{ minWidth: 200 }}
           >
-            View All Identified Gaps
-          </Button>
-          <Button
-            variant="contained"
-            color="secondary"
-            startIcon={<PlayIcon />}
-            onClick={() => handleOpenCaseGapDialog()}
-            sx={{ minWidth: 200 }}
-          >
-            Add Case-Related Gap
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenGapDialog()}
-            sx={{ minWidth: 200 }}
-          >
-            Add Standalone Gap
-          </Button>
-        </Box>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+                gap: 2,
+              }}
+            >
+              <Box sx={{ maxWidth: { md: 720 } }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
+                >
+                  Simulation gaps
+                </Typography>
+                <Typography
+                  variant="h4"
+                  component="h1"
+                  sx={{
+                    fontWeight: 700,
+                    letterSpacing: -0.02,
+                    mb: 0.75,
+                    fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
+                  }}
+                >
+                  Simulations
+                </Typography>
+                <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}>
+                  Practice pediatric emergency scenarios, identify readiness gaps, and link improvements to your activities.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AssessmentIcon />}
+                  onClick={() => {
+                    const gapsSection = document.getElementById('all-identified-gaps');
+                    if (gapsSection) gapsSection.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  View gaps
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => handleOpenGapDialog()}
+                >
+                  Standalone gap
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="secondary"
+                  startIcon={<PlayIcon />}
+                  onClick={() => handleOpenCaseGapDialog()}
+                >
+                  Case-related gap
+                </Button>
+              </Stack>
+            </Box>
+          </Paper>
 
-        {/* All Identified Gaps - above simulations for PECC */}
-        <Box sx={{ mt: 4 }} id="all-identified-gaps">
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h5" gutterBottom>
-              All Identified Gaps
-            </Typography>
-          </Box>
+          <ScormPackagesSection title="SCORM simulation modules" placement="simulation" />
 
-          {/* Filters and Sorting */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} sm={6} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Sort By</InputLabel>
-                    <Select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as any)}
-                      label="Sort By"
-                    >
-                      <MenuItem value="date">Date Created</MenuItem>
-                      <MenuItem value="severity">Severity</MenuItem>
-                      <MenuItem value="status">Status</MenuItem>
-                      <MenuItem value="case">Case</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                <Grid item xs={12} sm={6} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Order</InputLabel>
-                    <Select
-                      value={sortOrder}
-                      onChange={(e) => setSortOrder(e.target.value as any)}
-                      label="Order"
-                    >
-                      <MenuItem value="desc">Descending</MenuItem>
-                      <MenuItem value="asc">Ascending</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                <Grid item xs={12} sm={6} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Status</InputLabel>
-                    <Select
-                      value={filterStatus}
-                      onChange={(e) => setFilterStatus(e.target.value)}
-                      label="Status"
-                    >
-                      <MenuItem value="not_completed">Not Completed</MenuItem>
-                      <MenuItem value="all">All Status</MenuItem>
-                      <MenuItem value="identified">Identified</MenuItem>
-                      <MenuItem value="in_progress">In Progress</MenuItem>
-                      <MenuItem value="completed">Completed</MenuItem>
-                      <MenuItem value="cancelled">Cancelled</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                <Grid item xs={12} sm={6} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Severity</InputLabel>
-                    <Select
-                      value={filterSeverity}
-                      onChange={(e) => setFilterSeverity(e.target.value)}
-                      label="Severity"
-                    >
-                      <MenuItem value="all">All Severity</MenuItem>
-                      <MenuItem value="critical">Critical</MenuItem>
-                      <MenuItem value="high">High</MenuItem>
-                      <MenuItem value="medium">Medium</MenuItem>
-                      <MenuItem value="low">Low</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                <Grid item xs={12} sm={6} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Case</InputLabel>
-                    <Select
-                      value={filterCase}
-                      onChange={(e) => setFilterCase(e.target.value)}
-                      label="Case"
-                    >
-                      <MenuItem value="all">All Cases</MenuItem>
-                      {[...new Set([...peccSimulations.map(s => s.name).filter(Boolean) as string[], ...gaps.map(g => g.caseName), ...otherCases])].filter(Boolean).sort().map((caseName) => (
-                        <MenuItem key={caseName} value={caseName}>
-                          {caseName}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                <Grid item xs={12} sm={6} md={2}>
-                  <Button
-                    variant="outlined"
-                    onClick={clearFilters}
-                    fullWidth
-                    size="small"
+          {/* At a glance */}
+          <Paper elevation={0} sx={sectionShellSx}>
+            <Box
+              sx={{
+                px: { xs: 2, md: 2.5 },
+                py: 1.5,
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: alpha(theme.palette.secondary.main, 0.04),
+              }}
+            >
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+              >
+                At a glance
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Sessions and gap progress for your site
+              </Typography>
+            </Box>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: 'repeat(2, minmax(0, 1fr))',
+                  md: 'repeat(4, minmax(0, 1fr))',
+                },
+                '& > *': {
+                  borderRight: { xs: 'none', md: '1px solid' },
+                  borderBottom: { xs: '1px solid', md: 'none' },
+                  borderColor: 'divider',
+                },
+                '& > *:nth-of-type(2)': { borderRight: { xs: 'none', md: '1px solid' } },
+                '& > *:nth-of-type(odd)': { borderRight: { xs: '1px solid', md: '1px solid' } },
+                '& > *:last-child': { borderRight: 'none', borderBottom: 'none' },
+              }}
+            >
+              {[
+                { label: 'Sessions', value: String(sessions.length) },
+                { label: 'Gaps identified', value: String(gaps.length) },
+                { label: 'Gaps resolved', value: String(resolvedGapsCount) },
+                { label: 'Completion', value: `${completionRate}%` },
+              ].map((item) => (
+                <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75, textAlign: 'center' }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 600, letterSpacing: 0.04, textTransform: 'uppercase', fontSize: '0.65rem' }}
                   >
-                    Clear Filters
-                  </Button>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
+                    {item.label}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: '1.35rem',
+                      letterSpacing: -0.02,
+                      color: 'secondary.dark',
+                      fontVariantNumeric: 'tabular-nums',
+                      lineHeight: 1.15,
+                      mt: 0.5,
+                    }}
+                  >
+                    {item.value}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Paper>
 
-          {/* Export and Add Buttons */}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mb: 3 }}>
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              onClick={handleExportToExcel}
-              disabled={getFilteredAndSortedGaps().length === 0}
-              sx={{ 
-                minWidth: 150,
-                color: 'success.main',
-                borderColor: 'success.main',
-                '&:hover': {
-                  borderColor: 'success.dark',
-                  backgroundColor: 'success.light'
-                }
-              }}
-            >
-              Export Excel
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<PdfIcon />}
-              onClick={handleExportToPDF}
-              disabled={getFilteredAndSortedGaps().length === 0}
-              sx={{ 
-                minWidth: 150,
-                color: 'error.main',
-                borderColor: 'error.main',
-                '&:hover': {
-                  borderColor: 'error.dark',
-                  backgroundColor: 'error.light'
-                }
-              }}
-            >
-              Export PDF
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => handleOpenGapDialog()}
-              sx={{ minWidth: 200 }}
-            >
-              Add Standalone Gap
-            </Button>
-          </Box>
-          
-          {/* Gaps Table */}
-          {getFilteredAndSortedGaps().length > 0 ? (
-            <Card>
-              <CardContent sx={{ p: 0 }}>
-                <Box sx={{ overflowX: 'auto' }}>
+          {/* All Identified Gaps */}
+          <Box id="all-identified-gaps">
+            <Paper elevation={0} sx={sectionShellSx}>
+              <Box
+                sx={{
+                  px: { xs: 2, md: 2.5 },
+                  py: 1.5,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    flexWrap: 'wrap',
+                    gap: 1.5,
+                  }}
+                >
+                  <Box>
+                    <Typography
+                      variant="overline"
+                      sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                    >
+                      Gap tracking
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                      Filter, export, and link gaps to activities
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<DownloadIcon />}
+                      onClick={handleExportToExcel}
+                      disabled={getFilteredAndSortedGaps().length === 0}
+                    >
+                      Excel
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<PdfIcon />}
+                      onClick={handleExportToPDF}
+                      disabled={getFilteredAndSortedGaps().length === 0}
+                    >
+                      PDF
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="secondary"
+                      startIcon={<AddIcon />}
+                      onClick={() => handleOpenGapDialog()}
+                    >
+                      Add gap
+                    </Button>
+                  </Stack>
+                </Box>
+              </Box>
+
+              <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+                <Grid container spacing={1.5} alignItems="center">
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Sort By</InputLabel>
+                      <Select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        label="Sort By"
+                      >
+                        <MenuItem value="date">Date Created</MenuItem>
+                        <MenuItem value="severity">Severity</MenuItem>
+                        <MenuItem value="status">Status</MenuItem>
+                        <MenuItem value="case">Case</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Order</InputLabel>
+                      <Select
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value as any)}
+                        label="Order"
+                      >
+                        <MenuItem value="desc">Descending</MenuItem>
+                        <MenuItem value="asc">Ascending</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Status</InputLabel>
+                      <Select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        label="Status"
+                      >
+                        <MenuItem value="not_completed">Not Completed</MenuItem>
+                        <MenuItem value="all">All Status</MenuItem>
+                        <MenuItem value="identified">Identified</MenuItem>
+                        <MenuItem value="in_progress">In Progress</MenuItem>
+                        <MenuItem value="completed">Completed</MenuItem>
+                        <MenuItem value="cancelled">Cancelled</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Severity</InputLabel>
+                      <Select
+                        value={filterSeverity}
+                        onChange={(e) => setFilterSeverity(e.target.value)}
+                        label="Severity"
+                      >
+                        <MenuItem value="all">All Severity</MenuItem>
+                        <MenuItem value="critical">Critical</MenuItem>
+                        <MenuItem value="high">High</MenuItem>
+                        <MenuItem value="medium">Medium</MenuItem>
+                        <MenuItem value="low">Low</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Case</InputLabel>
+                      <Select
+                        value={filterCase}
+                        onChange={(e) => setFilterCase(e.target.value)}
+                        label="Case"
+                      >
+                        <MenuItem value="all">All Cases</MenuItem>
+                        {[
+                          ...new Set([
+                            ...(peccSimulations.map((s) => s.name).filter(Boolean) as string[]),
+                            ...gaps.map((g) => g.caseName),
+                            ...otherCases,
+                          ]),
+                        ]
+                          .filter(Boolean)
+                          .sort()
+                          .map((caseName) => (
+                            <MenuItem key={caseName} value={caseName}>
+                              {caseName}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={2}>
+                    <Button variant="outlined" onClick={clearFilters} fullWidth size="small">
+                      Clear Filters
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Box>
+
+              {getFilteredAndSortedGaps().length > 0 ? (
+                <Box sx={{ overflowX: 'auto', borderTop: '1px solid', borderColor: 'divider' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ backgroundColor: '#1976d2', borderBottom: '1px solid #e0e0e0' }}>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '14px', minWidth: '300px', width: '35%', color: 'white' }}>
+                      <tr style={{ backgroundColor: theme.palette.primary.main, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: '13px', minWidth: '300px', width: '35%', color: 'white' }}>
                           Description
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '14px', minWidth: '200px', width: '25%', color: 'white' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: '13px', minWidth: '200px', width: '25%', color: 'white' }}>
                           Action Plan
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '14px', minWidth: '120px', color: 'white' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: '13px', minWidth: '120px', color: 'white' }}>
                           Case
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '14px', minWidth: '100px', color: 'white' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: '13px', minWidth: '100px', color: 'white' }}>
                           Category
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '14px', minWidth: '80px', color: 'white' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: '13px', minWidth: '80px', color: 'white' }}>
                           Severity
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '14px', minWidth: '100px', color: 'white' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: '13px', minWidth: '100px', color: 'white' }}>
                           Status
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '14px', minWidth: '120px', color: 'white' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: '13px', minWidth: '120px', color: 'white' }}>
                           Assigned To
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '14px', minWidth: '100px', color: 'white' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: '13px', minWidth: '100px', color: 'white' }}>
                           Target Date
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '14px', minWidth: '150px', color: 'white' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, fontSize: '13px', minWidth: '150px', color: 'white' }}>
                           Actions
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       {getFilteredAndSortedGaps().map((gap, index) => (
-                        <tr 
+                        <tr
                           key={gap.id}
-                          style={{ 
-                            borderBottom: '1px solid #e0e0e0',
-                            backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa'
+                          style={{
+                            borderBottom: `1px solid ${theme.palette.divider}`,
+                            backgroundColor: index % 2 === 0 ? theme.palette.background.paper : alpha(theme.palette.primary.main, 0.03),
                           }}
                         >
                           <td style={{ padding: '12px 16px', verticalAlign: 'top', width: '35%' }}>
@@ -1382,31 +1445,25 @@ const SimulationPage: React.FC = () => {
                             </Typography>
                           </td>
                           <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
-                            <Chip
-                              label={gap.caseName}
-                              size="small"
-                              variant="outlined"
-                            />
+                            <Chip label={gap.caseName} size="small" variant="outlined" />
                           </td>
                           <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
-                            <Chip
-                              label={gap.category}
-                              size="small"
-                              icon={getCategoryIcon(gap.category)}
-                            />
+                            <Chip label={gap.category} size="small" icon={getCategoryIcon(gap.category)} />
                           </td>
                           <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
-                            <Chip
-                              label={gap.severity}
-                              size="small"
-                              color={getSeverityColor(gap.severity) as any}
-                            />
+                            <Chip label={gap.severity} size="small" color={getSeverityColor(gap.severity) as any} />
                           </td>
                           <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
                             <Chip
                               label={gap.status}
                               size="small"
-                              color={gap.status === 'completed' ? 'success' : gap.status === 'in_progress' ? 'warning' : 'default'}
+                              color={
+                                gap.status === 'completed'
+                                  ? 'success'
+                                  : gap.status === 'in_progress'
+                                    ? 'warning'
+                                    : 'default'
+                              }
                             />
                           </td>
                           <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
@@ -1445,50 +1502,59 @@ const SimulationPage: React.FC = () => {
                     </tbody>
                   </table>
                 </Box>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="h6" color="text.secondary" gutterBottom>
-                  No gaps found
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  {gaps.length === 0 
-                    ? 'Start a simulation session or add a standalone gap to begin tracking improvements.'
-                    : 'Try adjusting your filters to see more results.'
-                  }
-                </Typography>
-                {gaps.length === 0 && (
-                  <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => handleOpenGapDialog()}
-                  >
-                    Add Your First Gap
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </Box>
+              ) : (
+                <Box sx={{ px: { xs: 2, md: 2.5 }, py: 4, textAlign: 'center', borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="h6" color="text.secondary" gutterBottom sx={{ fontWeight: 600 }}>
+                    No gaps found
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {gaps.length === 0
+                      ? 'Start a simulation session or add a standalone gap to begin tracking improvements.'
+                      : 'Try adjusting your filters to see more results.'}
+                  </Typography>
+                  {gaps.length === 0 && (
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      startIcon={<AddIcon />}
+                      onClick={() => handleOpenGapDialog()}
+                    >
+                      Add Your First Gap
+                    </Button>
+                  )}
+                </Box>
+              )}
+            </Paper>
+          </Box>
 
-        {/* Simulations (admin-managed list) */}
-        <Typography variant="h5" gutterBottom sx={{ mb: 3, mt: 4 }}>
-          Simulations
-        </Typography>
-        
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
+          {/* Simulations (admin-managed list) */}
+          <Box>
+            <Box sx={{ mb: 1.25 }}>
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+              >
+                Case library
+              </Typography>
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 700, letterSpacing: -0.01, fontSize: { xs: '1.1rem', sm: '1.2rem' } }}
+              >
+                Simulations
+              </Typography>
+            </Box>
+
+            <Stack spacing={1.5}>
           {peccSimulations.map((sim) => {
             const caseGaps = gaps.filter(gap => gap.caseName === (sim.name ?? ''));
             const completedGaps = caseGaps.filter(gap => gap.status === 'completed');
             const objectives = (sim.learning_objectives ?? '').trim().split(/\r?\n/).filter(Boolean);
             const resources = (sim.additional_resources || []).filter(r => (r.name && r.name.trim()) || (r.url && r.url.trim()));
             return (
-              <Card key={sim.id} sx={{ width: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Paper key={sim.id} elevation={0} sx={{ ...sectionShellSx, width: '100%' }}>
+                <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                       {sim.url ? (
                         <Typography
                           variant="h6"
@@ -1496,12 +1562,12 @@ const SimulationPage: React.FC = () => {
                           href={sim.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          sx={{ color: 'primary.main', textDecoration: 'underline', '&:hover': { color: 'primary.dark' }, mb: 0 }}
+                          sx={{ color: 'secondary.dark', textDecoration: 'underline', '&:hover': { color: 'secondary.main' }, mb: 0, fontWeight: 700 }}
                         >
                           {sim.name || 'Simulation'}
                         </Typography>
                       ) : (
-                        <Typography variant="h6" component="h3" sx={{ mb: 0 }}>
+                        <Typography variant="h6" component="h3" sx={{ mb: 0, fontWeight: 700 }}>
                           {sim.name || 'Simulation'}
                         </Typography>
                       )}
@@ -1515,11 +1581,12 @@ const SimulationPage: React.FC = () => {
                     </Box>
                     <Button
                       variant="contained"
+                      color="secondary"
+                      size="small"
                       onClick={() => {
                         setCaseGapForm(prev => ({ ...prev, caseName: sim.name ?? '', otherCaseName: '' }));
                         handleOpenCaseGapDialog();
                       }}
-                      sx={{ minWidth: 200 }}
                     >
                       Identified Gaps & Action Plans
                     </Button>
@@ -1555,8 +1622,8 @@ const SimulationPage: React.FC = () => {
                     </Box>
                   )}
                   {caseGaps.length > 0 && (
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
+                    <Box sx={{ mb: 0 }}>
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 600, mb: 1 }}>
                         Identified Gaps ({caseGaps.length}):
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -1574,43 +1641,55 @@ const SimulationPage: React.FC = () => {
                       </Box>
                     </Box>
                   )}
-                </CardContent>
-              </Card>
+                </Box>
+              </Paper>
             );
           })}
-        </Box>
+            </Stack>
+          </Box>
 
         {/* Other Cases */}
         {otherCases.length > 0 && (
-          <>
-            <Typography variant="h5" gutterBottom sx={{ mb: 3, mt: 4 }}>
-              Other Cases
-            </Typography>
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
+          <Box>
+            <Box sx={{ mb: 1.25 }}>
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+              >
+                Additional
+              </Typography>
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 700, letterSpacing: -0.01, fontSize: { xs: '1.1rem', sm: '1.2rem' } }}
+              >
+                Other Cases
+              </Typography>
+            </Box>
+
+            <Stack spacing={1.5}>
               {otherCases.map((caseName) => {
                 const caseGaps = gaps.filter(gap => gap.caseName === caseName);
                 return (
-                  <Card key={caseName} sx={{ width: '100%' }}>
-                    <CardContent>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 0 }}>
+                  <Paper key={caseName} elevation={0} sx={{ ...sectionShellSx, width: '100%' }}>
+                    <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: caseGaps.length > 0 ? 1.5 : 0, flexWrap: 'wrap', gap: 1.5 }}>
+                        <Typography variant="h6" component="div" sx={{ fontWeight: 700, mb: 0 }}>
                           {caseName}
                         </Typography>
                         <Button
                           variant="outlined"
+                          size="small"
                           onClick={() => {
                             setCaseGapForm(prev => ({ ...prev, caseName: 'other', otherCaseName: caseName }));
                             handleOpenCaseGapDialog();
                           }}
-                          sx={{ minWidth: 200 }}
                         >
                           Identified Gaps & Action Plans
                         </Button>
                       </Box>
-                      
+
                       {caseGaps.length > 0 && (
-                        <Box sx={{ mt: 2 }}>
+                        <Box>
                           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                             {caseGaps.length} gap{caseGaps.length !== 1 ? 's' : ''} identified
                           </Typography>
@@ -1634,12 +1713,12 @@ const SimulationPage: React.FC = () => {
                           </Box>
                         </Box>
                       )}
-                    </CardContent>
-                  </Card>
+                    </Box>
+                  </Paper>
                 );
               })}
-            </Box>
-          </>
+            </Stack>
+          </Box>
         )}
 
         {/* Simulation Dialog with Stepper */}
@@ -2224,7 +2303,7 @@ const SimulationPage: React.FC = () => {
         {/* Mobile Floating Action Button */}
         {isMobile && (
           <Fab
-            color="primary"
+            color="secondary"
             aria-label="start simulation"
             onClick={() => setOpen(true)}
             sx={{
@@ -2237,8 +2316,9 @@ const SimulationPage: React.FC = () => {
             <PlayIcon />
           </Fab>
         )}
-      </Box>
-    </Container>
+        </Stack>
+      </Container>
+    </Box>
   );
 };
 

@@ -8,8 +8,10 @@ import {
   InputAdornment,
   CircularProgress,
   Paper,
-  Alert
+  Alert,
+  Stack,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   Search as SearchIcon,
   Group as GroupIcon
@@ -19,6 +21,14 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { supabase } from '../supabase';
 import { CohortCard, CohortDetail } from '../components/cohorts';
 import { getUserData } from '../utils/userData';
+
+const sectionShellSx = {
+  borderRadius: 2,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  overflow: 'hidden',
+} as const;
 
 const CohortsPage: React.FC = () => {
   const { userProfile, userRole } = useUserProfile();
@@ -226,91 +236,147 @@ const CohortsPage: React.FC = () => {
 
   if (selectedCohort) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <CohortDetail
-          cohort={selectedCohort}
-          onBack={() => {
-            setSelectedCohort(null);
-            loadCohorts(); // Refresh stats when returning to list
-          }}
-          canManage={canManage}
-          canAnnounce={canAnnounce}
-          canInvite={canInvite}
-        />
-      </Container>
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+        <Container
+          maxWidth={false}
+          sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+        >
+          <CohortDetail
+            cohort={selectedCohort}
+            onBack={() => {
+              setSelectedCohort(null);
+              loadCohorts(); // Refresh stats when returning to list
+            }}
+            canManage={canManage}
+            canAnnounce={canAnnounce}
+            canInvite={canInvite}
+          />
+        </Container>
+      </Box>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
-          My Cohorts
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Connect with your peers, view announcements, and participate in discussions
-        </Typography>
-      </Box>
+    <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+      <Container
+        maxWidth={false}
+        sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+      >
+        <Stack spacing={{ xs: 2, md: 2.5 }}>
+          {/* Hero */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2, md: 2.75 },
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              background: (t) =>
+                `linear-gradient(120deg, ${alpha(t.palette.secondary.main, 0.07)} 0%, ${t.palette.background.paper} 42%, ${alpha(t.palette.primary.main, 0.04)} 100%)`,
+            }}
+          >
+            <Box sx={{ maxWidth: { md: 720 } }}>
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
+              >
+                Peer learning
+              </Typography>
+              <Typography
+                variant="h4"
+                component="h1"
+                sx={{
+                  fontWeight: 700,
+                  letterSpacing: -0.02,
+                  mb: 0.75,
+                  fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
+                }}
+              >
+                Cohorts
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}>
+                Connect with your peers, view announcements, and participate in discussions.
+              </Typography>
+            </Box>
+          </Paper>
 
-      {/* Search */}
-      <Box sx={{ mb: 3 }}>
-        <TextField
-          fullWidth
-          placeholder="Search cohorts..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon color="action" />
-              </InputAdornment>
-            ),
-          }}
-          sx={{ maxWidth: 400 }}
-        />
-      </Box>
-
-      {/* Error state */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Loading state */}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : filteredCohorts.length === 0 ? (
-        /* Empty state */
-        <Paper sx={{ p: 6, textAlign: 'center' }}>
-          <GroupIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-            {searchQuery ? 'No cohorts match your search' : 'You\'re not part of any cohorts yet'}
-          </Typography>
-          <Typography variant="body2" color="text.disabled">
-            {searchQuery 
-              ? 'Try adjusting your search terms'
-              : 'You\'ll be added to cohorts by a manager or admin'
-            }
-          </Typography>
-        </Paper>
-      ) : (
-        /* Cohorts grid */
-        <Grid container spacing={3}>
-          {filteredCohorts.map((cohort) => (
-            <Grid item xs={12} sm={6} md={4} key={cohort.id}>
-              <CohortCard
-                cohort={cohort}
-                onClick={() => setSelectedCohort(cohort)}
+          {/* Search */}
+          <Paper elevation={0} sx={sectionShellSx}>
+            <Box
+              sx={{
+                px: { xs: 2, md: 2.5 },
+                py: 1.5,
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+              }}
+            >
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+              >
+                Find a cohort
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                {cohorts.length} cohort{cohorts.length === 1 ? '' : 's'} you belong to
+              </Typography>
+            </Box>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Search cohorts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ maxWidth: 420 }}
               />
+            </Box>
+          </Paper>
+
+          {error && (
+            <Alert severity="error" onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress color="secondary" />
+            </Box>
+          ) : filteredCohorts.length === 0 ? (
+            <Paper elevation={0} sx={{ ...sectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
+              <GroupIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1.5 }} />
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 0.75, fontWeight: 600 }}>
+                {searchQuery ? 'No cohorts match your search' : "You're not part of any cohorts yet"}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {searchQuery
+                  ? 'Try adjusting your search terms'
+                  : "You'll be added to cohorts by a manager or admin"}
+              </Typography>
+            </Paper>
+          ) : (
+            <Grid container spacing={2}>
+              {filteredCohorts.map((cohort) => (
+                <Grid item xs={12} sm={6} md={4} key={cohort.id}>
+                  <CohortCard
+                    cohort={cohort}
+                    onClick={() => setSelectedCohort(cohort)}
+                  />
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
-      )}
-    </Container>
+          )}
+        </Stack>
+      </Container>
+    </Box>
   );
 };
 

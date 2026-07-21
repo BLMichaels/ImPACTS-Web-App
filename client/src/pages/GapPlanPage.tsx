@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
-  Card,
-  CardContent,
   Container,
   Table,
   TableBody,
@@ -29,8 +27,11 @@ import {
   IconButton,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Stack,
+  useTheme,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { Upload as UploadIcon, Image as ImageIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, School as SchoolIcon, DragIndicator as DragIndicatorIcon } from '@mui/icons-material';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
@@ -52,13 +53,22 @@ import EducationPage from './EducationPage';
 import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
 import { EDUCATION_BUCKETS } from '../constants/educationBuckets';
 
+const sectionShellSx = {
+  borderRadius: 2,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  overflow: 'hidden',
+} as const;
+
+/** Teal–slate accents aligned with PECC theme (no purple). */
 const DOMAIN_ACCORDION_COLORS = [
-  { bg: 'rgba(25, 118, 210, 0.18)', border: '#1976d2' },
-  { bg: 'rgba(46, 125, 50, 0.2)', border: '#2e7d32' },
-  { bg: 'rgba(123, 31, 162, 0.18)', border: '#7b1fa2' },
-  { bg: 'rgba(245, 124, 0, 0.2)', border: '#f57c00' },
-  { bg: 'rgba(0, 150, 136, 0.18)', border: '#009688' },
-  { bg: 'rgba(233, 30, 99, 0.18)', border: '#e91e63' }
+  { bg: 'rgba(14, 116, 144, 0.08)', border: '#0e7490' },
+  { bg: 'rgba(61, 85, 96, 0.1)', border: '#3d5560' },
+  { bg: 'rgba(15, 118, 110, 0.08)', border: '#0f766e' },
+  { bg: 'rgba(180, 83, 9, 0.08)', border: '#b45309' },
+  { bg: 'rgba(71, 85, 105, 0.1)', border: '#475569' },
+  { bg: 'rgba(3, 105, 161, 0.08)', border: '#0369a1' },
 ];
 
 interface GapPlan {
@@ -88,6 +98,7 @@ interface GapPlanAttachment {
 
 const GapPlanPage: React.FC = () => {
   useAuth();
+  const theme = useTheme();
   const { effectiveUserId, siteId } = useUserProfile();
   const { trackClick } = useUsageAnalytics();
   const { runWithPhiGuard } = usePhiGuard();
@@ -574,616 +585,738 @@ const GapPlanPage: React.FC = () => {
   // Add error boundary to catch rendering errors
   if (renderError) {
     return (
-      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-        <Box sx={{ textAlign: 'center', py: 8 }}>
-          <Typography variant="h4" color="error" gutterBottom>
-            Something went wrong
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-            There was an error rendering the gap plan page. Please try refreshing.
-          </Typography>
-          <Button 
-            variant="contained" 
-            onClick={() => window.location.reload()}
-            sx={{ mr: 2 }}
-          >
-            Refresh Page
-          </Button>
-          <Button 
-            variant="outlined" 
-            onClick={() => setRenderError(false)}
-          >
-            Try Again
-          </Button>
-        </Box>
-      </Container>
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+        <Container
+          maxWidth={false}
+          sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+        >
+          <Paper elevation={0} sx={{ ...sectionShellSx, px: { xs: 2, md: 2.5 }, py: 6, textAlign: 'center' }}>
+            <Typography variant="h5" color="error" gutterBottom sx={{ fontWeight: 700 }}>
+              Something went wrong
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              There was an error rendering the gap plan page. Please try refreshing.
+            </Typography>
+            <Stack direction="row" spacing={1.5} justifyContent="center" flexWrap="wrap" useFlexGap>
+              <Button variant="contained" color="secondary" onClick={() => window.location.reload()}>
+                Refresh Page
+              </Button>
+              <Button variant="outlined" onClick={() => setRenderError(false)}>
+                Try Again
+              </Button>
+            </Stack>
+          </Paper>
+        </Container>
+      </Box>
     );
   }
 
   try {
     return (
-      <Container maxWidth="xl">
-        <Box sx={{ mb: 4, mt: 3 }}>
-          <Typography variant="h3" component="h1" gutterBottom color="primary">
-            Gap Analysis Reduction Plans
-          </Typography>
-          <Typography variant="h6" gutterBottom sx={{ mb: 4, color: 'text.secondary' }}>
-            View and manage all your gap analysis reduction plans in one place.
-          </Typography>
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+        <Container
+          maxWidth={false}
+          sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+        >
+          <Stack spacing={{ xs: 2, md: 2.5 }}>
+            <Alert severity="info" variant="outlined" icon={false} sx={{ bgcolor: alpha(theme.palette.secondary.main, 0.04) }}>
+              <strong>No PHI.</strong> Do not include Protected Health Information or real patient data in plans, notes,
+              or attachments. {PHI_SCAN_HINT}
+            </Alert>
 
-        <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in plans, notes, or attachments. {PHI_SCAN_HINT}
-        </Alert>
-
-        {/* Gap Plan Reminder Banner */}
-        <GapPlanReminderBanner />
-
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-
-        {/* Filters and Export Section */}
-        <Card sx={{ mb: 3, p: 2 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontStyle: 'italic' }}>
-            💡 All gap plans are visible by default. Use the filters below to narrow down your view.
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ mr: 2 }}>Filters & Sorting</Typography>
-            
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={filterStatus}
-                label="Status"
-                onChange={(e: SelectChangeEvent) => setFilterStatus(e.target.value)}
-              >
-                <MenuItem value="">All Statuses</MenuItem>
-                <MenuItem value="active">All Active (Not Completed)</MenuItem>
-                <MenuItem value="blank">No Status</MenuItem>
-                <MenuItem value="In Progress">In Progress</MenuItem>
-                <MenuItem value="Needs Update">Needs Update</MenuItem>
-                <MenuItem value="Need to Develop">Need to Develop</MenuItem>
-                <MenuItem value="Cannot be done at this time">Cannot be done at this time</MenuItem>
-                <MenuItem value="Completed">Completed</MenuItem>
-              </Select>
-            </FormControl>
-
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Priority</InputLabel>
-              <Select
-                value={filterPriority}
-                label="Priority"
-                onChange={(e: SelectChangeEvent) => setFilterPriority(e.target.value)}
-              >
-                <MenuItem value="">All Priorities</MenuItem>
-                <MenuItem value="blank">No Priority</MenuItem>
-                <MenuItem value="High Importance & High Urgency (Do Now)">High Importance & High Urgency (Do Now)</MenuItem>
-                <MenuItem value="High Importance & Low Urgency (Do Next)">High Importance & Low Urgency (Do Next)</MenuItem>
-                <MenuItem value="Low Importance & High Effort (Do Later)">Low Importance & High Effort (Do Later)</MenuItem>
-                <MenuItem value="Low Importance & Low Urgency (Do Last)">Low Importance & Low Urgency (Do Last)</MenuItem>
-              </Select>
-            </FormControl>
-
-            <TextField
-              label="Owner"
-              value={filterOwner}
-              onChange={(e) => setFilterOwner(e.target.value)}
-              size="small"
-              sx={{ minWidth: 150 }}
-            />
-
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Sort By</InputLabel>
-              <Select
-                value={sortBy}
-                label="Sort By"
-                onChange={(e: SelectChangeEvent) => setSortBy(e.target.value)}
-              >
-                <MenuItem value="order">Order (drag to reorder)</MenuItem>
-                <MenuItem value="questionId">Question #</MenuItem>
-                <MenuItem value="status">Status</MenuItem>
-                <MenuItem value="dueDate">Due Date</MenuItem>
-              </Select>
-            </FormControl>
-
-            <FormControl size="small" sx={{ minWidth: 100 }}>
-              <InputLabel>Order</InputLabel>
-              <Select
-                value={sortOrder}
-                label="Order"
-                onChange={(e: SelectChangeEvent) => setSortOrder(e.target.value as 'asc' | 'desc')}
-              >
-                <MenuItem value="asc">Asc</MenuItem>
-                <MenuItem value="desc">Desc</MenuItem>
-              </Select>
-            </FormControl>
-
-            <Button variant="outlined" onClick={clearFilters} size="small">
-              Clear Filters
-            </Button>
-          </Box>
-
-          {/* Export Section */}
-          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
-              Export:
-            </Typography>
-            <Button
-              variant="outlined"
-              startIcon={<TableChartIcon />}
-              onClick={exportToExcel}
-              sx={{ borderColor: 'success.main', color: 'success.main', '&:hover': { borderColor: 'success.dark', bgcolor: 'success.light' } }}
-            >
-              Export to Excel
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<PictureAsPdfIcon />}
-              onClick={exportToPDF}
-              sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
-            >
-              Export to PDF
-            </Button>
-          </Box>
-        </Card>
-
-        {/* Results Count */}
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="body2" color="text.secondary">
-            Showing {filteredPlans.length} of {gapPlans.length} gap plans
-          </Typography>
-        </Box>
-
-        {/* Gap Plans Table */}
-        {filteredPlans.length === 0 ? (
-          <Card>
-            <CardContent sx={{ textAlign: 'center', py: 6 }}>
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                {gapPlans.length === 0 ? 'No Gap Plans Yet' : 'No Plans Match Filters'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {gapPlans.length === 0 ? 'Create gap plans from the Assessment page to get started.' : 'Try adjusting your filters.'}
-              </Typography>
-            </CardContent>
-          </Card>
-        ) : (
-          <TableContainer component={Paper} sx={{ maxHeight: '70vh', overflow: 'auto' }}>
-            <Table stickyHeader>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 'bold', width: 40, minWidth: 40, backgroundColor: 'primary.main', color: 'white' }} />
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 100, backgroundColor: 'primary.main', color: 'white', cursor: 'pointer' }} onClick={() => handleSort('questionId')}>Ques. # {sortBy === 'questionId' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 200, backgroundColor: 'primary.main', color: 'white' }}>Category</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 300, backgroundColor: 'primary.main', color: 'white' }}>Action</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 120, backgroundColor: 'primary.main', color: 'white' }}>Owner</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 150, backgroundColor: 'primary.main', color: 'white', cursor: 'pointer' }} onClick={() => handleSort('status')}>Status {sortBy === 'status' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 200, backgroundColor: 'primary.main', color: 'white' }}>Priority</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 200, backgroundColor: 'primary.main', color: 'white' }}>Difficulty</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 120, backgroundColor: 'primary.main', color: 'white', cursor: 'pointer' }} onClick={() => handleSort('dueDate')}>Due Date {sortBy === 'dueDate' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', minWidth: 150, backgroundColor: 'primary.main', color: 'white' }}>Attachments</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredPlans.map((plan, index) => (
-                  <TableRow
-                    key={plan.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, plan.id)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, index)}
-                    onDragEnd={handleDragEnd}
-                    sx={{
-                      opacity: draggedPlanId === plan.id ? 0.5 : 1,
-                      bgcolor: dragOverIndex === index ? 'action.hover' : undefined
-                    }}
-                  >
-                    <TableCell sx={{ width: 40, minWidth: 40, cursor: 'grab', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
-                      <DragIndicatorIcon fontSize="small" color="action" />
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 100 }}>{plan.questionId}</TableCell>
-                    <TableCell
-                      sx={{
-                        minWidth: 200,
-                        maxWidth: 280,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        cursor: 'pointer',
-                        '&:hover': { textDecoration: 'underline' },
-                        whiteSpace: 'normal',
-                        wordWrap: 'break-word'
-                      }}
-                      onClick={() => handleEdit(plan)}
-                    >
-                      {educationCategories[plan.questionId]?.trim() || '—'}
-                    </TableCell>
-                    <TableCell sx={{ 
-                      minWidth: 300, 
-                      maxWidth: 300, 
-                      overflow: 'hidden', 
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'normal',
-                      wordWrap: 'break-word'
-                    }}>
-                      {plan.action}
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 120 }}>{plan.owner}</TableCell>
-                    <TableCell sx={{ minWidth: 150 }}>
-                      <Chip 
-                        label={plan.status || 'No Status'} 
-                        color={getStatusColor(plan.status) as any}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 200 }}>
-                      <Chip 
-                        label={plan.priority ? plan.priority.split('(')[1]?.replace(')', '') || plan.priority : 'No Priority'} 
-                        color={getPriorityColor(plan.priority) as any}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 200 }}>
-                      <Chip 
-                        label={plan.difficulty ? plan.difficulty.split('(')[1]?.replace(')', '') || plan.difficulty : 'No Difficulty'} 
-                        color="default"
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 120 }}>{formatDate(plan.dueDate)}</TableCell>
-                    <TableCell sx={{ minWidth: 150 }}>
-                      {plan.attachments && plan.attachments.length > 0 ? (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <Chip 
-                            label={`${plan.attachments.length} file${plan.attachments.length > 1 ? 's' : ''}`}
-                            size="small"
-                            color="primary"
-                            variant="outlined"
-                          />
-                          <IconButton
-                            size="small"
-                            onClick={() => handleViewAttachments(plan)}
-                            sx={{ ml: 0.5 }}
-                          >
-                            <ExpandMoreIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          No files
-                        </Typography>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </Box>
-
-      {/* Gap Closure – accordion per domain (each with distinct color) */}
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="h5" sx={{ mb: 1.5, fontWeight: 600 }}>Gap Closure</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Work through questions by domain. Add notes as you go and create gap plans to track actions.
-        </Typography>
-        {EDUCATION_BUCKETS.map((bucket, index) => {
-          const { bg, border } = DOMAIN_ACCORDION_COLORS[index % DOMAIN_ACCORDION_COLORS.length] ?? DOMAIN_ACCORDION_COLORS[0];
-          return (
-            <Accordion
-              key={bucket}
-              expanded={openGapsAccordions[index] ?? index === 0}
-              onChange={() => setOpenGapsAccordions((prev) => ({ ...prev, [index]: !(prev[index] ?? index === 0) }))}
+            {/* Hero */}
+            <Paper
               elevation={0}
               sx={{
+                p: { xs: 2, md: 2.75 },
+                borderRadius: 2,
                 border: '1px solid',
-                borderColor: border,
-                borderLeftWidth: 4,
-                borderRadius: 1,
-                overflow: 'hidden',
-                '&:not(:last-child)': { mb: 1.5 },
-                '&:before': { display: 'none' }
+                borderColor: 'divider',
+                background: (t) =>
+                  `linear-gradient(120deg, ${alpha(t.palette.secondary.main, 0.07)} 0%, ${t.palette.background.paper} 42%, ${alpha(t.palette.primary.main, 0.04)} 100%)`,
               }}
             >
-              <AccordionSummary
-                expandIcon={<ExpandMoreIcon />}
+              <Box
                 sx={{
-                  bgcolor: bg,
-                  color: 'text.primary',
-                  minHeight: 48,
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  '& .MuiAccordionSummary-expandIconWrapper': { color: 'text.secondary' },
-                  '&.Mui-expanded': { minHeight: 48 }
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  gap: 2,
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <SchoolIcon fontSize="small" sx={{ color: border }} />
-                  <Typography variant="subtitle1" fontWeight={500}>{bucket}</Typography>
+                <Box sx={{ maxWidth: { md: 720 } }}>
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
+                  >
+                    Assessment gaps
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    component="h1"
+                    sx={{
+                      fontWeight: 700,
+                      letterSpacing: -0.02,
+                      mb: 0.75,
+                      fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
+                    }}
+                  >
+                    Gap Closures
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}>
+                    View and manage gap analysis reduction plans, then work through questions by domain.
+                  </Typography>
                 </Box>
-              </AccordionSummary>
-              <AccordionDetails sx={{ px: 2, pt: 0, pb: 2, bgcolor: 'rgba(0,0,0,0.02)' }}>
-                <EducationPage domainFilter={bucket} onGapPlanSaved={loadGapPlans} />
-              </AccordionDetails>
-            </Accordion>
-          );
-        })}
-      </Box>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                  <Button size="small" variant="outlined" startIcon={<TableChartIcon />} onClick={exportToExcel}>
+                    Excel
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="secondary"
+                    startIcon={<PictureAsPdfIcon />}
+                    onClick={exportToPDF}
+                  >
+                    PDF
+                  </Button>
+                </Stack>
+              </Box>
+            </Paper>
 
-      {/* Edit Dialog */}
-      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          Edit Gap Plan: {editingPlan ? (educationCategories[editingPlan.questionId]?.trim() || `Question ${editingPlan.questionId}`) : ''}
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="What is the action/plan to resolve?"
-                multiline
-                rows={3}
-                value={editFormData.action}
-                onChange={(e) => setEditFormData({ ...editFormData, action: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Owner"
-                value={editFormData.owner}
-                onChange={(e) => setEditFormData({ ...editFormData, owner: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={editFormData.status}
-                  label="Status"
-                  onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as GapPlan['status'] })}
-                >
-                  <MenuItem value="">No Status</MenuItem>
-                  <MenuItem value="In Progress">In Progress</MenuItem>
-                  <MenuItem value="Needs Update">Needs Update</MenuItem>
-                  <MenuItem value="Need to Develop">Need to Develop</MenuItem>
-                  <MenuItem value="Cannot be done at this time">Cannot be done at this time</MenuItem>
-                  <MenuItem value="Completed">Completed</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Priority</InputLabel>
-                <Select
-                  value={editFormData.priority}
-                  label="Priority"
-                  onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value as GapPlan['priority'] })}
-                >
-                  <MenuItem value="">No Priority</MenuItem>
-                  <MenuItem value="High Importance & High Urgency (Do Now)">High Importance & High Urgency (Do Now)</MenuItem>
-                  <MenuItem value="High Importance & Low Urgency (Do Next)">High Importance & Low Urgency (Do Next)</MenuItem>
-                  <MenuItem value="Low Importance & High Effort (Do Later)">Low Importance & High Effort (Do Later)</MenuItem>
-                  <MenuItem value="Low Importance & Low Urgency (Do Last)">Low Importance & Low Urgency (Do Last)</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Difficulty</InputLabel>
-                <Select
-                  value={editFormData.difficulty}
-                  label="Difficulty"
-                  onChange={(e) => setEditFormData({ ...editFormData, difficulty: e.target.value as GapPlan['difficulty'] })}
-                >
-                  <MenuItem value="">No Difficulty</MenuItem>
-                  <MenuItem value="Low Impact & Low Effort (Filler Tasks)">Low Impact & Low Effort (Filler Tasks)</MenuItem>
-                  <MenuItem value="Low Impact & High Effort (Hard Slogs)">Low Impact & High Effort (Hard Slogs)</MenuItem>
-                  <MenuItem value="High Impact & Low Effort (Quick Wins)">High Impact & Low Effort (Quick Wins)</MenuItem>
-                  <MenuItem value="High Impact & High Effort (Big Projects)">High Impact & High Effort (Big Projects)</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Due Date"
-                type="date"
-                value={editFormData.dueDate}
-                onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            {editFormData.status === 'Completed' && (
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Completion Date"
-                  type="date"
-                  value={editFormData.completionDate}
-                  onChange={(e) => setEditFormData({ ...editFormData, completionDate: e.target.value })}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
+            <GapPlanReminderBanner />
+
+            {error && (
+              <Alert severity="error" onClose={() => setError(null)}>
+                {error}
+              </Alert>
             )}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Notes (Progress? Where did you get this information?)"
-                multiline
-                rows={3}
-                value={editFormData.notes}
-                onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
-              />
-            </Grid>
 
-            {/* Related Activities Section */}
-            <Grid item xs={12}>
-              <Box sx={{ border: '1px solid #ddd', borderRadius: 1, p: 2, bgcolor: '#fafafa', mt: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  Related Activities
+            {/* Filters */}
+            <Paper elevation={0} sx={sectionShellSx}>
+              <Box
+                sx={{
+                  px: { xs: 2, md: 2.5 },
+                  py: 1.5,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                }}
+              >
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                >
+                  Filters & sorting
                 </Typography>
-                {(() => {
-                  const relatedActivities = (activitiesForGapPlan || []).filter((activity: any) =>
-                    activity.associatedGaps && activity.associatedGaps.includes(editingPlan?.id)
-                  );
-
-                  if (relatedActivities.length === 0) {
-                    return (
-                      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                        No activities are currently associated with this gap plan.
-                      </Typography>
-                    );
-                  }
-                  return (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {relatedActivities.map((activity) => (
-                        <Box key={activity.id} sx={{ 
-                          p: 1.5, 
-                          bgcolor: 'white', 
-                          borderRadius: 1, 
-                          border: '1px solid #e0e0e0' 
-                        }}>
-                          <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
-                            {activity.activity}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {new Date(activity.date).toLocaleDateString()} • {activity.category} • {activity.hours} hours
-                          </Typography>
-                          {activity.notes && (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                              {activity.notes}
-                            </Typography>
-                          )}
-                        </Box>
-                      ))}
-                    </Box>
-                  );
-                })()}
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                  All gap plans are visible by default · showing {filteredPlans.length} of {gapPlans.length}
+                </Typography>
               </Box>
-            </Grid>
-            
-            {/* File Attachments Section */}
-            <Grid item xs={12}>
-              <Box sx={{ border: '1px solid #ddd', borderRadius: 1, p: 2, bgcolor: '#fafafa' }}>
-                <Typography variant="h6" gutterBottom>
-                  File Attachments
+              <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={filterStatus}
+                    label="Status"
+                    onChange={(e: SelectChangeEvent) => setFilterStatus(e.target.value)}
+                  >
+                    <MenuItem value="">All Statuses</MenuItem>
+                    <MenuItem value="active">All Active (Not Completed)</MenuItem>
+                    <MenuItem value="blank">No Status</MenuItem>
+                    <MenuItem value="In Progress">In Progress</MenuItem>
+                    <MenuItem value="Needs Update">Needs Update</MenuItem>
+                    <MenuItem value="Need to Develop">Need to Develop</MenuItem>
+                    <MenuItem value="Cannot be done at this time">Cannot be done at this time</MenuItem>
+                    <MenuItem value="Completed">Completed</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Priority</InputLabel>
+                  <Select
+                    value={filterPriority}
+                    label="Priority"
+                    onChange={(e: SelectChangeEvent) => setFilterPriority(e.target.value)}
+                  >
+                    <MenuItem value="">All Priorities</MenuItem>
+                    <MenuItem value="blank">No Priority</MenuItem>
+                    <MenuItem value="High Importance & High Urgency (Do Now)">High Importance & High Urgency (Do Now)</MenuItem>
+                    <MenuItem value="High Importance & Low Urgency (Do Next)">High Importance & Low Urgency (Do Next)</MenuItem>
+                    <MenuItem value="Low Importance & High Effort (Do Later)">Low Importance & High Effort (Do Later)</MenuItem>
+                    <MenuItem value="Low Importance & Low Urgency (Do Last)">Low Importance & Low Urgency (Do Last)</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  label="Owner"
+                  value={filterOwner}
+                  onChange={(e) => setFilterOwner(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 150 }}
+                />
+
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Sort By</InputLabel>
+                  <Select
+                    value={sortBy}
+                    label="Sort By"
+                    onChange={(e: SelectChangeEvent) => setSortBy(e.target.value)}
+                  >
+                    <MenuItem value="order">Order (drag to reorder)</MenuItem>
+                    <MenuItem value="questionId">Question #</MenuItem>
+                    <MenuItem value="status">Status</MenuItem>
+                    <MenuItem value="dueDate">Due Date</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 100 }}>
+                  <InputLabel>Order</InputLabel>
+                  <Select
+                    value={sortOrder}
+                    label="Order"
+                    onChange={(e: SelectChangeEvent) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                  >
+                    <MenuItem value="asc">Asc</MenuItem>
+                    <MenuItem value="desc">Desc</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <Button variant="outlined" size="small" onClick={clearFilters}>
+                  Clear Filters
+                </Button>
+              </Box>
+            </Paper>
+
+            {/* Gap Plans Table */}
+            {filteredPlans.length === 0 ? (
+              <Paper elevation={0} sx={{ ...sectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
+                <Typography variant="h6" color="text.secondary" gutterBottom sx={{ fontWeight: 600 }}>
+                  {gapPlans.length === 0 ? 'No Gap Plans Yet' : 'No Plans Match Filters'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Upload PDFs or images related to this gap plan (e.g., policies, photos of equipment — not patients). {PHI_UPLOAD_HINT}
+                <Typography variant="body2" color="text.secondary">
+                  {gapPlans.length === 0
+                    ? 'Create gap plans from the Assessment page to get started.'
+                    : 'Try adjusting your filters.'}
                 </Typography>
-                
-                {/* File Upload */}
-                <Box sx={{ mb: 2 }}>
-                  <input
-                    accept=".pdf,.jpg,.jpeg,.png,.gif"
-                    style={{ display: 'none' }}
-                    id="gap-plan-edit-file-upload"
-                    type="file"
-                    onChange={handleGapPlanEditFileUpload}
-                    multiple
-                  />
-                  <label htmlFor="gap-plan-edit-file-upload">
-                    <Button variant="outlined" component="span" startIcon={<UploadIcon />}>
-                      Upload Files
-                    </Button>
-                  </label>
+              </Paper>
+            ) : (
+              <Paper elevation={0} sx={sectionShellSx}>
+                <Box
+                  sx={{
+                    px: { xs: 2, md: 2.5 },
+                    py: 1.5,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                  >
+                    Reduction plans
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                    Drag rows to reorder · click a category to edit
+                  </Typography>
                 </Box>
-                
-                {/* Display Current Attachments */}
-                {editFormData.attachments.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Current Attachments:
-                    </Typography>
-                    {editFormData.attachments.map((attachment, index) => (
-                      <Box key={attachment.id} sx={{ display: 'flex', alignItems: 'center', mb: 1, p: 1, bgcolor: 'white', borderRadius: 1 }}>
-                        <Box sx={{ mr: 2 }}>
-                          {attachment.fileType === 'pdf' ? <PictureAsPdfIcon color="error" /> : <ImageIcon color="primary" />}
-                        </Box>
-                        <Box sx={{ flex: 1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography 
-                              variant="body2" 
-                              sx={{ 
-                                cursor: 'pointer', 
-                                color: 'primary.main',
-                                '&:hover': { textDecoration: 'underline' }
-                              }}
-                              onClick={() => handleViewAttachment(attachment)}
-                            >
-                              {attachment.fileName}
-                            </Typography>
-                            <Typography variant="caption" color="primary.main" sx={{ fontSize: '0.7rem' }}>
-                              (click to view)
-                            </Typography>
-                          </Box>
-                          <Typography variant="caption" color="text.secondary">
-                            {(attachment.fileSize / 1024).toFixed(1)} KB • {(() => {
-                              try {
-                                return attachment.uploadedAt instanceof Date 
-                                  ? attachment.uploadedAt.toLocaleDateString()
-                                  : new Date(attachment.uploadedAt).toLocaleDateString();
-                              } catch (error) {
-                                return 'Invalid date';
-                              }
-                            })()}
+                <TableContainer sx={{ maxHeight: '70vh', overflow: 'auto' }}>
+                  <Table stickyHeader size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 700, width: 40, minWidth: 40, bgcolor: 'primary.main', color: 'common.white', borderBottomColor: 'primary.dark' }} />
+                        <TableCell sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'primary.main', color: 'common.white', cursor: 'pointer', borderBottomColor: 'primary.dark' }} onClick={() => handleSort('questionId')}>
+                          Ques. # {sortBy === 'questionId' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700, minWidth: 200, bgcolor: 'primary.main', color: 'common.white', borderBottomColor: 'primary.dark' }}>Category</TableCell>
+                        <TableCell sx={{ fontWeight: 700, minWidth: 300, bgcolor: 'primary.main', color: 'common.white', borderBottomColor: 'primary.dark' }}>Action</TableCell>
+                        <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'primary.main', color: 'common.white', borderBottomColor: 'primary.dark' }}>Owner</TableCell>
+                        <TableCell sx={{ fontWeight: 700, minWidth: 150, bgcolor: 'primary.main', color: 'common.white', cursor: 'pointer', borderBottomColor: 'primary.dark' }} onClick={() => handleSort('status')}>
+                          Status {sortBy === 'status' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700, minWidth: 200, bgcolor: 'primary.main', color: 'common.white', borderBottomColor: 'primary.dark' }}>Priority</TableCell>
+                        <TableCell sx={{ fontWeight: 700, minWidth: 200, bgcolor: 'primary.main', color: 'common.white', borderBottomColor: 'primary.dark' }}>Difficulty</TableCell>
+                        <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'primary.main', color: 'common.white', cursor: 'pointer', borderBottomColor: 'primary.dark' }} onClick={() => handleSort('dueDate')}>
+                          Due Date {sortBy === 'dueDate' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700, minWidth: 150, bgcolor: 'primary.main', color: 'common.white', borderBottomColor: 'primary.dark' }}>Attachments</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filteredPlans.map((plan, index) => (
+                        <TableRow
+                          key={plan.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, plan.id)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, index)}
+                          onDragEnd={handleDragEnd}
+                          sx={{
+                            opacity: draggedPlanId === plan.id ? 0.5 : 1,
+                            bgcolor: dragOverIndex === index ? 'action.hover' : undefined,
+                          }}
+                        >
+                          <TableCell sx={{ width: 40, minWidth: 40, cursor: 'grab', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
+                            <DragIndicatorIcon fontSize="small" color="action" />
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 100 }}>{plan.questionId}</TableCell>
+                          <TableCell
+                            sx={{
+                              minWidth: 200,
+                              maxWidth: 280,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              cursor: 'pointer',
+                              '&:hover': { textDecoration: 'underline', color: 'secondary.dark' },
+                              whiteSpace: 'normal',
+                              wordWrap: 'break-word',
+                            }}
+                            onClick={() => handleEdit(plan)}
+                          >
+                            {educationCategories[plan.questionId]?.trim() || '—'}
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 300, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', wordWrap: 'break-word' }}>
+                            {plan.action}
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 120 }}>{plan.owner}</TableCell>
+                          <TableCell sx={{ minWidth: 150 }}>
+                            <Chip label={plan.status || 'No Status'} color={getStatusColor(plan.status) as any} size="small" />
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 200 }}>
+                            <Chip
+                              label={plan.priority ? plan.priority.split('(')[1]?.replace(')', '') || plan.priority : 'No Priority'}
+                              color={getPriorityColor(plan.priority) as any}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 200 }}>
+                            <Chip
+                              label={plan.difficulty ? plan.difficulty.split('(')[1]?.replace(')', '') || plan.difficulty : 'No Difficulty'}
+                              color="default"
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 120 }}>{formatDate(plan.dueDate)}</TableCell>
+                          <TableCell sx={{ minWidth: 150 }}>
+                            {plan.attachments && plan.attachments.length > 0 ? (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Chip
+                                  label={`${plan.attachments.length} file${plan.attachments.length > 1 ? 's' : ''}`}
+                                  size="small"
+                                  color="secondary"
+                                  variant="outlined"
+                                />
+                                <IconButton size="small" onClick={() => handleViewAttachments(plan)} sx={{ ml: 0.5 }}>
+                                  <ExpandMoreIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                No files
+                              </Typography>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+            )}
+
+            {/* Gap Closure – accordion per domain */}
+            <Box>
+              <Box sx={{ mb: 1.25 }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+                >
+                  By domain
+                </Typography>
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: 700, letterSpacing: -0.01, fontSize: { xs: '1.1rem', sm: '1.2rem' } }}
+                >
+                  Gap Closure
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                  Work through questions by domain. Add notes as you go and create gap plans to track actions.
+                </Typography>
+              </Box>
+              <Stack spacing={1.25}>
+                {EDUCATION_BUCKETS.map((bucket, index) => {
+                  const { bg, border } =
+                    DOMAIN_ACCORDION_COLORS[index % DOMAIN_ACCORDION_COLORS.length] ?? DOMAIN_ACCORDION_COLORS[0];
+                  return (
+                    <Accordion
+                      key={bucket}
+                      expanded={openGapsAccordions[index] ?? index === 0}
+                      onChange={() =>
+                        setOpenGapsAccordions((prev) => ({
+                          ...prev,
+                          [index]: !(prev[index] ?? index === 0),
+                        }))
+                      }
+                      elevation={0}
+                      sx={{
+                        ...sectionShellSx,
+                        borderLeftWidth: 3,
+                        borderLeftColor: border,
+                        '&:before': { display: 'none' },
+                      }}
+                    >
+                      <AccordionSummary
+                        expandIcon={<ExpandMoreIcon sx={{ color: 'text.secondary' }} />}
+                        sx={{
+                          bgcolor: bg,
+                          minHeight: 48,
+                          borderBottom: '1px solid',
+                          borderColor: 'divider',
+                          '&.Mui-expanded': { minHeight: 48 },
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <SchoolIcon fontSize="small" sx={{ color: border }} />
+                          <Typography variant="subtitle1" fontWeight={600}>
+                            {bucket}
                           </Typography>
                         </Box>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleRemoveEditAttachment(index)}
-                          color="error"
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                      </AccordionSummary>
+                      <AccordionDetails sx={{ px: { xs: 1.5, md: 2 }, pt: 0, pb: 2, bgcolor: 'background.paper' }}>
+                        <EducationPage domainFilter={bucket} onGapPlanSaved={loadGapPlans} />
+                      </AccordionDetails>
+                    </Accordion>
+                  );
+                })}
+              </Stack>
+            </Box>
+
+            {/* Edit Dialog */}
+            <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="md" fullWidth>
+              <DialogTitle>
+                Edit Gap Plan:{' '}
+                {editingPlan
+                  ? educationCategories[editingPlan.questionId]?.trim() || `Question ${editingPlan.questionId}`
+                  : ''}
+              </DialogTitle>
+              <DialogContent>
+                <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="What is the action/plan to resolve?"
+                      multiline
+                      rows={3}
+                      value={editFormData.action}
+                      onChange={(e) => setEditFormData({ ...editFormData, action: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Owner"
+                      value={editFormData.owner}
+                      onChange={(e) => setEditFormData({ ...editFormData, owner: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Status</InputLabel>
+                      <Select
+                        value={editFormData.status}
+                        label="Status"
+                        onChange={(e) =>
+                          setEditFormData({ ...editFormData, status: e.target.value as GapPlan['status'] })
+                        }
+                      >
+                        <MenuItem value="">No Status</MenuItem>
+                        <MenuItem value="In Progress">In Progress</MenuItem>
+                        <MenuItem value="Needs Update">Needs Update</MenuItem>
+                        <MenuItem value="Need to Develop">Need to Develop</MenuItem>
+                        <MenuItem value="Cannot be done at this time">Cannot be done at this time</MenuItem>
+                        <MenuItem value="Completed">Completed</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Priority</InputLabel>
+                      <Select
+                        value={editFormData.priority}
+                        label="Priority"
+                        onChange={(e) =>
+                          setEditFormData({ ...editFormData, priority: e.target.value as GapPlan['priority'] })
+                        }
+                      >
+                        <MenuItem value="">No Priority</MenuItem>
+                        <MenuItem value="High Importance & High Urgency (Do Now)">High Importance & High Urgency (Do Now)</MenuItem>
+                        <MenuItem value="High Importance & Low Urgency (Do Next)">High Importance & Low Urgency (Do Next)</MenuItem>
+                        <MenuItem value="Low Importance & High Effort (Do Later)">Low Importance & High Effort (Do Later)</MenuItem>
+                        <MenuItem value="Low Importance & Low Urgency (Do Last)">Low Importance & Low Urgency (Do Last)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Difficulty</InputLabel>
+                      <Select
+                        value={editFormData.difficulty}
+                        label="Difficulty"
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            difficulty: e.target.value as GapPlan['difficulty'],
+                          })
+                        }
+                      >
+                        <MenuItem value="">No Difficulty</MenuItem>
+                        <MenuItem value="Low Impact & Low Effort (Filler Tasks)">Low Impact & Low Effort (Filler Tasks)</MenuItem>
+                        <MenuItem value="Low Impact & High Effort (Hard Slogs)">Low Impact & High Effort (Hard Slogs)</MenuItem>
+                        <MenuItem value="High Impact & Low Effort (Quick Wins)">High Impact & Low Effort (Quick Wins)</MenuItem>
+                        <MenuItem value="High Impact & High Effort (Big Projects)">High Impact & High Effort (Big Projects)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Due Date"
+                      type="date"
+                      value={editFormData.dueDate}
+                      onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  {editFormData.status === 'Completed' && (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Completion Date"
+                        type="date"
+                        value={editFormData.completionDate}
+                        onChange={(e) => setEditFormData({ ...editFormData, completionDate: e.target.value })}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                  )}
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Notes (Progress? Where did you get this information?)"
+                      multiline
+                      rows={3}
+                      value={editFormData.notes}
+                      onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Box
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        p: 2,
+                        bgcolor: alpha(theme.palette.secondary.main, 0.03),
+                        mt: 1,
+                      }}
+                    >
+                      <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700 }}>
+                        Related Activities
+                      </Typography>
+                      {(() => {
+                        const relatedActivities = (activitiesForGapPlan || []).filter(
+                          (activity: any) =>
+                            activity.associatedGaps && activity.associatedGaps.includes(editingPlan?.id)
+                        );
+
+                        if (relatedActivities.length === 0) {
+                          return (
+                            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                              No activities are currently associated with this gap plan.
+                            </Typography>
+                          );
+                        }
+                        return (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            {relatedActivities.map((activity) => (
+                              <Box
+                                key={activity.id}
+                                sx={{
+                                  p: 1.5,
+                                  bgcolor: 'background.paper',
+                                  borderRadius: 1.5,
+                                  border: '1px solid',
+                                  borderColor: 'divider',
+                                }}
+                              >
+                                <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                                  {activity.activity}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {new Date(activity.date).toLocaleDateString()} • {activity.category} •{' '}
+                                  {activity.hours} hours
+                                </Typography>
+                                {activity.notes && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                    {activity.notes}
+                                  </Typography>
+                                )}
+                              </Box>
+                            ))}
+                          </Box>
+                        );
+                      })()}
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Box
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        p: 2,
+                        bgcolor: alpha(theme.palette.secondary.main, 0.03),
+                      }}
+                    >
+                      <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700 }}>
+                        File Attachments
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Upload PDFs or images related to this gap plan (e.g., policies, photos of equipment — not
+                        patients). {PHI_UPLOAD_HINT}
+                      </Typography>
+
+                      <Box sx={{ mb: 2 }}>
+                        <input
+                          accept=".pdf,.jpg,.jpeg,.png,.gif"
+                          style={{ display: 'none' }}
+                          id="gap-plan-edit-file-upload"
+                          type="file"
+                          onChange={handleGapPlanEditFileUpload}
+                          multiple
+                        />
+                        <label htmlFor="gap-plan-edit-file-upload">
+                          <Button variant="outlined" component="span" startIcon={<UploadIcon />}>
+                            Upload Files
+                          </Button>
+                        </label>
                       </Box>
-                    ))}
-                  </Box>
-                )}
-              </Box>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenEditDialog(false)}>Cancel</Button>
-          <Button onClick={handleEditSubmit} variant="contained">Update Gap Plan</Button>
-        </DialogActions>
-      </Dialog>
-    </Container>
+
+                      {editFormData.attachments.length > 0 && (
+                        <Box>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Current Attachments:
+                          </Typography>
+                          {editFormData.attachments.map((attachment, index) => (
+                            <Box
+                              key={attachment.id}
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                mb: 1,
+                                p: 1,
+                                bgcolor: 'background.paper',
+                                borderRadius: 1.5,
+                                border: '1px solid',
+                                borderColor: 'divider',
+                              }}
+                            >
+                              <Box sx={{ mr: 2 }}>
+                                {attachment.fileType === 'pdf' ? (
+                                  <PictureAsPdfIcon color="error" />
+                                ) : (
+                                  <ImageIcon color="primary" />
+                                )}
+                              </Box>
+                              <Box sx={{ flex: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      cursor: 'pointer',
+                                      color: 'secondary.dark',
+                                      '&:hover': { textDecoration: 'underline' },
+                                    }}
+                                    onClick={() => handleViewAttachment(attachment)}
+                                  >
+                                    {attachment.fileName}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                    (click to view)
+                                  </Typography>
+                                </Box>
+                                <Typography variant="caption" color="text.secondary">
+                                  {(attachment.fileSize / 1024).toFixed(1)} KB •{' '}
+                                  {(() => {
+                                    try {
+                                      return attachment.uploadedAt instanceof Date
+                                        ? attachment.uploadedAt.toLocaleDateString()
+                                        : new Date(attachment.uploadedAt).toLocaleDateString();
+                                    } catch (error) {
+                                      return 'Invalid date';
+                                    }
+                                  })()}
+                                </Typography>
+                              </Box>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleRemoveEditAttachment(index)}
+                                color="error"
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+                  </Grid>
+                </Grid>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setOpenEditDialog(false)}>Cancel</Button>
+                <Button onClick={handleEditSubmit} variant="contained" color="secondary">
+                  Update Gap Plan
+                </Button>
+              </DialogActions>
+            </Dialog>
+          </Stack>
+        </Container>
+      </Box>
     );
   } catch (error) {
     console.error('Error rendering GapPlanPage:', error);
     setRenderError(true);
     return (
-      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-        <Box sx={{ textAlign: 'center', py: 8 }}>
-          <Typography variant="h4" color="error" gutterBottom>
-            Something went wrong
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-            There was an error rendering the gap plan page. Please try refreshing.
-          </Typography>
-          <Button 
-            variant="contained" 
-            onClick={() => window.location.reload()}
-            sx={{ mr: 2 }}
-          >
-            Refresh Page
-          </Button>
-          <Button 
-            variant="outlined" 
-            onClick={() => setRenderError(false)}
-          >
-            Try Again
-          </Button>
-        </Box>
-      </Container>
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 4, md: 5 } }}>
+        <Container
+          maxWidth={false}
+          sx={{ py: { xs: 2, md: 3 }, px: { xs: 2, sm: 3, md: 4, lg: 5 }, width: '100%' }}
+        >
+          <Paper elevation={0} sx={{ ...sectionShellSx, px: { xs: 2, md: 2.5 }, py: 6, textAlign: 'center' }}>
+            <Typography variant="h5" color="error" gutterBottom sx={{ fontWeight: 700 }}>
+              Something went wrong
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              There was an error rendering the gap plan page. Please try refreshing.
+            </Typography>
+            <Stack direction="row" spacing={1.5} justifyContent="center" flexWrap="wrap" useFlexGap>
+              <Button variant="contained" color="secondary" onClick={() => window.location.reload()}>
+                Refresh Page
+              </Button>
+              <Button variant="outlined" onClick={() => setRenderError(false)}>
+                Try Again
+              </Button>
+            </Stack>
+          </Paper>
+        </Container>
+      </Box>
     );
   }
 };
 
 export default GapPlanPage;
-

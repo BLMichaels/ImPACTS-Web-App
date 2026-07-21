@@ -40,34 +40,38 @@ const CohortCard: React.FC<CohortCardProps> = ({ cohort, onClick }) => {
   };
 
   return (
-    <Card 
-      sx={{ 
+    <Card
+      elevation={0}
+      sx={{
         height: '100%',
-        transition: 'transform 0.2s, box-shadow 0.2s',
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: hasUnread ? 'secondary.main' : 'divider',
+        bgcolor: 'background.paper',
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
         '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: 4
+          borderColor: 'secondary.light',
+          boxShadow: '0 2px 10px rgba(61, 85, 96, 0.08)',
         },
-        border: hasUnread ? '2px solid' : '1px solid',
-        borderColor: hasUnread ? 'primary.main' : 'divider'
       }}
     >
       <CardActionArea onClick={onClick} sx={{ height: '100%' }}>
-        <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: { xs: 2, md: 2.25 } }}>
           {/* Header with avatar and name */}
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
-            <Avatar 
-              sx={{ 
-                bgcolor: 'primary.main', 
-                width: 48, 
-                height: 48,
-                fontSize: '1.25rem'
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.75, mb: 1.75 }}>
+            <Avatar
+              sx={{
+                bgcolor: 'secondary.main',
+                width: 44,
+                height: 44,
+                fontSize: '1.1rem',
+                fontWeight: 700,
               }}
             >
               {cohort.name.charAt(0).toUpperCase()}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="h6" noWrap sx={{ fontWeight: 600 }}>
+              <Typography variant="subtitle1" noWrap sx={{ fontWeight: 700, letterSpacing: -0.01 }}>
                 {cohort.name}
               </Typography>
               {cohort.program_id && (
