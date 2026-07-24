@@ -20,7 +20,7 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
-import { IDLE_TIMEOUT_MINUTES } from '../utils/sessionPolicy';
+import { IDLE_TIMEOUT_MINUTES, ABSOLUTE_SESSION_HOURS } from '../utils/sessionPolicy';
 import AuthMarketingShell, { AUTH_SLATE, AUTH_SLATE_DARK } from '../components/AuthMarketingShell';
 
 const fieldSx = {
@@ -43,8 +43,8 @@ const SECURITY_POINTS = [
   },
   {
     icon: <TimerIcon sx={{ fontSize: 18 }} />,
-    title: `Auto sign-out after ${IDLE_TIMEOUT_MINUTES} minutes`,
-    text: 'Inactive sessions end automatically to reduce risk on shared workstations.',
+    title: `Auto sign-out after ${IDLE_TIMEOUT_MINUTES} minutes idle`,
+    text: `Inactive sessions end automatically. Sessions also end after ${ABSOLUTE_SESSION_HOURS} hours even if you stay active — reducing risk on shared workstations.`,
   },
   {
     icon: <ScreeningIcon sx={{ fontSize: 18 }} />,

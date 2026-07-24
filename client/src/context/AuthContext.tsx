@@ -9,7 +9,7 @@ import {
   validateNewPassword,
 } from '../utils/passwordPolicy';
 import { setUserData } from '../utils/userData';
-import { clearSessionActivity, markSessionActive } from '../utils/sessionActivity';
+import { clearSessionActivity, beginSessionClock, ensureSessionClock, getLastActivityAt, getSessionExpiryReason, markSessionActive } from '../utils/sessionActivity';
 
 export type LoginResult = 'complete' | 'mfa_required';
 
@@ -64,7 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (data.user) setCurrentUser(extendUser(data.user));
     if (data.session) setSession(data.session);
-    markSessionActive();
+    beginSessionClock();
     // Legacy / weak passwords: flag before navigation so ForcePasswordUpdateDialog opens.
     // If the password now meets policy, clear any leftover flag from a prior stricter minimum.
     const weakReasons = (data as { weakPassword?: { reasons?: string[] } })?.weakPassword?.reasons;
@@ -145,12 +145,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+    const rejectExpiredSession = async (reason: 'idle' | 'absolute') => {
+      void logSecurityEvent('idle_timeout_logout', {
+        metadata: { reason, source: 'session_restore' },
+      });
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        /* continue clearing local state */
+      }
+      clearSessionActivity();
+      setSession(null);
+      setCurrentUser(null);
+      setLoading(false);
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.replace('/login?timeout=1');
+      }
+    };
+
+    // Get initial session — enforce idle/absolute policy before accepting tokens
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         console.error('[Auth] getSession failed:', error.message);
         setAuthLifecycleNote(`session_error:${error.message}`);
       }
+
+      if (session) {
+        const reason = getSessionExpiryReason(Date.now(), { requireActivityStamp: true });
+        if (reason) {
+          await rejectExpiredSession(reason);
+          return;
+        }
+        ensureSessionClock();
+      }
+
       setSession(session);
       setCurrentUser(extendUser(session?.user ?? null));
       setLoading(false);
@@ -162,13 +190,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'TOKEN_REFRESHED') {
         setAuthLifecycleNote(null);
+        // Token refresh is not human activity — do not extend idle clock.
       } else if (event === 'SIGNED_OUT') {
         setAuthLifecycleNote(null);
         clearSessionActivity();
       } else if (event === 'SIGNED_IN') {
-        markSessionActive();
+        // Fresh login often has no activity stamps yet (login() also calls
+        // beginSessionClock). Only reject when stamps exist and are expired —
+        // never treat "missing stamps" as idle here or login races sign-out.
+        const last = getLastActivityAt();
+        if (last > 0) {
+          const reason = getSessionExpiryReason(Date.now());
+          if (reason) {
+            void rejectExpiredSession(reason);
+            return;
+          }
+          ensureSessionClock();
+        } else {
+          beginSessionClock();
+        }
+        setAuthLifecycleNote(null);
       } else if (event === 'USER_UPDATED') {
         setAuthLifecycleNote(null);
+      } else if (event === 'INITIAL_SESSION') {
+        if (session) {
+          const reason = getSessionExpiryReason(Date.now(), { requireActivityStamp: true });
+          if (reason) {
+            void rejectExpiredSession(reason);
+            return;
+          }
+          ensureSessionClock();
+        }
       }
       setSession(session);
       setCurrentUser(extendUser(session?.user ?? null));
@@ -177,12 +229,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const onVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
-      void supabase.auth.getSession().then(({ data: { session: s }, error }) => {
-        if (error) console.warn('[Auth] refresh on visibility failed:', error.message);
-        else if (s) {
-          setSession(s);
-          setCurrentUser(extendUser(s.user));
+      void supabase.auth.getSession().then(async ({ data: { session: s }, error }) => {
+        if (error) {
+          console.warn('[Auth] refresh on visibility failed:', error.message);
+          return;
         }
+        if (!s) {
+          setSession(null);
+          setCurrentUser(null);
+          return;
+        }
+        const reason = getSessionExpiryReason(Date.now(), { requireActivityStamp: true });
+        if (reason) {
+          await rejectExpiredSession(reason);
+          return;
+        }
+        setSession(s);
+        setCurrentUser(extendUser(s.user));
       });
     };
     document.addEventListener('visibilitychange', onVisibilityChange);

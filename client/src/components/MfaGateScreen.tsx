@@ -14,7 +14,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { hasVerifiedTotpEnrollment } from '../utils/mfa';
-import { IDLE_TIMEOUT_MINUTES } from '../utils/sessionPolicy';
+import { IDLE_TIMEOUT_MINUTES, ABSOLUTE_SESSION_HOURS } from '../utils/sessionPolicy';
 import AuthMarketingShell, { AUTH_SLATE, AUTH_SLATE_DARK } from './AuthMarketingShell';
 import MfaEnrollmentForm, { MFA_ENROLLMENT_FORM_ID } from './MfaEnrollmentForm';
 import MfaChallengeForm from './MfaChallengeForm';
@@ -150,7 +150,7 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
                   {
                     icon: <TimerIcon sx={{ fontSize: 18 }} />,
                     title: `Idle sign-out (${IDLE_TIMEOUT_MINUTES} min)`,
-                    text: 'Inactive sessions end automatically on shared workstations.',
+                    text: `Inactive sessions end automatically. Sessions also end after ${ABSOLUTE_SESSION_HOURS} hours max.`,
                   },
                   {
                     icon: <ShieldIcon sx={{ fontSize: 18 }} />,
