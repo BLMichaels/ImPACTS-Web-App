@@ -606,7 +606,7 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
               const active = isNavItemActive(item, location.pathname);
               const hasVisibleChildren = Boolean(item.children?.length);
               // PECC grouping: Snapshot | Activities + Gap Closures | Cohorts
-              const peccGroupGap = isSmallDesktop ? 5 : 9;
+              const peccGroupGap = isSmallDesktop ? 6.5 : 11;
               const peccMarginLeft =
                 userRole === UserRole.PECC && (item.path === '/activities' || item.path === '/cohorts')
                   ? peccGroupGap
