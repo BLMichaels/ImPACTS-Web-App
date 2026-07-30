@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Box,
+  Stack,
   Typography,
   Grid,
   Paper,
@@ -48,6 +49,13 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
+import {
+  AdminPageShell,
+  AdminHero,
+  AdminSection,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
+import { alpha } from '@mui/material/styles';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { getHospitalData, getUserData, resolveHospitalUuid, setUserData } from '../../utils/userData';
@@ -1167,37 +1175,47 @@ const MentorHospitalContactsPage: React.FC = () => {
   }, [hospitalContacts, contactSearch, contactSortBy, contactSortOrder]);
 
   return (
-    <Box sx={{ py: 3 }}>
-      <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-        <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in hospital or contact notes. {PHI_SCAN_HINT}
+    <AdminPageShell>
+      <Alert
+        severity="info"
+        variant="outlined"
+        icon={false}
+        sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}
+      >
+        <strong>No PHI.</strong> Do not include Protected Health Information or real patient data in hospital or
+        contact notes. {PHI_SCAN_HINT}
       </Alert>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-        <Typography variant="h4">Hospital Contacts</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddContact}>
-          Add Hospital or Contact
-        </Button>
-      </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Manage your hospital list and PECC contacts from one popup flow.
-      </Typography>
 
-      {/* List View - Table */}
-      <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+      <AdminHero
+        overline="Network"
+        title="Hospital Contacts"
+        description="Manage your hospital list and PECC contacts from one place. Open a row for site details, contacts, and notes."
+        actions={
+          <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={handleAddContact}>
+            Add hospital or contact
+          </Button>
+        }
+      />
+
+      <AdminSection
+        overline="Directory"
+        title="Hospitals"
+        description={`${filteredAndSortedHospitals.length} of ${displayedHospitals.length} hospitals${
+          displayedHospitals.length !== hospitals.length ? ` (${hospitals.length} total)` : ''
+        }`}
+        actions={
           <FormControlLabel
             control={
               <Checkbox
                 checked={showAllHospitals}
                 onChange={(e) => setShowAllHospitals(e.target.checked)}
+                size="small"
               />
             }
-            label="Show all hospitals (including contacts only)"
+            label="Show all hospitals"
           />
-          <Typography variant="body2" color="textSecondary">
-            {filteredAndSortedHospitals.length} of {displayedHospitals.length} hospitals
-            {displayedHospitals.length !== hospitals.length && ` (${hospitals.length} total)`}
-          </Typography>
-        </Box>
+        }
+      >
         <Grid container spacing={2} sx={{ mb: 2 }}>
           <Grid item xs={12} sm={6} md={3}>
             <TextField
@@ -1211,7 +1229,7 @@ const MentorHospitalContactsPage: React.FC = () => {
                   <InputAdornment position="start">
                     <SearchIcon fontSize="small" color="action" />
                   </InputAdornment>
-                )
+                ),
               }}
             />
           </Grid>
@@ -1224,8 +1242,10 @@ const MentorHospitalContactsPage: React.FC = () => {
                 onChange={(e) => setHospitalFilterState(e.target.value)}
               >
                 <MenuItem value="">All</MenuItem>
-                {hospitalStateOptions.map(st => (
-                  <MenuItem key={st} value={st}>{st}</MenuItem>
+                {hospitalStateOptions.map((st) => (
+                  <MenuItem key={st} value={st}>
+                    {st}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -1239,8 +1259,10 @@ const MentorHospitalContactsPage: React.FC = () => {
                 onChange={(e) => setHospitalFilterTrauma(e.target.value)}
               >
                 <MenuItem value="">All</MenuItem>
-                {TRAUMA_LEVELS.map(t => (
-                  <MenuItem key={t} value={t}>{t}</MenuItem>
+                {TRAUMA_LEVELS.map((t) => (
+                  <MenuItem key={t} value={t}>
+                    {t}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -1265,119 +1287,153 @@ const MentorHospitalContactsPage: React.FC = () => {
           <Grid item xs={6} sm={2} md={1}>
             <IconButton
               size="small"
-              onClick={() => setHospitalSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-              title={hospitalSortOrder === 'asc' ? 'Ascending (click for descending)' : 'Descending (click for ascending)'}
-              aria-label={hospitalSortOrder === 'asc' ? 'Sort hospitals ascending, click to sort descending' : 'Sort hospitals descending, click to sort ascending'}
+              onClick={() => setHospitalSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+              title={
+                hospitalSortOrder === 'asc'
+                  ? 'Ascending (click for descending)'
+                  : 'Descending (click for ascending)'
+              }
+              aria-label={
+                hospitalSortOrder === 'asc'
+                  ? 'Sort hospitals ascending, click to sort descending'
+                  : 'Sort hospitals descending, click to sort ascending'
+              }
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1.5,
+                color: 'secondary.dark',
+              }}
             >
               {hospitalSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
             </IconButton>
           </Grid>
         </Grid>
-        <Paper>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell><strong>Hospital Name</strong></TableCell>
-                  <TableCell><strong>Location</strong></TableCell>
-                  <TableCell><strong>Trauma Level</strong></TableCell>
-                  <TableCell><strong>Status</strong></TableCell>
-                  <TableCell><strong>Contacts</strong></TableCell>
-                  <TableCell><strong>Primary Contact</strong></TableCell>
-                  <TableCell><strong>Actions</strong></TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredAndSortedHospitals.map(hospital => {
-                  const hContacts = getDisplayedContactsForHospital(hospital);
-                  const primaryContact = hContacts.find(c => c.isPrimaryContact);
-                  
-                  return (
-                    <TableRow 
-                      key={hospital.id}
-                      hover
-                      sx={{ cursor: 'pointer' }}
-                      onClick={() => handleHospitalRowClick(hospital)}
-                    >
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <HospitalIcon color="primary" />
-                          <Typography variant="body2" fontWeight={500}>
-                            {normalizeHospitalOrOrgName(hospital.name)}
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="textSecondary">
-                          {hospital.city}, {hospital.state}
+      </AdminSection>
+
+      <Paper elevation={0} sx={adminSectionShellSx}>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow
+                sx={{
+                  '& .MuiTableCell-head': {
+                    bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                  },
+                }}
+              >
+                <TableCell>Hospital Name</TableCell>
+                <TableCell>Location</TableCell>
+                <TableCell>Trauma Level</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Contacts</TableCell>
+                <TableCell>Primary Contact</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredAndSortedHospitals.map((hospital) => {
+                const hContacts = getDisplayedContactsForHospital(hospital);
+                const primaryContact = hContacts.find((c) => c.isPrimaryContact);
+
+                return (
+                  <TableRow
+                    key={hospital.id}
+                    hover
+                    sx={{
+                      cursor: 'pointer',
+                      '&:hover': { bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) },
+                    }}
+                    onClick={() => handleHospitalRowClick(hospital)}
+                  >
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <HospitalIcon sx={{ color: 'secondary.dark', fontSize: 20 }} />
+                        <Typography variant="body2" fontWeight={600}>
+                          {normalizeHospitalOrOrgName(hospital.name)}
                         </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={hospital.traumaLevel} size="small" />
-                      </TableCell>
-                      <TableCell>
-                        {hospital.isWorkingWith ? (
-                          <Chip label="Working With" size="small" color="success" />
-                        ) : (
-                          <Chip label="Contact Only" size="small" color="default" />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">{hContacts.length}</Typography>
-                      </TableCell>
-                      <TableCell>
-                        {primaryContact ? (
-                          <Typography variant="body2">
-                            {primaryContact.firstName} {primaryContact.lastName}
-                          </Typography>
-                        ) : (
-                          <Typography variant="body2" color="textSecondary">-</Typography>
-                        )}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <IconButton size="small" onClick={() => openAddContactForHospital(hospital)} aria-label="Add contact">
-                            <PersonAddIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton size="small" onClick={() => handleEditHospital(hospital)} aria-label="Edit hospital">
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton 
-                            size="small" 
-                            onClick={() => {
-                              setSelectedHospital(hospital);
-                              setInviteDialogOpen(true);
-                            }}
-                            aria-label="Invite PECC"
-                          >
-                            <SendIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {filteredAndSortedHospitals.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                      <Typography color="textSecondary" gutterBottom>
-                        {displayedHospitals.length === 0
-                          ? 'No hospitals yet. Add hospitals from the CRM list to track contacts, log activities, and monitor Site Milestones.'
-                          : 'No hospitals match the current filters. Try changing search or filters.'}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {hospital.city}, {hospital.state}
                       </Typography>
-                      {displayedHospitals.length === 0 && (
-                        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddHospital} sx={{ mt: 2 }}>
-                          Add Hospital
-                        </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={hospital.traumaLevel} size="small" />
+                    </TableCell>
+                    <TableCell>
+                      {hospital.isWorkingWith ? (
+                        <Chip label="Working With" size="small" color="success" />
+                      ) : (
+                        <Chip label="Contact Only" size="small" color="default" />
                       )}
                     </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{hContacts.length}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      {primaryContact ? (
+                        <Typography variant="body2">
+                          {primaryContact.firstName} {primaryContact.lastName}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          -
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <IconButton size="small" onClick={() => openAddContactForHospital(hospital)} aria-label="Add contact">
+                          <PersonAddIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleEditHospital(hospital)} aria-label="Edit hospital">
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setSelectedHospital(hospital);
+                            setInviteDialogOpen(true);
+                          }}
+                          aria-label="Invite PECC"
+                        >
+                          <SendIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      </Box>
+                );
+              })}
+              {filteredAndSortedHospitals.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary" gutterBottom>
+                      {displayedHospitals.length === 0
+                        ? 'No hospitals yet. Add hospitals from the CRM list to track contacts, log activities, and monitor Site Milestones.'
+                        : 'No hospitals match the current filters. Try changing search or filters.'}
+                    </Typography>
+                    {displayedHospitals.length === 0 && (
+                      <Button
+                        variant="contained"
+                        color="secondary"
+                        startIcon={<AddIcon />}
+                        onClick={handleAddHospital}
+                        sx={{ mt: 2 }}
+                      >
+                        Add Hospital
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       {/* Hospital Details Dialog */}
       <Dialog open={hospitalDetailsDialogOpen} onClose={closeHospitalDetailsDialog} maxWidth="md" fullWidth>
@@ -2140,7 +2196,7 @@ const MentorHospitalContactsPage: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </AdminPageShell>
   );
 };
 

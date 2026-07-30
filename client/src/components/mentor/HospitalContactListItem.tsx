@@ -9,6 +9,7 @@ import {
   ListItemAvatar,
   ListItemSecondaryAction,
   Typography,
+  alpha,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -107,9 +108,9 @@ export function HospitalContactListItem({
           ...(autoAssigned
             ? {
                 borderLeft: '3px solid',
-                borderColor: 'primary.main',
+                borderColor: 'secondary.main',
                 pl: 1.5,
-                bgcolor: 'action.hover',
+                bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
                 borderRadius: 1,
                 mb: 0.5,
               }
@@ -121,8 +122,16 @@ export function HospitalContactListItem({
             sx={{
               width: 40,
               height: 40,
-              bgcolor: contact.isPrimaryContact ? 'primary.main' : autoAssigned ? 'primary.light' : 'grey.400',
-              color: contact.isPrimaryContact || autoAssigned ? 'primary.contrastText' : 'grey.800',
+              bgcolor: contact.isPrimaryContact
+                ? 'secondary.main'
+                : autoAssigned
+                  ? (t) => alpha(t.palette.secondary.main, 0.2)
+                  : 'grey.400',
+              color: contact.isPrimaryContact
+                ? 'secondary.contrastText'
+                : autoAssigned
+                  ? 'secondary.dark'
+                  : 'grey.800',
             }}
           >
             <PersonIcon fontSize="small" />
@@ -135,7 +144,7 @@ export function HospitalContactListItem({
               {fullName}
             </Typography>
             {contact.isPrimaryContact && (
-              <Chip label="Primary" size="small" color="primary" variant="outlined" sx={{ height: 22 }} />
+              <Chip label="Primary" size="small" color="secondary" variant="outlined" sx={{ height: 22 }} />
             )}
             {!autoAssigned && onToggleWorkingWith && (
               <Chip

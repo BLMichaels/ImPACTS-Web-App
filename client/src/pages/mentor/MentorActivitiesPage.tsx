@@ -29,8 +29,16 @@ import {
   FormLabel,
   OutlinedInput,
   ListItemText,
-  SelectChangeEvent
+  SelectChangeEvent,
+  Stack,
+  alpha
 } from '@mui/material';
+import {
+  AdminPageShell,
+  AdminHero,
+  AdminSection,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -484,105 +492,137 @@ const MentorActivitiesPage: React.FC = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box sx={{ py: 3 }}>
-        <Alert severity="info" sx={{ mb: 2 }} icon={false}>
-          <strong>No PHI:</strong> Do not include any Protected Health Information (PHI) or real patient data in activities, descriptions, or notes. {PHI_SCAN_HINT}
+      <AdminPageShell>
+        <Alert
+          severity="info"
+          variant="outlined"
+          icon={false}
+          sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}
+        >
+          <strong>No PHI.</strong> Do not include Protected Health Information or real patient data in activities,
+          descriptions, or notes. {PHI_SCAN_HINT}
         </Alert>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Log PRISM activities and simulations by hospital. Link activities to hospitals from the <strong>Hospitals</strong> page so they appear in Site Milestones and your Snapshot.
-        </Typography>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4">My Activities</Typography>
-          <Box>
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              onClick={handleExportCSV}
-              sx={{ mr: 2 }}
-            >
-              Export CSV
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleAddNew}
-            >
-              Add Activity
-            </Button>
-          </Box>
-        </Box>
 
-        {/* Empty state */}
+        <AdminHero
+          overline="Time tracking"
+          title="My Activities"
+          description="Log PRISM activities and simulations by hospital. Link activities to hospitals so they appear in Site Milestones and Snapshot."
+          actions={
+            <>
+              <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportCSV}>
+                Export CSV
+              </Button>
+              <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={handleAddNew}>
+                Add activity
+              </Button>
+            </>
+          }
+        />
+
         {activities.length === 0 && (
-          <Paper sx={{ p: 4, mb: 3, textAlign: 'center' }}>
-            <Typography variant="h6" gutterBottom>No activities yet</Typography>
-            <Typography color="text.secondary" sx={{ mb: 2 }}>
-              Add hospitals from the Hospitals page, then log your first activity and associate it with a hospital so it counts toward Site Milestones and reporting.
+          <Paper elevation={0} sx={{ ...adminSectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
+            <Typography variant="h6" color="text.secondary" sx={{ mb: 0.75, fontWeight: 600 }}>
+              No activities yet
             </Typography>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddNew} sx={{ mr: 1 }}>
-              Add your first activity
-            </Button>
-            <Button variant="outlined" onClick={() => navigate(mentorRoutes.hospitals)}>
-              Go to Hospitals
-            </Button>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 520, mx: 'auto' }}>
+              Add hospitals from the Hospitals page, then log your first activity and associate it with a hospital so
+              it counts toward Site Milestones and reporting.
+            </Typography>
+            <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" useFlexGap>
+              <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={handleAddNew}>
+                Add your first activity
+              </Button>
+              <Button variant="outlined" onClick={() => navigate(mentorRoutes.hospitals)}>
+                Go to Hospitals
+              </Button>
+            </Stack>
           </Paper>
         )}
 
-        {/* Summary Statistics */}
         {activities.length > 0 && (
-          <Paper sx={{ mb: 3, p: 3 }}>
-            <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>Summary</Typography>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'grey.50', borderRadius: 2, minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>This Month</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                    {stats.thisMonth.count}
+          <Paper elevation={0} sx={adminSectionShellSx}>
+            <Box
+              sx={{
+                px: { xs: 2, md: 2.5 },
+                py: 1.5,
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+              }}
+            >
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+              >
+                At a glance
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                {activities.length} activit{activities.length === 1 ? 'y' : 'ies'} logged
+              </Typography>
+            </Box>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
+                '& > *': {
+                  borderRight: { xs: 'none', sm: '1px solid' },
+                  borderBottom: { xs: '1px solid', sm: 'none' },
+                  borderColor: 'divider',
+                },
+                '& > *:last-child': { borderRight: 'none', borderBottom: 'none' },
+              }}
+            >
+              {[
+                {
+                  label: 'This month',
+                  count: stats.thisMonth.count,
+                  hours: stats.thisMonth.hours,
+                },
+                {
+                  label: 'This year',
+                  count: stats.thisYear.count,
+                  hours: stats.thisYear.hours,
+                },
+                {
+                  label: 'All time',
+                  count: stats.allTime.count,
+                  hours: stats.allTime.hours,
+                },
+              ].map((item) => (
+                <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75, textAlign: 'center' }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 600, letterSpacing: 0.04, textTransform: 'uppercase', fontSize: '0.65rem' }}
+                  >
+                    {item.label}
                   </Typography>
-                  <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-                    {stats.thisMonth.count === 1 ? 'activity' : 'activities'}
+                  <Typography
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: '1.35rem',
+                      letterSpacing: -0.02,
+                      color: 'secondary.dark',
+                      fontVariantNumeric: 'tabular-nums',
+                      lineHeight: 1.15,
+                      mt: 0.5,
+                    }}
+                  >
+                    {item.count}
                   </Typography>
-                  <Typography variant="h6" color="primary">
-                    {stats.thisMonth.hours.toFixed(2)} hours
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
+                    {item.count === 1 ? 'activity' : 'activities'} · {item.hours.toFixed(2)}h
                   </Typography>
                 </Box>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'grey.50', borderRadius: 2, minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>This Year</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                    {stats.thisYear.count}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-                    {stats.thisYear.count === 1 ? 'activity' : 'activities'}
-                  </Typography>
-                  <Typography variant="h6" color="primary">
-                    {stats.thisYear.hours.toFixed(2)} hours
-                  </Typography>
-                </Box>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'grey.50', borderRadius: 2, minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>All Time</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                    {stats.allTime.count}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-                    {stats.allTime.count === 1 ? 'activity' : 'activities'}
-                  </Typography>
-                  <Typography variant="h6" color="primary">
-                    {stats.allTime.hours.toFixed(2)} hours
-                  </Typography>
-                </Box>
-              </Grid>
-            </Grid>
+              ))}
+            </Box>
           </Paper>
         )}
 
-        {/* Filters - Always Visible */}
-        <Paper sx={{ mb: 3, p: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">Filters</Typography>
+        <AdminSection
+          overline="Narrow results"
+          title="Filters"
+          actions={
             <Button
               size="small"
               variant="outlined"
@@ -594,9 +634,10 @@ const MentorActivitiesPage: React.FC = () => {
                 setDateFilter({ start: null, end: null });
               }}
             >
-              Clear All
+              Clear all
             </Button>
-          </Box>
+          }
+        >
           <Grid container spacing={2}>
             <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
@@ -606,7 +647,7 @@ const MentorActivitiesPage: React.FC = () => {
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value as string[])}
                   input={<OutlinedInput label="Category" />}
-                  renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
+                  renderValue={(selected) => (selected.length > 0 ? `${selected.length} selected` : 'All')}
                 >
                   {categories.map((cat) => (
                     <MenuItem key={cat.value} value={cat.value}>
@@ -625,7 +666,7 @@ const MentorActivitiesPage: React.FC = () => {
                   value={hospitalFilter}
                   onChange={(e) => setHospitalFilter(e.target.value as string[])}
                   input={<OutlinedInput label="Hospital" />}
-                  renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
+                  renderValue={(selected) => (selected.length > 0 ? `${selected.length} selected` : 'All')}
                 >
                   {hospitals.map((hospital) => (
                     <MenuItem key={hospital.id} value={hospital.id}>
@@ -644,7 +685,7 @@ const MentorActivitiesPage: React.FC = () => {
                   value={readinessDomainFilter}
                   onChange={(e) => setReadinessDomainFilter(e.target.value as string[])}
                   input={<OutlinedInput label="Readiness Domain" />}
-                  renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
+                  renderValue={(selected) => (selected.length > 0 ? `${selected.length} selected` : 'All')}
                 >
                   {READINESS_DOMAINS.map((domain) => (
                     <MenuItem key={domain} value={domain}>
@@ -663,7 +704,7 @@ const MentorActivitiesPage: React.FC = () => {
                   value={simulationTypeFilter}
                   onChange={(e) => setSimulationTypeFilter(e.target.value as string[])}
                   input={<OutlinedInput label="Simulation Type" />}
-                  renderValue={(selected) => selected.length > 0 ? `${selected.length} selected` : 'All'}
+                  renderValue={(selected) => (selected.length > 0 ? `${selected.length} selected` : 'All')}
                 >
                   {SIMULATION_CASE_OPTIONS.map((simCase) => (
                     <MenuItem key={simCase} value={simCase}>
@@ -678,7 +719,7 @@ const MentorActivitiesPage: React.FC = () => {
               <DatePicker
                 label="Start Date"
                 value={dateFilter.start}
-                onChange={(date) => setDateFilter(prev => ({ ...prev, start: date }))}
+                onChange={(date) => setDateFilter((prev) => ({ ...prev, start: date }))}
                 slotProps={{ textField: { size: 'small', fullWidth: true } }}
               />
             </Grid>
@@ -686,128 +727,145 @@ const MentorActivitiesPage: React.FC = () => {
               <DatePicker
                 label="End Date"
                 value={dateFilter.end}
-                onChange={(date) => setDateFilter(prev => ({ ...prev, end: date }))}
+                onChange={(date) => setDateFilter((prev) => ({ ...prev, end: date }))}
                 slotProps={{ textField: { size: 'small', fullWidth: true } }}
               />
             </Grid>
           </Grid>
-        </Paper>
+        </AdminSection>
 
-        {/* Activities Table */}
-        <TableContainer component={Paper} sx={{ maxHeight: 600, overflowX: 'auto', overflowY: 'auto' }}>
-          <Table sx={{ minWidth: 1000 }}>
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ minWidth: 120 }}>
-                  <TableSortLabel
-                    active={sortField === 'date'}
-                    direction={sortField === 'date' ? sortOrder : 'asc'}
-                    onClick={() => handleSort('date')}
-                  >
-                    Date
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ minWidth: 200 }}>
-                  <TableSortLabel
-                    active={sortField === 'activityName'}
-                    direction={sortField === 'activityName' ? sortOrder : 'asc'}
-                    onClick={() => handleSort('activityName')}
-                  >
-                    Activity
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ minWidth: 100 }}>
-                  <TableSortLabel
-                    active={sortField === 'category'}
-                    direction={sortField === 'category' ? sortOrder : 'asc'}
-                    onClick={() => handleSort('category')}
-                  >
-                    Category
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ minWidth: 80 }}>Hours</TableCell>
-                <TableCell sx={{ minWidth: 150 }}>Hospitals</TableCell>
-                <TableCell sx={{ minWidth: 250 }}>Description</TableCell>
-                <TableCell sx={{ minWidth: 200 }}>Simulation</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredActivities.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                    <Typography color="textSecondary" gutterBottom>
-                      {activities.length === 0
-                        ? 'No activities recorded yet. Click "Add Activity" to get started.'
-                        : 'No activities match your current filters.'}
-                    </Typography>
-                    {activities.length > 0 && (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => {
-                          setCategoryFilter([]);
-                          setHospitalFilter([]);
-                          setReadinessDomainFilter([]);
-                          setSimulationTypeFilter([]);
-                          setDateFilter({ start: null, end: null });
-                        }}
-                        sx={{ mt: 1 }}
-                      >
-                        Clear filters
-                      </Button>
-                    )}
+        <AdminSection
+          overline="Log"
+          title="Activities"
+          description={`${filteredActivities.length} shown`}
+          disableBodyPadding
+        >
+          <TableContainer sx={{ maxHeight: 600, overflowX: 'auto', overflowY: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 1000 }}>
+              <TableHead>
+                <TableRow
+                  sx={{
+                    '& .MuiTableCell-head': {
+                      bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                    },
+                  }}
+                >
+                  <TableCell sx={{ minWidth: 120 }}>
+                    <TableSortLabel
+                      active={sortField === 'date'}
+                      direction={sortField === 'date' ? sortOrder : 'asc'}
+                      onClick={() => handleSort('date')}
+                    >
+                      Date
+                    </TableSortLabel>
                   </TableCell>
+                  <TableCell sx={{ minWidth: 200 }}>
+                    <TableSortLabel
+                      active={sortField === 'activityName'}
+                      direction={sortField === 'activityName' ? sortOrder : 'asc'}
+                      onClick={() => handleSort('activityName')}
+                    >
+                      Activity
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell sx={{ minWidth: 100 }}>
+                    <TableSortLabel
+                      active={sortField === 'category'}
+                      direction={sortField === 'category' ? sortOrder : 'asc'}
+                      onClick={() => handleSort('category')}
+                    >
+                      Category
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell sx={{ minWidth: 80 }}>Hours</TableCell>
+                  <TableCell sx={{ minWidth: 150 }}>Hospitals</TableCell>
+                  <TableCell sx={{ minWidth: 250 }}>Description</TableCell>
+                  <TableCell sx={{ minWidth: 200 }}>Simulation</TableCell>
                 </TableRow>
-              ) : (
-                filteredActivities.map((activity) => (
-                  <TableRow 
-                    key={activity.id}
-                    onClick={() => handleRowClick(activity)}
-                    sx={{ 
-                      cursor: 'pointer',
-                      '&:hover': { 
-                        backgroundColor: 'action.hover' 
-                      }
-                    }}
-                  >
-                    <TableCell>{format(parseISO(activity.date), 'MMM d, yyyy')}</TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                        {activity.activityName}
+              </TableHead>
+              <TableBody>
+                {filteredActivities.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary" gutterBottom>
+                        {activities.length === 0
+                          ? 'No activities recorded yet. Click "Add activity" to get started.'
+                          : 'No activities match your current filters.'}
                       </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={getCategoryLabel(activity.category)}
-                        size="small"
-                        color={getCategoryChipColor(activity.category)}
-                      />
-                    </TableCell>
-                    <TableCell>{activity.hours}</TableCell>
-                    <TableCell>
-                      {activity.hospitalIds.length > 0 
-                        ? getHospitalNames(activity.hospitalIds)
-                        : '-'
-                      }
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="textSecondary" sx={{ whiteSpace: 'pre-wrap', maxWidth: 250 }}>
-                        {activity.description || '-'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {activity.simulationCase ? (
-                        <Typography variant="body2">{activity.simulationCase}</Typography>
-                      ) : (
-                        <Typography variant="body2" color="textSecondary">-</Typography>
+                      {activities.length > 0 && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            setCategoryFilter([]);
+                            setHospitalFilter([]);
+                            setReadinessDomainFilter([]);
+                            setSimulationTypeFilter([]);
+                            setDateFilter({ start: null, end: null });
+                          }}
+                          sx={{ mt: 1 }}
+                        >
+                          Clear filters
+                        </Button>
                       )}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                ) : (
+                  filteredActivities.map((activity) => (
+                    <TableRow
+                      key={activity.id}
+                      onClick={() => handleRowClick(activity)}
+                      sx={{
+                        cursor: 'pointer',
+                        '&:hover': {
+                          backgroundColor: (t) => alpha(t.palette.secondary.main, 0.04),
+                        },
+                      }}
+                    >
+                      <TableCell>{format(parseISO(activity.date), 'MMM d, yyyy')}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                          {activity.activityName}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={getCategoryLabel(activity.category)}
+                          size="small"
+                          color={getCategoryChipColor(activity.category)}
+                        />
+                      </TableCell>
+                      <TableCell>{activity.hours}</TableCell>
+                      <TableCell>
+                        {activity.hospitalIds.length > 0 ? getHospitalNames(activity.hospitalIds) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ whiteSpace: 'pre-wrap', maxWidth: 250 }}
+                        >
+                          {activity.description || '-'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {activity.simulationCase ? (
+                          <Typography variant="body2">{activity.simulationCase}</Typography>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            -
+                          </Typography>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </AdminSection>
 
         {/* Activity Detail Dialog */}
         <Dialog 
@@ -1160,9 +1218,10 @@ const MentorActivitiesPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-      </Box>
+      </AdminPageShell>
     </LocalizationProvider>
   );
+
 };
 
 export default MentorActivitiesPage;

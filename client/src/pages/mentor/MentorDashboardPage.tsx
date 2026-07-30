@@ -3,29 +3,28 @@ import {
   Box,
   Typography,
   Grid,
-  Card,
-  CardContent,
   Button,
   Alert,
   List,
   ListItem,
-  Avatar,
   Chip,
   LinearProgress,
   Drawer,
   IconButton,
   Divider,
+  Stack,
+  Paper,
+  alpha,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
 } from '@mui/material';
 import {
   LocalHospital as HospitalIcon,
   Assignment as ActivityIcon,
-  People as PeopleIcon,
   Close as CloseIcon,
   Email as EmailIcon,
   CalendarToday as CalendarIcon,
-  AccessTime as HoursIcon
+  AccessTime as HoursIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -50,6 +49,12 @@ import { buildPeccHospitalFacilityOrClause, expandHospitalRefsForPeccQuery } fro
 import { rollupMentorHoursByHospital, sumUnlinkedMentorHours } from '../../utils/mentorHoursByHospital';
 import { MentorHoursByHospitalPanel } from '../../components/mentor/MentorHoursByHospitalPanel';
 import DashboardResources from '../../components/DashboardResources';
+import {
+  AdminPageShell,
+  AdminHero,
+  AdminSection,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
 
 export type PeccLinkStatus = 'linked' | 'contact_only' | 'none';
 
@@ -387,180 +392,233 @@ const MentorDashboardPage: React.FC = () => {
     setHospitalDrawerOpen(true);
   };
 
-  const StatCard = ({
-    title,
-    value,
-    icon,
-    color,
-    subtitle
-  }: {
-    title: string;
-    value: string | number;
-    icon: React.ReactNode;
-    color: string;
-    subtitle?: string;
-  }) => (
-    <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2 }}>
-      <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box>
-            <Typography color="text.secondary" variant="body2" gutterBottom>
-              {title}
-            </Typography>
-            <Typography variant="h4" component="div" sx={{ color }}>
-              {value}
-            </Typography>
-            {subtitle && (
-              <Typography variant="caption" color="text.secondary">
-                {subtitle}
-              </Typography>
-            )}
-          </Box>
-          <Avatar sx={{ bgcolor: color, width: 48, height: 48 }}>{icon}</Avatar>
-        </Box>
-      </CardContent>
-    </Card>
-  );
+  const statItems = [
+    {
+      label: 'Assigned hospitals',
+      value: String(stats.totalHospitals),
+      caption: 'Active mentoring sites',
+    },
+    {
+      label: 'Your hours (month)',
+      value: stats.mentorHoursThisMonth.toFixed(1),
+      caption: 'Mentoring log',
+    },
+    {
+      label: 'Site activity (month)',
+      value: String(stats.siteActivitiesThisMonth),
+      caption: `${stats.siteHoursThisMonth.toFixed(1)} site hours`,
+    },
+    {
+      label: 'Linked PECCs',
+      value: String(stats.totalPeccs),
+      caption:
+        stats.simulationsThisMonth > 0
+          ? `${stats.simulationsThisMonth} simulation${stats.simulationsThisMonth === 1 ? '' : 's'} this month`
+          : 'Accounts matched to sites',
+    },
+  ];
 
   if (loading) {
     return (
-      <Box sx={{ py: 3 }} role="status" aria-live="polite">
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          Loading your dashboard…
-        </Typography>
-        <LinearProgress aria-label="Loading dashboard" />
-      </Box>
+      <AdminPageShell>
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, px: { xs: 2, md: 2.5 }, py: 4 }} role="status" aria-live="polite">
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Loading your dashboard…
+          </Typography>
+          <LinearProgress color="secondary" aria-label="Loading dashboard" />
+        </Paper>
+      </AdminPageShell>
     );
   }
 
   return (
-    <Box sx={{ py: 3 }}>
+    <AdminPageShell>
       {loadError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
-          {loadError} <Button size="small" onClick={() => { setLoading(true); loadDashboardData(); }}>Retry</Button>
+        <Alert severity="error" onClose={() => setLoadError(null)}>
+          {loadError}{' '}
+          <Button
+            size="small"
+            color="inherit"
+            onClick={() => {
+              setLoading(true);
+              loadDashboardData();
+            }}
+          >
+            Retry
+          </Button>
         </Alert>
       )}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" gutterBottom component="h1">
-          Welcome, {userProfile?.first_name || 'Mentor'}!
-        </Typography>
-        <Typography color="text.secondary" sx={{ maxWidth: 640 }}>
-          Your home base for assigned hospitals, linked PECCs, site activity, and your mentoring hours. Open a hospital card for site details and activity history.
-        </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
-          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/snapshot')}>
-            Snapshot
-          </Button>
-          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/activities')}>
-            Log activity
-          </Button>
-          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/milestones')}>
-            Site milestones
-          </Button>
+
+      <AdminHero
+        overline="Mentoring"
+        title={`Welcome back, ${userProfile?.first_name || 'Mentor'}`}
+        description="Your home base for assigned hospitals, linked PECCs, site activity, and mentoring hours. Open a hospital for site details and activity history."
+        actions={
+          <>
+            <Button size="small" variant="outlined" onClick={() => navigate('/mentor/snapshot')}>
+              Snapshot
+            </Button>
+            <Button size="small" variant="outlined" onClick={() => navigate('/mentor/activities')}>
+              Log activity
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              color="secondary"
+              onClick={() => navigate('/mentor/milestones')}
+            >
+              Site milestones
+            </Button>
+          </>
+        }
+      />
+
+      <Paper elevation={0} sx={adminSectionShellSx}>
+        <Box
+          sx={{
+            px: { xs: 2, md: 2.5 },
+            py: 1.5,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: alpha(theme.palette.secondary.main, 0.04),
+          }}
+        >
+          <Typography
+            variant="overline"
+            sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+          >
+            At a glance
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+            This month across your assigned sites
+          </Typography>
         </Box>
-      </Box>
-
-      {/* Stats */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item xs={6} md={3}>
-          <StatCard
-            title="Assigned Hospitals"
-            value={stats.totalHospitals}
-            icon={<HospitalIcon />}
-            color="#1976d2"
-          />
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <StatCard
-            title="Your Hours (Month)"
-            value={stats.mentorHoursThisMonth.toFixed(1)}
-            icon={<HoursIcon />}
-            color="#1565c0"
-            subtitle="Mentoring log"
-          />
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <StatCard
-            title="Site Activity (Month)"
-            value={stats.siteActivitiesThisMonth}
-            icon={<ActivityIcon />}
-            color="#f57c00"
-            subtitle={`${stats.siteHoursThisMonth.toFixed(1)} site hours`}
-          />
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <StatCard
-            title="Linked PECCs"
-            value={stats.totalPeccs}
-            icon={<PeopleIcon />}
-            color="#388e3c"
-            subtitle={
-              stats.simulationsThisMonth > 0
-                ? `${stats.simulationsThisMonth} simulation${stats.simulationsThisMonth === 1 ? '' : 's'} this month`
-                : 'Accounts matched to sites'
-            }
-          />
-        </Grid>
-      </Grid>
-
-      {/* My Hospitals - clean cards */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6" fontWeight={600}>
-          My Hospitals
-        </Typography>
-        <Button size="small" variant="outlined" onClick={() => navigate('/mentor/hospitals')}>
-          Manage hospitals
-        </Button>
-      </Box>
-
-      {hospitalSummaries.length === 0 ? (
-        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">No hospitals assigned yet. Add hospitals from the Hospitals page.</Typography>
-          <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate('/mentor/hospitals')}>
-            Go to Hospitals
-          </Button>
-        </Card>
-      ) : (
-        <Grid container spacing={2}>
-          {hospitalSummaries.map((hospital) => (
-            <Grid item xs={12} md={6} key={hospital.id}>
-              <Card
-                elevation={0}
-                role="button"
-                tabIndex={0}
-                aria-label={`Open ${normalizeHospitalOrOrgName(hospital.name)} details`}
-                onClick={() => handleHospitalClick(hospital)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleHospitalClick(hospital);
-                  }
-                }}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: 'repeat(2, minmax(0, 1fr))',
+              md: 'repeat(4, minmax(0, 1fr))',
+            },
+            '& > *': {
+              borderRight: { xs: 'none', sm: '1px solid' },
+              borderBottom: { xs: '1px solid', md: 'none' },
+              borderColor: 'divider',
+            },
+            '& > *:nth-of-type(2n)': { borderRight: { xs: 'none', sm: '1px solid' } },
+            '& > *:last-child': { borderRight: 'none', borderBottom: 'none' },
+          }}
+        >
+          {statItems.map((item) => (
+            <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75, textAlign: 'center' }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontWeight: 600, letterSpacing: 0.04, textTransform: 'uppercase', fontSize: '0.65rem' }}
+              >
+                {item.label}
+              </Typography>
+              <Typography
                 sx={{
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                  cursor: 'pointer',
-                  transition: 'border-color 0.2s, background-color 0.2s',
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    bgcolor: 'action.hover'
-                  },
-                  '&:focus-visible': {
-                    outline: '2px solid',
-                    outlineColor: 'primary.main',
-                    outlineOffset: 2
-                  }
+                  fontWeight: 700,
+                  fontSize: '1.35rem',
+                  letterSpacing: -0.02,
+                  color: 'secondary.dark',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1.15,
+                  mt: 0.5,
                 }}
               >
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-                    <Avatar sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
-                      <HospitalIcon />
-                    </Avatar>
+                {item.value}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
+                {item.caption}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Paper>
+
+      <AdminSection
+        overline="Sites"
+        title="My hospitals"
+        description={`${hospitalSummaries.length} hospital${hospitalSummaries.length === 1 ? '' : 's'} assigned to you`}
+        actions={
+          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/hospitals')}>
+            Manage hospitals
+          </Button>
+        }
+        disableBodyPadding={hospitalSummaries.length > 0}
+        bodySx={hospitalSummaries.length > 0 ? { px: { xs: 1.5, md: 2 }, py: { xs: 1.5, md: 2 } } : undefined}
+      >
+        {hospitalSummaries.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 2 }}>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>
+              No hospitals assigned yet. Add hospitals from the Hospitals page.
+            </Typography>
+            <Button variant="contained" color="secondary" onClick={() => navigate('/mentor/hospitals')}>
+              Go to Hospitals
+            </Button>
+          </Box>
+        ) : (
+          <Grid container spacing={{ xs: 1, md: 1.25 }}>
+            {hospitalSummaries.map((hospital) => (
+              <Grid item xs={12} md={6} key={hospital.id}>
+                <Box
+                  component="button"
+                  type="button"
+                  aria-label={`Open ${normalizeHospitalOrOrgName(hospital.name)} details`}
+                  onClick={() => handleHospitalClick(hospital)}
+                  sx={{
+                    width: '100%',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1.5,
+                    bgcolor: 'background.paper',
+                    p: { xs: 1.5, md: 1.6 },
+                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
+                    '&:hover': {
+                      borderColor: 'secondary.light',
+                      bgcolor: alpha(theme.palette.secondary.main, 0.04),
+                      boxShadow: '0 2px 10px rgba(61, 85, 96, 0.08)',
+                    },
+                    '&:focus-visible': {
+                      outline: `2px solid ${theme.palette.secondary.main}`,
+                      outlineOffset: 2,
+                    },
+                  }}
+                >
+                  <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                    <Box
+                      sx={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 1,
+                        display: 'grid',
+                        placeItems: 'center',
+                        bgcolor: alpha(theme.palette.secondary.main, 0.12),
+                        color: 'secondary.dark',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <HospitalIcon sx={{ fontSize: 18 }} aria-hidden />
+                    </Box>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
-                        <Typography variant="subtitle1" fontWeight={600}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: 1,
+                          mb: 0.5,
+                        }}
+                      >
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 700, letterSpacing: -0.01, lineHeight: 1.3 }}
+                        >
                           {normalizeHospitalOrOrgName(hospital.name)}
                         </Typography>
                         {hospital.peccLinkStatus === 'contact_only' && (
@@ -569,7 +627,7 @@ const MentorDashboardPage: React.FC = () => {
                             size="small"
                             color="warning"
                             variant="outlined"
-                            sx={{ flexShrink: 0, maxWidth: '55%' }}
+                            sx={{ flexShrink: 0, maxWidth: '55%', height: 22 }}
                           />
                         )}
                         {hospital.peccLinkStatus === 'none' && (
@@ -578,48 +636,70 @@ const MentorDashboardPage: React.FC = () => {
                             size="small"
                             color="default"
                             variant="outlined"
-                            sx={{ flexShrink: 0 }}
+                            sx={{ flexShrink: 0, height: 22 }}
                           />
                         )}
                       </Box>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {hospital.peccLinkStatus === 'linked' ? hospital.peccName : hospital.peccName !== '—' ? `${hospital.peccName} (contact)` : '—'}
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                          {hospital.peccLinkStatus === 'linked'
+                            ? hospital.peccName
+                            : hospital.peccName !== '—'
+                              ? `${hospital.peccName} (contact)`
+                              : '—'}
                         </Typography>
                         {hospital.peccEmail !== '—' && (
                           <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <EmailIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-                            <Typography variant="body2" color="text.secondary" noWrap>
+                            <Typography variant="body2" color="text.secondary" noWrap sx={{ fontSize: '0.8rem' }}>
                               {hospital.peccEmail}
                             </Typography>
                           </Box>
                         )}
                       </Box>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
-                        <Chip size="small" icon={<ActivityIcon sx={{ fontSize: 14 }} />} label={`${hospital.activityCount} site activities`} variant="outlined" />
-                        <Chip size="small" icon={<HoursIcon sx={{ fontSize: 14 }} />} label={`${hospital.totalHours.toFixed(1)} site h`} variant="outlined" />
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                        <Chip
+                          size="small"
+                          icon={<ActivityIcon sx={{ fontSize: 14 }} />}
+                          label={`${hospital.activityCount} site activities`}
+                          variant="outlined"
+                          sx={{ height: 24 }}
+                        />
+                        <Chip
+                          size="small"
+                          icon={<HoursIcon sx={{ fontSize: 14 }} />}
+                          label={`${hospital.totalHours.toFixed(1)} site h`}
+                          variant="outlined"
+                          sx={{ height: 24 }}
+                        />
                         {hospital.mentorHours > 0 && (
                           <Chip
                             size="small"
                             label={`${hospital.mentorHours.toFixed(1)} your h`}
                             variant="outlined"
-                            color="primary"
+                            color="secondary"
+                            sx={{ height: 24 }}
                           />
                         )}
                         {hospital.lastActivityAt && (
-                          <Chip size="small" icon={<CalendarIcon sx={{ fontSize: 14 }} />} label={`Last: ${format(new Date(hospital.lastActivityAt), 'MMM d, yyyy')}`} variant="outlined" />
+                          <Chip
+                            size="small"
+                            icon={<CalendarIcon sx={{ fontSize: 14 }} />}
+                            label={`Last: ${format(new Date(hospital.lastActivityAt), 'MMM d, yyyy')}`}
+                            variant="outlined"
+                            sx={{ height: 24 }}
+                          />
                         )}
                       </Box>
                     </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
+                  </Stack>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </AdminSection>
 
-      {/* Hospital detail drawer */}
       <Drawer
         anchor={isMobile ? 'bottom' : 'right'}
         open={hospitalDrawerOpen}
@@ -629,23 +709,43 @@ const MentorDashboardPage: React.FC = () => {
             width: isMobile ? '100%' : 420,
             maxHeight: isMobile ? '85%' : '100%',
             borderLeft: isMobile ? 0 : 1,
-            borderColor: 'divider'
-          }
+            borderColor: 'divider',
+          },
         }}
       >
         {selectedHospital && (
           <>
-            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: 1, borderColor: 'divider' }}>
-              <Typography variant="h6" fontWeight={600}>
-                {normalizeHospitalOrOrgName(selectedHospital.name)}
-              </Typography>
+            <Box
+              sx={{
+                p: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottom: 1,
+                borderColor: 'divider',
+                bgcolor: alpha(theme.palette.secondary.main, 0.04),
+              }}
+            >
+              <Box>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', lineHeight: 1.2 }}
+                >
+                  Hospital
+                </Typography>
+                <Typography variant="h6" fontWeight={700} sx={{ fontSize: '1.1rem' }}>
+                  {normalizeHospitalOrOrgName(selectedHospital.name)}
+                </Typography>
+              </Box>
               <IconButton size="small" onClick={() => setHospitalDrawerOpen(false)} aria-label="Close">
                 <CloseIcon />
               </IconButton>
             </Box>
             <Box sx={{ overflow: 'auto', flex: 1, p: 2 }}>
-              {/* Hospital info */}
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.75 }}
+              >
                 Hospital details
               </Typography>
               <Box sx={{ mb: 3 }}>
@@ -671,14 +771,17 @@ const MentorDashboardPage: React.FC = () => {
 
               <Divider sx={{ my: 2 }} />
 
-              {/* PECC contact */}
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.75 }}
+              >
                 PECC contact
               </Typography>
               <Box sx={{ mb: 2 }}>
                 {selectedHospital.peccLinkStatus === 'contact_only' && (
                   <Alert severity="warning" sx={{ mb: 1.5 }} variant="outlined">
-                    CRM contact on file, but no PECC app account is linked yet. Invite them or confirm hospital assignment in the CRM.
+                    CRM contact on file, but no PECC app account is linked yet. Invite them or confirm hospital
+                    assignment in the CRM.
                   </Alert>
                 )}
                 {selectedHospital.peccLinkStatus === 'none' && (
@@ -688,14 +791,22 @@ const MentorDashboardPage: React.FC = () => {
                 )}
                 <Typography variant="body2">{selectedHospital.peccName}</Typography>
                 {selectedHospital.peccEmail !== '—' && (
-                  <Typography variant="body2" color="primary" component="a" href={`mailto:${selectedHospital.peccEmail}`}>
+                  <Typography
+                    variant="body2"
+                    color="secondary.dark"
+                    component="a"
+                    href={`mailto:${selectedHospital.peccEmail}`}
+                  >
                     {selectedHospital.peccEmail}
                   </Typography>
                 )}
               </Box>
 
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Your mentoring hours at this site
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.75 }}
+              >
+                Your mentoring hours
               </Typography>
               <Box sx={{ mb: 3 }}>
                 <Typography variant="body2">
@@ -716,9 +827,11 @@ const MentorDashboardPage: React.FC = () => {
 
               <Divider sx={{ my: 2 }} />
 
-              {/* Activities at this hospital */}
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Activities logged for this site ({selectedHospital.activities.length})
+              <Typography
+                variant="overline"
+                sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.75 }}
+              >
+                Site activities ({selectedHospital.activities.length})
               </Typography>
               {selectedHospital.activities.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
@@ -727,8 +840,20 @@ const MentorDashboardPage: React.FC = () => {
               ) : (
                 <List disablePadding>
                   {selectedHospital.activities.map((activity) => (
-                    <ListItem key={activity.id} disablePadding sx={{ py: 1, flexDirection: 'column', alignItems: 'stretch' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                    <ListItem
+                      key={activity.id}
+                      disablePadding
+                      sx={{ py: 1, flexDirection: 'column', alignItems: 'stretch' }}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 0.5,
+                        }}
+                      >
                         <Typography variant="body2" fontWeight={500}>
                           {String(activity.activityName || activity.activity_type || 'Activity')}
                         </Typography>
@@ -737,11 +862,28 @@ const MentorDashboardPage: React.FC = () => {
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
-                        <Chip label={displayActivityCategories(activity)} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                        <Chip
+                          label={displayActivityCategories(activity)}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.7rem' }}
+                        />
                       </Box>
-                      {String(activity.enteredByName || activity.entered_by_name || activity.enteredBy || activity.userName || '').trim() && (
+                      {String(
+                        activity.enteredByName ||
+                          activity.entered_by_name ||
+                          activity.enteredBy ||
+                          activity.userName ||
+                          ''
+                      ).trim() && (
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                          Logged by {String(activity.enteredByName || activity.entered_by_name || activity.enteredBy || activity.userName).trim()}
+                          Logged by{' '}
+                          {String(
+                            activity.enteredByName ||
+                              activity.entered_by_name ||
+                              activity.enteredBy ||
+                              activity.userName
+                          ).trim()}
                         </Typography>
                       )}
                       {activity.description?.trim() && (
@@ -756,6 +898,7 @@ const MentorDashboardPage: React.FC = () => {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
                 <Button
                   variant="contained"
+                  color="secondary"
                   fullWidth
                   onClick={() => {
                     setHospitalDrawerOpen(false);
@@ -791,18 +934,17 @@ const MentorDashboardPage: React.FC = () => {
       </Drawer>
 
       {mentorHoursRollups.some((r) => r.totalHours > 0) && (
-        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, mt: 4 }}>
-          <CardContent>
-            <Typography variant="h6" fontWeight={600} gutterBottom>
-              Your mentoring hours by hospital
-            </Typography>
-            <MentorHoursByHospitalPanel rollups={mentorHoursRollups} unlinkedHours={unlinkedMentorHours} />
-          </CardContent>
-        </Card>
+        <AdminSection
+          overline="Your hours"
+          title="Mentoring hours by hospital"
+          description="Hours from your mentoring log linked to each hospital"
+        >
+          <MentorHoursByHospitalPanel rollups={mentorHoursRollups} unlinkedHours={unlinkedMentorHours} />
+        </AdminSection>
       )}
 
       <DashboardResources userId={effectiveUserId ?? currentUser?.uid} />
-    </Box>
+    </AdminPageShell>
   );
 };
 

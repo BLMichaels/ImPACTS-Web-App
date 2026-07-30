@@ -1,27 +1,29 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Grid, 
-  Card, 
-  CardContent, 
+import {
+  Box,
+  Typography,
+  Grid,
   LinearProgress,
   Button,
   Chip,
   Alert,
-  Container,
   Paper,
   Avatar,
   FormControlLabel,
   Checkbox,
+  Stack,
+  alpha,
 } from '@mui/material';
 import {
-  CheckCircle as CheckCircleIcon,
-  Work as WorkIcon,
   PictureAsPdf as PictureAsPdfIcon,
-  Group as GroupIcon,
-  LocalHospital as HospitalIcon
+  LocalHospital as HospitalIcon,
 } from '@mui/icons-material';
+import {
+  AdminPageShell,
+  AdminHero,
+  AdminSection,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
@@ -498,792 +500,774 @@ const MentorSnapshotPage = () => {
   // Loading state
   if (isLoading) {
     return (
-      <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Typography variant="h4" gutterBottom>
-          Loading Snapshot...
-        </Typography>
-        <LinearProgress sx={{ width: '50%', mx: 'auto', mt: 2 }} />
-      </Box>
+      <AdminPageShell>
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+            Loading Snapshot…
+          </Typography>
+          <LinearProgress color="secondary" sx={{ maxWidth: 360, mx: 'auto', mt: 2 }} />
+        </Paper>
+      </AdminPageShell>
     );
   }
 
-  // Error state
   if (hasError) {
     return (
-      <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Typography variant="h4" gutterBottom color="error">
-          Error Loading Snapshot
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          There was an error loading your snapshot data. Please try again.
-        </Typography>
-        <Button variant="contained" onClick={() => setRetryCount(c => c + 1)} sx={{ mr: 1 }}>
-          Retry
-        </Button>
-        <Button variant="outlined" onClick={() => window.location.reload()}>
-          Refresh Page
-        </Button>
-      </Box>
+      <AdminPageShell>
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
+          <Typography variant="h6" gutterBottom color="error" sx={{ fontWeight: 600 }}>
+            Couldn&apos;t load snapshot
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            There was an error loading your snapshot data. Please try again.
+          </Typography>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={() => setRetryCount((c) => c + 1)}
+            sx={{ mr: 1 }}
+          >
+            Retry
+          </Button>
+          <Button variant="outlined" onClick={() => window.location.reload()}>
+            Refresh page
+          </Button>
+        </Paper>
+      </AdminPageShell>
     );
   }
 
-  // No hospitals: snapshot explains how to assign sites
   if (assignedHospitals.length === 0) {
     return (
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-            Snapshot
+      <AdminPageShell>
+        <AdminHero
+          overline="Mentoring metrics"
+          title="Snapshot"
+          description="Your overview shows data for hospitals assigned to you."
+        />
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
+          <Typography variant="h6" color="text.secondary" sx={{ mb: 0.75, fontWeight: 600 }}>
+            No assigned hospitals
           </Typography>
-          <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-            Mentoring metrics
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 520, mx: 'auto' }}>
+            Add or link hospitals from the <strong>Hospitals</strong> page, or ask your manager to assign you in the CRM.
           </Typography>
-        </Box>
-        <Box sx={{ py: 4, textAlign: 'center', maxWidth: 'md', mx: 'auto' }}>
-          <Typography variant="h5" gutterBottom>No assigned hospitals</Typography>
-          <Typography color="text.secondary" sx={{ mb: 2 }}>
-            Your overview shows data for hospitals assigned to you. Add or link hospitals from the <strong>Hospitals</strong> page, or ask your manager to assign you in the CRM.
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Button variant="contained" onClick={() => navigate('/mentor/hospitals')}>
+          <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" useFlexGap>
+            <Button variant="contained" color="secondary" onClick={() => navigate('/mentor/hospitals')}>
               Go to Hospitals
             </Button>
             <Button variant="outlined" onClick={() => navigate('/mentor/dashboard')}>
               Dashboard
             </Button>
-          </Box>
-        </Box>
-      </Container>
+          </Stack>
+        </Paper>
+      </AdminPageShell>
     );
   }
 
+  const kpiItems = [
+    {
+      label: 'Activities',
+      value: String(activities.length),
+      caption: `${totalHours.toFixed(1)} hours logged`,
+    },
+    {
+      label: 'Assigned PECCs',
+      value: String(peccData.length),
+      caption: `${activePECCs} active in last 30 days`,
+    },
+    {
+      label: 'Avg PECC progress',
+      value: `${avgPECCProgress}%`,
+      caption: 'Across assigned PECCs',
+    },
+    {
+      label: 'Hospitals',
+      value: String(assignedHospitals.length),
+      caption: 'Active mentoring sites',
+    },
+    {
+      label: 'This month',
+      value: `${thisMonthHours.toFixed(1)}h`,
+      caption: 'Your mentoring hours',
+    },
+  ];
+
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-          <Box>
-            <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-              Snapshot
-            </Typography>
-            <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              Mentoring metrics
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Track your activities, monitor PECC progress, and measure engagement across all assigned hospitals
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+    <AdminPageShell>
+      <AdminHero
+        overline="Mentoring metrics"
+        title="Snapshot"
+        description="Track your activities, monitor PECC progress, and measure engagement across assigned hospitals."
+        actions={
+          <>
             <Button size="small" variant="outlined" onClick={() => navigate('/mentor/dashboard')}>
               Dashboard
             </Button>
             <Button
               variant="contained"
+              color="secondary"
+              size="small"
               startIcon={<PictureAsPdfIcon />}
               onClick={exportToPDF}
-              sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
             >
               Export PDF
             </Button>
+          </>
+        }
+      />
+
+      <Alert
+        severity="info"
+        variant="outlined"
+        sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              {peccData.length} PECCs · {assignedHospitals.length} hospitals
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Average checklist progress: {avgPECCProgress}% · {activePECCs} PECC
+              {activePECCs === 1 ? '' : 's'} active in last 30 days
+            </Typography>
+            {hospitalsAwaitingPeccSetup.length > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                {hospitalsAwaitingPeccSetup.length} assigned hospital
+                {hospitalsAwaitingPeccSetup.length === 1 ? '' : 's'} awaiting PECC setup or account creation
+              </Typography>
+            )}
           </Box>
+          <Chip
+            label={`${thisMonthHours.toFixed(1)} hours this month`}
+            color="secondary"
+            variant="outlined"
+            sx={{ fontWeight: 700 }}
+          />
         </Box>
-      </Box>
+      </Alert>
 
-        <Box sx={{ mb: 4 }}>
-          <Alert
-            severity="info"
-            sx={{
-              mb: 3,
-              '& .MuiAlert-message': { width: '100%' }
-            }}
+      <Paper elevation={0} sx={adminSectionShellSx}>
+        <Box
+          sx={{
+            px: { xs: 2, md: 2.5 },
+            py: 1.5,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+          }}
+        >
+          <Typography
+            variant="overline"
+            sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
           >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-              <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                  {peccData.length} PECCs • {assignedHospitals.length} Hospitals
-                </Typography>
-                <Typography variant="body2">
-                  Average checklist progress: {avgPECCProgress}% • {activePECCs} PECC{activePECCs === 1 ? '' : 's'} active in last 30 days
-                </Typography>
-                {hospitalsAwaitingPeccSetup.length > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    {hospitalsAwaitingPeccSetup.length} assigned hospital{hospitalsAwaitingPeccSetup.length === 1 ? '' : 's'} awaiting PECC setup or account creation
-                  </Typography>
-                )}
-              </Box>
-              <Chip
-                label={`${thisMonthHours.toFixed(1)} hours this month`}
-                color="primary"
-                variant="outlined"
-                sx={{ fontWeight: 'bold' }}
-              />
-            </Box>
-          </Alert>
+            At a glance
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+            Key mentoring metrics across your network
+          </Typography>
         </Box>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: 'repeat(2, minmax(0, 1fr))',
+              sm: 'repeat(3, minmax(0, 1fr))',
+              md: 'repeat(5, minmax(0, 1fr))',
+            },
+            '& > *': {
+              borderRight: { xs: 'none', sm: '1px solid' },
+              borderBottom: { xs: '1px solid', md: 'none' },
+              borderColor: 'divider',
+            },
+            '& > *:last-child': { borderRight: 'none', borderBottom: 'none' },
+          }}
+        >
+          {kpiItems.map((item) => (
+            <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75, textAlign: 'center' }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontWeight: 600, letterSpacing: 0.04, textTransform: 'uppercase', fontSize: '0.65rem' }}
+              >
+                {item.label}
+              </Typography>
+              <Typography
+                sx={{
+                  fontWeight: 700,
+                  fontSize: '1.35rem',
+                  letterSpacing: -0.02,
+                  color: 'secondary.dark',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1.15,
+                  mt: 0.5,
+                }}
+              >
+                {item.value}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
+                {item.caption}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Paper>
 
-      {/* Key Performance Indicators */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
-            <CardContent sx={{ textAlign: 'center', p: 3 }}>
-              <Box sx={{ 
-                display: 'inline-flex', 
-                p: 1.5, 
-                borderRadius: '50%', 
-                bgcolor: 'primary.light', 
-                mb: 2 
-              }}>
-                <WorkIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-              </Box>
-              <Typography variant="h3" color="primary" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                {activities.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                Total Activities
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                {totalHours.toFixed(1)} hours logged
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
-            <CardContent sx={{ textAlign: 'center', p: 3 }}>
-              <Box sx={{ 
-                display: 'inline-flex', 
-                p: 1.5, 
-                borderRadius: '50%', 
-                bgcolor: 'success.light', 
-                mb: 2 
-              }}>
-                <GroupIcon sx={{ fontSize: 32, color: 'success.main' }} />
-              </Box>
-              <Typography variant="h3" color="success.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                {peccData.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                Assigned PECCs
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                {activePECCs} active in last 30 days
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
-            <CardContent sx={{ textAlign: 'center', p: 3 }}>
-              <Box sx={{ 
-                display: 'inline-flex', 
-                p: 1.5, 
-                borderRadius: '50%', 
-                bgcolor: 'info.light', 
-                mb: 2 
-              }}>
-                <CheckCircleIcon sx={{ fontSize: 32, color: 'info.main' }} />
-              </Box>
-              <Typography variant="h3" color="info.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                {avgPECCProgress}%
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                Avg PECC Progress
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                Across all assigned PECCs
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
-            <CardContent sx={{ textAlign: 'center', p: 3 }}>
-              <Box sx={{ 
-                display: 'inline-flex', 
-                p: 1.5, 
-                borderRadius: '50%', 
-                bgcolor: 'warning.light', 
-                mb: 2 
-              }}>
-                <HospitalIcon sx={{ fontSize: 32, color: 'warning.main' }} />
-              </Box>
-              <Typography variant="h3" color="warning.main" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                {assignedHospitals.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                Assigned Hospitals
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                Active mentoring sites
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Mentor Activity Insights */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={{ xs: 2, md: 2.5 }}>
         <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Mentor Activity Breakdown
+          <AdminSection
+            overline="Your log"
+            title="Activity breakdown"
+            description="Mentoring hours by category"
+          >
+            {Object.keys(categoryBreakdown).length > 0 ? (
+              Object.entries(categoryBreakdown)
+                .sort(([, a], [, b]) => b.hours - a.hours)
+                .map(([category, data]) => {
+                  const percentage = totalHours > 0 ? (data.hours / totalHours) * 100 : 0;
+                  return (
+                    <Box key={category} sx={{ mb: 1.5 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, gap: 1 }}>
+                        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                          {category}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                          {data.hours.toFixed(1)}h ({Math.round(percentage)}%)
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={percentage}
+                        color="secondary"
+                        sx={{ height: 6, borderRadius: 1 }}
+                      />
+                    </Box>
+                  );
+                })
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No activity data yet. Start logging mentoring activities.
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Your logged mentoring hours by category (Activities tab)
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {Object.keys(categoryBreakdown).length > 0 ? (
-                  <>
-                    {Object.entries(categoryBreakdown)
-                      .sort(([, a], [, b]) => b.hours - a.hours)
-                      .map(([category, data]) => {
-                        const percentage = totalHours > 0 ? (data.hours / totalHours) * 100 : 0;
-                        return (
-                          <Box key={category} sx={{ mb: 2 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                              <Typography variant="body2">
-                                {category}
-                              </Typography>
-                              <Typography variant="body2">
-                                {data.hours.toFixed(1)}h ({Math.round(percentage)}%)
-                              </Typography>
-                            </Box>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={percentage}
-                              sx={{ height: 6, borderRadius: 3 }}
-                            />
-                          </Box>
-                        );
-                      })}
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No activity data available. Start logging your mentoring activities!
+            )}
+          </AdminSection>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <AdminSection overline="Your log" title="Hours overview" description="Time invested in PECC mentoring">
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1.5,
+                overflow: 'hidden',
+                '& > *': { borderColor: 'divider' },
+              }}
+            >
+              {[
+                { label: 'This month', value: thisMonthHours.toFixed(1) },
+                { label: 'Last month', value: lastMonthHours.toFixed(1) },
+                { label: 'Total hours', value: totalHours.toFixed(1) },
+                {
+                  label: 'Avg per activity',
+                  value: activities.length > 0 ? (totalHours / activities.length).toFixed(1) : '0.0',
+                },
+              ].map((item, i) => (
+                <Box
+                  key={item.label}
+                  sx={{
+                    px: 1.75,
+                    py: 1.5,
+                    textAlign: 'center',
+                    borderRight: i % 2 === 0 ? '1px solid' : 'none',
+                    borderBottom: i < 2 ? '1px solid' : 'none',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 600, letterSpacing: 0.04, textTransform: 'uppercase', fontSize: '0.65rem' }}
+                  >
+                    {item.label}
                   </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Mentoring Hours Overview
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Time investment in PECC mentoring and support activities
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'primary.light', borderRadius: 1 }}>
-                      <Typography variant="h4" color="white">
-                        {thisMonthHours.toFixed(1)}
-                      </Typography>
-                      <Typography variant="body2" color="white">
-                        This Month
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'secondary.light', borderRadius: 1 }}>
-                      <Typography variant="h4" color="white">
-                        {lastMonthHours.toFixed(1)}
-                      </Typography>
-                      <Typography variant="body2" color="white">
-                        Last Month
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
-                      <Typography variant="h4" color="white">
-                        {totalHours.toFixed(1)}
-                      </Typography>
-                      <Typography variant="body2" color="white">
-                        Total Hours
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-                      <Typography variant="h4" color="white">
-                        {activities.length > 0 ? (totalHours / activities.length).toFixed(1) : '0.0'}
-                      </Typography>
-                      <Typography variant="body2" color="white">
-                        Avg per Activity
-                      </Typography>
-                    </Box>
-                  </Grid>
-                </Grid>
-              </Box>
-            </CardContent>
-          </Card>
+                  <Typography
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: '1.25rem',
+                      color: 'secondary.dark',
+                      fontVariantNumeric: 'tabular-nums',
+                      mt: 0.35,
+                    }}
+                  >
+                    {item.value}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </AdminSection>
         </Grid>
 
         <Grid item xs={12}>
-          <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Your Hours by Hospital
-              </Typography>
-              <MentorHoursByHospitalPanel
-                rollups={mentorHoursByHospital}
-                unlinkedHours={unlinkedMentorHours}
-              />
-            </CardContent>
-          </Card>
+          <AdminSection overline="Your log" title="Hours by hospital">
+            <MentorHoursByHospitalPanel
+              rollups={mentorHoursByHospital}
+              unlinkedHours={unlinkedMentorHours}
+            />
+          </AdminSection>
         </Grid>
       </Grid>
 
-      {/* PECC Development & Engagement */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                PECC Development Progress
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 3, display: 'block' }}>
-                Checklist completion rates for assigned PECCs, plus assigned hospitals that are still waiting for kickoff or account creation
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {peccData.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {peccData.map((pecc) => (
-                      <Grid item xs={12} md={6} key={pecc.id}>
-                        <Paper sx={{ p: 2, borderLeft: 4, borderColor: pecc.checklistProgress >= 75 ? 'success.main' : pecc.checklistProgress >= 50 ? 'warning.main' : 'error.main' }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                            <Avatar sx={{ bgcolor: 'primary.main' }}>
-                              {pecc.name.charAt(0)}
-                            </Avatar>
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                                {pecc.name}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {pecc.hospital}
-                              </Typography>
-                            </Box>
-                            <Chip 
-                              label={`${pecc.checklistProgress}%`}
-                              size="small"
-                              color={pecc.checklistProgress >= 75 ? 'success' : pecc.checklistProgress >= 50 ? 'warning' : 'error'}
-                            />
-                          </Box>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={pecc.checklistProgress}
-                            sx={{ height: 6, borderRadius: 3, mb: 1 }}
-                          />
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              {pecc.activityCount} activities
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {pecc.gapPlanCount} gap plans
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {pecc.lastActivity ? `Active ${format(new Date(pecc.lastActivity), 'MMM d')}` : 'No recent activity'}
-                            </Typography>
-                          </Box>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-                ) : hospitalMetrics.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {hospitalMetrics.map((metric) => (
-                      <Grid item xs={12} md={6} key={metric.hospitalId}>
-                        <Paper sx={{ p: 2, borderLeft: 4, borderColor: 'info.main' }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                            <Avatar sx={{ bgcolor: 'info.main' }}>
-                              <HospitalIcon />
-                            </Avatar>
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                                {metric.hospitalName}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                Assigned hospital
-                              </Typography>
-                            </Box>
-                            <Chip label="Awaiting PECC setup" size="small" color="info" variant="outlined" />
-                          </Box>
-                          <LinearProgress
-                            variant="determinate"
-                            value={0}
-                            sx={{ height: 6, borderRadius: 3, mb: 1 }}
-                          />
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, gap: 1, flexWrap: 'wrap' }}>
-                            <Typography variant="caption" color="text.secondary">
-                              0 PECC accounts
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              0 gap plans
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              Ready to begin once site work starts
-                            </Typography>
-                          </Box>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No PECCs assigned yet
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* PECC Engagement Metrics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                PECC Activity Engagement
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Site activities from hospital records (counted once per hospital)
-              </Typography>
-              <Box sx={{ textAlign: 'center', p: 3, bgcolor: 'primary.light', borderRadius: 2, mt: 2 }}>
-                <Typography variant="h2" color="white" sx={{ fontWeight: 'bold' }}>
-                  {uniqueSiteActivityTotals.activities}
-                </Typography>
-                <Typography variant="body2" color="white">
-                  Total Site Activities
-                </Typography>
-                <Typography variant="caption" color="white" sx={{ mt: 1, display: 'block' }}>
-                  {assignedHospitals.length > 0
-                    ? (uniqueSiteActivityTotals.activities / assignedHospitals.length).toFixed(1)
-                    : 0}{' '}
-                  avg per hospital
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Gap Plan Development
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Action plans created by PECCs to address readiness gaps
-              </Typography>
-              <Box sx={{ textAlign: 'center', p: 3, bgcolor: 'success.light', borderRadius: 2, mt: 2 }}>
-                <Typography variant="h2" color="white" sx={{ fontWeight: 'bold' }}>
-                  {uniqueSiteActivityTotals.gapPlans}
-                </Typography>
-                <Typography variant="body2" color="white">
-                  Total Gap Plans
-                </Typography>
-                <Typography variant="caption" color="white" sx={{ mt: 1, display: 'block' }}>
-                  {assignedHospitals.length > 0
-                    ? (uniqueSiteActivityTotals.gapPlans / assignedHospitals.length).toFixed(1)
-                    : 0}{' '}
-                  avg per hospital
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Active PECC Participation
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                PECCs with activity in the last 30 days
-              </Typography>
-              <Box sx={{ textAlign: 'center', p: 3, bgcolor: 'info.light', borderRadius: 2, mt: 2 }}>
-                <Typography variant="h2" color="white" sx={{ fontWeight: 'bold' }}>
-                  {activePECCs}/{peccData.length}
-                </Typography>
-                <Typography variant="body2" color="white">
-                  Active PECCs
-                </Typography>
-                <Typography variant="caption" color="white" sx={{ mt: 1, display: 'block' }}>
-                  {peccData.length > 0 ? Math.round((activePECCs / peccData.length) * 100) : 0}% engagement rate
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Per-Hospital Metrics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Hospital Site Activity
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 3, display: 'block' }}>
-                Activities logged at each site (hospital data), plus linked PECC count
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {hospitalMetrics.length > 0 ? (
-                  <Grid container spacing={2}>
-                    {hospitalMetrics.map((metric) => (
-                      <Grid item xs={12} md={6} key={metric.hospitalId}>
-                        <Paper sx={{ p: 2, borderLeft: 4, borderColor: 'primary.main' }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                            {metric.hospitalName}
-                          </Typography>
-                          <Grid container spacing={1}>
-                            <Grid item xs={6}>
-                              <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                                <Typography variant="h6" color="primary.main">
-                                  {metric.siteActivityCount}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  Site activities
-                                </Typography>
-                              </Box>
-                            </Grid>
-                            <Grid item xs={6}>
-                              <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                                <Typography variant="h6" color="primary.main">
-                                  {metric.siteHours.toFixed(1)}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  Site hours
-                                </Typography>
-                              </Box>
-                            </Grid>
-                            <Grid item xs={6}>
-                              <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                                <Typography variant="h6" color="secondary.main">
-                                  {metric.simulations}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  Simulations
-                                </Typography>
-                              </Box>
-                            </Grid>
-                            <Grid item xs={6}>
-                              <Box sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                                <Typography variant="h6" color="success.main">
-                                  {metric.peccCount}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  PECCs
-                                </Typography>
-                              </Box>
-                            </Grid>
-                          </Grid>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No hospital metrics available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Simulation Analytics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Simulation Types Completed
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Simulation cases logged at your assigned sites
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {Object.keys(simulationBreakdown).length > 0 ? (
-                  <>
-                    {Object.entries(simulationBreakdown)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([simType, count]) => {
-                        const total = Object.values(simulationBreakdown).reduce((sum, c) => sum + c, 0);
-                        const percentage = total > 0 ? (count / total) * 100 : 0;
-                        return (
-                          <Box key={simType} sx={{ mb: 2 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                              <Typography variant="body2">
-                                {simType}
-                              </Typography>
-                              <Typography variant="body2">
-                                {count} ({Math.round(percentage)}%)
-                              </Typography>
-                            </Box>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={percentage}
-                              sx={{ height: 6, borderRadius: 3 }}
-                              color="secondary"
-                            />
-                          </Box>
-                        );
-                      })}
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No simulation data available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Total Simulations by Hospital
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Number of simulation cases completed at each hospital
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {hospitalMetrics.some(h => h.simulations > 0) ? (
-                  <>
-                    {hospitalMetrics
-                      .filter(h => h.simulations > 0)
-                      .sort((a, b) => b.simulations - a.simulations)
-                      .map(metric => {
-                        const maxSims = Math.max(...hospitalMetrics.map(h => h.simulations));
-                        const percentage = maxSims > 0 ? (metric.simulations / maxSims) * 100 : 0;
-                        return (
-                          <Box key={metric.hospitalId} sx={{ mb: 2 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                              <Typography variant="body2">
-                                {metric.hospitalName.length > 30 ? metric.hospitalName.substring(0, 30) + '...' : metric.hospitalName}
-                              </Typography>
-                              <Typography variant="body2" fontWeight={600}>
-                                {metric.simulations}
-                              </Typography>
-                            </Box>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={percentage}
-                              sx={{ height: 6, borderRadius: 3 }}
-                              color="secondary"
-                            />
-                          </Box>
-                        );
-                      })}
-                  </>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No simulation data available
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Hospital PRS Score Trends */}
-      {peccData.some(p => p.readinessScores.length > 0) && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Hospital Pediatric Readiness Score Trends
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                  Pediatric readiness scores stored per hospital (hospital or PECC legacy data)
-                </Typography>
-
-                {/* Hospital Toggles */}
-                <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      Select Hospitals to Display
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button size="small" onClick={handleSelectAllHospitals}>
-                        Select All
-                      </Button>
-                      <Button size="small" onClick={handleDeselectAllHospitals}>
-                        Clear All
-                      </Button>
+      <AdminSection
+        overline="PECC development"
+        title="Checklist progress"
+        description="Completion rates for assigned PECCs, plus hospitals still awaiting kickoff"
+      >
+        {peccData.length > 0 ? (
+          <Grid container spacing={1.25}>
+            {peccData.map((pecc) => (
+              <Grid item xs={12} md={6} key={pecc.id}>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1.5,
+                    borderLeft: '3px solid',
+                    borderLeftColor:
+                      pecc.checklistProgress >= 75
+                        ? 'success.main'
+                        : pecc.checklistProgress >= 50
+                          ? 'warning.main'
+                          : 'error.main',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                    <Avatar
+                      sx={{
+                        width: 36,
+                        height: 36,
+                        bgcolor: (t) => alpha(t.palette.secondary.main, 0.15),
+                        color: 'secondary.dark',
+                        fontSize: '0.9rem',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {pecc.name.charAt(0)}
+                    </Avatar>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {pecc.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {pecc.hospital}
+                      </Typography>
                     </Box>
+                    <Chip
+                      label={`${pecc.checklistProgress}%`}
+                      size="small"
+                      color={
+                        pecc.checklistProgress >= 75
+                          ? 'success'
+                          : pecc.checklistProgress >= 50
+                            ? 'warning'
+                            : 'error'
+                      }
+                    />
                   </Box>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {peccData
-                      .filter(p => p.readinessScores.length > 0)
-                      .map((pecc, index) => (
-                        <FormControlLabel
-                          key={pecc.id}
-                          control={
-                            <Checkbox
-                              checked={selectedHospitals.includes(pecc.hospitalRowId)}
-                              onChange={() => handleToggleHospital(pecc.hospitalRowId)}
-                              size="small"
-                            />
-                          }
-                          label={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Box 
-                                sx={{ 
-                                  width: 12, 
-                                  height: 12, 
-                                  borderRadius: '50%', 
-                                  bgcolor: REPORT_CHART_COLORS[index % REPORT_CHART_COLORS.length] 
-                                }} 
-                              />
-                              <Typography variant="body2">
-                                {pecc.hospital.length > 25 ? pecc.hospital.substring(0, 25) + '...' : pecc.hospital}
-                              </Typography>
-                            </Box>
-                          }
-                        />
-                      ))}
+                  <LinearProgress
+                    variant="determinate"
+                    value={pecc.checklistProgress}
+                    color="secondary"
+                    sx={{ height: 6, borderRadius: 1, mb: 1 }}
+                  />
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {pecc.activityCount} activities
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {pecc.gapPlanCount} gap plans
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {pecc.lastActivity
+                        ? `Active ${format(new Date(pecc.lastActivity), 'MMM d')}`
+                        : 'No recent activity'}
+                    </Typography>
                   </Box>
                 </Box>
-
-                {prsChartSeries.length > 0 && selectedHospitals.length > 0 ? (
-                  <Box sx={{ mt: 2 }}>
-                    <MentorPrsTrendChart series={prsChartSeries} />
-                  </Box>
-                ) : selectedHospitals.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
-                    Select at least one hospital to view PRS trends
-                  </Typography>
-                ) : (
-                  <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
-                    No PRS assessment data available for selected hospitals
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
+              </Grid>
+            ))}
           </Grid>
+        ) : hospitalMetrics.length > 0 ? (
+          <Grid container spacing={1.25}>
+            {hospitalMetrics.map((metric) => (
+              <Grid item xs={12} md={6} key={metric.hospitalId}>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1.5,
+                    borderLeft: '3px solid',
+                    borderLeftColor: 'secondary.main',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                    <Avatar
+                      sx={{
+                        width: 36,
+                        height: 36,
+                        bgcolor: (t) => alpha(t.palette.secondary.main, 0.15),
+                        color: 'secondary.dark',
+                      }}
+                    >
+                      <HospitalIcon sx={{ fontSize: 18 }} />
+                    </Avatar>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {metric.hospitalName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Assigned hospital
+                      </Typography>
+                    </Box>
+                    <Chip label="Awaiting PECC setup" size="small" color="info" variant="outlined" />
+                  </Box>
+                  <LinearProgress variant="determinate" value={0} sx={{ height: 6, borderRadius: 1, mb: 1 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Ready to begin once site work starts
+                  </Typography>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            No PECCs assigned yet
+          </Typography>
+        )}
+      </AdminSection>
+
+      <Paper elevation={0} sx={adminSectionShellSx}>
+        <Box
+          sx={{
+            px: { xs: 2, md: 2.5 },
+            py: 1.5,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+          }}
+        >
+          <Typography
+            variant="overline"
+            sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+          >
+            Site engagement
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+            Activity and gap-plan volume across assigned hospitals
+          </Typography>
+        </Box>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
+            '& > *': {
+              borderRight: { xs: 'none', sm: '1px solid' },
+              borderBottom: { xs: '1px solid', sm: 'none' },
+              borderColor: 'divider',
+            },
+            '& > *:last-child': { borderRight: 'none', borderBottom: 'none' },
+          }}
+        >
+          {[
+            {
+              label: 'Site activities',
+              value: String(uniqueSiteActivityTotals.activities),
+              caption:
+                assignedHospitals.length > 0
+                  ? `${(uniqueSiteActivityTotals.activities / assignedHospitals.length).toFixed(1)} avg per hospital`
+                  : 'None yet',
+            },
+            {
+              label: 'Gap plans',
+              value: String(uniqueSiteActivityTotals.gapPlans),
+              caption:
+                assignedHospitals.length > 0
+                  ? `${(uniqueSiteActivityTotals.gapPlans / assignedHospitals.length).toFixed(1)} avg per hospital`
+                  : 'None yet',
+            },
+            {
+              label: 'Active PECCs',
+              value: `${activePECCs}/${peccData.length}`,
+              caption: `${peccData.length > 0 ? Math.round((activePECCs / peccData.length) * 100) : 0}% engagement (30 days)`,
+            },
+          ].map((item) => (
+            <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75, textAlign: 'center' }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontWeight: 600, letterSpacing: 0.04, textTransform: 'uppercase', fontSize: '0.65rem' }}
+              >
+                {item.label}
+              </Typography>
+              <Typography
+                sx={{
+                  fontWeight: 700,
+                  fontSize: '1.35rem',
+                  letterSpacing: -0.02,
+                  color: 'secondary.dark',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1.15,
+                  mt: 0.5,
+                }}
+              >
+                {item.value}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
+                {item.caption}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Paper>
+
+      <AdminSection
+        overline="Sites"
+        title="Hospital site activity"
+        description="Activities logged at each site, plus linked PECC count"
+      >
+        {hospitalMetrics.length > 0 ? (
+          <Grid container spacing={1.25}>
+            {hospitalMetrics.map((metric) => (
+              <Grid item xs={12} md={6} key={metric.hospitalId}>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1.5,
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                    {metric.hospitalName}
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                      gap: 1,
+                    }}
+                  >
+                    {[
+                      { label: 'Site activities', value: String(metric.siteActivityCount) },
+                      { label: 'Site hours', value: metric.siteHours.toFixed(1) },
+                      { label: 'Simulations', value: String(metric.simulations) },
+                      { label: 'PECCs', value: String(metric.peccCount) },
+                    ].map((cell) => (
+                      <Box
+                        key={cell.label}
+                        sx={{
+                          p: 1,
+                          textAlign: 'center',
+                          borderRadius: 1,
+                          bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontWeight: 700,
+                            color: 'secondary.dark',
+                            fontVariantNumeric: 'tabular-nums',
+                            fontSize: '1.05rem',
+                          }}
+                        >
+                          {cell.value}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {cell.label}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            No hospital metrics available
+          </Typography>
+        )}
+      </AdminSection>
+
+      <Grid container spacing={{ xs: 2, md: 2.5 }}>
+        <Grid item xs={12} md={6}>
+          <AdminSection
+            overline="Simulations"
+            title="Simulation types"
+            description="Cases logged at your assigned sites"
+          >
+            {Object.keys(simulationBreakdown).length > 0 ? (
+              Object.entries(simulationBreakdown)
+                .sort(([, a], [, b]) => b - a)
+                .map(([simType, count]) => {
+                  const total = Object.values(simulationBreakdown).reduce((sum, c) => sum + c, 0);
+                  const percentage = total > 0 ? (count / total) * 100 : 0;
+                  return (
+                    <Box key={simType} sx={{ mb: 1.5 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                          {simType}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {count} ({Math.round(percentage)}%)
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={percentage}
+                        color="secondary"
+                        sx={{ height: 6, borderRadius: 1 }}
+                      />
+                    </Box>
+                  );
+                })
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No simulation data available
+              </Typography>
+            )}
+          </AdminSection>
         </Grid>
+
+        <Grid item xs={12} md={6}>
+          <AdminSection
+            overline="Simulations"
+            title="By hospital"
+            description="Simulation cases completed at each hospital"
+          >
+            {hospitalMetrics.some((h) => h.simulations > 0) ? (
+              hospitalMetrics
+                .filter((h) => h.simulations > 0)
+                .sort((a, b) => b.simulations - a.simulations)
+                .map((metric) => {
+                  const maxSims = Math.max(...hospitalMetrics.map((h) => h.simulations));
+                  const percentage = maxSims > 0 ? (metric.simulations / maxSims) * 100 : 0;
+                  return (
+                    <Box key={metric.hospitalId} sx={{ mb: 1.5 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, gap: 1 }}>
+                        <Typography variant="body2" sx={{ fontSize: '0.85rem' }} noWrap>
+                          {metric.hospitalName.length > 30
+                            ? metric.hospitalName.substring(0, 30) + '…'
+                            : metric.hospitalName}
+                        </Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                          {metric.simulations}
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={percentage}
+                        color="secondary"
+                        sx={{ height: 6, borderRadius: 1 }}
+                      />
+                    </Box>
+                  );
+                })
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No simulation data available
+              </Typography>
+            )}
+          </AdminSection>
+        </Grid>
+      </Grid>
+
+      {peccData.some((p) => p.readinessScores.length > 0) && (
+        <AdminSection
+          overline="Readiness"
+          title="Pediatric Readiness Score trends"
+          description="Scores stored per hospital (hospital or PECC legacy data)"
+          actions={
+            <Stack direction="row" spacing={1}>
+              <Button size="small" onClick={handleSelectAllHospitals}>
+                Select all
+              </Button>
+              <Button size="small" onClick={handleDeselectAllHospitals}>
+                Clear
+              </Button>
+            </Stack>
+          }
+        >
+          <Box
+            sx={{
+              mb: 2,
+              p: 1.5,
+              borderRadius: 1.5,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: (t) => alpha(t.palette.secondary.main, 0.03),
+            }}
+          >
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+              Hospitals to display
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {peccData
+                .filter((p) => p.readinessScores.length > 0)
+                .map((pecc, index) => (
+                  <FormControlLabel
+                    key={pecc.id}
+                    control={
+                      <Checkbox
+                        checked={selectedHospitals.includes(pecc.hospitalRowId)}
+                        onChange={() => handleToggleHospital(pecc.hospitalRowId)}
+                        size="small"
+                        color="secondary"
+                      />
+                    }
+                    label={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                          sx={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: '50%',
+                            bgcolor: REPORT_CHART_COLORS[index % REPORT_CHART_COLORS.length],
+                          }}
+                        />
+                        <Typography variant="body2">
+                          {pecc.hospital.length > 25
+                            ? pecc.hospital.substring(0, 25) + '…'
+                            : pecc.hospital}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                ))}
+            </Box>
+          </Box>
+
+          {prsChartSeries.length > 0 && selectedHospitals.length > 0 ? (
+            <Box sx={{ mt: 1 }}>
+              <MentorPrsTrendChart series={prsChartSeries} />
+            </Box>
+          ) : selectedHospitals.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
+              Select at least one hospital to view PRS trends
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
+              No PRS assessment data available for selected hospitals
+            </Typography>
+          )}
+        </AdminSection>
       )}
-    </Container>
+    </AdminPageShell>
   );
+
 };
 
 export default MentorSnapshotPage;

@@ -31,6 +31,14 @@ import {
   VisibilityOff as HideIcon,
   Visibility as ShowIcon
 } from '@mui/icons-material';
+
+import {
+  AdminPageShell,
+  AdminHero,
+  AdminSection,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
+import { alpha } from '@mui/material/styles';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -1378,75 +1386,90 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Box sx={{ py: 3 }}>
-        <Typography variant="body2" color="text.secondary" gutterBottom>Loading milestones...</Typography>
-        <LinearProgress sx={{ maxWidth: 400, mt: 1 }} />
-      </Box>
+      <AdminPageShell>
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, px: { xs: 2, md: 2.5 }, py: 4 }}>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Loading milestones…
+          </Typography>
+          <LinearProgress color="secondary" sx={{ maxWidth: 400, mt: 1 }} />
+        </Paper>
+      </AdminPageShell>
     );
   }
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box sx={{ py: 2, px: 1 }}>
-        <Typography variant="h5" gutterBottom sx={{ mb: 1, fontSize: '1.25rem', fontWeight: 600 }}>
-          Site Milestones
-        </Typography>
-        <Typography variant="body2" color="textSecondary" sx={{ mb: 2, fontSize: '0.75rem' }}>
-          Track PECC checklist progress and your mentor hours per site. Completing stages here syncs with the PECC&apos;s Checklist view. Add hospitals on the <strong>Hospitals</strong> page first.
-        </Typography>
+      <AdminPageShell>
+        <AdminHero
+          overline="Checklist progress"
+          title="Site Milestones"
+          description="Track PECC checklist progress and your mentor hours per site. Completing stages here syncs with the PECC Checklist view. Add hospitals on the Hospitals page first."
+        />
 
         {hospitals.length === 0 ? (
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="textSecondary" gutterBottom>No hospitals yet. Add hospitals from the Hospitals page so you can track checklist progress and mentor hours per site.</Typography>
-            <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate(mentorRoutes.hospitals)}>
+          <Paper elevation={0} sx={{ ...adminSectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
+            <Typography color="text.secondary" gutterBottom>
+              No hospitals yet. Add hospitals from the Hospitals page so you can track checklist progress and mentor
+              hours per site.
+            </Typography>
+            <Button
+              variant="contained"
+              color="secondary"
+              sx={{ mt: 2 }}
+              onClick={() => navigate(mentorRoutes.hospitals)}
+            >
               Go to Hospitals
             </Button>
           </Paper>
         ) : (
           <>
-            {/* Hospital Management Controls */}
-            <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Typography variant="body2" color="textSecondary">
-                {visibleHospitals.length} of {hospitals.length} hospitals visible
-              </Typography>
-              <Typography variant="body2" color="textSecondary" sx={{ ml: 1 }}>
-                Checklist view:
-              </Typography>
-              <ButtonGroup size="small" variant="outlined" sx={{ flexWrap: 'wrap' }}>
-                {checklistOptions.map((option) => (
-                  <Button
-                    key={option.key}
-                    variant={selectedChecklistKey === option.key ? 'contained' : 'outlined'}
-                    onClick={() => setSelectedChecklistKey(option.key)}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    {option.label}
-                  </Button>
+            <AdminSection
+              overline="View"
+              title="Hospitals & checklist"
+              description={`${visibleHospitals.length} of ${hospitals.length} hospitals visible`}
+            >
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>
+                  Checklist view:
+                </Typography>
+                <ButtonGroup size="small" variant="outlined" sx={{ flexWrap: 'wrap' }}>
+                  {checklistOptions.map((option) => (
+                    <Button
+                      key={option.key}
+                      variant={selectedChecklistKey === option.key ? 'contained' : 'outlined'}
+                      color={selectedChecklistKey === option.key ? 'secondary' : 'inherit'}
+                      onClick={() => setSelectedChecklistKey(option.key)}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </ButtonGroup>
+                {hospitals.map((hospital) => (
+                  <Chip
+                    key={hospital.id}
+                    label={normalizeHospitalOrOrgName(hospital.name)}
+                    size="small"
+                    icon={hiddenHospitals.has(hospital.id) ? <HideIcon /> : <ShowIcon />}
+                    onClick={() => toggleHospitalVisibility(hospital.id)}
+                    color={hiddenHospitals.has(hospital.id) ? 'default' : 'secondary'}
+                    variant={hiddenHospitals.has(hospital.id) ? 'outlined' : 'filled'}
+                    sx={{ cursor: 'pointer' }}
+                  />
                 ))}
-              </ButtonGroup>
-              {hospitals.map(hospital => (
-                <Chip
-                  key={hospital.id}
-                  label={normalizeHospitalOrOrgName(hospital.name)}
-                  size="small"
-                  icon={hiddenHospitals.has(hospital.id) ? <HideIcon /> : <ShowIcon />}
-                  onClick={() => toggleHospitalVisibility(hospital.id)}
-                  color={hiddenHospitals.has(hospital.id) ? 'default' : 'primary'}
-                  sx={{ cursor: 'pointer' }}
-                />
-              ))}
-            </Box>
-            
-            <TableContainer 
-              component={Paper} 
-              sx={{ 
-                maxHeight: 'calc(100vh - 200px)',
+              </Box>
+            </AdminSection>
+
+            <Paper elevation={0} sx={adminSectionShellSx}>
+            <TableContainer
+              sx={{
+                maxHeight: 'calc(100vh - 240px)',
                 overflowX: 'auto',
                 overflowY: 'auto',
                 '& .MuiTableCell-root': {
                   padding: '4px 8px',
-                  fontSize: '0.75rem'
-                }
+                  fontSize: '0.75rem',
+                },
               }}
             >
               <Table stickyHeader size="small" sx={{ minWidth: 600 }}>
@@ -1481,7 +1504,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
                           bgcolor: isChecklistAvailable ? 'background.paper' : 'action.disabledBackground',
                           fontWeight: 600,
                           borderBottom: '2px solid',
-                          borderColor: isChecklistAvailable ? 'primary.main' : 'divider',
+                          borderColor: isChecklistAvailable ? 'secondary.main' : 'divider',
                           opacity: isChecklistAvailable ? 1 : 0.7
                         }}
                       >
@@ -1755,7 +1778,8 @@ const MentorSiteMilestonesPage: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
-        </>
+            </Paper>
+          </>
         )}
 
         <Menu
@@ -1795,7 +1819,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
             <Button onClick={handleCompletionDateChange} variant="contained" size="small">Save</Button>
           </DialogActions>
         </Dialog>
-      </Box>
+      </AdminPageShell>
     </LocalizationProvider>
   );
 };

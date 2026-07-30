@@ -50,7 +50,12 @@ export function MentorHoursByHospitalPanel({
                       {row.hoursThisMonth > 0 ? ` · ${row.hoursThisMonth.toFixed(1)}h this month` : ''}
                     </Typography>
                   </Box>
-                  <LinearProgress variant="determinate" value={pct} sx={{ height: 6, borderRadius: 3 }} />
+                  <LinearProgress
+                    variant="determinate"
+                    value={pct}
+                    color="secondary"
+                    sx={{ height: 6, borderRadius: 1 }}
+                  />
                   <Typography variant="caption" color="text.secondary">
                     {row.activityCount} linked activit{row.activityCount === 1 ? 'y' : 'ies'}
                   </Typography>

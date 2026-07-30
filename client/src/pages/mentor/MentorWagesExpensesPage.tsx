@@ -33,6 +33,12 @@ import {
   CheckCircle as ApprovedIcon,
   Cancel as RejectedIcon
 } from '@mui/icons-material';
+import {
+  AdminPageShell,
+  AdminHero,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
+import { alpha } from '@mui/material/styles';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -308,21 +314,22 @@ const MentorWagesExpensesPage: React.FC = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box sx={{ py: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Typography variant="h4">Wages & Expenses</Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddExpense}>
-            Add Expense
-          </Button>
-        </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Hours are calculated from your logged activities; stipends from Site Milestones stage completions. Log expenses for reimbursement; your manager can approve or reject.
-        </Typography>
+      <AdminPageShell>
+        <AdminHero
+          overline="Compensation"
+          title="Wages & Expenses"
+          description="Hours are calculated from your logged activities; stipends from Site Milestones stage completions. Log expenses for reimbursement — your manager can approve or reject."
+          actions={
+            <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={handleAddExpense}>
+              Add expense
+            </Button>
+          }
+        />
 
-        {wagesData.receiptsFolderLink && (
-          <Alert severity="info" sx={{ mb: 3 }}>
+{wagesData.receiptsFolderLink && (
+          <Alert severity="info" variant="outlined" sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}>
             <Typography variant="body2">
-              <strong>Receipts Folder:</strong>{' '}
+              <strong>Receipts folder:</strong>{' '}
               <Link href={wagesData.receiptsFolderLink} target="_blank" rel="noopener">
                 {wagesData.receiptsFolderLink}
               </Link>
@@ -330,13 +337,32 @@ const MentorWagesExpensesPage: React.FC = () => {
           </Alert>
         )}
 
-        {/* Monthly Breakdown Table */}
-        <Paper sx={{ mb: 4 }}>
-          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-            <Typography variant="h6">Monthly Breakdown - {currentYear}</Typography>
+                <Paper elevation={0} sx={adminSectionShellSx}>
+          <Box
+            sx={{
+              px: { xs: 2, md: 2.5 },
+              py: 1.5,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+            }}
+          >
+            <Typography
+              variant="overline"
+              sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+            >
+              Payments
+            </Typography>
+            <Typography
+              variant="h6"
+              component="h2"
+              sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: { xs: '1.1rem', sm: '1.2rem' }, mt: 0.25 }}
+            >
+              Monthly breakdown — {currentYear}
+            </Typography>
           </Box>
-          <TableContainer>
-            <Table>
+<TableContainer>
+            <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell><strong>Month</strong></TableCell>
@@ -386,7 +412,7 @@ const MentorWagesExpensesPage: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ))}
-                <TableRow sx={{ bgcolor: 'grey.50' }}>
+                <TableRow sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}>
                   <TableCell><strong>Year Total</strong></TableCell>
                   <TableCell align="right">
                     <strong>{monthlyData.reduce((sum, m) => sum + m.hoursWorked, 0).toFixed(2)}</strong>
@@ -410,13 +436,32 @@ const MentorWagesExpensesPage: React.FC = () => {
           </TableContainer>
         </Paper>
 
-        {/* Expenses Log */}
-        <Paper>
-          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-            <Typography variant="h6">Expense Reimbursements</Typography>
+        <Paper elevation={0} sx={adminSectionShellSx}>
+          <Box
+            sx={{
+              px: { xs: 2, md: 2.5 },
+              py: 1.5,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+            }}
+          >
+            <Typography
+              variant="overline"
+              sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+            >
+              Reimbursements
+            </Typography>
+            <Typography
+              variant="h6"
+              component="h2"
+              sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: { xs: '1.1rem', sm: '1.2rem' }, mt: 0.25 }}
+            >
+              Expense reimbursements
+            </Typography>
           </Box>
           <TableContainer>
-            <Table>
+            <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell><strong>Date</strong></TableCell>
@@ -593,7 +638,7 @@ const MentorWagesExpensesPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-      </Box>
+      </AdminPageShell>
     </LocalizationProvider>
   );
 };
