@@ -448,8 +448,8 @@ const MentorDashboardPage: React.FC = () => {
           Your home base for assigned hospitals, linked PECCs, site activity, and your mentoring hours. Open a hospital card for site details and activity history.
         </Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
-          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/overview')}>
-            Overview
+          <Button size="small" variant="outlined" onClick={() => navigate('/mentor/snapshot')}>
+            Snapshot
           </Button>
           <Button size="small" variant="outlined" onClick={() => navigate('/mentor/activities')}>
             Log activity

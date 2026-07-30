@@ -500,7 +500,7 @@ const MentorSnapshotPage = () => {
     return (
       <Box sx={{ mt: 4, textAlign: 'center' }}>
         <Typography variant="h4" gutterBottom>
-          Loading Overview...
+          Loading Snapshot...
         </Typography>
         <LinearProgress sx={{ width: '50%', mx: 'auto', mt: 2 }} />
       </Box>
@@ -512,7 +512,7 @@ const MentorSnapshotPage = () => {
     return (
       <Box sx={{ mt: 4, textAlign: 'center' }}>
         <Typography variant="h4" gutterBottom color="error">
-          Error Loading Overview
+          Error Loading Snapshot
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           There was an error loading your snapshot data. Please try again.
@@ -527,13 +527,13 @@ const MentorSnapshotPage = () => {
     );
   }
 
-  // No hospitals: overview explains how to assign sites
+  // No hospitals: snapshot explains how to assign sites
   if (assignedHospitals.length === 0) {
     return (
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-            Overview
+            Snapshot
           </Typography>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
             Mentoring metrics
@@ -563,7 +563,7 @@ const MentorSnapshotPage = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box>
             <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
-              Overview
+              Snapshot
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
               Mentoring metrics

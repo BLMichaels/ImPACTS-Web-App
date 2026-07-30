@@ -14,7 +14,7 @@ export function useMentorWorkRoutes() {
       activities: `${base}/activities`,
       milestones: `${base}/milestones`,
       dashboard: isManager ? '/manager/overview' : '/mentor/dashboard',
-      overview: isManager ? '/manager/overview' : '/mentor/overview',
+      overview: isManager ? '/manager/overview' : '/mentor/snapshot',
       hospitalsWithHospital: (hospitalId: string) =>
         `${base}/hospitals?hospital=${encodeURIComponent(hospitalId)}`,
     };

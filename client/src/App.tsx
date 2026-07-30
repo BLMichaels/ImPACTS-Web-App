@@ -39,7 +39,6 @@ const MentorHospitalContactsPage = lazy(() => import('./pages/mentor/MentorHospi
 const MentorSiteMilestonesPage = lazy(() => import('./pages/mentor/MentorSiteMilestonesPage'));
 const MentorWagesExpensesPage = lazy(() => import('./pages/mentor/MentorWagesExpensesPage'));
 const MentorSnapshotPage = lazy(() => import('./pages/mentor/MentorSnapshotPage'));
-const MentorReportsPage = lazy(() => import('./pages/mentor/MentorReportsPage'));
 
 // Manager Pages (lazy loaded)
 const ManagerSnapshotPage = lazy(() => import('./pages/manager/ManagerSnapshotPage'));
@@ -308,9 +307,9 @@ function AppShell() {
                   <Route path="/mentor/hospitals" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorHospitalContactsPage /></ProtectedRoute>} />
                   <Route path="/mentor/milestones" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSiteMilestonesPage /></ProtectedRoute>} />
                   <Route path="/mentor/wages" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorWagesExpensesPage /></ProtectedRoute>} />
-                  <Route path="/mentor/overview" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSnapshotPage /></ProtectedRoute>} />
-                  <Route path="/mentor/reports" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorReportsPage /></ProtectedRoute>} />
-                  <Route path="/mentor/snapshot" element={<Navigate to="/mentor/overview" replace />} />
+                  <Route path="/mentor/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><MentorSnapshotPage /></ProtectedRoute>} />
+                  <Route path="/mentor/overview" element={<Navigate to="/mentor/snapshot" replace />} />
+                  <Route path="/mentor/reports" element={<Navigate to="/mentor/snapshot" replace />} />
                   <Route path="/mentor/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MENTOR]}><CohortsPage /></ProtectedRoute>} />
                   <Route path="/mentor/programs" element={<Navigate to="/mentor/dashboard" replace />} />
                   
