@@ -586,7 +586,7 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
         {!isMobile && (
           <Box sx={{ 
             display: 'flex', 
-            // Base gap keeps Activities ↔ Gap Closures tight; PECC group gaps applied via ml below.
+            // Base gap keeps mid-group items tight; PECC/Mentor group gaps applied via ml below.
             gap: isSmallDesktop ? 0.5 : 1, 
             mr: 2,
             flexWrap: 'nowrap',
@@ -604,11 +604,12 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
               ) : item.icon;
               const active = isNavItemActive(item, location.pathname);
               const hasVisibleChildren = Boolean(item.children?.length);
-              // PECC grouping: Snapshot | Activities + Gap Closures | Cohorts
-              const peccGroupGap = isSmallDesktop ? 6.5 : 11;
-              const peccMarginLeft =
-                userRole === UserRole.PECC && (item.path === '/activities' || item.path === '/cohorts')
-                  ? peccGroupGap
+              // PECC / Mentor grouping: Snapshot | middle work tabs | Cohorts
+              const navGroupGap = isSmallDesktop ? 6.5 : 11;
+              const navGroupMarginLeft =
+                (userRole === UserRole.PECC && (item.path === '/activities' || item.path === '/cohorts')) ||
+                (userRole === UserRole.MENTOR && (item.path === '/mentor/activities' || item.path === '/mentor/cohorts'))
+                  ? navGroupGap
                   : 0;
 
               return (
@@ -636,7 +637,7 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
                     fontSize: isSmallDesktop ? '0.875rem' : '0.9rem',
                     whiteSpace: 'nowrap',
                     flexShrink: 0,
-                    ml: peccMarginLeft
+                    ml: navGroupMarginLeft
                   }}
                 >
                   {item.label}
