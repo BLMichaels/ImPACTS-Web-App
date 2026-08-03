@@ -724,6 +724,7 @@ async function loadInvitations(ctx: LongitudinalLoadContext): Promise<Longitudin
 }
 
 async function loadWages(ctx: LongitudinalLoadContext): Promise<LongitudinalReportRow[]> {
+  // Manager tier: wages reports are not available (UI also hides the dataset).
   if (ctx.scope === 'manager') return [];
   const entries = await fetchAllRowsOrEmpty<{
     id: string;
@@ -754,16 +755,12 @@ async function loadWages(ctx: LongitudinalLoadContext): Promise<LongitudinalRepo
       )
     : [];
   const userById = new Map(users.map((u) => [u.id, u]));
-  const managedWageUserIds =
-    ctx.scope === 'manager' ? new Set(await loadMentorIdsForScope(ctx)) : new Set<string>();
   return entries
     .filter((e) => {
       const u = userById.get(e.user_id);
       if (!u) return ctx.scope === 'admin';
       if (ctx.scope === 'admin') return true;
-      if (ctx.scope === 'manager') {
-        return managedWageUserIds.has(e.user_id) || u.manager_id === ctx.actorUserId;
-      }
+      // mentor: own wage entries only
       return e.user_id === ctx.actorUserId;
     })
     .map((e) => {
