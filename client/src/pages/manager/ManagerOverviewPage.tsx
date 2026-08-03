@@ -115,15 +115,11 @@ const ManagerOverviewPage: React.FC = () => {
         : 0;
     return {
       activeThisMonth: activeThisMonth.length,
-      inactive30: inactive30.length,
       inactiveMentors: inactive30,
       avgHoursPerMentor: avgHours,
       avgSitesPerMentor: avgSites,
-      momDeltaHours: managerOwn.hasAssignments
-        ? teamHoursThisMonth - (managerOwn.lastMonthHours || 0)
-        : null,
     };
-  }, [mentors, teamHoursThisMonth, managerOwn]);
+  }, [mentors, teamHoursThisMonth]);
 
   const hoursByMentorChart = useMemo(
     () =>
