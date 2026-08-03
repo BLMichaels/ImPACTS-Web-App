@@ -24,7 +24,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar,
   Divider,
   Alert,
   Snackbar,
@@ -47,8 +46,6 @@ import {
   Person as PersonIcon,
   Search as SearchIcon,
   Settings as SettingsIcon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
   Edit as EditIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
@@ -60,10 +57,8 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { usePhiGuard } from '../../components/PhiGuard';
 import { supabase } from '../../supabase';
-import { getUserData, setUserData } from '../../utils/userData';
 import { getUserDisplayName } from '../../utils/displayName';
 import { getRoleLabel } from '../../utils/roleUtils';
-import { PECC_TAB_KEYS } from '../../types/database';
 import { TypeDeleteConfirmDialog } from '../../components/crm/TypeDeleteConfirmDialog';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import {
@@ -128,15 +123,6 @@ interface MentorOption {
   first_name: string;
   last_name: string;
   email: string;
-}
-
-/** Tab keys match PECC_TAB_KEYS so Manager saves to view_tabs (source of truth for Navbar). */
-type TabKey = string;
-interface TabVisibilitySettings {
-  userId: string;
-  userName: string;
-  userRole: string;
-  visibleTabs: Record<TabKey, boolean>;
 }
 
 const ManagerCRMPage: React.FC = () => {
@@ -235,11 +221,6 @@ const ManagerCRMPage: React.FC = () => {
     isActivelyEngaged: true,
     notes: ''
   });
-  
-  // Tab Visibility Dialog
-  const [visibilityDialog, setVisibilityDialog] = useState(false);
-  const [visibilitySettings, setVisibilitySettings] = useState<TabVisibilitySettings[]>([]);
-  const [visibilityFilter, setVisibilityFilter] = useState({ role: '', search: '' });
   
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
@@ -652,75 +633,6 @@ const ManagerCRMPage: React.FC = () => {
     }
   };
 
-  const loadTabVisibilitySettings = async () => {
-    try {
-      if (!userProfile?.id) {
-        setVisibilitySettings([]);
-        return;
-      }
-      const visibleIds = await fetchManagerVisibleUserIdsSet(userProfile.id);
-      visibleIds.delete(userProfile.id);
-      const targetUserIds = [...visibleIds];
-      if (targetUserIds.length === 0) {
-        setVisibilitySettings([]);
-        return;
-      }
-
-      const { data: users, error } = await supabase
-        .from('users')
-        .select('id, first_name, last_name, role')
-        .eq('is_active', true)
-        .in('id', targetUserIds);
-
-      if (error) throw error;
-
-      const defaults: Record<string, boolean> = Object.fromEntries(PECC_TAB_KEYS.map(k => [k, true]));
-      const { data: allTabRows, error: allTabRowsError } = await supabase
-        .from('view_tabs')
-        .select('user_id, tab_key, is_visible')
-        .in('user_id', targetUserIds)
-        .is('cohort_id', null)
-        .is('program_id', null);
-      if (allTabRowsError) throw allTabRowsError;
-      const tabRowsByUser = new Map<string, Array<{ tab_key: string; is_visible: boolean }>>();
-      (allTabRows || []).forEach((row: { user_id: string; tab_key: string; is_visible: boolean }) => {
-        if (!tabRowsByUser.has(row.user_id)) tabRowsByUser.set(row.user_id, []);
-        tabRowsByUser.get(row.user_id)!.push({ tab_key: row.tab_key, is_visible: row.is_visible });
-      });
-
-      const visibilityList = await Promise.all(
-        (users || []).map(async (user) => {
-          const tabRows = tabRowsByUser.get(user.id) || [];
-
-          let visibleTabs = { ...defaults };
-          if (tabRows && tabRows.length > 0) {
-            tabRows.forEach((r: { tab_key: string; is_visible: boolean }) => {
-              if (PECC_TAB_KEYS.includes(r.tab_key as any)) visibleTabs[r.tab_key] = r.is_visible;
-            });
-          } else {
-            const legacy = await getUserData<any>(user.id, 'tab_visibility');
-            if (legacy && typeof legacy === 'object') {
-              PECC_TAB_KEYS.forEach(k => {
-                const v = legacy[k] ?? legacy[k === 'gap-plan' ? 'gapPlan' : k];
-                if (typeof v === 'boolean') visibleTabs[k] = v;
-              });
-            }
-          }
-          return {
-            userId: user.id,
-            userName: getUserDisplayName(user),
-            userRole: user.role,
-            visibleTabs
-          };
-        })
-      );
-      setVisibilitySettings(visibilityList);
-    } catch (err) {
-      console.error('Error loading tab visibility settings:', err);
-      setSnackbar({ open: true, message: 'Error loading visibility settings', severity: 'error' });
-    }
-  };
-
   const handleAddHospital = async () => {
     if (!assignToMentorId) {
       setSnackbar({ open: true, message: 'Please assign the site to a mentor', severity: 'error' });
@@ -985,67 +897,6 @@ const ManagerCRMPage: React.FC = () => {
     return list.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
   }, [contacts, debouncedContactSearch, contactHospitalFilter]);
 
-  const handleToggleTabVisibility = (userId: string, tab: keyof TabVisibilitySettings['visibleTabs']) => {
-    setVisibilitySettings(prev => {
-      const updated = prev.map(setting => {
-        if (setting.userId === userId) {
-          const newVisibleTabs = {
-            ...setting.visibleTabs,
-            [tab]: !setting.visibleTabs[tab]
-          };
-          void syncViewTabsForUser(userId, newVisibleTabs);
-          setUserData(userId, 'tab_visibility', newVisibleTabs);
-          return { ...setting, visibleTabs: newVisibleTabs };
-        }
-        return setting;
-      });
-      return updated;
-    });
-  };
-
-  const handleMassToggle = (tab: keyof TabVisibilitySettings['visibleTabs'], visible: boolean, roleFilter?: string) => {
-    setVisibilitySettings(prev => {
-      const updated = prev.map(setting => {
-        if (!roleFilter || setting.userRole === roleFilter) {
-          const newVisibleTabs = {
-            ...setting.visibleTabs,
-            [tab]: visible
-          };
-          void syncViewTabsForUser(setting.userId, newVisibleTabs);
-          setUserData(setting.userId, 'tab_visibility', newVisibleTabs);
-          return { ...setting, visibleTabs: newVisibleTabs };
-        }
-        return setting;
-      });
-      return updated;
-    });
-    setSnackbar({ 
-      open: true, 
-      message: `${tab} tab ${visible ? 'shown' : 'hidden'} for ${roleFilter || 'all users'}`, 
-      severity: 'success' 
-    });
-  };
-
-  const syncViewTabsForUser = async (
-    userId: string,
-    visibleTabs: Record<string, boolean>
-  ): Promise<void> => {
-    try {
-      const rows = PECC_TAB_KEYS.map((tabKey) => ({
-        user_id: userId,
-        tab_key: tabKey,
-        is_visible: visibleTabs[tabKey] ?? true,
-      }));
-      const { error } = await supabase
-        .from('view_tabs')
-        .upsert(rows, { onConflict: 'user_id,tab_key,cohort_id,program_id' });
-      if (error) throw error;
-    } catch (err) {
-      console.error('Error syncing view_tabs:', err);
-      setSnackbar({ open: true, message: 'Could not sync tab visibility to permissions table', severity: 'error' });
-    }
-  };
-
   const filteredHospitals = useMemo(() => {
     const q = debouncedSearchQuery.toLowerCase().trim();
     if (!q) return hospitals;
@@ -1055,15 +906,6 @@ const ManagerCRMPage: React.FC = () => {
       (h.state ?? '').toLowerCase().includes(q)
     );
   }, [hospitals, debouncedSearchQuery]);
-
-  const filteredVisibilitySettings = useMemo(() => {
-    return visibilitySettings.filter(setting => {
-      const matchesRole = !visibilityFilter.role || setting.userRole === visibilityFilter.role;
-      const matchesSearch = !visibilityFilter.search || 
-        setting.userName.toLowerCase().includes(visibilityFilter.search.toLowerCase());
-      return matchesRole && matchesSearch;
-    });
-  }, [visibilitySettings, visibilityFilter]);
 
   if (loading) {
     return (
@@ -1086,18 +928,15 @@ const ManagerCRMPage: React.FC = () => {
       <AdminHero
         overline="Manager"
         title="CRM"
-        description="Manage hospitals, contacts, and tab visibility for sites on your team. Organization-wide CRM tools remain in Admin."
+        description="Manage hospitals and contacts for sites on your team. Tab visibility and permissions live under Team Permissions. Organization-wide CRM tools remain in Admin."
         actions={
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button
               variant="outlined"
               startIcon={<SettingsIcon />}
-              onClick={() => {
-                loadTabVisibilitySettings();
-                setVisibilityDialog(true);
-              }}
+              onClick={() => navigate('/manager/permissions?tab=tabs')}
             >
-              Tab Visibility
+              Team Permissions
             </Button>
             <Button
               variant="contained"
@@ -1234,7 +1073,7 @@ const ManagerCRMPage: React.FC = () => {
                         <Button
                           size="small"
                           variant="contained"
-                          onClick={() => navigate(`/manager/overview?hospital=${hospital.id}`)}
+                          onClick={() => navigate(`/manager/snapshot?hospital=${hospital.id}`)}
                           fullWidth
                         >
                           View
@@ -1353,7 +1192,7 @@ const ManagerCRMPage: React.FC = () => {
                 fullWidth
                 variant="contained"
                 startIcon={<HospitalIcon />}
-                onClick={() => navigate(`/manager/overview?hospital=${hospitalNotesDrawerHospital?.id}`)}
+                onClick={() => navigate(`/manager/snapshot?hospital=${hospitalNotesDrawerHospital?.id}`)}
               >
                 View full overview
               </Button>
@@ -1957,141 +1796,6 @@ const ManagerCRMPage: React.FC = () => {
           >
             {addHospitalMode === 'existing' ? 'Add to CRM' : 'Add unlisted site'}
           </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Tab Visibility Dialog */}
-      <Dialog 
-        open={visibilityDialog} 
-        onClose={() => setVisibilityDialog(false)} 
-        maxWidth="md" 
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6">User Tab Visibility Settings</Typography>
-            <IconButton onClick={() => setVisibilityDialog(false)} aria-label="Close dialog">
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Control which tabs are visible for each user. Hide tabs to simplify the interface or restrict access to certain features.
-          </Alert>
-
-          {/* Mass Actions */}
-          <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-              Mass Actions
-            </Typography>
-            <Typography variant="caption" color="textSecondary" display="block" sx={{ mb: 2 }}>
-              Quickly show or hide tabs for all users or specific roles
-            </Typography>
-            <Grid container spacing={2}>
-              {PECC_TAB_KEYS.map(tab => (
-                <Grid item xs={12} sm={6} key={tab}>
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ flex: 1 }}>
-                      {tab === 'gap-plan' ? 'Gap Closure' : tab.charAt(0).toUpperCase() + tab.slice(1)}:
-                    </Typography>
-                    <Tooltip title="Show this tab for all users">
-                      <Button
-                        size="small"
-                        startIcon={<VisibilityIcon />}
-                        onClick={() => handleMassToggle(tab as any, true)}
-                      >
-                        Show All
-                      </Button>
-                    </Tooltip>
-                    <Tooltip title="Hide this tab for all users">
-                      <Button
-                        size="small"
-                        startIcon={<VisibilityOffIcon />}
-                        onClick={() => handleMassToggle(tab as any, false)}
-                      >
-                        Hide All
-                      </Button>
-                    </Tooltip>
-                  </Box>
-                </Grid>
-              ))}
-            </Grid>
-          </Paper>
-
-          {/* Filters */}
-          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Filter by Role</InputLabel>
-              <Select
-                value={visibilityFilter.role}
-                onChange={(e) => setVisibilityFilter(prev => ({ ...prev, role: e.target.value }))}
-                label="Filter by Role"
-              >
-                <MenuItem value="">All Roles</MenuItem>
-                <MenuItem value="pecc">PECCs</MenuItem>
-                <MenuItem value="mentor">Mentors</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              size="small"
-              placeholder="Search by name..."
-              value={visibilityFilter.search}
-              onChange={(e) => setVisibilityFilter(prev => ({ ...prev, search: e.target.value }))}
-              sx={{ flex: 1 }}
-            />
-          </Box>
-
-          {/* User List */}
-          <List sx={{ maxHeight: 400, overflow: 'auto' }}>
-            {filteredVisibilitySettings.length === 0 ? (
-              <ListItem>
-                <ListItemText
-                  primary="No users to configure"
-                  secondary={visibilitySettings.length === 0 ? 'No PECCs or Mentors in the app yet. Add users and assign them to hospitals first.' : 'No users match your search or role filter.'}
-                  primaryTypographyProps={{ color: 'text.secondary' }}
-                />
-              </ListItem>
-            ) : filteredVisibilitySettings.map((setting, index) => (
-              <React.Fragment key={setting.userId}>
-                {index > 0 && <Divider />}
-                <ListItem>
-                  <ListItemAvatar>
-                    <Avatar sx={{ bgcolor: setting.userRole === 'pecc' ? 'primary.main' : 'secondary.main' }}>
-                      {setting.userName.charAt(0)}
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={setting.userName}
-                    secondary={
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
-                        {Object.entries(setting.visibleTabs).map(([tab, visible]) => (
-                          <FormControlLabel
-                            key={tab}
-                            control={
-                              <Checkbox
-                                size="small"
-                                checked={visible}
-                                onChange={() => handleToggleTabVisibility(setting.userId, tab as any)}
-                              />
-                            }
-                            label={
-                              <Typography variant="caption">
-                                {tab.replace(/([A-Z])/g, ' $1').trim()}
-                              </Typography>
-                            }
-                          />
-                        ))}
-                      </Box>
-                    }
-                  />
-                </ListItem>
-              </React.Fragment>
-            ))}
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setVisibilityDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 

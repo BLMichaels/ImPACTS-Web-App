@@ -38,6 +38,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { UserRole, normalizeUserRole, PERMISSIONS, PECC_TAB_KEYS, UserPermission, CohortPermission, ProgramPermission, ViewTab, Cohort, Program, User, DEFAULT_ROLE_PERMISSIONS } from '../../types/database';
 import { formatPermissionLabel } from '../../utils/permissionsUi';
 import { fetchUsersForManagerPermissions } from '../../utils/managerTeamScope';
+import { useSearchParams } from 'react-router-dom';
 
 const PENDING_USER_PREFIX = 'pending:';
 
@@ -69,7 +70,14 @@ interface GranularPermissionsManagerProps {
 
 const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({ mode, initialSelectedUserId, hideHeader = false }) => {
   const { userProfile, refreshProfile, enterViewAsUser, viewAsUserId } = useUserProfile();
-  const [activeTab, setActiveTab] = useState(0);  // 0: Users, 1: Cohorts, 2: Programs, 3: Tabs
+  const [searchParams] = useSearchParams();
+  const tabParam = (searchParams.get('tab') || '').toLowerCase();
+  const initialTab =
+    tabParam === 'tabs' || tabParam === 'visibility' || tabParam === '3' ? 3
+      : tabParam === 'cohorts' || tabParam === '1' ? 1
+        : tabParam === 'programs' || tabParam === '2' ? 2
+          : 0;
+  const [activeTab, setActiveTab] = useState(initialTab);  // 0: Users, 1: Cohorts, 2: Programs, 3: Tabs
   
   // Data
   const [users, setUsers] = useState<User[]>([]);
@@ -1196,39 +1204,48 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                   </Grid>
                 </Box>
               )}
-              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role (default: all on for new members; user-specific overrides take precedence)</Typography>
-              <Grid container spacing={2}>
-                {[UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC].map(role => (
-                  <Grid item xs={12} key={role}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>{role.charAt(0).toUpperCase() + role.slice(1)}</Typography>
-                    {Object.values(PERMISSIONS).map(perm => {
-                      const key = `role_${role}_${perm}`;
-                      const existing = cohortPermissions.find(
-                        p => p.cohort_id === selectedCohortId && p.role === role && p.permission_key === perm
-                      );
-                      const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, key);
-                      const isEnabled = hasLocalOverride ? permissionStates[key] : (existing ? existing.is_enabled : true);
-                      
-                      return (
-                        <FormControlLabel
-                          key={perm}
-                          control={
-                            <Switch
-                              checked={isEnabled}
-                              onChange={(e) => {
-                                setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
-                                void handleSaveCohortPermission(perm, e.target.checked, undefined, role);
-                              }}
+              {mode !== 'manager' && (
+                <>
+                  <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role (default: all on for new members; user-specific overrides take precedence)</Typography>
+                  <Grid container spacing={2}>
+                    {[UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC].map(role => (
+                      <Grid item xs={12} key={role}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>{role.charAt(0).toUpperCase() + role.slice(1)}</Typography>
+                        {Object.values(PERMISSIONS).map(perm => {
+                          const key = `role_${role}_${perm}`;
+                          const existing = cohortPermissions.find(
+                            p => p.cohort_id === selectedCohortId && p.role === role && p.permission_key === perm
+                          );
+                          const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, key);
+                          const isEnabled = hasLocalOverride ? permissionStates[key] : (existing ? existing.is_enabled : true);
+                          
+                          return (
+                            <FormControlLabel
+                              key={perm}
+                              control={
+                                <Switch
+                                  checked={isEnabled}
+                                  onChange={(e) => {
+                                    setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
+                                    void handleSaveCohortPermission(perm, e.target.checked, undefined, role);
+                                  }}
+                                />
+                              }
+                              label={formatPermissionLabel(perm)}
+                              sx={{ display: 'block', mb: 0.5 }}
                             />
-                          }
-                          label={formatPermissionLabel(perm)}
-                          sx={{ display: 'block', mb: 0.5 }}
-                        />
-                      );
-                    })}
+                          );
+                        })}
+                      </Grid>
+                    ))}
                   </Grid>
-                ))}
-              </Grid>
+                </>
+              )}
+              {mode === 'manager' && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Managers set user-level permissions only. Role defaults for cohorts are managed by admins.
+                </Alert>
+              )}
             </Box>
           )}
         </Paper>
@@ -1323,39 +1340,48 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
                   </Grid>
                 </Box>
               )}
-              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role (default: all on; user-specific overrides take precedence)</Typography>
-              <Grid container spacing={2}>
-                {[UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC].map(role => (
-                  <Grid item xs={12} key={role}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>{role.charAt(0).toUpperCase() + role.slice(1)}</Typography>
-                    {Object.values(PERMISSIONS).map(perm => {
-                      const key = `role_${role}_${perm}`;
-                      const existing = programPermissions.find(
-                        p => p.program_id === selectedProgramId && p.role === role && p.permission_key === perm
-                      );
-                      const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, key);
-                      const isEnabled = hasLocalOverride ? permissionStates[key] : (existing ? existing.is_enabled : true);
-                      
-                      return (
-                        <FormControlLabel
-                          key={perm}
-                          control={
-                            <Switch
-                              checked={isEnabled}
-                              onChange={(e) => {
-                                setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
-                                void handleSaveProgramPermission(perm, e.target.checked, undefined, role);
-                              }}
+              {mode !== 'manager' && (
+                <>
+                  <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Permissions by Role (default: all on; user-specific overrides take precedence)</Typography>
+                  <Grid container spacing={2}>
+                    {[UserRole.MANAGER, UserRole.MENTOR, UserRole.PECC].map(role => (
+                      <Grid item xs={12} key={role}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>{role.charAt(0).toUpperCase() + role.slice(1)}</Typography>
+                        {Object.values(PERMISSIONS).map(perm => {
+                          const key = `role_${role}_${perm}`;
+                          const existing = programPermissions.find(
+                            p => p.program_id === selectedProgramId && p.role === role && p.permission_key === perm
+                          );
+                          const hasLocalOverride = Object.prototype.hasOwnProperty.call(permissionStates, key);
+                          const isEnabled = hasLocalOverride ? permissionStates[key] : (existing ? existing.is_enabled : true);
+                          
+                          return (
+                            <FormControlLabel
+                              key={perm}
+                              control={
+                                <Switch
+                                  checked={isEnabled}
+                                  onChange={(e) => {
+                                    setPermissionStates(prev => ({ ...prev, [key]: e.target.checked }));
+                                    void handleSaveProgramPermission(perm, e.target.checked, undefined, role);
+                                  }}
+                                />
+                              }
+                              label={formatPermissionLabel(perm)}
+                              sx={{ display: 'block', mb: 0.5 }}
                             />
-                          }
-                          label={formatPermissionLabel(perm)}
-                          sx={{ display: 'block', mb: 0.5 }}
-                        />
-                      );
-                    })}
+                          );
+                        })}
+                      </Grid>
+                    ))}
                   </Grid>
-                ))}
-              </Grid>
+                </>
+              )}
+              {mode === 'manager' && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Managers set user-level permissions only. Role defaults for programs are managed by admins.
+                </Alert>
+              )}
             </Box>
           )}
         </Paper>

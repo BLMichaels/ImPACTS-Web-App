@@ -220,7 +220,7 @@ const Navbar: React.FC = () => {
 
       case UserRole.MANAGER: {
         const managerItems: NavItem[] = [
-          { path: '/manager/overview', label: 'Snapshot', icon: <TimelineIcon /> },
+          { path: '/manager/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
           { path: '/manager/reports', label: 'Reports', icon: <AssessmentIcon /> },
@@ -313,7 +313,7 @@ const Navbar: React.FC = () => {
   const getDashboardPath = (): string => {
     switch (userRole) {
       case UserRole.ADMIN: return '/admin/dashboard';
-      case UserRole.MANAGER: return '/manager/overview';
+      case UserRole.MANAGER: return '/manager/snapshot';
       case UserRole.MENTOR: return '/mentor/dashboard';
       case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';
       case UserRole.HIRING_GROUP: return '/hiring-group/snapshot';

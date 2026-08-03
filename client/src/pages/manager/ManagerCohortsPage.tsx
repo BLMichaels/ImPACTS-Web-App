@@ -16,6 +16,7 @@ import {
   FormControlLabel,
   Switch,
   Stack,
+  Autocomplete,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -54,6 +55,23 @@ const ManagerCohortsPage: React.FC = () => {
   });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [programOptions, setProgramOptions] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('programs')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      if (cancelled || error) return;
+      setProgramOptions((data || []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name || p.id })));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadCohorts = useCallback(async () => {
     if (!userProfile?.id) return;
@@ -370,6 +388,16 @@ const ManagerCohortsPage: React.FC = () => {
   // Get cohort IDs that this manager manages for invitation filtering
   const managedCohortIds = cohorts.filter(c => c.is_manager).map(c => c.id);
 
+  const selectedProgramOption =
+    programOptions.find((p) => p.id === formData.program_id) ||
+    (formData.program_id
+      ? { id: formData.program_id, name: `Program ${formData.program_id.slice(0, 8)}…` }
+      : null);
+  const programAutocompleteOptions =
+    selectedProgramOption && !programOptions.some((p) => p.id === selectedProgramOption.id)
+      ? [selectedProgramOption, ...programOptions]
+      : programOptions;
+
   if (selectedCohort) {
     // Assigned in cohort_managers — edit cohort, invite, moderate, etc.
     const isCohortManager = cohorts.find(c => c.id === selectedCohort.id)?.is_manager ?? false;
@@ -418,13 +446,20 @@ const ManagerCohortsPage: React.FC = () => {
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               sx={{ mb: 2 }}
             />
-            <TextField
-              label="Program (optional)"
-              fullWidth
-              value={formData.program_id}
-              onChange={(e) => setFormData(prev => ({ ...prev, program_id: e.target.value }))}
-              placeholder="e.g., 2025 Spring Cohort"
-              sx={{ mb: 2 }}
+            <Autocomplete
+              options={programAutocompleteOptions}
+              getOptionLabel={(opt) => opt.name}
+              value={selectedProgramOption}
+              onChange={(_, value) => setFormData((prev) => ({ ...prev, program_id: value?.id || '' }))}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Program (optional)"
+                  placeholder="Select an active program"
+                  helperText="Stores the program UUID on the cohort"
+                  sx={{ mb: 2 }}
+                />
+              )}
             />
             <FormControlLabel
               control={
@@ -564,12 +599,19 @@ const ManagerCohortsPage: React.FC = () => {
             placeholder="What is this cohort for?"
             sx={{ mb: 2 }}
           />
-          <TextField
-            label="Program (optional)"
-            fullWidth
-            value={formData.program_id}
-            onChange={(e) => setFormData(prev => ({ ...prev, program_id: e.target.value }))}
-            placeholder="Link to a specific program"
+          <Autocomplete
+            options={programAutocompleteOptions}
+            getOptionLabel={(opt) => opt.name}
+            value={selectedProgramOption}
+            onChange={(_, value) => setFormData((prev) => ({ ...prev, program_id: value?.id || '' }))}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Program (optional)"
+                placeholder="Select an active program"
+                helperText="Stores the program UUID on the cohort"
+              />
+            )}
           />
         </DialogContent>
         <DialogActions>

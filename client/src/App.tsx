@@ -41,7 +41,6 @@ const MentorWagesExpensesPage = lazy(() => import('./pages/mentor/MentorWagesExp
 const MentorSnapshotPage = lazy(() => import('./pages/mentor/MentorSnapshotPage'));
 
 // Manager Pages (lazy loaded)
-const ManagerSnapshotPage = lazy(() => import('./pages/manager/ManagerSnapshotPage'));
 const ManagerOverviewPage = lazy(() => import('./pages/manager/ManagerOverviewPage'));
 const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
 const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
@@ -151,7 +150,7 @@ const getDefaultDashboard = (role: UserRole): string => {
     case UserRole.ADMIN:
       return '/admin/dashboard';
     case UserRole.MANAGER:
-      return '/manager/overview';
+      return '/manager/snapshot';
     case UserRole.MENTOR:
       return '/mentor/dashboard';
     case UserRole.PECC:
@@ -315,10 +314,10 @@ function AppShell() {
                   <Route path="/mentor/programs" element={<Navigate to="/mentor/dashboard" replace />} />
                   
                   {/* Manager Routes */}
-                  <Route path="/manager/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerSnapshotPage /></ProtectedRoute>} />
+                  <Route path="/manager/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerOverviewPage /></ProtectedRoute>} />
                   <Route path="/manager/reports" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerReportsPage /></ProtectedRoute>} />
-                  <Route path="/manager/overview" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerOverviewPage /></ProtectedRoute>} />
-                  <Route path="/manager/dashboard" element={<Navigate to="/manager/overview" replace />} />
+                  <Route path="/manager/overview" element={<Navigate to="/manager/snapshot" replace />} />
+                  <Route path="/manager/dashboard" element={<Navigate to="/manager/snapshot" replace />} />
                   <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />
                   <Route path="/manager/activities" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><MentorActivitiesPage /></ProtectedRoute>} />
                   <Route path="/manager/hospitals" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><MentorHospitalContactsPage /></ProtectedRoute>} />
@@ -326,7 +325,7 @@ function AppShell() {
                   <Route path="/manager/crm" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCRMPage /></ProtectedRoute>} />
                   <Route path="/manager/wages" element={<Navigate to="/manager/mentors" replace />} />
                   <Route path="/manager/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCohortsPage /></ProtectedRoute>} />
-                  <Route path="/manager/programs" element={<Navigate to="/manager/overview" replace />} />
+                  <Route path="/manager/programs" element={<Navigate to="/manager/snapshot" replace />} />
                   <Route path="/manager/permissions" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerPermissionsPage /></ProtectedRoute>} />
                   
                   {/* Admin Routes */}

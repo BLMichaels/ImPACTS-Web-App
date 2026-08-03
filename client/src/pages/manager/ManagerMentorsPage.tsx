@@ -25,14 +25,13 @@ import {
   Tab,
   Tabs,
   LinearProgress,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Switch,
-  FormControlLabel,
   Autocomplete
 } from '@mui/material';
 import {
@@ -45,15 +44,13 @@ import {
   Assignment as ActivityIcon,
   CheckCircle as ChecklistIcon,
   Description as GapPlanIcon,
-  AttachMoney as MoneyIcon,
-  People as PeopleIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
-import { getMentorActivitiesForUser } from '../../utils/mentorActivities';
+import { batchGetMentorActivitiesForUsers } from '../../utils/mentorActivities';
 import {
   getUserData,
   setUserData,
@@ -67,10 +64,10 @@ import { getScopedMentorUsersForManager } from '../../utils/managerTeamScope';
 import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
-import ManagerWagesExpensesPage from './ManagerWagesExpensesPage';
 import {
   AdminPageShell,
   AdminHero,
+  AdminSection,
   adminSectionShellSx,
 } from '../../components/admin/AdminPageChrome';
 
@@ -132,8 +129,16 @@ const USER_DATA_PECC_FULL_SITE_APPROVAL = 'pecc_allow_manager_mentor_full_view';
 
 const TabPanel = (props: TabPanelProps) => {
   const { children, value, index, ...other } = props;
+  const tabId = `pecc-detail-tab-${index}`;
+  const panelId = `pecc-detail-tabpanel-${index}`;
   return (
-    <div hidden={value !== index} {...other}>
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={panelId}
+      aria-labelledby={tabId}
+      {...other}
+    >
       {value === index && <Box sx={{ pt: 2 }}>{children}</Box>}
     </div>
   );
@@ -144,7 +149,6 @@ const ManagerMentorsPage: React.FC = () => {
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
   
-  const [activeTab, setActiveTab] = useState(0);
   const [mentors, setMentors] = useState<MentorData[]>([]);
   const [expandedMentor, setExpandedMentor] = useState<string | null>(null);
   const [expandedPECC, setExpandedPECC] = useState<string | null>(null);
@@ -155,17 +159,7 @@ const ManagerMentorsPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const isMountedRef = useRef(true);
-  
-  // Wages feature toggle - stored in user_data for current manager
-  const [wagesEnabled, setWagesEnabled] = useState(true);
-  const managerId = userProfile?.id;
-  useEffect(() => {
-    if (!managerId) return;
-    getUserData<boolean>(managerId, 'manager_wages_enabled').then((v) => {
-      setWagesEnabled(v !== false);
-    });
-  }, [managerId]);
-  
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -175,21 +169,10 @@ const ManagerMentorsPage: React.FC = () => {
   const [inviteCohortIds, setInviteCohortIds] = useState<string[]>([]);
   const [inviteCohorts, setInviteCohorts] = useState<Array<{ id: string; name: string }>>([]);
   const [inviteSending, setInviteSending] = useState(false);
-  // Assign existing mentor to cohorts
   const [cohortAssignMentor, setCohortAssignMentor] = useState<MentorData | null>(null);
   const [cohortAssignOptions, setCohortAssignOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [cohortAssignSelectedIds, setCohortAssignSelectedIds] = useState<string[]>([]);
   const [cohortAssignSaving, setCohortAssignSaving] = useState(false);
-
-  const handleToggleWages = async (enabled: boolean) => {
-    setWagesEnabled(enabled);
-    if (managerId) await setUserData(managerId, 'manager_wages_enabled', enabled);
-    setSnackbar({ 
-      open: true, 
-      message: `Wages & Expenses tab ${enabled ? 'enabled' : 'disabled'}`, 
-      severity: 'success' 
-    });
-  };
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -367,24 +350,22 @@ const ManagerMentorsPage: React.FC = () => {
         hospitalRefsByCanonical.set(uuid, refs);
       });
 
+      const activitiesByMentor = await batchGetMentorActivitiesForUsers(scopedMentors.map((m) => m.id));
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
       // Build mentor data with PECCs
-      const mentorData: MentorData[] = await Promise.all(
-        scopedMentors.map(async (mentor) => {
+      const mentorData: MentorData[] = scopedMentors.map((mentor) => {
           const mergedRows = hospitalCtx.rowsByMentor.get(mentor.id) || [];
           
-          // Load mentor activities from Supabase (user_data)
-          const activities = await getMentorActivitiesForUser(mentor.id);
+          const activities = activitiesByMentor.get(mentor.id) || [];
           const totalActivities = activities.length;
-
-          // Calculate hours this month
-          const now = new Date();
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
           const hoursThisMonth = activities
             .filter((a: any) => new Date(a.date) >= monthStart)
             .reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
 
           const lastActivity = activities.length > 0
-            ? activities.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
+            ? [...activities].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
             : null;
 
           const hospitalData = mergedRows.map((row) => {
@@ -448,8 +429,7 @@ const ManagerMentorsPage: React.FC = () => {
             hoursThisMonth,
             lastActivity
           };
-        })
-      );
+        });
 
       if (isMountedRef.current) setMentors(mentorData);
     } catch (err) {
@@ -628,12 +608,12 @@ const ManagerMentorsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h4" gutterBottom>
-          Manage Mentors
-        </Typography>
-        <LinearProgress />
-      </Box>
+      <AdminPageShell>
+        <AdminHero overline="Manager" title="Mentors" description="Loading your mentor team…" />
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, p: 3 }}>
+          <LinearProgress />
+        </Paper>
+      </AdminPageShell>
     );
   }
 
@@ -644,25 +624,9 @@ const ManagerMentorsPage: React.FC = () => {
         title="Mentors"
         description="View and manage your mentor team. Expand to see their PECCs and review activities, progress, and gap plans."
         actions={
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={wagesEnabled}
-                  onChange={(e) => handleToggleWages(e.target.checked)}
-                  size="small"
-                />
-              }
-              label={
-                <Typography variant="caption" color="textSecondary">
-                  Show Wages
-                </Typography>
-              }
-            />
-            <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
-              Invite Mentor
-            </Button>
-          </Box>
+          <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+            Invite Mentor
+          </Button>
         }
       />
       {loadError && (
@@ -674,52 +638,19 @@ const ManagerMentorsPage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Tabs */}
-      <Paper elevation={0} sx={{ ...adminSectionShellSx, mb: 2.5 }}>
-        <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
-          <Tab label="Team View" icon={<PeopleIcon />} iconPosition="start" />
-          {wagesEnabled && <Tab label="Wages & Expenses" icon={<MoneyIcon />} iconPosition="start" />}
-        </Tabs>
-      </Paper>
+      <AdminSection
+        overline="Roster"
+        title="Team overview"
+        description={`${mentors.length} mentors · ${mentors.reduce((sum, m) => sum + m.assignedHospitals.reduce((s, h) => s + h.peccs.length, 0), 0)} PECCs · ${mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0).toFixed(1)}h this month`}
+      >
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0 }}>
+          <Chip label={`${mentors.length} mentors`} color="secondary" variant="outlined" size="small" />
+          <Chip label={`${mentors.reduce((sum, m) => sum + m.totalActivities, 0)} activities`} variant="outlined" size="small" />
+          <Chip label={`${mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0).toFixed(1)}h this month`} variant="outlined" size="small" />
+        </Stack>
+      </AdminSection>
 
-      {/* Team View Tab */}
-      {activeTab === 0 && (
-        <Box>
-          {/* Summary Stats */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="h4" color="primary">{mentors.length}</Typography>
-                <Typography variant="body2" color="textSecondary">Total Mentors</Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="h4" color="success.main">
-                  {mentors.reduce((sum, m) => sum + m.assignedHospitals.reduce((s, h) => s + h.peccs.length, 0), 0)}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">Total PECCs</Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="h4" color="info.main">
-                  {mentors.reduce((sum, m) => sum + m.totalActivities, 0)}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">Total Activities</Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="h4" color="warning.main">
-                  {mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0).toFixed(1)}h
-                </Typography>
-                <Typography variant="body2" color="textSecondary">Hours This Month</Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-
-          {/* Mentors List */}
+      <AdminSection overline="Team" title="Mentors" description="Expand a mentor to review sites, PECCs, and progress. Snapshot has team-wide charts.">
           {mentors.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
               <Typography variant="body1" color="textSecondary" gutterBottom>
@@ -731,7 +662,7 @@ const ManagerMentorsPage: React.FC = () => {
             </Paper>
           ) : (
             <Box>
-          {mentors.map((mentor, index) => (
+          {mentors.map((mentor) => (
             <Card key={mentor.id} sx={{ mb: 2 }}>
               <CardContent>
                 {/* Mentor Header */}
@@ -958,16 +889,8 @@ const ManagerMentorsPage: React.FC = () => {
             </Card>
           ))}
         </Box>
-        )}
-      </Box>
-      )}
-
-      {/* Wages & Expenses Tab */}
-      {wagesEnabled && activeTab === 1 && (
-        <Box>
-          <ManagerWagesExpensesPage />
-        </Box>
-      )}
+          )}
+      </AdminSection>
 
       {/* PECC Detail Dialog */}
       <Dialog 
@@ -996,10 +919,10 @@ const ManagerMentorsPage: React.FC = () => {
             <DialogContent>
               {viewingPECC.fullSiteAccessApproved ? (
                 <>
-                  <Tabs value={peccDetailTab} onChange={(e, v) => setPeccDetailTab(v)}>
-                    <Tab icon={<ActivityIcon />} label="Activities" />
-                    <Tab icon={<ChecklistIcon />} label="Checklist" />
-                    <Tab icon={<GapPlanIcon />} label="Gap Plans" />
+                  <Tabs value={peccDetailTab} onChange={(e, v) => setPeccDetailTab(v)} aria-label="PECC detail sections">
+                    <Tab id="pecc-detail-tab-0" aria-controls="pecc-detail-tabpanel-0" icon={<ActivityIcon />} label="Activities" />
+                    <Tab id="pecc-detail-tab-1" aria-controls="pecc-detail-tabpanel-1" icon={<ChecklistIcon />} label="Checklist" />
+                    <Tab id="pecc-detail-tab-2" aria-controls="pecc-detail-tabpanel-2" icon={<GapPlanIcon />} label="Gap Plans" />
                   </Tabs>
 
                   <TabPanel value={peccDetailTab} index={0}>

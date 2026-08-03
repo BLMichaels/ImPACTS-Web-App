@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { endOfMonth, startOfMonth, subMonths } from 'date-fns';
 import { supabase } from '../supabase';
-import { getMentorActivitiesForUser } from '../utils/mentorActivities';
+import { getMentorActivitiesForUser, batchGetMentorActivitiesForUsers } from '../utils/mentorActivities';
 import { buildMentorHospitalContext, countPeccsByCanonicalHospital } from '../utils/mentorHospitalScope';
 import { buildPeccHospitalFacilityOrClause } from '../utils/mentorHospitalAssignments';
 import { getScopedMentorUsersForManager } from '../utils/managerTeamScope';
@@ -123,6 +123,8 @@ export function useManagerTeamDashboard(managerId: string | undefined) {
       }
 
       const scopedMentorIds = scopedMentors.map((m) => m.id);
+      // Snapshot team rollups exclude the manager's own mentoring (shown separately as managerOwn).
+      const teamMentors = scopedMentors.filter((m) => m.id !== managerId);
       const hospitalCtx = await buildMentorHospitalContext(scopedMentorIds);
       const uniqueHospitalIds = hospitalCtx.allHospitalUuids;
       const refToCanonicalHospitalId = hospitalCtx.refToCanonicalId;
@@ -179,40 +181,40 @@ export function useManagerTeamDashboard(managerId: string | undefined) {
       const now = new Date();
       const monthStart = startOfMonth(now);
 
-      const mentorRows: ManagerTeamMentorRow[] = await Promise.all(
-        scopedMentors.map(async (mentor) => {
-          const mergedRows = hospitalCtx.rowsByMentor.get(mentor.id) || [];
-          const assignedHospitals = mergedRows.map((row) => ({
-            id: row.hospital.id,
-            name: hospitalCtx.hospitalNameById.get(row.hospital.id) || row.hospital.name || 'Unknown',
-            peccCount: peccCountByHospital.get(row.hospital.id) || 0,
-          }));
+      const activitiesByMentor = await batchGetMentorActivitiesForUsers(teamMentors.map((m) => m.id));
 
-          const activities = await getMentorActivitiesForUser(mentor.id);
-          const monthActivities = activities.filter((a: { date?: string }) => new Date(a.date || '') >= monthStart);
+      const mentorRows: ManagerTeamMentorRow[] = teamMentors.map((mentor) => {
+        const mergedRows = hospitalCtx.rowsByMentor.get(mentor.id) || [];
+        const assignedHospitals = mergedRows.map((row) => ({
+          id: row.hospital.id,
+          name: hospitalCtx.hospitalNameById.get(row.hospital.id) || row.hospital.name || 'Unknown',
+          peccCount: peccCountByHospital.get(row.hospital.id) || 0,
+        }));
 
-          const lastActivity =
-            activities.length > 0
-              ? [...activities].sort(
-                  (a: { date?: string }, b: { date?: string }) =>
-                    new Date(b.date || '').getTime() - new Date(a.date || '').getTime()
-                )[0].date || null
-              : null;
+        const activities = activitiesByMentor.get(mentor.id) || [];
+        const monthActivities = activities.filter((a: { date?: string }) => new Date(a.date || '') >= monthStart);
 
-          return {
-            id: mentor.id,
-            firstName: mentor.first_name,
-            lastName: mentor.last_name,
-            email: mentor.email,
-            assignedHospitals,
-            totalActivities: activities.length,
-            activitiesThisMonth: monthActivities.length,
-            hoursThisMonth: monthActivities.reduce((sum: number, a: { hours?: number }) => sum + (a.hours || 0), 0),
-            hoursTotal: activities.reduce((sum: number, a: { hours?: number }) => sum + (a.hours || 0), 0),
-            lastActivity,
-          };
-        })
-      );
+        const lastActivity =
+          activities.length > 0
+            ? [...activities].sort(
+                (a: { date?: string }, b: { date?: string }) =>
+                  new Date(b.date || '').getTime() - new Date(a.date || '').getTime()
+              )[0].date || null
+            : null;
+
+        return {
+          id: mentor.id,
+          firstName: mentor.first_name,
+          lastName: mentor.last_name,
+          email: mentor.email,
+          assignedHospitals,
+          totalActivities: activities.length,
+          activitiesThisMonth: monthActivities.length,
+          hoursThisMonth: monthActivities.reduce((sum: number, a: { hours?: number }) => sum + (a.hours || 0), 0),
+          hoursTotal: activities.reduce((sum: number, a: { hours?: number }) => sum + (a.hours || 0), 0),
+          lastActivity,
+        };
+      });
 
       setMentors(mentorRows);
     } catch (err) {

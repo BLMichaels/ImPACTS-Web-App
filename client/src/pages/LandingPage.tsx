@@ -122,7 +122,7 @@ const getDefaultDashboard = (role: UserRole): string => {
     case UserRole.ADMIN:
       return '/admin/dashboard';
     case UserRole.MANAGER:
-      return '/manager/overview';
+      return '/manager/snapshot';
     case UserRole.MENTOR:
       return '/mentor/dashboard';
     case UserRole.HOSPITAL_SYSTEM:

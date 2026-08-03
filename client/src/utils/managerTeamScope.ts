@@ -78,11 +78,18 @@ export async function getManagedMentorIdsForManager(managerId: string): Promise<
 }
 
 /** Mentor rows scoped to this manager (includes self when manager mentors directly). */
-export async function getScopedMentorUsersForManager(managerId: string): Promise<ManagedMentorUser[]> {
-  const { data: mentorUsers, error } = await supabase
+export async function getScopedMentorUsersForManager(
+  managerId: string,
+  opts?: { includeInactive?: boolean }
+): Promise<ManagedMentorUser[]> {
+  let query = supabase
     .from('users')
-    .select('id, first_name, last_name, email, manager_id')
+    .select('id, first_name, last_name, email, manager_id, is_active')
     .eq('role', 'mentor');
+  if (!opts?.includeInactive) {
+    query = query.eq('is_active', true);
+  }
+  const { data: mentorUsers, error } = await query;
 
   if (error) throw error;
   if (!mentorUsers?.length) return [];
@@ -105,6 +112,46 @@ export async function getScopedMentorUsersForManager(managerId: string): Promise
   }
 
   return scoped;
+}
+
+/** Active programs linked to cohorts this manager directly manages. */
+export async function fetchManagedProgramsForManager(
+  managerId: string
+): Promise<{ id: string; name: string }[]> {
+  const cohortIds = await getManagedCohortIdsForManager(managerId);
+  if (!cohortIds.length) return [];
+
+  const programIds = new Set<string>();
+  for (let i = 0; i < cohortIds.length; i += 80) {
+    const part = cohortIds.slice(i, i + 80);
+    const { data } = await supabase.from('cohorts').select('program_id').in('id', part);
+    (data || []).forEach((c: { program_id: string | null }) => {
+      if (c.program_id) programIds.add(c.program_id);
+    });
+  }
+
+  const { data: pm } = await supabase.from('program_managers').select('program_id').eq('manager_id', managerId);
+  (pm || []).forEach((r: { program_id: string }) => {
+    if (r.program_id) programIds.add(r.program_id);
+  });
+
+  const ids = [...programIds];
+  if (!ids.length) return [];
+
+  const out: { id: string; name: string }[] = [];
+  for (let i = 0; i < ids.length; i += 80) {
+    const part = ids.slice(i, i + 80);
+    const { data } = await supabase
+      .from('programs')
+      .select('id, name')
+      .in('id', part)
+      .eq('is_active', true)
+      .order('name');
+    (data || []).forEach((p: { id: string; name: string }) => {
+      if (p.id) out.push({ id: p.id, name: p.name || p.id });
+    });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
 }
 
 /** Cohort IDs this manager is assigned to manage (`cohort_managers`). */

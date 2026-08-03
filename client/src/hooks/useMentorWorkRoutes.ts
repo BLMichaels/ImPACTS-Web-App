@@ -13,8 +13,8 @@ export function useMentorWorkRoutes() {
       hospitals: `${base}/hospitals`,
       activities: `${base}/activities`,
       milestones: `${base}/milestones`,
-      dashboard: isManager ? '/manager/overview' : '/mentor/dashboard',
-      overview: isManager ? '/manager/overview' : '/mentor/snapshot',
+      dashboard: isManager ? '/manager/snapshot' : '/mentor/dashboard',
+      overview: isManager ? '/manager/snapshot' : '/mentor/snapshot',
       hospitalsWithHospital: (hospitalId: string) =>
         `${base}/hospitals?hospital=${encodeURIComponent(hospitalId)}`,
     };

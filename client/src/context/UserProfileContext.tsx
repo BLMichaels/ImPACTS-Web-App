@@ -398,7 +398,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const getDefaultDashboardForRole = useCallback((role: UserRole): string => {
     switch (role) {
       case UserRole.ADMIN: return '/admin/dashboard';
-      case UserRole.MANAGER: return '/manager/overview';
+      case UserRole.MANAGER: return '/manager/snapshot';
       case UserRole.MENTOR: return '/mentor/dashboard';
       case UserRole.PECC: return '/dashboard';
       case UserRole.HOSPITAL_SYSTEM: return '/hospital-system/dashboard';

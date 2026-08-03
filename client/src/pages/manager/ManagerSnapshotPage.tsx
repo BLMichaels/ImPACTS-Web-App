@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
 
-/** Legacy route — team snapshot is now on Manager Overview. */
+/** Legacy alias — Snapshot lives at `/manager/snapshot` (ManagerOverviewPage). */
 export default function ManagerSnapshotPage() {
-  return <Navigate to="/manager/overview" replace />;
+  return <Navigate to="/manager/snapshot" replace />;
 }

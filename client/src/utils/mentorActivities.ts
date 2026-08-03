@@ -40,3 +40,21 @@ export async function getMentorActivitiesForUser(userId: string): Promise<any[]>
   }
   return [];
 }
+
+/** Batch-load mentor activity logs (skips per-user localStorage migration). */
+export async function batchGetMentorActivitiesForUsers(
+  userIds: string[]
+): Promise<Map<string, any[]>> {
+  const unique = [...new Set(userIds.filter(Boolean))];
+  const out = new Map<string, any[]>();
+  unique.forEach((id) => out.set(id, []));
+  if (!unique.length) return out;
+
+  const { batchGetUserDataForKey } = await import('./userData');
+  const raw = await batchGetUserDataForKey<any[]>(unique, 'mentorActivities');
+  unique.forEach((id) => {
+    const v = raw.get(id);
+    out.set(id, Array.isArray(v) ? v : []);
+  });
+  return out;
+}

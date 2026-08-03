@@ -114,6 +114,7 @@ import {
 import {
   getManagedHospitalScopeKeysForManager,
   fetchManagedCohortsForManager,
+  fetchManagedProgramsForManager,
   fetchManagerVisibleUserIdsSet,
 } from '../../utils/managerTeamScope';
 
@@ -1145,7 +1146,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       try {
         if (scope === 'manager') {
           [progList, coList] = await Promise.all([
-            fetchActiveProgramsList(),
+            fetchManagedProgramsForManager(actorUserId),
             fetchManagedCohortsForManager(actorUserId),
           ]);
         } else {
@@ -1159,6 +1160,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       setCohorts(coList);
       const progMap = new Map(progList.map((p) => [p.id, p.name]));
       const coMap = new Map(coList.map((c) => [c.id, c.name]));
+
+      if (scope === 'manager' && dataset === 'wages') {
+        if (isStale()) return;
+        setRows([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
 
       if (dataset === 'pecc') {
         await loadPeccDataset({
@@ -2297,11 +2306,18 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
                     Longitudinal &amp; operations
                   </ListSubheader>
-                  {REPORT_DATASET_LONGITUDINAL_OPTIONS.map(({ value, label }) => (
+                  {REPORT_DATASET_LONGITUDINAL_OPTIONS.filter((opt) =>
+                    scope === 'manager' ? opt.value !== 'wages' : true
+                  ).map(({ value, label }) => (
                     <MenuItem key={value} value={value}>
                       {label}
                     </MenuItem>
                   ))}
+                  {scope === 'manager' && dataset === 'wages' && (
+                    <MenuItem value="wages" disabled>
+                      Wages &amp; payroll entries (not available for managers)
+                    </MenuItem>
+                  )}
                 </Select>
               </FormControl>
             </Grid>
@@ -2532,9 +2548,15 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
 
         {scope === 'manager' && !loading && cohorts.length === 0 && (
           <Alert severity="info" sx={{ mb: 2 }}>
-            You are not assigned as a cohort manager yet. Reports still include mentors and sites you supervise
-            directly. Ask an admin to assign you in <strong>cohort_managers</strong> (Admin → Cohorts) to filter and
-            report on specific cohorts, including their mentors and managers.
+            <strong>Direct team</strong> reports still include mentors and sites you supervise. <strong>Managed cohorts</strong>{' '}
+            filters are empty until an admin assigns you in cohort_managers (Admin → Cohorts). Once assigned, you can filter
+            and report on those cohorts (including their mentors and managers).
+          </Alert>
+        )}
+        {scope === 'manager' && dataset === 'wages' && !loading && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Wages &amp; payroll reports are not available for managers. Choose another dataset, or ask an admin to run wages
+            reports.
           </Alert>
         )}
 

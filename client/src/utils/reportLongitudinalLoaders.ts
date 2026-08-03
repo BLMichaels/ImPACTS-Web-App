@@ -4,7 +4,7 @@
 import { format } from 'date-fns';
 import { supabase } from '../supabase';
 import { buildHospitalsTableOrClause, isHospitalUuid } from './hospitalId';
-import { getMentorActivitiesForUser } from './mentorActivities';
+import { batchGetMentorActivitiesForUsers } from './mentorActivities';
 import type { ReportRowLinkHints } from './reportPresets';
 import {
   batchGetHospitalDataForKey,
@@ -613,9 +613,10 @@ async function loadMentorHours(ctx: LongitudinalLoadContext): Promise<Longitudin
   const mentorById = new Map(mentors.map((m) => [m.id, m]));
   const allHospitalIds = new Set<string>();
   const rows: LongitudinalReportRow[] = [];
+  const activitiesByMentor = await batchGetMentorActivitiesForUsers(mentorIds);
   for (const mid of mentorIds) {
     const m = mentorById.get(mid);
-    const acts = await getMentorActivitiesForUser(mid);
+    const acts = activitiesByMentor.get(mid) || [];
     const name = m ? `${m.first_name || ''} ${m.last_name || ''}`.trim() : mid;
     acts.forEach((act: Record<string, unknown>, idx: number) => {
       const hospitalIds = Array.isArray(act.hospitalIds) ? (act.hospitalIds as string[]) : [];
@@ -723,6 +724,7 @@ async function loadInvitations(ctx: LongitudinalLoadContext): Promise<Longitudin
 }
 
 async function loadWages(ctx: LongitudinalLoadContext): Promise<LongitudinalReportRow[]> {
+  if (ctx.scope === 'manager') return [];
   const entries = await fetchAllRowsOrEmpty<{
     id: string;
     user_id: string;

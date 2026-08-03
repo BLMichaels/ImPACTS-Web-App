@@ -27,6 +27,11 @@ Password policy is **12+ characters**, enforced at four layers:
 
 Idle sessions sign out after 30 minutes.
 
+## Manager tier RLS (required after Manager audits)
+
+1. `MANAGER_TIER_HARDENING.sql` — team-scoped hospitals (primary + secondary managers), tightened `tab_visibility` / `user_permissions` / `view_tabs`, manager cohort create, manager-scoped invitation reads.  
+   Replaces optional `HOSPITALS_RLS_MANAGER_SCOPED.sql` (that file now only points here).
+
 ## Multi-factor authentication (MFA)
 
 ImPACTS uses **Supabase TOTP MFA** (free; authenticator apps such as Google Authenticator, 1Password, Authy).

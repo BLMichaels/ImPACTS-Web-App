@@ -33,6 +33,7 @@ import { format, subDays } from 'date-fns';
 import { useManagerTeamDashboard, type ManagerTeamMentorRow } from '../../hooks/useManagerTeamDashboard';
 import { exportManagerTeamSnapshotPdf } from '../../utils/managerTeamSnapshotPdf';
 import { getUserDisplayName } from '../../utils/displayName';
+import { getManagedHospitalScopeKeysForManager } from '../../utils/managerTeamScope';
 import {
   AdminPageShell,
   AdminHero,
@@ -51,6 +52,7 @@ const ManagerOverviewPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [hospitalNotes, setHospitalNotes] = useState<Array<{ date: string; text: string }>>([]);
   const [hospitalNotesName, setHospitalNotesName] = useState<string | null>(null);
+  const [hospitalNotesOutOfScope, setHospitalNotesOutOfScope] = useState(false);
   const [sortKey, setSortKey] = useState<MentorSortKey>('hoursMonth');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -68,13 +70,25 @@ const ManagerOverviewPage: React.FC = () => {
 
   const selectedHospitalId = searchParams.get('hospital');
   useEffect(() => {
-    if (!selectedHospitalId) {
+    if (!selectedHospitalId || !userProfile?.id) {
       setHospitalNotes([]);
       setHospitalNotesName(null);
+      setHospitalNotesOutOfScope(false);
       return;
     }
     let cancelled = false;
     (async () => {
+      const scopeKeys = await getManagedHospitalScopeKeysForManager(userProfile.id);
+      if (cancelled) return;
+      const { hospitalKeysMatch } = await import('../../utils/hospitalId');
+      const inScope = scopeKeys.some((k) => hospitalKeysMatch(k, selectedHospitalId));
+      if (!inScope) {
+        setHospitalNotesOutOfScope(true);
+        setHospitalNotes([]);
+        setHospitalNotesName(null);
+        return;
+      }
+      setHospitalNotesOutOfScope(false);
       const { data: row, error: fetchError } = await supabase
         .from('hospitals')
         .select('name, notes_log')
@@ -93,7 +107,7 @@ const ManagerOverviewPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedHospitalId]);
+  }, [selectedHospitalId, userProfile?.id]);
 
   const handleExportPdf = () => {
     const name = userProfile ? getUserDisplayName(userProfile) : 'Manager';
@@ -276,10 +290,15 @@ const ManagerOverviewPage: React.FC = () => {
       {selectedHospitalId && (
         <AdminSection
           overline="Site"
-          title={`Notes: ${hospitalNotesName ?? 'Hospital'}`}
+          title={`Notes: ${hospitalNotesOutOfScope ? 'Hospital' : (hospitalNotesName ?? 'Hospital')}`}
           description="Notes from mentors, managers, and admins (also in CRM)."
         >
-          {hospitalNotes.length === 0 ? (
+          {hospitalNotesOutOfScope ? (
+            <Alert severity="warning">
+              This hospital is outside your managed scope. You can only view notes for sites assigned to mentors you
+              supervise or otherwise in your manager hospital scope.
+            </Alert>
+          ) : hospitalNotes.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               No notes yet.
             </Typography>
@@ -487,7 +506,7 @@ const ManagerOverviewPage: React.FC = () => {
       <AdminSection
         overline="Leaderboard"
         title="Mentor metrics"
-        description="Sortable team performance. Use Mentors to invite, assign sites, or review wages."
+        description="Sortable team performance. Use Mentors to invite, assign sites, or review PECC progress."
         actions={
           <Button size="small" variant="contained" color="secondary" onClick={() => navigate('/manager/mentors')}>
             Mentors
