@@ -271,7 +271,7 @@ const ManagerDashboardPage: React.FC = () => {
           <Paper sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6">My Mentors</Typography>
-              <Button size="small" onClick={() => navigate('/manager/mentors')}>
+              <Button size="small" onClick={() => navigate('/manager/team?tab=roster')}>
                 View All
               </Button>
             </Box>

@@ -114,6 +114,46 @@ export async function getScopedMentorUsersForManager(
   return scoped;
 }
 
+export type RosterMentorUser = ManagedMentorUser & {
+  /** How this mentor appears on the manager roster. */
+  supervision: 'direct' | 'cohort' | 'both';
+};
+
+/**
+ * Mentors for the Team Roster: direct reports (primary/secondary/self) plus
+ * active mentors who are members/co-managers of cohorts this manager manages.
+ */
+export async function getRosterMentorUsersForManager(
+  managerId: string
+): Promise<RosterMentorUser[]> {
+  const direct = await getScopedMentorUsersForManager(managerId);
+  const directIds = new Set(direct.map((m) => m.id));
+  const cohortPeople = await getManagedCohortPeopleIdsForManager(managerId);
+  const cohortSet = new Set(cohortPeople);
+
+  const roster: RosterMentorUser[] = direct.map((m) => ({
+    ...m,
+    supervision: cohortSet.has(m.id) ? 'both' : 'direct',
+  }));
+
+  const extraIds = cohortPeople.filter((id) => !directIds.has(id));
+  for (let i = 0; i < extraIds.length; i += 80) {
+    const part = extraIds.slice(i, i + 80);
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, email, manager_id')
+      .in('id', part)
+      .eq('role', 'mentor')
+      .eq('is_active', true);
+    if (error) throw error;
+    (data || []).forEach((m) => {
+      roster.push({ ...(m as ManagedMentorUser), supervision: 'cohort' });
+    });
+  }
+
+  return roster;
+}
+
 /** Active programs linked to cohorts this manager directly manages. */
 export async function fetchManagedProgramsForManager(
   managerId: string

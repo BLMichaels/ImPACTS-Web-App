@@ -14,7 +14,7 @@ const ManagerPermissionsPage: React.FC = () => {
         title="Team Permissions"
         description="Manage permissions and PECC tab visibility for mentors and PECCs on your team. Changes apply to what each user can see in their navbar and dashboards."
         actions={
-          <Button size="small" variant="outlined" onClick={() => navigate('/manager/crm')}>
+          <Button size="small" variant="outlined" onClick={() => navigate('/manager/team?tab=sites')}>
             Open CRM
           </Button>
         }

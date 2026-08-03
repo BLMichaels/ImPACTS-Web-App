@@ -8,7 +8,7 @@ describe('buildReportDetailHref', () => {
   });
 
   it('builds manager user deep-link when only user id exists', () => {
-    expect(buildReportDetailHref('manager', { userId: 'u-1' })).toBe('/manager/crm?openUser=u-1');
+    expect(buildReportDetailHref('manager', { userId: 'u-1' })).toBe('/manager/team?tab=sites&openUser=u-1');
   });
 
   it('does not emit unsupported mentor user-only deep-link', () => {

@@ -490,7 +490,7 @@ const ManagerCohortsPage: React.FC = () => {
         description="Manage cohorts you lead, post announcements, and moderate discussions. Reports can filter to these cohorts only."
         actions={
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Button variant="outlined" size="small" onClick={() => navigate('/manager/reports')}>
+            <Button variant="outlined" size="small" onClick={() => navigate('/manager/team?tab=reports')}>
               Reports
             </Button>
             <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={handleOpenCreateDialog}>

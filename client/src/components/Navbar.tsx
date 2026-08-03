@@ -32,7 +32,6 @@ import {
   People as PeopleIcon,
   Business as BusinessIcon,
   Timeline as TimelineIcon,
-  Assessment as AssessmentIcon,
   AttachMoney as MoneyIcon,
   Settings as SettingsIcon,
   Groups as CohortsIcon,
@@ -91,6 +90,15 @@ function filterNavItemByTabs(item: NavItem, visibleTabs: string[]): NavItem | nu
 
 function isNavItemActive(item: NavItem, pathname: string): boolean {
   if (pathname === item.path) return true;
+  if (item.path === '/manager/team') {
+    return (
+      pathname === '/manager/team' ||
+      pathname.startsWith('/manager/team/') ||
+      pathname === '/manager/mentors' ||
+      pathname === '/manager/crm' ||
+      pathname === '/manager/reports'
+    );
+  }
   return Boolean(item.children?.some((c) => c.path === pathname));
 }
 
@@ -221,9 +229,7 @@ const Navbar: React.FC = () => {
       case UserRole.MANAGER: {
         const managerItems: NavItem[] = [
           { path: '/manager/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
-          { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
-          { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
-          { path: '/manager/reports', label: 'Reports', icon: <AssessmentIcon /> },
+          { path: '/manager/team', label: 'Team', icon: <PeopleIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/manager/permissions', label: 'Team Permissions', icon: <SettingsIcon /> }
         ];
@@ -616,7 +622,7 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
                   (item.path === '/manager/cohorts' ||
                     (managerHasMentorWork
                       ? item.path === '/manager/activities'
-                      : item.path === '/manager/mentors')))
+                      : item.path === '/manager/team')))
                   ? navGroupGap
                   : 0;
 

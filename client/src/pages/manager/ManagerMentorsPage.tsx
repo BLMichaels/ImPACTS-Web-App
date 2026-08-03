@@ -60,7 +60,7 @@ import {
   shouldMirrorLegacyUserData,
 } from '../../utils/userData';
 import { buildMentorHospitalContext } from '../../utils/mentorHospitalScope';
-import { getScopedMentorUsersForManager } from '../../utils/managerTeamScope';
+import { getRosterMentorUsersForManager } from '../../utils/managerTeamScope';
 import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -78,6 +78,8 @@ interface MentorData {
   email: string;
   phone: string;
   status: 'active' | 'pending' | 'inactive';
+  supervision: 'direct' | 'cohort' | 'both';
+  lastLogin: string | null;
   assignedHospitals: Array<{
     id: string;
     name: string;
@@ -144,7 +146,12 @@ const TabPanel = (props: TabPanelProps) => {
   );
 };
 
-const ManagerMentorsPage: React.FC = () => {
+type ManagerMentorsPageProps = {
+  /** When true, render without page chrome (used inside Team hub). */
+  embedded?: boolean;
+};
+
+const ManagerMentorsPage: React.FC<ManagerMentorsPageProps> = ({ embedded = false }) => {
   useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
@@ -277,7 +284,7 @@ const ManagerMentorsPage: React.FC = () => {
         setLoadError(null);
       }
 
-      const scopedMentorsRaw = await getScopedMentorUsersForManager(userProfile.id);
+      const scopedMentorsRaw = await getRosterMentorUsersForManager(userProfile.id);
       if (scopedMentorsRaw.length === 0) {
         if (isMountedRef.current) setMentors([]);
         return;
@@ -285,15 +292,18 @@ const ManagerMentorsPage: React.FC = () => {
 
       const { data: mentorStatusRows } = await supabase
         .from('users')
-        .select('id, phone, is_active')
+        .select('id, phone, is_active, last_login')
         .in('id', scopedMentorsRaw.map((m) => m.id));
       const statusById = new Map(
-        (mentorStatusRows || []).map((r: { id: string; phone: string | null; is_active: boolean }) => [r.id, r])
+        (mentorStatusRows || []).map(
+          (r: { id: string; phone: string | null; is_active: boolean; last_login: string | null }) => [r.id, r]
+        )
       );
       const scopedMentors = scopedMentorsRaw.map((m) => ({
         ...m,
         phone: statusById.get(m.id)?.phone ?? null,
         is_active: statusById.get(m.id)?.is_active ?? true,
+        last_login: statusById.get(m.id)?.last_login ?? null,
       }));
 
       const scopedMentorIds = scopedMentors.map((m) => m.id);
@@ -424,6 +434,8 @@ const ManagerMentorsPage: React.FC = () => {
             email: mentor.email,
             phone: mentor.phone || '',
             status: (mentor.is_active !== false ? 'active' : 'inactive') as 'active' | 'pending' | 'inactive',
+            supervision: mentor.supervision,
+            lastLogin: mentor.last_login || null,
             assignedHospitals: hospitalData,
             totalActivities,
             hoursThisMonth,
@@ -606,7 +618,39 @@ const ManagerMentorsPage: React.FC = () => {
     );
   };
 
+  const overviewChips = (
+    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: embedded ? 2 : 0 }}>
+      <Chip label={`${mentors.length} mentors`} color="secondary" variant="outlined" size="small" />
+      <Chip
+        label={`${mentors.reduce((sum, m) => sum + m.assignedHospitals.reduce((s, h) => s + h.peccs.length, 0), 0)} PECCs`}
+        variant="outlined"
+        size="small"
+      />
+      <Chip label={`${mentors.reduce((sum, m) => sum + m.totalActivities, 0)} activities`} variant="outlined" size="small" />
+      <Chip label={`${mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0).toFixed(1)}h this month`} variant="outlined" size="small" />
+      {embedded && (
+        <Button
+          size="small"
+          variant="contained"
+          color="secondary"
+          startIcon={<AddIcon />}
+          onClick={() => setDialogOpen(true)}
+          sx={{ ml: { xs: 0, sm: 'auto' } }}
+        >
+          Invite Mentor
+        </Button>
+      )}
+    </Stack>
+  );
+
   if (loading) {
+    if (embedded) {
+      return (
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, p: 3 }}>
+          <LinearProgress />
+        </Paper>
+      );
+    }
     return (
       <AdminPageShell>
         <AdminHero overline="Manager" title="Mentors" description="Loading your mentor team…" />
@@ -617,18 +661,8 @@ const ManagerMentorsPage: React.FC = () => {
     );
   }
 
-  return (
-    <AdminPageShell>
-      <AdminHero
-        overline="Manager"
-        title="Mentors"
-        description="View and manage your mentor team. Expand to see their PECCs and review activities, progress, and gap plans."
-        actions={
-          <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
-            Invite Mentor
-          </Button>
-        }
-      />
+  const body = (
+    <>
       {loadError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
           {loadError}
@@ -638,19 +672,23 @@ const ManagerMentorsPage: React.FC = () => {
         </Alert>
       )}
 
-      <AdminSection
-        overline="Roster"
-        title="Team overview"
-        description={`${mentors.length} mentors · ${mentors.reduce((sum, m) => sum + m.assignedHospitals.reduce((s, h) => s + h.peccs.length, 0), 0)} PECCs · ${mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0).toFixed(1)}h this month`}
-      >
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0 }}>
-          <Chip label={`${mentors.length} mentors`} color="secondary" variant="outlined" size="small" />
-          <Chip label={`${mentors.reduce((sum, m) => sum + m.totalActivities, 0)} activities`} variant="outlined" size="small" />
-          <Chip label={`${mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0).toFixed(1)}h this month`} variant="outlined" size="small" />
-        </Stack>
-      </AdminSection>
+      {embedded ? (
+        overviewChips
+      ) : (
+        <AdminSection
+          overline="Roster"
+          title="Team overview"
+          description={`${mentors.length} mentors · ${mentors.reduce((sum, m) => sum + m.assignedHospitals.reduce((s, h) => s + h.peccs.length, 0), 0)} PECCs · ${mentors.reduce((sum, m) => sum + m.hoursThisMonth, 0).toFixed(1)}h this month`}
+        >
+          {overviewChips}
+        </AdminSection>
+      )}
 
-      <AdminSection overline="Team" title="Mentors" description="Expand a mentor to review sites, PECCs, and progress. Snapshot has team-wide charts.">
+      <AdminSection
+        overline={embedded ? undefined : 'Team'}
+        title={embedded ? 'Mentors & PECCs' : 'Mentors'}
+        description="Direct reports and mentors in cohorts you manage. Expand a card for sites, checklist %, activity counts, and gap plans."
+      >
           {mentors.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
               <Typography variant="body1" color="textSecondary" gutterBottom>
@@ -689,7 +727,27 @@ const ManagerMentorsPage: React.FC = () => {
                     </Box>
                   </Box>
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <Chip
+                      size="small"
+                      label={
+                        mentor.supervision === 'cohort'
+                          ? 'Managed cohort'
+                          : mentor.supervision === 'both'
+                            ? 'Direct + cohort'
+                            : 'Direct report'
+                      }
+                      variant="outlined"
+                    />
+                    <Chip
+                      size="small"
+                      label={
+                        mentor.lastLogin
+                          ? `Login ${format(new Date(mentor.lastLogin), 'MMM d')}`
+                          : 'No login'
+                      }
+                      variant="outlined"
+                    />
                     <Chip
                       size="small"
                       label={`${mentor.assignedHospitals.length} hospitals`}
@@ -758,7 +816,7 @@ const ManagerMentorsPage: React.FC = () => {
                               size="small"
                               variant="outlined"
                               startIcon={<ViewIcon />}
-                              onClick={() => navigate(`/manager/crm?hospital=${hospital.id}`)}
+                              onClick={() => navigate(`/manager/team?tab=sites&hospital=${hospital.id}`)}
                             >
                               View in CRM
                             </Button>
@@ -1088,6 +1146,24 @@ const ManagerMentorsPage: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <AdminPageShell>
+      <AdminHero
+        overline="Manager"
+        title="Mentors"
+        description="View and manage your mentor team. Expand to see their PECCs and review activities, progress, and gap plans."
+        actions={
+          <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+            Invite Mentor
+          </Button>
+        }
+      />
+      {body}
     </AdminPageShell>
   );
 };

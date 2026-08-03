@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, Container, Box, CircularProgress } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
 import { fontSans, fontMono } from './theme/fonts';
@@ -42,8 +42,7 @@ const MentorSnapshotPage = lazy(() => import('./pages/mentor/MentorSnapshotPage'
 
 // Manager Pages (lazy loaded)
 const ManagerOverviewPage = lazy(() => import('./pages/manager/ManagerOverviewPage'));
-const ManagerMentorsPage = lazy(() => import('./pages/manager/ManagerMentorsPage'));
-const ManagerCRMPage = lazy(() => import('./pages/manager/ManagerCRMPage'));
+const ManagerTeamPage = lazy(() => import('./pages/manager/ManagerTeamPage'));
 const ManagerCohortsPage = lazy(() => import('./pages/manager/ManagerCohortsPage'));
 
 // Admin Pages (lazy loaded)
@@ -59,7 +58,6 @@ const CohortsPage = lazy(() => import('./pages/CohortsPage'));
 // Programs Pages
 const ProgramsPage = lazy(() => import('./pages/ProgramsPage'));
 const ManagerPermissionsPage = lazy(() => import('./pages/manager/ManagerPermissionsPage'));
-const ManagerReportsPage = lazy(() => import('./pages/manager/ManagerReportsPage'));
 
 // Hospital System & Hiring Group (lazy)
 const HospitalSystemDashboardPage = lazy(() => import('./pages/hospital-system/HospitalSystemDashboardPage'));
@@ -143,6 +141,14 @@ const LoadingSpinner = () => (
     <CircularProgress />
   </Container>
 );
+
+/** Preserve query when folding legacy Manager CRM into Team → Sites. */
+const RedirectManagerCrmToTeam: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const next = new URLSearchParams(searchParams);
+  next.set('tab', 'sites');
+  return <Navigate to={`/manager/team?${next.toString()}`} replace />;
+};
 
 // Get default dashboard route based on user role
 const getDefaultDashboard = (role: UserRole): string => {
@@ -315,15 +321,16 @@ function AppShell() {
                   
                   {/* Manager Routes */}
                   <Route path="/manager/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerOverviewPage /></ProtectedRoute>} />
-                  <Route path="/manager/reports" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerReportsPage /></ProtectedRoute>} />
+                  <Route path="/manager/team" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerTeamPage /></ProtectedRoute>} />
+                  <Route path="/manager/reports" element={<Navigate to="/manager/team?tab=reports" replace />} />
                   <Route path="/manager/overview" element={<Navigate to="/manager/snapshot" replace />} />
                   <Route path="/manager/dashboard" element={<Navigate to="/manager/snapshot" replace />} />
-                  <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />
+                  <Route path="/manager/mentors" element={<Navigate to="/manager/team?tab=roster" replace />} />
                   <Route path="/manager/activities" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><MentorActivitiesPage /></ProtectedRoute>} />
                   <Route path="/manager/hospitals" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><MentorHospitalContactsPage /></ProtectedRoute>} />
                   <Route path="/manager/milestones" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><MentorSiteMilestonesPage /></ProtectedRoute>} />
-                  <Route path="/manager/crm" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCRMPage /></ProtectedRoute>} />
-                  <Route path="/manager/wages" element={<Navigate to="/manager/mentors" replace />} />
+                  <Route path="/manager/crm" element={<RedirectManagerCrmToTeam />} />
+                  <Route path="/manager/wages" element={<Navigate to="/manager/team?tab=roster" replace />} />
                   <Route path="/manager/cohorts" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerCohortsPage /></ProtectedRoute>} />
                   <Route path="/manager/programs" element={<Navigate to="/manager/snapshot" replace />} />
                   <Route path="/manager/permissions" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerPermissionsPage /></ProtectedRoute>} />

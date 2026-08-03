@@ -68,6 +68,7 @@ import {
 import { hospitalKeysMatch } from '../../utils/hospitalId';
 import {
   fetchManagerVisibleUserIdsSet,
+  getManagedHospitalScopeKeysForManager,
   getManagedMentorIdsForManager,
 } from '../../utils/managerTeamScope';
 import {
@@ -125,7 +126,12 @@ interface MentorOption {
   email: string;
 }
 
-const ManagerCRMPage: React.FC = () => {
+type ManagerCRMPageProps = {
+  /** When true, render without page chrome (used inside Team hub). */
+  embedded?: boolean;
+};
+
+const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => {
   const { userProfile } = useUserProfile();
   const { runWithPhiGuard } = usePhiGuard();
   const navigate = useNavigate();
@@ -340,45 +346,80 @@ const ManagerCRMPage: React.FC = () => {
       setLoading(true);
       setLoadError(null);
 
-      const mentorIds = await getManagedMentorIds();
-      if (mentorIds.length === 0) {
+      const [mentorIds, scopeKeys] = await Promise.all([
+        getManagedMentorIds(),
+        getManagedHospitalScopeKeysForManager(userProfile.id),
+      ]);
+
+      const uniqueHospitalIds = new Set<string>();
+      const hospitalList: HospitalData[] = [];
+
+      const pushHospital = (hospital: any) => {
+        if (!hospital?.id || uniqueHospitalIds.has(hospital.id)) return;
+        uniqueHospitalIds.add(hospital.id);
+        hospitalList.push({
+          id: hospital.id,
+          facilityId: hospital.facility_id || null,
+          name: hospital.name,
+          city: hospital.city || '',
+          state: hospital.state || '',
+          traumaLevel: hospital.trauma_level || 'Non-Designated',
+          mentorCount: 0,
+          peccCount: 0,
+          contactCount: 0,
+          customFields:
+            hospital.custom_fields && typeof hospital.custom_fields === 'object'
+              ? (hospital.custom_fields as Record<string, string>)
+              : {},
+        });
+      };
+
+      if (mentorIds.length > 0) {
+        // Hospitals from mentor assignments on the direct team
+        const { data: assignments, error: assignmentError } = await supabase
+          .from('mentor_hospital_assignments')
+          .select(`
+            hospital:hospital_id(id, facility_id, name, city, state, trauma_level, custom_fields)
+          `)
+          .in('mentor_id', mentorIds)
+          .eq('is_active', true);
+
+        if (assignmentError) throw assignmentError;
+
+        (assignments || []).forEach((a: any) => {
+          const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
+          pushHospital(hospital);
+        });
+      }
+
+      // Also include sites for PECCs in managed cohorts (even without a mentor assignment yet).
+      const missingKeys = scopeKeys.filter((k) => {
+        if (uniqueHospitalIds.has(k)) return false;
+        return !hospitalList.some(
+          (h) => h.id === k || (h.facilityId != null && String(h.facilityId) === k)
+        );
+      });
+      for (let i = 0; i < missingKeys.length; i += 80) {
+        const part = missingKeys.slice(i, i + 80);
+        const { data: byId } = await supabase
+          .from('hospitals')
+          .select('id, facility_id, name, city, state, trauma_level, custom_fields')
+          .in('id', part);
+        (byId || []).forEach(pushHospital);
+        const stillMissing = part.filter((k) => !uniqueHospitalIds.has(k) && !(byId || []).some((h: any) => h.id === k));
+        if (stillMissing.length) {
+          const { data: byFacility } = await supabase
+            .from('hospitals')
+            .select('id, facility_id, name, city, state, trauma_level, custom_fields')
+            .in('facility_id', stillMissing);
+          (byFacility || []).forEach(pushHospital);
+        }
+      }
+
+      if (hospitalList.length === 0) {
         setHospitals([]);
         return;
       }
-
-      // Get all hospitals from the manager's mentor assignments
-      const { data: assignments, error: assignmentError } = await supabase
-        .from('mentor_hospital_assignments')
-        .select(`
-          hospital:hospital_id(id, facility_id, name, city, state, trauma_level, custom_fields)
-        `)
-        .in('mentor_id', mentorIds)
-        .eq('is_active', true);
-
-      if (assignmentError) throw assignmentError;
-
-      // Get unique hospitals
-      const uniqueHospitalIds = new Set();
-      const hospitalList: HospitalData[] = [];
-
-      (assignments || []).forEach((a: any) => {
-        const hospital = Array.isArray(a.hospital) ? a.hospital[0] : a.hospital;
-        if (hospital && !uniqueHospitalIds.has(hospital.id)) {
-          uniqueHospitalIds.add(hospital.id);
-          hospitalList.push({
-            id: hospital.id,
-            facilityId: hospital.facility_id || null,
-            name: hospital.name,
-            city: hospital.city || '',
-            state: hospital.state || '',
-            traumaLevel: hospital.trauma_level || 'Non-Designated',
-            mentorCount: 0,
-            peccCount: 0,
-            contactCount: 0,
-            customFields: (hospital.custom_fields && typeof hospital.custom_fields === 'object') ? (hospital.custom_fields as Record<string, string>) : {}
-          });
-        }
-      });
 
       // Count mentors, PECCs, and contacts in batch (avoid N+1 query fanout).
       const hospitalIds = hospitalList.map((h) => h.id);
@@ -388,16 +429,19 @@ const ManagerCRMPage: React.FC = () => {
         ),
       ];
       const [mentorRowsRes, peccRowsRes, contactRowsRes] = await Promise.all([
-        supabase
-          .from('mentor_hospital_assignments')
-          .select('mentor_id, hospital_id')
-          .eq('is_active', true)
-          .in('mentor_id', mentorIds)
-          .in('hospital_id', hospitalIds),
+        mentorIds.length
+          ? supabase
+              .from('mentor_hospital_assignments')
+              .select('mentor_id, hospital_id')
+              .eq('is_active', true)
+              .in('mentor_id', mentorIds)
+              .in('hospital_id', hospitalIds)
+          : Promise.resolve({ data: [], error: null } as any),
         supabase
           .from('users')
           .select('id, hospital_facility_id')
           .eq('role', 'pecc')
+          .eq('is_active', true)
           .or(buildPeccHospitalFacilityOrClause(hospitalRefs)),
         supabase
           .from('hospital_contacts')
@@ -405,21 +449,20 @@ const ManagerCRMPage: React.FC = () => {
           .in('hospital_id', hospitalIds),
       ]);
 
+      if (mentorRowsRes.error) throw mentorRowsRes.error;
+      if (peccRowsRes.error) throw peccRowsRes.error;
+      if (contactRowsRes.error) throw contactRowsRes.error;
+
       const mentorCountByHospital = new Map<string, number>();
-      const mentorPairs = new Set<string>();
-      (mentorRowsRes.data || []).forEach((r: { mentor_id: string; hospital_id: string }) => {
-        const key = `${r.hospital_id}:${r.mentor_id}`;
-        if (mentorPairs.has(key)) return;
-        mentorPairs.add(key);
+      (mentorRowsRes.data || []).forEach((r: { hospital_id: string }) => {
         mentorCountByHospital.set(r.hospital_id, (mentorCountByHospital.get(r.hospital_id) || 0) + 1);
       });
       const peccCountByHospital = new Map<string, number>();
-      (peccRowsRes.data || []).forEach((r: { hospital_facility_id: string }) => {
-        const canonicalHospitalId = hospitalList.find(
-          (h) => h.id === r.hospital_facility_id || String(h.facilityId || '') === String(r.hospital_facility_id)
-        )?.id;
-        if (!canonicalHospitalId) return;
-        peccCountByHospital.set(canonicalHospitalId, (peccCountByHospital.get(canonicalHospitalId) || 0) + 1);
+      (peccRowsRes.data || []).forEach((r: { hospital_facility_id: string | null }) => {
+        const ref = String(r.hospital_facility_id || '').trim();
+        if (!ref) return;
+        const match = hospitalList.find((h) => hospitalKeysMatch(h.id, ref) || hospitalKeysMatch(h.facilityId, ref));
+        if (match) peccCountByHospital.set(match.id, (peccCountByHospital.get(match.id) || 0) + 1);
       });
       const contactCountByHospital = new Map<string, number>();
       (contactRowsRes.data || []).forEach((r: { hospital_id: string }) => {
@@ -432,11 +475,12 @@ const ManagerCRMPage: React.FC = () => {
         h.contactCount = contactCountByHospital.get(h.id) || 0;
       });
 
-      setHospitals(hospitalList.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (err) {
+      hospitalList.sort((a, b) => a.name.localeCompare(b.name));
+      setHospitals(hospitalList);
+    } catch (err: any) {
       console.error('Error loading hospitals:', err);
-      setLoadError('Failed to load hospitals. Please try again.');
-      setSnackbar({ open: true, message: 'Error loading hospitals', severity: 'error' });
+      setLoadError(err?.message || 'Failed to load hospitals');
+      setHospitals([]);
     } finally {
       setLoading(false);
     }
@@ -915,45 +959,44 @@ const ManagerCRMPage: React.FC = () => {
     );
   }
 
-  return (
-    <AdminPageShell>
+  const body = (
+    <>
       {loadError && (
-        <Alert severity="error" onClose={() => setLoadError(null)}>
+        <Alert severity="error" onClose={() => setLoadError(null)} sx={{ mb: 2 }}>
           {loadError}
           <Button size="small" sx={{ ml: 1 }} onClick={() => { setLoadError(null); loadHospitals(); }}>
             Retry
           </Button>
         </Alert>
       )}
-      <AdminHero
-        overline="Manager"
-        title="CRM"
-        description="Manage hospitals and contacts for sites on your team. Tab visibility and permissions live under Team Permissions. Organization-wide CRM tools remain in Admin."
-        actions={
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              variant="outlined"
-              startIcon={<SettingsIcon />}
-              onClick={() => navigate('/manager/permissions?tab=tabs')}
-            >
-              Team Permissions
-            </Button>
-            <Button
-              variant="contained"
-              color="secondary"
-              startIcon={<AddIcon />}
-              onClick={handleOpenAddHospital}
-            >
-              Add Hospital
-            </Button>
-          </Box>
-        }
-      />
-      <Alert severity="info">
-        Manager CRM shows hospitals and contacts for your team’s assigned sites. Full organization-wide CRM (all contacts, merge, bulk import/export) is in the Admin CRM.
-      </Alert>
+      {!embedded && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Sites are limited to hospitals on your mentoring team and PECCs in cohorts you manage. Organization-wide CRM stays in Admin.
+        </Alert>
+      )}
+      {embedded && (
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2, alignItems: 'center' }}>
+          <Button
+            size="small"
+            variant="contained"
+            color="secondary"
+            startIcon={<AddIcon />}
+            onClick={handleOpenAddHospital}
+          >
+            Add Hospital
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={() => navigate('/manager/permissions?tab=tabs')}
+          >
+            Team Permissions
+          </Button>
+        </Box>
+      )}
       {contactsLoadError && activeTab === 1 && (
-        <Alert severity="error" onClose={() => setContactsLoadError(null)}>
+        <Alert severity="error" onClose={() => setContactsLoadError(null)} sx={{ mb: 2 }}>
           {contactsLoadError}
           <Button size="small" sx={{ ml: 1 }} onClick={() => { setContactsLoadError(null); void loadContacts(); }}>
             Retry
@@ -1824,6 +1867,38 @@ const ManagerCRMPage: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <AdminPageShell>
+      <AdminHero
+        overline="Manager"
+        title="CRM"
+        description="Manage hospitals and contacts for sites on your team. Tab visibility and permissions live under Team Permissions. Organization-wide CRM tools remain in Admin."
+        actions={
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              startIcon={<SettingsIcon />}
+              onClick={() => navigate('/manager/permissions?tab=tabs')}
+            >
+              Team Permissions
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              startIcon={<AddIcon />}
+              onClick={handleOpenAddHospital}
+            >
+              Add Hospital
+            </Button>
+          </Box>
+        }
+      />
+      {body}
     </AdminPageShell>
   );
 };

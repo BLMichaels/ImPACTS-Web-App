@@ -195,6 +195,35 @@ const REPORT_DATASET_LONGITUDINAL_OPTIONS: { value: LongitudinalReportDataset; l
   { value: 'site_milestones_detail', label: 'Site milestones (detail)' },
 ];
 
+/**
+ * Manager Team reports — only hierarchy oversight datasets.
+ * No org-wide CRM entities, co-manager directories, wages, or platform-wide people pickers.
+ */
+const MANAGER_ALLOWED_REPORT_DATASETS: ReportDataset[] = [
+  'mentors',
+  'pecc',
+  'hospital',
+  'mentor_hours',
+  'activities_longitudinal',
+  'prs_longitudinal',
+  'gap_plans_longitudinal',
+  'site_milestones_detail',
+];
+
+const MANAGER_REPORT_PEOPLE_OPTIONS = REPORT_DATASET_PEOPLE_OPTIONS.filter((o) =>
+  MANAGER_ALLOWED_REPORT_DATASETS.includes(o.value)
+);
+const MANAGER_REPORT_CRM_OPTIONS = REPORT_DATASET_CRM_OPTIONS.filter((o) =>
+  MANAGER_ALLOWED_REPORT_DATASETS.includes(o.value)
+);
+const MANAGER_REPORT_LONGITUDINAL_OPTIONS = REPORT_DATASET_LONGITUDINAL_OPTIONS.filter((o) =>
+  MANAGER_ALLOWED_REPORT_DATASETS.includes(o.value)
+);
+
+function isManagerAllowedReportDataset(dataset: ReportDataset): boolean {
+  return MANAGER_ALLOWED_REPORT_DATASETS.includes(dataset);
+}
+
 /** Shared sizing for Advanced reports header actions (single line, aligned grid). */
 const REPORT_HEADER_ACTION_SX = {
   minWidth: 172,
@@ -1037,6 +1066,13 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
   }, [actorUserId, applySnapshot]);
 
   useEffect(() => {
+    if (scope !== 'manager') return;
+    if (!isManagerAllowedReportDataset(dataset)) {
+      setDataset('pecc');
+    }
+  }, [scope, dataset]);
+
+  useEffect(() => {
     if (skipColumnResetRef.current) {
       skipColumnResetRef.current = false;
       setColumnOrder((prev) => mergeColumnOrder(prev, columnMetas));
@@ -1160,6 +1196,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       setCohorts(coList);
       const progMap = new Map(progList.map((p) => [p.id, p.name]));
       const coMap = new Map(coList.map((c) => [c.id, c.name]));
+
+      if (scope === 'manager' && !isManagerAllowedReportDataset(dataset)) {
+        if (isStale()) return;
+        setRows([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
 
       if (scope === 'manager' && dataset === 'wages') {
         if (isStale()) return;
@@ -2283,41 +2327,39 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
                     People records
                   </ListSubheader>
-                  {REPORT_DATASET_PEOPLE_OPTIONS.filter((opt) => {
+                  {(scope === 'manager' ? MANAGER_REPORT_PEOPLE_OPTIONS : REPORT_DATASET_PEOPLE_OPTIONS.filter((opt) => {
                     if (scope === 'admin') return true;
                     return (
                       opt.value !== 'internal_staff' &&
                       opt.value !== 'user_hospital_system' &&
                       opt.value !== 'user_hiring_group'
                     );
-                  }).map(({ value, label }) => (
+                  })).map(({ value, label }) => (
+                    <MenuItem key={value} value={value}>
+                      {label}
+                    </MenuItem>
+                  ))}
+                  {(scope === 'manager' ? MANAGER_REPORT_CRM_OPTIONS.length > 0 : true) && (
+                    <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
+                      {scope === 'manager' ? 'Team sites' : 'CRM records'}
+                    </ListSubheader>
+                  )}
+                  {(scope === 'manager' ? MANAGER_REPORT_CRM_OPTIONS : REPORT_DATASET_CRM_OPTIONS).map(({ value, label }) => (
                     <MenuItem key={value} value={value}>
                       {label}
                     </MenuItem>
                   ))}
                   <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
-                    CRM records
+                    {scope === 'manager' ? 'Progress & activity' : 'Longitudinal & operations'}
                   </ListSubheader>
-                  {REPORT_DATASET_CRM_OPTIONS.map(({ value, label }) => (
-                    <MenuItem key={value} value={value}>
-                      {label}
-                    </MenuItem>
-                  ))}
-                  <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
-                    Longitudinal &amp; operations
-                  </ListSubheader>
-                  {REPORT_DATASET_LONGITUDINAL_OPTIONS.filter((opt) =>
-                    scope === 'manager' ? opt.value !== 'wages' : true
+                  {(scope === 'manager'
+                    ? MANAGER_REPORT_LONGITUDINAL_OPTIONS
+                    : REPORT_DATASET_LONGITUDINAL_OPTIONS
                   ).map(({ value, label }) => (
                     <MenuItem key={value} value={value}>
                       {label}
                     </MenuItem>
                   ))}
-                  {scope === 'manager' && dataset === 'wages' && (
-                    <MenuItem value="wages" disabled>
-                      Wages &amp; payroll entries (not available for managers)
-                    </MenuItem>
-                  )}
                 </Select>
               </FormControl>
             </Grid>
@@ -2365,7 +2407,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   <FormControl fullWidth size="small">
                     <InputLabel>Program (membership)</InputLabel>
                     <Select value={programFilter} label="Program (membership)" onChange={(e) => setProgramFilter(e.target.value)}>
-                      <MenuItem value="all">All programs</MenuItem>
+                      <MenuItem value="all">{scope === 'manager' ? 'All my managed programs' : 'All programs'}</MenuItem>
                       {programs.map((p) => (
                         <MenuItem key={p.id} value={p.id}>
                           {p.name}

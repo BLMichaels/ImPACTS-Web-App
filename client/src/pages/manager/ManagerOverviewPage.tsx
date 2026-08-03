@@ -258,10 +258,10 @@ const ManagerOverviewPage: React.FC = () => {
         description="Live mentoring volume, site coverage, and PECC progress across mentors you manage — not the roster itself."
         actions={
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Button variant="outlined" size="small" onClick={() => navigate('/manager/mentors')}>
+            <Button variant="outlined" size="small" onClick={() => navigate('/manager/team?tab=roster')}>
               Manage mentors
             </Button>
-            <Button variant="outlined" size="small" onClick={() => navigate('/manager/reports')}>
+            <Button variant="outlined" size="small" onClick={() => navigate('/manager/team?tab=reports')}>
               Reports
             </Button>
             <Button
@@ -483,7 +483,7 @@ const ManagerOverviewPage: React.FC = () => {
           title="Quiet mentors (30+ days)"
           description="No logged activity in the last 30 days — follow up from Mentors or CRM."
           actions={
-            <Button size="small" variant="outlined" onClick={() => navigate('/manager/mentors')}>
+            <Button size="small" variant="outlined" onClick={() => navigate('/manager/team?tab=roster')}>
               Open Mentors
             </Button>
           }
@@ -496,7 +496,7 @@ const ManagerOverviewPage: React.FC = () => {
                 variant="outlined"
                 color="warning"
                 label={`${m.firstName} ${m.lastName}`.trim() || m.email}
-                onClick={() => navigate('/manager/mentors')}
+                onClick={() => navigate('/manager/team?tab=roster')}
               />
             ))}
           </Stack>
@@ -508,7 +508,7 @@ const ManagerOverviewPage: React.FC = () => {
         title="Mentor metrics"
         description="Sortable team performance. Use Mentors to invite, assign sites, or review PECC progress."
         actions={
-          <Button size="small" variant="contained" color="secondary" onClick={() => navigate('/manager/mentors')}>
+          <Button size="small" variant="contained" color="secondary" onClick={() => navigate('/manager/team?tab=roster')}>
             Mentors
           </Button>
         }
@@ -519,7 +519,7 @@ const ManagerOverviewPage: React.FC = () => {
             <Typography variant="body1" color="text.secondary">
               No mentors found yet. Assign mentors in the CRM, or ask an admin to link you as a manager.
             </Typography>
-            <Button variant="contained" color="secondary" sx={{ mt: 2 }} onClick={() => navigate('/manager/crm')}>
+            <Button variant="contained" color="secondary" sx={{ mt: 2 }} onClick={() => navigate('/manager/team?tab=sites')}>
               Go to CRM
             </Button>
           </Box>
