@@ -1,41 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
   Grid,
   Paper,
-  Card,
-  CardContent,
-  Avatar,
   List,
   ListItem,
   Divider,
   Button,
   LinearProgress,
   Chip,
-  IconButton,
-  Collapse,
   Alert,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TableSortLabel,
+  alpha,
 } from '@mui/material';
 import {
-  People as PeopleIcon,
-  LocalHospital as HospitalIcon,
   Assignment as ActivityIcon,
-  Work as WorkIcon,
-  Group as GroupIcon,
-  Timeline as TimelineIcon,
   PictureAsPdf as PictureAsPdfIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Visibility as ViewIcon,
 } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
-import { format } from 'date-fns';
-import { useManagerTeamDashboard } from '../../hooks/useManagerTeamDashboard';
+import { format, subDays } from 'date-fns';
+import { useManagerTeamDashboard, type ManagerTeamMentorRow } from '../../hooks/useManagerTeamDashboard';
 import { exportManagerTeamSnapshotPdf } from '../../utils/managerTeamSnapshotPdf';
 import { getUserDisplayName } from '../../utils/displayName';
 import {
@@ -44,18 +39,32 @@ import {
   AdminSection,
   adminSectionShellSx,
 } from '../../components/admin/AdminPageChrome';
+import { SnapshotBarChart } from '../../components/pecc/SnapshotBarChart';
+import { SnapshotHorizontalBarChart } from '../../components/pecc/SnapshotHorizontalBarChart';
+
+type MentorSortKey = 'name' | 'sites' | 'peccs' | 'hoursMonth' | 'activitiesMonth' | 'lastActivity';
 
 const ManagerOverviewPage: React.FC = () => {
   useAuth();
   const { userProfile } = useUserProfile();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [expandedMentor, setExpandedMentor] = useState<string | null>(null);
   const [hospitalNotes, setHospitalNotes] = useState<Array<{ date: string; text: string }>>([]);
   const [hospitalNotesName, setHospitalNotesName] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<MentorSortKey>('hoursMonth');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const { data, loading, error, retry } = useManagerTeamDashboard(userProfile?.id);
-  const { mentors, totalPeccs, totalSites, avgPeccProgress, managerOwn, teamHoursThisMonth, teamActivitiesThisMonth, teamTotalHours } = data;
+  const {
+    mentors,
+    totalPeccs,
+    totalSites,
+    avgPeccProgress,
+    managerOwn,
+    teamHoursThisMonth,
+    teamActivitiesThisMonth,
+    teamTotalHours,
+  } = data;
 
   const selectedHospitalId = searchParams.get('hospital');
   useEffect(() => {
@@ -91,38 +100,125 @@ const ManagerOverviewPage: React.FC = () => {
     exportManagerTeamSnapshotPdf(data, name);
   };
 
-  const KpiCard = ({
-    title,
-    value,
-    icon,
-    color,
-    caption,
-  }: {
-    title: string;
-    value: string | number;
-    icon: React.ReactNode;
-    color: string;
-    caption?: string;
-  }) => (
-    <Card sx={{ height: '100%', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-2px)' } }}>
-      <CardContent sx={{ textAlign: 'center', p: 3 }}>
-        <Box sx={{ display: 'inline-flex', p: 1.5, borderRadius: '50%', bgcolor: `${color}22`, mb: 1.5 }}>
-          {icon}
-        </Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, color, mb: 0.5 }}>
-          {value}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-          {title}
-        </Typography>
-        {caption && (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-            {caption}
-          </Typography>
-        )}
-      </CardContent>
-    </Card>
+  const metrics = useMemo(() => {
+    const cutoff30 = subDays(new Date(), 30);
+    const activeThisMonth = mentors.filter((m) => m.hoursThisMonth > 0 || m.activitiesThisMonth > 0);
+    const inactive30 = mentors.filter((m) => {
+      if (!m.lastActivity) return true;
+      return new Date(m.lastActivity) < cutoff30;
+    });
+    const avgHours =
+      mentors.length > 0 ? teamHoursThisMonth / mentors.length : 0;
+    const avgSites =
+      mentors.length > 0
+        ? mentors.reduce((s, m) => s + m.assignedHospitals.length, 0) / mentors.length
+        : 0;
+    return {
+      activeThisMonth: activeThisMonth.length,
+      inactive30: inactive30.length,
+      inactiveMentors: inactive30,
+      avgHoursPerMentor: avgHours,
+      avgSitesPerMentor: avgSites,
+      momDeltaHours: managerOwn.hasAssignments
+        ? teamHoursThisMonth - (managerOwn.lastMonthHours || 0)
+        : null,
+    };
+  }, [mentors, teamHoursThisMonth, managerOwn]);
+
+  const hoursByMentorChart = useMemo(
+    () =>
+      [...mentors]
+        .sort((a, b) => b.hoursThisMonth - a.hoursThisMonth)
+        .slice(0, 12)
+        .map((m) => ({
+          label: `${m.firstName} ${m.lastName}`.trim() || m.email,
+          value: Number(m.hoursThisMonth.toFixed(1)),
+          sublabel: `${m.activitiesThisMonth} activities`,
+        })),
+    [mentors]
   );
+
+  const sitesByMentorChart = useMemo(
+    () =>
+      [...mentors]
+        .sort((a, b) => b.assignedHospitals.length - a.assignedHospitals.length)
+        .slice(0, 12)
+        .map((m) => ({
+          label: `${m.firstName} ${m.lastName}`.trim() || m.email,
+          value: m.assignedHospitals.length,
+          sublabel: `${m.assignedHospitals.reduce((s, h) => s + h.peccCount, 0)} PECCs`,
+        })),
+    [mentors]
+  );
+
+  const sortedMentors = useMemo(() => {
+    const rows = [...mentors];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const nameOf = (m: ManagerTeamMentorRow) =>
+      `${m.lastName} ${m.firstName}`.trim().toLowerCase();
+    rows.sort((a, b) => {
+      switch (sortKey) {
+        case 'name':
+          return dir * nameOf(a).localeCompare(nameOf(b));
+        case 'sites':
+          return dir * (a.assignedHospitals.length - b.assignedHospitals.length);
+        case 'peccs': {
+          const ap = a.assignedHospitals.reduce((s, h) => s + h.peccCount, 0);
+          const bp = b.assignedHospitals.reduce((s, h) => s + h.peccCount, 0);
+          return dir * (ap - bp);
+        }
+        case 'hoursMonth':
+          return dir * (a.hoursThisMonth - b.hoursThisMonth);
+        case 'activitiesMonth':
+          return dir * (a.activitiesThisMonth - b.activitiesThisMonth);
+        case 'lastActivity': {
+          const at = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+          const bt = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+          return dir * (at - bt);
+        }
+        default:
+          return 0;
+      }
+    });
+    return rows;
+  }, [mentors, sortKey, sortDir]);
+
+  const toggleSort = (key: MentorSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'name' ? 'asc' : 'desc');
+    }
+  };
+
+  const kpiItems = [
+    {
+      label: 'Mentors',
+      value: String(mentors.length),
+      caption: `${metrics.activeThisMonth} active this month`,
+    },
+    {
+      label: 'Sites',
+      value: String(totalSites),
+      caption: `${metrics.avgSitesPerMentor.toFixed(1)} avg per mentor`,
+    },
+    {
+      label: 'PECCs',
+      value: String(totalPeccs),
+      caption: `${avgPeccProgress}% avg checklist`,
+    },
+    {
+      label: 'Hours (month)',
+      value: `${teamHoursThisMonth.toFixed(1)}h`,
+      caption: `${teamActivitiesThisMonth} activities`,
+    },
+    {
+      label: 'Lifetime hours',
+      value: `${teamTotalHours.toFixed(1)}h`,
+      caption: `${metrics.avgHoursPerMentor.toFixed(1)}h avg / mentor this month`,
+    },
+  ];
 
   if (loading) {
     return (
@@ -147,16 +243,16 @@ const ManagerOverviewPage: React.FC = () => {
       )}
 
       <AdminHero
-        overline="Manager"
+        overline="Team metrics"
         title="Snapshot"
-        description="Team mentoring metrics, sites, and PECC progress. Export a PDF for grant or program reporting, or open Reports for cohort-scoped exports."
+        description="Live mentoring volume, site coverage, and PECC progress across mentors you manage — not the roster itself."
         actions={
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button variant="outlined" size="small" onClick={() => navigate('/manager/mentors')}>
+              Manage mentors
+            </Button>
             <Button variant="outlined" size="small" onClick={() => navigate('/manager/reports')}>
               Reports
-            </Button>
-            <Button variant="outlined" size="small" onClick={() => navigate('/manager/crm')}>
-              CRM
             </Button>
             <Button
               variant="contained"
@@ -172,16 +268,12 @@ const ManagerOverviewPage: React.FC = () => {
       />
 
       {userProfile?.has_hospital_assignments && (
-        <Alert severity="info">
-          You are also assigned as a mentor to hospitals. Use{' '}
+        <Alert severity="info" variant="outlined" sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}>
+          You also mentor sites directly. Use{' '}
           <Button size="small" onClick={() => navigate('/manager/activities')}>
             My Activities
           </Button>{' '}
-          and{' '}
-          <Button size="small" onClick={() => navigate('/manager/hospitals')}>
-            My Hospitals
-          </Button>{' '}
-          for your direct mentoring work.
+          for your personal log.
         </Alert>
       )}
 
@@ -213,186 +305,316 @@ const ManagerOverviewPage: React.FC = () => {
         </AdminSection>
       )}
 
-      <AdminSection
-        overline="At a glance"
-        title="Team summary"
-        description={`${mentors.length} mentors · ${totalSites} sites · ${totalPeccs} PECCs · avg checklist ${avgPeccProgress}%`}
-        actions={
-          <Chip label={`${teamActivitiesThisMonth} activities this month`} color="primary" variant="outlined" size="small" />
-        }
-      >
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={3}>
-            <KpiCard
-              title="Total Mentors"
-              value={mentors.length}
-              icon={<PeopleIcon sx={{ fontSize: 32, color: 'primary.main' }} />}
-              color="primary.main"
-              caption="Under your management"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <KpiCard
-              title="Sites"
-              value={totalSites}
-              icon={<HospitalIcon sx={{ fontSize: 32, color: 'success.main' }} />}
-              color="success.main"
-              caption="Hospitals being supported"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <KpiCard
-              title="PECCs"
-              value={totalPeccs}
-              icon={<GroupIcon sx={{ fontSize: 32, color: 'info.main' }} />}
-              color="info.main"
-              caption={`Avg progress ${avgPeccProgress}%`}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <KpiCard
-              title="Team Hours (Month)"
-              value={teamHoursThisMonth.toFixed(1)}
-              icon={<WorkIcon sx={{ fontSize: 32, color: 'warning.main' }} />}
-              color="warning.main"
-              caption={`${teamActivitiesThisMonth} activities · ${teamTotalHours.toFixed(1)}h total`}
-            />
-          </Grid>
-        </Grid>
-      </AdminSection>
+      <Paper elevation={0} sx={adminSectionShellSx}>
+        <Box
+          sx={{
+            px: { xs: 2, md: 2.5 },
+            py: 1.5,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: (t) => alpha(t.palette.secondary.main, 0.04),
+          }}
+        >
+          <Typography
+            variant="overline"
+            sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block' }}
+          >
+            At a glance
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+            Aggregated metrics for your mentoring network
+          </Typography>
+        </Box>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: 'repeat(2, minmax(0, 1fr))',
+              sm: 'repeat(3, minmax(0, 1fr))',
+              md: 'repeat(5, minmax(0, 1fr))',
+            },
+            '& > *': {
+              borderRight: { xs: 'none', sm: '1px solid' },
+              borderBottom: { xs: '1px solid', md: 'none' },
+              borderColor: 'divider',
+            },
+            '& > *:nth-of-type(2n)': { borderRight: { xs: 'none', sm: '1px solid' } },
+            '& > *:last-child': { borderRight: 'none', borderBottom: 'none' },
+          }}
+        >
+          {kpiItems.map((item) => (
+            <Box key={item.label} sx={{ px: { xs: 1.75, md: 2 }, py: 1.75, textAlign: 'center' }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontWeight: 600, letterSpacing: 0.04, textTransform: 'uppercase', fontSize: '0.65rem' }}
+              >
+                {item.label}
+              </Typography>
+              <Typography
+                sx={{
+                  fontWeight: 700,
+                  fontSize: '1.35rem',
+                  letterSpacing: -0.02,
+                  color: 'secondary.dark',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1.15,
+                  mt: 0.5,
+                }}
+              >
+                {item.value}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
+                {item.caption}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Paper>
 
       {managerOwn.hasAssignments && (
         <AdminSection
           overline="Your mentoring"
-          title="My Mentoring"
-          description="Your direct mentor work with PECCs at assigned hospitals."
+          title="My hours"
+          description="Your direct mentor work (separate from the team rollup above)."
           actions={
-            <Button variant="contained" color="secondary" size="small" startIcon={<ActivityIcon />} onClick={() => navigate('/manager/activities')}>
+            <Button
+              variant="contained"
+              color="secondary"
+              size="small"
+              startIcon={<ActivityIcon />}
+              onClick={() => navigate('/manager/activities')}
+            >
               My activities
             </Button>
           }
         >
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            <Chip size="small" icon={<ActivityIcon />} label={`${managerOwn.totalActivities} activities`} />
-            <Chip size="small" icon={<TimelineIcon />} label={`${managerOwn.hoursTotal.toFixed(1)}h total`} />
-            <Chip size="small" label={`${managerOwn.hoursThisMonth.toFixed(1)}h this month`} color="primary" variant="outlined" />
-            <Chip size="small" label={`${managerOwn.lastMonthHours.toFixed(1)}h last month`} />
-          </Box>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Chip size="small" label={`${managerOwn.hoursThisMonth.toFixed(1)}h this month`} color="secondary" />
+            <Chip size="small" label={`${managerOwn.lastMonthHours.toFixed(1)}h last month`} variant="outlined" />
+            <Chip size="small" label={`${managerOwn.hoursTotal.toFixed(1)}h lifetime`} variant="outlined" />
+            <Chip size="small" label={`${managerOwn.totalActivities} activities`} variant="outlined" />
+          </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
             Sites: {managerOwn.hospitalNames.join(', ') || 'None'}
           </Typography>
         </AdminSection>
       )}
 
+      <Grid container spacing={{ xs: 2, md: 2.5 }}>
+        <Grid item xs={12} md={6}>
+          <AdminSection
+            overline="This month"
+            title="Hours by mentor"
+            description="Mentoring hours logged across your team"
+          >
+            <SnapshotBarChart
+              data={hoursByMentorChart}
+              valueLabel="Hours"
+              height={320}
+              emptyMessage="No mentoring hours logged this month yet."
+            />
+          </AdminSection>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <AdminSection
+            overline="Coverage"
+            title="Sites by mentor"
+            description="Assigned hospitals (with PECC counts)"
+          >
+            <SnapshotHorizontalBarChart
+              data={sitesByMentorChart}
+              valueLabel="Sites"
+              emptyMessage="No hospital assignments on your mentors yet."
+            />
+          </AdminSection>
+        </Grid>
+      </Grid>
+
       <AdminSection
-        overline="Team"
-        title="Your mentors and their sites"
-        description="Expand a mentor to see sites and activity. Use View in CRM for contacts and hospital details."
+        overline="Checklist"
+        title="PECC readiness progress"
+        description="Average site checklist completion across PECCs at your mentors’ hospitals"
       >
-          {mentors.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography variant="body1" color="text.secondary">
-                No mentors found yet. Assign mentors to hospitals in the CRM, or ask an admin to link you as a secondary manager.
-              </Typography>
-              <Button variant="contained" color="secondary" sx={{ mt: 2 }} onClick={() => navigate('/manager/crm')}>
-                Go to CRM
-              </Button>
-            </Box>
-          ) : (
-            <List>
-              {mentors.map((mentor, index) => (
-                <React.Fragment key={mentor.id}>
-                  {index > 0 && <Divider />}
-                  <ListItem sx={{ flexDirection: 'column', alignItems: 'stretch', py: 2 }}>
-                    <Box
-                      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', cursor: 'pointer' }}
-                      onClick={() => setExpandedMentor(expandedMentor === mentor.id ? null : mentor.id)}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '2rem',
+              color: 'secondary.dark',
+              fontVariantNumeric: 'tabular-nums',
+              lineHeight: 1,
+            }}
+          >
+            {avgPeccProgress}%
+          </Typography>
+          <Box sx={{ flex: 1, minWidth: 160 }}>
+            <LinearProgress
+              variant="determinate"
+              value={Math.min(100, Math.max(0, avgPeccProgress))}
+              color="secondary"
+              sx={{ height: 10, borderRadius: 1 }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
+              {totalPeccs} PECC{totalPeccs === 1 ? '' : 's'} across {totalSites} site{totalSites === 1 ? '' : 's'}
+            </Typography>
+          </Box>
+        </Box>
+      </AdminSection>
+
+      {metrics.inactiveMentors.length > 0 && (
+        <AdminSection
+          overline="Attention"
+          title="Quiet mentors (30+ days)"
+          description="No logged activity in the last 30 days — follow up from Mentors or CRM."
+          actions={
+            <Button size="small" variant="outlined" onClick={() => navigate('/manager/mentors')}>
+              Open Mentors
+            </Button>
+          }
+        >
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            {metrics.inactiveMentors.map((m) => (
+              <Chip
+                key={m.id}
+                size="small"
+                variant="outlined"
+                color="warning"
+                label={`${m.firstName} ${m.lastName}`.trim() || m.email}
+                onClick={() => navigate('/manager/mentors')}
+              />
+            ))}
+          </Stack>
+        </AdminSection>
+      )}
+
+      <AdminSection
+        overline="Leaderboard"
+        title="Mentor metrics"
+        description="Sortable team performance. Use Mentors to invite, assign sites, or review wages."
+        actions={
+          <Button size="small" variant="contained" color="secondary" onClick={() => navigate('/manager/mentors')}>
+            Mentors
+          </Button>
+        }
+        disableBodyPadding
+      >
+        {mentors.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 5, px: 2 }}>
+            <Typography variant="body1" color="text.secondary">
+              No mentors found yet. Assign mentors in the CRM, or ask an admin to link you as a manager.
+            </Typography>
+            <Button variant="contained" color="secondary" sx={{ mt: 2 }} onClick={() => navigate('/manager/crm')}>
+              Go to CRM
+            </Button>
+          </Box>
+        ) : (
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sortDirection={sortKey === 'name' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'name'}
+                      direction={sortKey === 'name' ? sortDir : 'asc'}
+                      onClick={() => toggleSort('name')}
                     >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Avatar sx={{ bgcolor: 'primary.main' }}>
-                          {mentor.firstName.charAt(0)}
-                          {mentor.lastName.charAt(0)}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="subtitle1" fontWeight={600}>
-                            {mentor.firstName} {mentor.lastName}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {mentor.email}
-                          </Typography>
-                        </Box>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        <Chip size="small" label={`${mentor.assignedHospitals.length} sites`} color="primary" variant="outlined" />
-                        <Chip
-                          size="small"
-                          label={`${mentor.assignedHospitals.reduce((s, h) => s + h.peccCount, 0)} PECCs`}
-                          color="secondary"
-                          variant="outlined"
-                        />
-                        <Chip size="small" label={`${mentor.hoursThisMonth.toFixed(1)}h this month`} color="success" variant="outlined" />
-                        <IconButton
-                          size="small"
-                          aria-label={expandedMentor === mentor.id ? 'Collapse' : 'Expand'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedMentor(expandedMentor === mentor.id ? null : mentor.id);
-                          }}
-                        >
-                          {expandedMentor === mentor.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                        </IconButton>
-                      </Box>
-                    </Box>
-                    <Collapse in={expandedMentor === mentor.id} timeout="auto" unmountOnExit>
-                      <Box sx={{ mt: 2, ml: { xs: 0, sm: 7 } }}>
-                        {mentor.assignedHospitals.length === 0 ? (
-                          <Typography variant="body2" color="text.secondary">
-                            No sites assigned yet
-                          </Typography>
-                        ) : (
-                          <Grid container spacing={2}>
-                            {mentor.assignedHospitals.map((hospital) => (
-                              <Grid item xs={12} md={6} key={hospital.id}>
-                                <Paper sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'grey.50' }}>
-                                  <Box>
-                                    <Typography variant="body1" fontWeight={600}>
-                                      {hospital.name}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                      {hospital.peccCount} PECC{hospital.peccCount !== 1 ? 's' : ''}
-                                    </Typography>
-                                  </Box>
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<ViewIcon />}
-                                    onClick={() => navigate(`/manager/crm?hospital=${hospital.id}`)}
-                                  >
-                                    View in CRM
-                                  </Button>
-                                </Paper>
-                              </Grid>
-                            ))}
-                          </Grid>
+                      Mentor
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right" sortDirection={sortKey === 'sites' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'sites'}
+                      direction={sortKey === 'sites' ? sortDir : 'desc'}
+                      onClick={() => toggleSort('sites')}
+                    >
+                      Sites
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right" sortDirection={sortKey === 'peccs' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'peccs'}
+                      direction={sortKey === 'peccs' ? sortDir : 'desc'}
+                      onClick={() => toggleSort('peccs')}
+                    >
+                      PECCs
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right" sortDirection={sortKey === 'hoursMonth' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'hoursMonth'}
+                      direction={sortKey === 'hoursMonth' ? sortDir : 'desc'}
+                      onClick={() => toggleSort('hoursMonth')}
+                    >
+                      Hours (mo)
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right" sortDirection={sortKey === 'activitiesMonth' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'activitiesMonth'}
+                      direction={sortKey === 'activitiesMonth' ? sortDir : 'desc'}
+                      onClick={() => toggleSort('activitiesMonth')}
+                    >
+                      Activities (mo)
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right">Lifetime h</TableCell>
+                  <TableCell align="right" sortDirection={sortKey === 'lastActivity' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'lastActivity'}
+                      direction={sortKey === 'lastActivity' ? sortDir : 'desc'}
+                      onClick={() => toggleSort('lastActivity')}
+                    >
+                      Last activity
+                    </TableSortLabel>
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {sortedMentors.map((mentor) => {
+                  const peccCount = mentor.assignedHospitals.reduce((s, h) => s + h.peccCount, 0);
+                  const quiet =
+                    !mentor.lastActivity || new Date(mentor.lastActivity) < subDays(new Date(), 30);
+                  return (
+                    <TableRow key={mentor.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>
+                          {mentor.firstName} {mentor.lastName}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {mentor.email}
+                        </Typography>
+                        {quiet && (
+                          <Chip size="small" label="Quiet 30d" color="warning" variant="outlined" sx={{ ml: 1, height: 20 }} />
                         )}
-                        <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-                          <Typography variant="body2" sx={{ color: 'info.contrastText' }}>
-                            <strong>Total activities:</strong> {mentor.totalActivities} •{' '}
-                            <strong>This month:</strong> {mentor.activitiesThisMonth} ({mentor.hoursThisMonth.toFixed(1)}h) •{' '}
-                            <strong>Last activity:</strong>{' '}
-                            {mentor.lastActivity ? format(new Date(mentor.lastActivity), 'MMM d, yyyy') : 'None'}
-                          </Typography>
-                        </Box>
-                        <Button size="small" sx={{ mt: 1 }} onClick={() => navigate('/manager/mentors')}>
-                          Open mentor detail
-                        </Button>
-                      </Box>
-                    </Collapse>
-                  </ListItem>
-                </React.Fragment>
-              ))}
-            </List>
-          )}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {mentor.assignedHospitals.length}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {peccCount}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                        {mentor.hoursThisMonth.toFixed(1)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {mentor.activitiesThisMonth}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {mentor.hoursTotal.toFixed(1)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {mentor.lastActivity
+                          ? format(new Date(mentor.lastActivity), 'MMM d, yyyy')
+                          : '—'}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </AdminSection>
     </AdminPageShell>
   );
