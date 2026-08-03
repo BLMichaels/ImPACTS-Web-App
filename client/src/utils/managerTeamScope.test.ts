@@ -45,5 +45,7 @@ describe('manager report cohort helpers exist', () => {
     expect(typeof mod.getManagedHospitalScopeKeysForManager).toBe('function');
     expect(typeof mod.getRosterMentorUsersForManager).toBe('function');
     expect(typeof mod.fetchManagerVisibleUserIdsSet).toBe('function');
+    expect(typeof mod.fetchManagerPermissionsTargetIdsSet).toBe('function');
+    expect(typeof mod.fetchUsersForManagerPermissions).toBe('function');
   });
 });

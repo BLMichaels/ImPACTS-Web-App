@@ -361,15 +361,72 @@ export async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<
   return ids;
 }
 
-/** Team users a manager can configure in Team Permissions. */
+/**
+ * Mentors + PECCs a manager may configure in Team Permissions / tab visibility.
+ * Excludes the manager themself, admins, co-managers, and any non-mentor/non-PECC roles.
+ */
+export async function fetchManagerPermissionsTargetIdsSet(managerId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+
+  const mentorIds = (await getManagedMentorIdsForManager(managerId)).filter((id) => id !== managerId);
+  mentorIds.forEach((id) => ids.add(id));
+
+  await addDirectlyManagedPeccIds(managerId, ids);
+
+  if (mentorIds.length > 0) {
+    const { data: assignments } = await supabase
+      .from('mentor_hospital_assignments')
+      .select('hospital_id')
+      .in('mentor_id', mentorIds)
+      .eq('is_active', true);
+
+    const hospitalIds = [...new Set((assignments || []).map((r: { hospital_id: string }) => r.hospital_id))];
+    if (hospitalIds.length > 0) {
+      const { refs: peccHospitalRefs } = await expandHospitalRefsForPeccQuery(hospitalIds);
+      if (peccHospitalRefs.length > 0) {
+        const { data: peccs } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'pecc')
+          .eq('is_active', true)
+          .or(buildPeccHospitalFacilityOrClause(peccHospitalRefs));
+        (peccs || []).forEach((p: { id: string }) => ids.add(p.id));
+      }
+    }
+
+    // PECCs whose mentor_id points at a supervised mentor
+    const { data: linkedPeccs } = await supabase
+      .from('users')
+      .select('id')
+      .eq('role', 'pecc')
+      .eq('is_active', true)
+      .in('mentor_id', mentorIds);
+    (linkedPeccs || []).forEach((p: { id: string }) => ids.add(p.id));
+  }
+
+  ids.delete(managerId);
+  return ids;
+}
+
+/** Team users a manager can configure in Team Permissions (mentors + PECCs only). */
 export async function fetchUsersForManagerPermissions(managerId: string) {
-  const visibleIds = await fetchManagerVisibleUserIdsSet(managerId);
+  const visibleIds = await fetchManagerPermissionsTargetIdsSet(managerId);
   const idList = [...visibleIds];
   if (idList.length === 0) return [];
 
-  const { data, error } = await supabase.from('users').select(PERMISSIONS_USER_SELECT).in('id', idList);
+  const { data, error } = await supabase
+    .from('users')
+    .select(PERMISSIONS_USER_SELECT)
+    .in('id', idList)
+    .in('role', ['mentor', 'pecc'])
+    .eq('is_admin', false);
   if (error) throw error;
-  return data || [];
+  return (data || []).filter((u: { id: string; role?: string; is_admin?: boolean }) => {
+    if (u.id === managerId) return false;
+    if (u.is_admin === true) return false;
+    const role = String(u.role || '').toLowerCase();
+    return role === 'mentor' || role === 'pecc';
+  });
 }
 
 /** Persist full mentor supervisor list (primary + secondary) and sync cohort/program managers. */

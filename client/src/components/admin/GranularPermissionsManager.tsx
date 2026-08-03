@@ -276,7 +276,7 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
         }
       }
       if (usersData) {
-        setUsers(usersData.map((u: {
+        const mapped = usersData.map((u: {
           id: string;
           email: string;
           first_name: string;
@@ -308,7 +308,20 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
           mentor_id: u.mentor_id || null,
           manager_id_for_pecc: u.manager_id_for_pecc || null,
           primary_program_id: u.primary_program_id ?? null
-        })));
+        }));
+        // Manager mode: never surface admins or non mentor/PECC roles in pickers (incl. Tab Visibility).
+        const scoped =
+          mode === 'manager'
+            ? mapped.filter((u) => {
+                if (u.is_admin) return false;
+                if (userProfile?.id && u.id === userProfile.id) return false;
+                return u.role === UserRole.MENTOR || u.role === UserRole.PECC;
+              })
+            : mapped;
+        setUsers(scoped);
+        if (mode === 'manager') {
+          setSelectedUserId((prev) => (prev && scoped.some((u) => u.id === prev) ? prev : ''));
+        }
       }
 
       // Load CRM staff (contact_type='staff') so we can align display: show "Staff" / "Admin" and use CRM names when user name is missing
@@ -433,6 +446,15 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
 
   const isPendingUser = (id: string) => id.startsWith(PENDING_USER_PREFIX);
   const getEmailFromPendingId = (id: string) => id.startsWith(PENDING_USER_PREFIX) ? id.slice(PENDING_USER_PREFIX.length) : '';
+
+  /** Manager Team Permissions: only mentors/PECCs in the loaded team list. */
+  const managerMayEditUserId = (userId: string) => {
+    if (mode !== 'manager') return true;
+    if (!userId || isPendingUser(userId)) return false;
+    const u = users.find((x) => x.id === userId);
+    if (!u || u.is_admin) return false;
+    return u.role === UserRole.MENTOR || u.role === UserRole.PECC;
+  };
 
   const loadPermissions = async () => {
     // Reset derived states first so switching selection doesn't show stale toggles.
@@ -589,6 +611,10 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   
   const handleSaveUserPermission = async (permissionKey: string, enabled: boolean) => {
     if (!selectedUserId) return;
+    if (mode === 'manager' && !managerMayEditUserId(selectedUserId)) {
+      setSnack({ message: 'You can only edit permissions for mentors and PECCs on your team.', severity: 'error' });
+      return;
+    }
 
     const pending = isPendingUser(selectedUserId);
     const email = getEmailFromPendingId(selectedUserId);
@@ -741,6 +767,10 @@ const GranularPermissionsManager: React.FC<GranularPermissionsManagerProps> = ({
   const handleSaveTabVisibility = async (tabKey: string, visible: boolean, scope: 'user' | 'cohort' | 'program') => {
     const scopeId = scope === 'user' ? selectedUserId : scope === 'cohort' ? selectedCohortId : selectedProgramId;
     if (!scopeId) return;
+    if (scope === 'user' && mode === 'manager' && !managerMayEditUserId(scopeId)) {
+      setSnack({ message: 'You can only edit tab visibility for mentors and PECCs on your team.', severity: 'error' });
+      return;
+    }
 
     if (scope === 'user' && isPendingUser(scopeId)) {
       const email = getEmailFromPendingId(scopeId);

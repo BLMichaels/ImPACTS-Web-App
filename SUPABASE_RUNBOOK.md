@@ -29,7 +29,7 @@ Idle sessions sign out after 30 minutes.
 
 ## Manager tier RLS (required after Manager audits)
 
-1. `MANAGER_TIER_HARDENING.sql` — team-scoped hospitals (primary + secondary managers), tightened `tab_visibility` / `user_permissions` / `view_tabs`, manager cohort create, manager-scoped invitation reads.  
+1. `MANAGER_TIER_HARDENING.sql` — team-scoped hospitals (primary + secondary managers), permissions/tab_visibility limited to supervised mentors + PECCs (`is_manager_permissions_target`), manager cohort create, manager-scoped invitation reads. Re-run this file in the SQL Editor whenever it changes.  
    Replaces optional `HOSPITALS_RLS_MANAGER_SCOPED.sql` (that file now only points here).
 
 ## Multi-factor authentication (MFA)

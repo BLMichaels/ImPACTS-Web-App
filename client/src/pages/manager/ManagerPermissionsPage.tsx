@@ -12,18 +12,18 @@ const ManagerPermissionsPage: React.FC = () => {
       <AdminHero
         overline="Manager"
         title="Team Permissions"
-        description="Manage permissions and PECC tab visibility for mentors and PECCs on your team. Changes apply to what each user can see in their navbar and dashboards."
+        description="Manage permissions and PECC tab visibility for mentors and PECCs you supervise. Admins and other roles are not listed and cannot be changed here."
         actions={
           <Button size="small" variant="outlined" onClick={() => navigate('/manager/team?tab=sites')}>
-            Open CRM
+            Open Sites
           </Button>
         }
       />
       <Alert severity="info">
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
           <Typography variant="body2" sx={{ flex: 1 }}>
-            Includes mentors you manage (primary and secondary assignments), people in cohorts you manage, and PECCs at
-            your team&apos;s hospitals.
+            User list is limited to mentors you supervise (primary/secondary) and PECCs at their sites or assigned
+            directly to you. Cohort co-managers, admins, and other roles are excluded.
           </Typography>
         </Stack>
       </Alert>

@@ -153,6 +153,103 @@ AS $$
 $$;
 
 -- =====================================================
+-- Permissions targets: mentors + PECCs under this manager only
+-- (no admins, no co-managers, no self, no cohort-only outsiders)
+-- =====================================================
+CREATE OR REPLACE FUNCTION public.is_manager_permissions_target(p_manager_id UUID, p_target_user_id UUID)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT
+    p_manager_id IS DISTINCT FROM p_target_user_id
+    AND EXISTS (
+      SELECT 1 FROM public.users t
+      WHERE t.id = p_target_user_id
+        AND COALESCE(t.is_admin, false) = false
+        AND t.role IN ('mentor', 'pecc')
+        AND (
+          (t.role = 'mentor' AND t.manager_id = p_manager_id)
+          OR (
+            t.role = 'mentor'
+            AND EXISTS (
+              SELECT 1 FROM public.user_data ud
+              WHERE ud.user_id = t.id
+                AND ud.data_key = 'mentor_manager_ids'
+                AND (
+                  ud.value ? p_manager_id::text
+                  OR ud.value @> to_jsonb(ARRAY[p_manager_id::text])
+                )
+            )
+          )
+          OR (t.role = 'pecc' AND t.manager_id_for_pecc = p_manager_id)
+          OR (
+            t.role = 'pecc'
+            AND EXISTS (
+              SELECT 1 FROM public.user_data ud
+              WHERE ud.user_id = t.id
+                AND ud.data_key = 'pecc_direct_manager_ids'
+                AND (
+                  ud.value ? p_manager_id::text
+                  OR ud.value @> to_jsonb(ARRAY[p_manager_id::text])
+                )
+            )
+          )
+          OR (
+            t.role = 'pecc'
+            AND EXISTS (
+              SELECT 1 FROM public.users mentor
+              WHERE mentor.role = 'mentor'
+                AND mentor.id = t.mentor_id
+                AND (
+                  mentor.manager_id = p_manager_id
+                  OR EXISTS (
+                    SELECT 1 FROM public.user_data ud
+                    WHERE ud.user_id = mentor.id
+                      AND ud.data_key = 'mentor_manager_ids'
+                      AND (
+                        ud.value ? p_manager_id::text
+                        OR ud.value @> to_jsonb(ARRAY[p_manager_id::text])
+                      )
+                  )
+                )
+            )
+          )
+          OR (
+            t.role = 'pecc'
+            AND EXISTS (
+              SELECT 1
+              FROM public.users mentor
+              JOIN public.mentor_hospital_assignments mha
+                ON mha.mentor_id = mentor.id AND mha.is_active = true
+              JOIN public.hospitals h ON h.id = mha.hospital_id
+              WHERE mentor.role = 'mentor'
+                AND (
+                  mentor.manager_id = p_manager_id
+                  OR EXISTS (
+                    SELECT 1 FROM public.user_data ud
+                    WHERE ud.user_id = mentor.id
+                      AND ud.data_key = 'mentor_manager_ids'
+                      AND (
+                        ud.value ? p_manager_id::text
+                        OR ud.value @> to_jsonb(ARRAY[p_manager_id::text])
+                      )
+                  )
+                )
+                AND t.hospital_facility_id IS NOT NULL
+                AND (
+                  t.hospital_facility_id::text = h.id::text
+                  OR (h.facility_id IS NOT NULL AND t.hospital_facility_id::text = h.facility_id::text)
+                )
+            )
+          )
+        )
+    );
+$$;
+
+-- =====================================================
 -- user_data tab_visibility: mirror USING in WITH CHECK
 -- =====================================================
 DROP POLICY IF EXISTS "user_data_manager_tab_visibility" ON public.user_data;
@@ -163,7 +260,7 @@ CREATE POLICY "user_data_manager_tab_visibility" ON public.user_data
     AND EXISTS (
       SELECT 1 FROM public.users u
       WHERE u.id = auth.uid() AND u.role = 'manager'
-        AND public.is_manager_team_user(u.id, public.user_data.user_id)
+        AND public.is_manager_permissions_target(u.id, public.user_data.user_id)
     )
   )
   WITH CHECK (
@@ -171,12 +268,12 @@ CREATE POLICY "user_data_manager_tab_visibility" ON public.user_data
     AND EXISTS (
       SELECT 1 FROM public.users u
       WHERE u.id = auth.uid() AND u.role = 'manager'
-        AND public.is_manager_team_user(u.id, public.user_data.user_id)
+        AND public.is_manager_permissions_target(u.id, public.user_data.user_id)
     )
   );
 
 -- =====================================================
--- user_permissions / view_tabs: secondary + cohort team
+-- user_permissions / view_tabs: mentors + PECCs only (not admins)
 -- =====================================================
 DROP POLICY IF EXISTS "Managers manage team permissions" ON public.user_permissions;
 CREATE POLICY "Managers manage team permissions" ON public.user_permissions
@@ -185,14 +282,14 @@ CREATE POLICY "Managers manage team permissions" ON public.user_permissions
     EXISTS (
       SELECT 1 FROM public.users u
       WHERE u.id = auth.uid() AND u.role = 'manager'
-        AND public.is_manager_team_user(u.id, user_permissions.user_id)
+        AND public.is_manager_permissions_target(u.id, user_permissions.user_id)
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.users u
       WHERE u.id = auth.uid() AND u.role = 'manager'
-        AND public.is_manager_team_user(u.id, user_permissions.user_id)
+        AND public.is_manager_permissions_target(u.id, user_permissions.user_id)
     )
   );
 
@@ -205,7 +302,7 @@ CREATE POLICY "Managers manage team tabs" ON public.view_tabs
       AND EXISTS (
         SELECT 1 FROM public.users u
         WHERE u.id = auth.uid() AND u.role = 'manager'
-          AND public.is_manager_team_user(u.id, view_tabs.user_id)
+          AND public.is_manager_permissions_target(u.id, view_tabs.user_id)
       )
     )
     OR (
@@ -229,7 +326,7 @@ CREATE POLICY "Managers manage team tabs" ON public.view_tabs
       AND EXISTS (
         SELECT 1 FROM public.users u
         WHERE u.id = auth.uid() AND u.role = 'manager'
-          AND public.is_manager_team_user(u.id, view_tabs.user_id)
+          AND public.is_manager_permissions_target(u.id, view_tabs.user_id)
       )
     )
     OR (
