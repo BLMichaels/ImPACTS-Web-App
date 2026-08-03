@@ -32,6 +32,7 @@ import {
   People as PeopleIcon,
   Business as BusinessIcon,
   Timeline as TimelineIcon,
+  Assessment as AssessmentIcon,
   AttachMoney as MoneyIcon,
   Settings as SettingsIcon,
   Groups as CohortsIcon,
@@ -219,9 +220,10 @@ const Navbar: React.FC = () => {
 
       case UserRole.MANAGER: {
         const managerItems: NavItem[] = [
-          { path: '/manager/overview', label: 'Overview', icon: <DashboardIcon /> },
+          { path: '/manager/overview', label: 'Snapshot', icon: <TimelineIcon /> },
           { path: '/manager/mentors', label: 'Mentors', icon: <PeopleIcon /> },
           { path: '/manager/crm', label: 'CRM', icon: <BusinessIcon /> },
+          { path: '/manager/reports', label: 'Reports', icon: <AssessmentIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/manager/permissions', label: 'Team Permissions', icon: <SettingsIcon /> }
         ];
@@ -604,11 +606,17 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
               ) : item.icon;
               const active = isNavItemActive(item, location.pathname);
               const hasVisibleChildren = Boolean(item.children?.length);
-              // PECC / Mentor grouping: Snapshot | middle work tabs | Cohorts
+              // PECC / Mentor / Manager grouping: Snapshot | middle work tabs | Cohorts
               const navGroupGap = isSmallDesktop ? 6.5 : 11;
+              const managerHasMentorWork = Boolean(userProfile?.has_hospital_assignments);
               const navGroupMarginLeft =
                 (userRole === UserRole.PECC && (item.path === '/activities' || item.path === '/cohorts')) ||
-                (userRole === UserRole.MENTOR && (item.path === '/mentor/activities' || item.path === '/mentor/cohorts'))
+                (userRole === UserRole.MENTOR && (item.path === '/mentor/activities' || item.path === '/mentor/cohorts')) ||
+                (userRole === UserRole.MANAGER &&
+                  (item.path === '/manager/cohorts' ||
+                    (managerHasMentorWork
+                      ? item.path === '/manager/activities'
+                      : item.path === '/manager/mentors')))
                   ? navGroupGap
                   : 0;
 

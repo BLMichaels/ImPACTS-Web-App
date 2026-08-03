@@ -16,7 +16,7 @@ import {
   IconButton,
   Collapse,
   Alert,
-  Container,
+  Stack,
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -38,6 +38,12 @@ import { format } from 'date-fns';
 import { useManagerTeamDashboard } from '../../hooks/useManagerTeamDashboard';
 import { exportManagerTeamSnapshotPdf } from '../../utils/managerTeamSnapshotPdf';
 import { getUserDisplayName } from '../../utils/displayName';
+import {
+  AdminPageShell,
+  AdminHero,
+  AdminSection,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
 
 const ManagerOverviewPage: React.FC = () => {
   useAuth();
@@ -120,19 +126,19 @@ const ManagerOverviewPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Container maxWidth="xl" sx={{ py: 3 }}>
-        <Typography variant="h4" gutterBottom>
-          Manager Overview
-        </Typography>
-        <LinearProgress />
-      </Container>
+      <AdminPageShell>
+        <AdminHero overline="Manager" title="Snapshot" description="Loading your team metrics…" />
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, p: 3 }}>
+          <LinearProgress />
+        </Paper>
+      </AdminPageShell>
     );
   }
 
   return (
-    <Container maxWidth="xl" sx={{ py: 3 }}>
+    <AdminPageShell>
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => {}}>
+        <Alert severity="error" onClose={() => {}}>
           {error}
           <Button size="small" sx={{ ml: 1 }} onClick={retry}>
             Retry
@@ -140,33 +146,33 @@ const ManagerOverviewPage: React.FC = () => {
         </Alert>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, mb: 2 }}>
-        <Box>
-          <Typography variant="h4" color="primary" sx={{ fontWeight: 600 }}>
-            Manager Overview
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 560 }}>
-            Team mentoring metrics, sites, and PECC progress. Export a PDF snapshot for grant or program reporting.
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Button variant="outlined" size="small" onClick={() => navigate('/manager/crm')}>
-            CRM
-          </Button>
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<PictureAsPdfIcon />}
-            onClick={handleExportPdf}
-            sx={{ bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}
-          >
-            Export PDF
-          </Button>
-        </Box>
-      </Box>
+      <AdminHero
+        overline="Manager"
+        title="Snapshot"
+        description="Team mentoring metrics, sites, and PECC progress. Export a PDF for grant or program reporting, or open Reports for cohort-scoped exports."
+        actions={
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button variant="outlined" size="small" onClick={() => navigate('/manager/reports')}>
+              Reports
+            </Button>
+            <Button variant="outlined" size="small" onClick={() => navigate('/manager/crm')}>
+              CRM
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              color="secondary"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleExportPdf}
+            >
+              Export PDF
+            </Button>
+          </Stack>
+        }
+      />
 
       {userProfile?.has_hospital_assignments && (
-        <Alert severity="info" sx={{ mb: 3 }}>
+        <Alert severity="info">
           You are also assigned as a mentor to hospitals. Use{' '}
           <Button size="small" onClick={() => navigate('/manager/activities')}>
             My Activities
@@ -180,134 +186,115 @@ const ManagerOverviewPage: React.FC = () => {
       )}
 
       {selectedHospitalId && (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Site notes: {hospitalNotesName ?? 'Hospital'}
+        <AdminSection
+          overline="Site"
+          title={`Notes: ${hospitalNotesName ?? 'Hospital'}`}
+          description="Notes from mentors, managers, and admins (also in CRM)."
+        >
+          {hospitalNotes.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No notes yet.
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Notes from mentors, managers, and admins (also in CRM).
-            </Typography>
-            {hospitalNotes.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                No notes yet.
-              </Typography>
-            ) : (
-              <List dense>
-                {hospitalNotes.map((entry, i) => (
-                  <ListItem key={i} alignItems="flex-start" sx={{ flexDirection: 'column', alignItems: 'stretch', py: 0.5 }}>
-                    <Typography variant="caption" color="primary">
-                      {entry.date}
-                    </Typography>
-                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                      {entry.text}
-                    </Typography>
-                    {i < hospitalNotes.length - 1 && <Divider sx={{ my: 1 }} />}
-                  </ListItem>
-                ))}
-              </List>
-            )}
-          </CardContent>
-        </Card>
+          ) : (
+            <List dense>
+              {hospitalNotes.map((entry, i) => (
+                <ListItem key={i} alignItems="flex-start" sx={{ flexDirection: 'column', alignItems: 'stretch', py: 0.5 }}>
+                  <Typography variant="caption" color="primary">
+                    {entry.date}
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                    {entry.text}
+                  </Typography>
+                  {i < hospitalNotes.length - 1 && <Divider sx={{ my: 1 }} />}
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </AdminSection>
       )}
 
-      <Alert severity="info" sx={{ mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-              {mentors.length} Mentors • {totalSites} Sites • {totalPeccs} PECCs
-            </Typography>
-            <Typography variant="body2">
-              Average PECC checklist progress: {avgPeccProgress}% • Team hours this month: {teamHoursThisMonth.toFixed(1)}h
-            </Typography>
-          </Box>
-          <Chip label={`${teamActivitiesThisMonth} activities this month`} color="primary" variant="outlined" />
-        </Box>
-      </Alert>
-
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            title="Total Mentors"
-            value={mentors.length}
-            icon={<PeopleIcon sx={{ fontSize: 32, color: 'primary.main' }} />}
-            color="primary.main"
-            caption="Under your management"
-          />
+      <AdminSection
+        overline="At a glance"
+        title="Team summary"
+        description={`${mentors.length} mentors · ${totalSites} sites · ${totalPeccs} PECCs · avg checklist ${avgPeccProgress}%`}
+        actions={
+          <Chip label={`${teamActivitiesThisMonth} activities this month`} color="primary" variant="outlined" size="small" />
+        }
+      >
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6} md={3}>
+            <KpiCard
+              title="Total Mentors"
+              value={mentors.length}
+              icon={<PeopleIcon sx={{ fontSize: 32, color: 'primary.main' }} />}
+              color="primary.main"
+              caption="Under your management"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <KpiCard
+              title="Sites"
+              value={totalSites}
+              icon={<HospitalIcon sx={{ fontSize: 32, color: 'success.main' }} />}
+              color="success.main"
+              caption="Hospitals being supported"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <KpiCard
+              title="PECCs"
+              value={totalPeccs}
+              icon={<GroupIcon sx={{ fontSize: 32, color: 'info.main' }} />}
+              color="info.main"
+              caption={`Avg progress ${avgPeccProgress}%`}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <KpiCard
+              title="Team Hours (Month)"
+              value={teamHoursThisMonth.toFixed(1)}
+              icon={<WorkIcon sx={{ fontSize: 32, color: 'warning.main' }} />}
+              color="warning.main"
+              caption={`${teamActivitiesThisMonth} activities · ${teamTotalHours.toFixed(1)}h total`}
+            />
+          </Grid>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            title="Sites"
-            value={totalSites}
-            icon={<HospitalIcon sx={{ fontSize: 32, color: 'success.main' }} />}
-            color="success.main"
-            caption="Hospitals being supported"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            title="PECCs"
-            value={totalPeccs}
-            icon={<GroupIcon sx={{ fontSize: 32, color: 'info.main' }} />}
-            color="info.main"
-            caption={`Avg progress ${avgPeccProgress}%`}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            title="Team Hours (Month)"
-            value={teamHoursThisMonth.toFixed(1)}
-            icon={<WorkIcon sx={{ fontSize: 32, color: 'warning.main' }} />}
-            color="warning.main"
-            caption={`${teamActivitiesThisMonth} activities • ${teamTotalHours.toFixed(1)}h total`}
-          />
-        </Grid>
-      </Grid>
+      </AdminSection>
 
       {managerOwn.hasAssignments && (
-        <Card sx={{ mb: 4, borderLeft: 4, borderColor: 'secondary.main' }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  My Mentoring
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Your direct mentor work with PECCs at assigned hospitals.
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  <Chip size="small" icon={<ActivityIcon />} label={`${managerOwn.totalActivities} activities`} />
-                  <Chip size="small" icon={<TimelineIcon />} label={`${managerOwn.hoursTotal.toFixed(1)}h total`} />
-                  <Chip size="small" label={`${managerOwn.hoursThisMonth.toFixed(1)}h this month`} color="primary" variant="outlined" />
-                  <Chip size="small" label={`${managerOwn.lastMonthHours.toFixed(1)}h last month`} />
-                </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                  Sites: {managerOwn.hospitalNames.join(', ') || 'None'}
-                </Typography>
-              </Box>
-              <Button variant="contained" startIcon={<ActivityIcon />} onClick={() => navigate('/manager/activities')}>
-                My activities
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
+        <AdminSection
+          overline="Your mentoring"
+          title="My Mentoring"
+          description="Your direct mentor work with PECCs at assigned hospitals."
+          actions={
+            <Button variant="contained" color="secondary" size="small" startIcon={<ActivityIcon />} onClick={() => navigate('/manager/activities')}>
+              My activities
+            </Button>
+          }
+        >
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            <Chip size="small" icon={<ActivityIcon />} label={`${managerOwn.totalActivities} activities`} />
+            <Chip size="small" icon={<TimelineIcon />} label={`${managerOwn.hoursTotal.toFixed(1)}h total`} />
+            <Chip size="small" label={`${managerOwn.hoursThisMonth.toFixed(1)}h this month`} color="primary" variant="outlined" />
+            <Chip size="small" label={`${managerOwn.lastMonthHours.toFixed(1)}h last month`} />
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+            Sites: {managerOwn.hospitalNames.join(', ') || 'None'}
+          </Typography>
+        </AdminSection>
       )}
 
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Your Mentors and Their Sites
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Expand a mentor to see sites and activity. Use View in CRM for contacts and hospital details.
-          </Typography>
-
+      <AdminSection
+        overline="Team"
+        title="Your mentors and their sites"
+        description="Expand a mentor to see sites and activity. Use View in CRM for contacts and hospital details."
+      >
           {mentors.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <Typography variant="body1" color="text.secondary">
                 No mentors found yet. Assign mentors to hospitals in the CRM, or ask an admin to link you as a secondary manager.
               </Typography>
-              <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate('/manager/crm')}>
+              <Button variant="contained" color="secondary" sx={{ mt: 2 }} onClick={() => navigate('/manager/crm')}>
                 Go to CRM
               </Button>
             </Box>
@@ -406,9 +393,8 @@ const ManagerOverviewPage: React.FC = () => {
               ))}
             </List>
           )}
-        </CardContent>
-      </Card>
-    </Container>
+      </AdminSection>
+    </AdminPageShell>
   );
 };
 

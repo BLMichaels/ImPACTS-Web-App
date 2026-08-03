@@ -75,6 +75,11 @@ import {
   fetchManagerVisibleUserIdsSet,
   getManagedMentorIdsForManager,
 } from '../../utils/managerTeamScope';
+import {
+  AdminPageShell,
+  AdminHero,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
 
 const CONTACT_STATUSES = [
   'ED Employee (general contact)',
@@ -1069,58 +1074,56 @@ const ManagerCRMPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <AdminPageShell>
       {loadError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+        <Alert severity="error" onClose={() => setLoadError(null)}>
           {loadError}
           <Button size="small" sx={{ ml: 1 }} onClick={() => { setLoadError(null); loadHospitals(); }}>
             Retry
           </Button>
         </Alert>
       )}
-      <Alert severity="info" sx={{ mb: 2 }}>
+      <AdminHero
+        overline="Manager"
+        title="CRM"
+        description="Manage hospitals, contacts, and tab visibility for sites on your team. Organization-wide CRM tools remain in Admin."
+        actions={
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              startIcon={<SettingsIcon />}
+              onClick={() => {
+                loadTabVisibilitySettings();
+                setVisibilityDialog(true);
+              }}
+            >
+              Tab Visibility
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              startIcon={<AddIcon />}
+              onClick={handleOpenAddHospital}
+            >
+              Add Hospital
+            </Button>
+          </Box>
+        }
+      />
+      <Alert severity="info">
         Manager CRM shows hospitals and contacts for your team’s assigned sites. Full organization-wide CRM (all contacts, merge, bulk import/export) is in the Admin CRM.
       </Alert>
       {contactsLoadError && activeTab === 1 && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setContactsLoadError(null)}>
+        <Alert severity="error" onClose={() => setContactsLoadError(null)}>
           {contactsLoadError}
           <Button size="small" sx={{ ml: 1 }} onClick={() => { setContactsLoadError(null); void loadContacts(); }}>
             Retry
           </Button>
         </Alert>
       )}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
-          <Typography variant="h4" color="primary" fontWeight={600}>
-            CRM
-          </Typography>
-          <Typography variant="body2" color="textSecondary">
-            Manage hospitals, contacts, and user tab visibility settings
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="outlined"
-            startIcon={<SettingsIcon />}
-            onClick={() => {
-              loadTabVisibilitySettings();
-              setVisibilityDialog(true);
-            }}
-          >
-            Tab Visibility
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleOpenAddHospital}
-          >
-            Add Hospital
-          </Button>
-        </Box>
-      </Box>
 
       {/* Tabs */}
-      <Paper sx={{ mb: 3 }}>
+      <Paper elevation={0} sx={adminSectionShellSx}>
         <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
           <Tab label="Hospitals" icon={<HospitalIcon />} iconPosition="start" />
           <Tab label="Contacts" icon={<PersonIcon />} iconPosition="start" />
@@ -2117,7 +2120,7 @@ const ManagerCRMPage: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </AdminPageShell>
   );
 };
 

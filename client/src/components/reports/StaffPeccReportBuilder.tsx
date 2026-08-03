@@ -113,7 +113,8 @@ import {
 } from '../../utils/reportExportHelpers';
 import {
   getManagedHospitalScopeKeysForManager,
-  getManagedMentorIdsForManager,
+  fetchManagedCohortsForManager,
+  fetchManagerVisibleUserIdsSet,
 } from '../../utils/managerTeamScope';
 
 export type StaffReportScope = 'admin' | 'manager' | 'mentor';
@@ -1142,7 +1143,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       let progList: { id: string; name: string }[] = [];
       let coList: { id: string; name: string }[] = [];
       try {
-        [progList, coList] = await Promise.all([fetchActiveProgramsList(), fetchActiveCohortsList()]);
+        if (scope === 'manager') {
+          [progList, coList] = await Promise.all([
+            fetchActiveProgramsList(),
+            fetchManagedCohortsForManager(actorUserId),
+          ]);
+        } else {
+          [progList, coList] = await Promise.all([fetchActiveProgramsList(), fetchActiveCohortsList()]);
+        }
       } catch (e) {
         console.warn('programs/cohorts list:', e);
       }
@@ -1208,6 +1216,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           roles: ['manager'],
           stripPlatformAdmins: false,
           setRows,
+          setCohortIdsByRow,
         });
       } else if (dataset === 'mentors') {
         await loadPlatformUsersByRoles({
@@ -1217,6 +1226,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           roles: ['mentor'],
           stripPlatformAdmins: false,
           setRows,
+          setCohortIdsByRow,
         });
       } else if (dataset === 'user_hospital_system') {
         await loadPlatformUsersByRoles({
@@ -1254,6 +1264,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           roles: resolvePlatformUserRolesForQuery(staffRoleFilter),
           stripPlatformAdmins: !includePlatformAdminAccounts,
           setRows,
+          setCohortIdsByRow,
         });
       }
     } catch (e: unknown) {
@@ -1360,6 +1371,11 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           return r.cells.activeWindow === 'Yes';
         });
       }
+    } else if (
+      cohortFilter !== 'all' &&
+      (dataset === 'mentors' || dataset === 'managers' || dataset === 'platform_users')
+    ) {
+      list = list.filter((r) => (cohortIdsByRow[r.id] || []).includes(cohortFilter));
     }
     if (columnFilters.length) {
       list = list.filter((r) => columnFilters.every((rule) => rowMatchesColumnFilterRule(r, rule)));
@@ -2258,7 +2274,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   <ListSubheader disableSticky sx={{ lineHeight: 2 }}>
                     People records
                   </ListSubheader>
-                  {REPORT_DATASET_PEOPLE_OPTIONS.map(({ value, label }) => (
+                  {REPORT_DATASET_PEOPLE_OPTIONS.filter((opt) => {
+                    if (scope === 'admin') return true;
+                    return (
+                      opt.value !== 'internal_staff' &&
+                      opt.value !== 'user_hospital_system' &&
+                      opt.value !== 'user_hiring_group'
+                    );
+                  }).map(({ value, label }) => (
                     <MenuItem key={value} value={value}>
                       {label}
                     </MenuItem>
@@ -2351,7 +2374,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   <FormControl fullWidth size="small">
                     <InputLabel>Cohort (membership)</InputLabel>
                     <Select value={cohortFilter} label="Cohort (membership)" onChange={(e) => setCohortFilter(e.target.value)}>
-                      <MenuItem value="all">All cohorts</MenuItem>
+                      <MenuItem value="all">{scope === 'manager' ? 'All my managed cohorts' : 'All cohorts'}</MenuItem>
                       {cohorts.map((c) => (
                         <MenuItem key={c.id} value={c.id}>
                           {c.name}
@@ -2361,6 +2384,21 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
                   </FormControl>
                 </Grid>
               </>
+            )}
+            {(dataset === 'mentors' || dataset === 'managers' || dataset === 'platform_users') && (
+              <Grid item xs={12} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Cohort (membership)</InputLabel>
+                  <Select value={cohortFilter} label="Cohort (membership)" onChange={(e) => setCohortFilter(e.target.value)}>
+                    <MenuItem value="all">{scope === 'manager' ? 'All my managed cohorts' : 'All cohorts'}</MenuItem>
+                    {cohorts.map((c) => (
+                      <MenuItem key={c.id} value={c.id}>
+                        {c.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
             )}
             {dataset === 'platform_users' && (
               <>
@@ -2431,6 +2469,18 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
               />
             )}
             {scope !== 'admin' && <Chip size="small" label={`Scope: ${scope}`} variant="outlined" />}
+            {scope === 'manager' && (
+              <Chip
+                size="small"
+                color="secondary"
+                variant="outlined"
+                label={
+                  cohorts.length > 0
+                    ? `${cohorts.length} managed cohort${cohorts.length === 1 ? '' : 's'}`
+                    : 'No managed cohorts yet'
+                }
+              />
+            )}
             {dataset === 'pecc' && activityPreset !== 'any' && (
               <Chip
                 size="small"
@@ -2477,6 +2527,14 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
             }
           >
             {error}
+          </Alert>
+        )}
+
+        {scope === 'manager' && !loading && cohorts.length === 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            You are not assigned as a cohort manager yet. Reports still include mentors and sites you supervise
+            directly. Ask an admin to assign you in <strong>cohort_managers</strong> (Admin → Cohorts) to filter and
+            report on specific cohorts, including their mentors and managers.
           </Alert>
         )}
 
@@ -3175,6 +3233,25 @@ async function fetchActiveCohortMembersForUsers(
     out.push(...rows);
   }
   return out;
+}
+
+/** Membership + cohort_managers rows keyed by user id (for report cohort filters). */
+async function buildCohortIdsByUserMap(userIds: string[]): Promise<Record<string, string[]>> {
+  const map: Record<string, string[]> = {};
+  const add = (uid: string, cid: string) => {
+    if (!uid || !cid) return;
+    if (!map[uid]) map[uid] = [];
+    if (!map[uid].includes(cid)) map[uid].push(cid);
+  };
+  const members = await fetchActiveCohortMembersForUsers(userIds);
+  members.forEach((m) => add(m.user_id, m.cohort_id));
+  for (const part of chunk(userIds, 80)) {
+    const rows = await fetchAllRowsOrEmpty<{ cohort_id: string; manager_id: string }>((from, to) =>
+      supabase.from('cohort_managers').select('cohort_id, manager_id').in('manager_id', part).range(from, to)
+    );
+    rows.forEach((r) => add(r.manager_id, r.cohort_id));
+  }
+  return map;
 }
 
 type PeccUserAccountRow = {
@@ -4492,19 +4569,23 @@ async function loadPlatformUsersByRoles(params: {
   roles: string[];
   stripPlatformAdmins: boolean;
   setRows: (r: ReportDataRow[]) => void;
+  setCohortIdsByRow?: (m: Record<string, string[]>) => void;
   /** Admins only: full list for this role (ignore hospital scope). */
   adminGlobal?: boolean;
 }): Promise<void> {
-  const { scope, actorUserId, hospitalScope, roles, stripPlatformAdmins, setRows, adminGlobal } = params;
+  const { scope, actorUserId, hospitalScope, roles, stripPlatformAdmins, setRows, setCohortIdsByRow, adminGlobal } =
+    params;
 
   if (!roles.length) {
     setRows([]);
+    setCohortIdsByRow?.({});
     return;
   }
 
   if (adminGlobal) {
     if (scope !== 'admin') {
       setRows([]);
+      setCohortIdsByRow?.({});
       return;
     }
     // For "people records" we include everyone in CRM-related roles,
@@ -4514,6 +4595,7 @@ async function loadPlatformUsersByRoles(params: {
     );
     if (stripPlatformAdmins) urows = urows.filter((u) => !u.is_admin);
     setRows(await enrichStaffUsersToReportRows(urows));
+    setCohortIdsByRow?.({});
     return;
   }
 
@@ -4522,20 +4604,8 @@ async function loadPlatformUsersByRoles(params: {
   if (scope === 'admin') {
     allowedIds = null;
   } else if (scope === 'manager') {
-    const mentorIds = await getManagedMentorIdsForManager(actorUserId);
-    const hs = hospitalScope || [];
-    const peccIdSet = new Set<string>();
-    if (hs.length > 0) {
-      const { refs } = await expandHospitalRefsForPeccQuery(hs);
-      for (const hpart of chunk(refs, 80)) {
-        const rows = await fetchAllRowsOrEmpty<{ id: string }>((from, to) =>
-          supabase.from('users').select('id').eq('role', 'pecc').or(buildPeccHospitalFacilityOrClause(hpart)).range(from, to)
-        );
-        rows.forEach((r) => peccIdSet.add(r.id));
-      }
-    }
-    const peccIds = [...peccIdSet];
-    allowedIds = [...new Set([actorUserId, ...mentorIds, ...peccIds])];
+    const visible = await fetchManagerVisibleUserIdsSet(actorUserId);
+    allowedIds = [...visible];
   } else {
     const hs = hospitalScope || [];
     const peccIdSet = new Set<string>();
@@ -4560,6 +4630,7 @@ async function loadPlatformUsersByRoles(params: {
     );
   } else if (allowedIds.length === 0) {
     setRows([]);
+    setCohortIdsByRow?.({});
     return;
   } else {
     for (const idPart of chunk(allowedIds, 80)) {
@@ -4581,6 +4652,9 @@ async function loadPlatformUsersByRoles(params: {
   }
 
   const userRows = await enrichStaffUsersToReportRows(urows);
+  if (setCohortIdsByRow) {
+    setCohortIdsByRow(await buildCohortIdsByUserMap(userRows.map((r) => r.id)));
+  }
   const crmContactTypes = resolveCrmContactTypesForRoles(roles);
   if (!crmContactTypes.length) {
     setRows(userRows);

@@ -1,32 +1,36 @@
 import React from 'react';
-import { Typography, Container, Alert, Button, Stack } from '@mui/material';
+import { Alert, Button, Stack, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import GranularPermissionsManager from '../../components/admin/GranularPermissionsManager';
+import { AdminPageShell, AdminHero, AdminSection } from '../../components/admin/AdminPageChrome';
 
 const ManagerPermissionsPage: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <Container maxWidth="xl" sx={{ py: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Team Permissions
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
-        Manage permissions and PECC tab visibility for mentors and PECCs on your team. Changes apply to what each
-        user can see in their navbar and dashboards.
-      </Typography>
-      <Alert severity="info" sx={{ mb: 3 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-          <Typography variant="body2" sx={{ flex: 1 }}>
-            Includes mentors you manage (primary and secondary assignments) and PECCs at your team&apos;s hospitals.
-          </Typography>
-          <Button size="small" onClick={() => navigate('/manager/crm')}>
+    <AdminPageShell>
+      <AdminHero
+        overline="Manager"
+        title="Team Permissions"
+        description="Manage permissions and PECC tab visibility for mentors and PECCs on your team. Changes apply to what each user can see in their navbar and dashboards."
+        actions={
+          <Button size="small" variant="outlined" onClick={() => navigate('/manager/crm')}>
             Open CRM
           </Button>
+        }
+      />
+      <Alert severity="info">
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+          <Typography variant="body2" sx={{ flex: 1 }}>
+            Includes mentors you manage (primary and secondary assignments), people in cohorts you manage, and PECCs at
+            your team&apos;s hospitals.
+          </Typography>
         </Stack>
       </Alert>
-      <GranularPermissionsManager mode="manager" />
-    </Container>
+      <AdminSection overline="Access" title="Granular permissions" disableBodyPadding>
+        <GranularPermissionsManager mode="manager" />
+      </AdminSection>
+    </AdminPageShell>
   );
 };
 

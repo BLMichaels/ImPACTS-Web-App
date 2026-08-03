@@ -68,6 +68,11 @@ import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAss
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
 import ManagerWagesExpensesPage from './ManagerWagesExpensesPage';
+import {
+  AdminPageShell,
+  AdminHero,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
 
 interface MentorData {
   id: string;
@@ -633,7 +638,33 @@ const ManagerMentorsPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <AdminPageShell>
+      <AdminHero
+        overline="Manager"
+        title="Mentors"
+        description="View and manage your mentor team. Expand to see their PECCs and review activities, progress, and gap plans."
+        actions={
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={wagesEnabled}
+                  onChange={(e) => handleToggleWages(e.target.checked)}
+                  size="small"
+                />
+              }
+              label={
+                <Typography variant="caption" color="textSecondary">
+                  Show Wages
+                </Typography>
+              }
+            />
+            <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+              Invite Mentor
+            </Button>
+          </Box>
+        }
+      />
       {loadError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
           {loadError}
@@ -642,38 +673,9 @@ const ManagerMentorsPage: React.FC = () => {
           </Button>
         </Alert>
       )}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
-          <Typography variant="h4" color="primary" fontWeight={600}>
-            Manage Mentors
-          </Typography>
-          <Typography variant="body2" color="textSecondary">
-            View and manage your mentor team. Expand to see their PECCs and review activities, progress, and gap plans.
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={wagesEnabled}
-                onChange={(e) => handleToggleWages(e.target.checked)}
-                size="small"
-              />
-            }
-            label={
-              <Typography variant="caption" color="textSecondary">
-                Show Wages
-              </Typography>
-            }
-          />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
-            Invite Mentor
-          </Button>
-        </Box>
-      </Box>
 
       {/* Tabs */}
-      <Paper sx={{ mb: 3 }}>
+      <Paper elevation={0} sx={{ ...adminSectionShellSx, mb: 2.5 }}>
         <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
           <Tab label="Team View" icon={<PeopleIcon />} iconPosition="start" />
           {wagesEnabled && <Tab label="Wages & Expenses" icon={<MoneyIcon />} iconPosition="start" />}
@@ -1163,7 +1165,7 @@ const ManagerMentorsPage: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </AdminPageShell>
   );
 };
 

@@ -11,3 +11,12 @@ describe('normalizeManagerIds', () => {
     expect(normalizeManagerIds('x')).toEqual([]);
   });
 });
+
+describe('manager report cohort helpers exist', () => {
+  it('exports cohort scoping functions', async () => {
+    const mod = await import('./managerTeamScope');
+    expect(typeof mod.getManagedCohortIdsForManager).toBe('function');
+    expect(typeof mod.fetchManagedCohortsForManager).toBe('function');
+    expect(typeof mod.getManagedCohortPeopleIdsForManager).toBe('function');
+  });
+});

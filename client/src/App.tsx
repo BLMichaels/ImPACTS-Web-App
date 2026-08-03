@@ -60,6 +60,7 @@ const CohortsPage = lazy(() => import('./pages/CohortsPage'));
 // Programs Pages
 const ProgramsPage = lazy(() => import('./pages/ProgramsPage'));
 const ManagerPermissionsPage = lazy(() => import('./pages/manager/ManagerPermissionsPage'));
+const ManagerReportsPage = lazy(() => import('./pages/manager/ManagerReportsPage'));
 
 // Hospital System & Hiring Group (lazy)
 const HospitalSystemDashboardPage = lazy(() => import('./pages/hospital-system/HospitalSystemDashboardPage'));
@@ -315,7 +316,7 @@ function AppShell() {
                   
                   {/* Manager Routes */}
                   <Route path="/manager/snapshot" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerSnapshotPage /></ProtectedRoute>} />
-                  <Route path="/manager/reports" element={<Navigate to="/manager/overview" replace />} />
+                  <Route path="/manager/reports" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerReportsPage /></ProtectedRoute>} />
                   <Route path="/manager/overview" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerOverviewPage /></ProtectedRoute>} />
                   <Route path="/manager/dashboard" element={<Navigate to="/manager/overview" replace />} />
                   <Route path="/manager/mentors" element={<ProtectedRoute allowedRoles={[UserRole.MANAGER]}><ManagerMentorsPage /></ProtectedRoute>} />

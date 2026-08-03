@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
-  Container,
   Typography,
   Grid,
   TextField,
@@ -15,7 +14,8 @@ import {
   DialogContent,
   DialogActions,
   FormControlLabel,
-  Switch
+  Switch,
+  Stack,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -27,9 +27,16 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
 import { CohortCard, CohortDetail, PendingInvitationsPanel } from '../../components/cohorts';
 import { getUserData } from '../../utils/userData';
+import { useNavigate } from 'react-router-dom';
+import {
+  AdminPageShell,
+  AdminHero,
+  adminSectionShellSx,
+} from '../../components/admin/AdminPageChrome';
 
 const ManagerCohortsPage: React.FC = () => {
   const { userProfile } = useUserProfile();
+  const navigate = useNavigate();
   const [cohorts, setCohorts] = useState<CohortWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -371,7 +378,7 @@ const ManagerCohortsPage: React.FC = () => {
     const canPostAnnouncements = true;
 
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <AdminPageShell>
         <CohortDetail
           cohort={selectedCohort}
           onBack={() => {
@@ -436,30 +443,27 @@ const ManagerCohortsPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-      </Container>
+      </AdminPageShell>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
-            Cohorts
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Manage your cohorts, post announcements, and moderate discussions
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleOpenCreateDialog}
-        >
-          Create Cohort
-        </Button>
-      </Box>
+    <AdminPageShell>
+      <AdminHero
+        overline="Manager"
+        title="Cohorts"
+        description="Manage cohorts you lead, post announcements, and moderate discussions. Reports can filter to these cohorts only."
+        actions={
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button variant="outlined" size="small" onClick={() => navigate('/manager/reports')}>
+              Reports
+            </Button>
+            <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={handleOpenCreateDialog}>
+              Create Cohort
+            </Button>
+          </Stack>
+        }
+      />
 
       {/* Pending Invitations Panel */}
       {managedCohortIds.length > 0 && (
@@ -501,7 +505,7 @@ const ManagerCohortsPage: React.FC = () => {
         </Box>
       ) : filteredCohorts.length === 0 ? (
         /* Empty state */
-        <Paper sx={{ p: 6, textAlign: 'center' }}>
+        <Paper elevation={0} sx={{ ...adminSectionShellSx, p: 6, textAlign: 'center' }}>
           <GroupIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
             {searchQuery ? 'No cohorts match your search' : 'No cohorts yet'}
@@ -513,7 +517,7 @@ const ManagerCohortsPage: React.FC = () => {
             }
           </Typography>
           {!searchQuery && (
-            <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreateDialog}>
+            <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={handleOpenCreateDialog}>
               Create Cohort
             </Button>
           )}
@@ -575,7 +579,7 @@ const ManagerCohortsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </AdminPageShell>
   );
 };
 

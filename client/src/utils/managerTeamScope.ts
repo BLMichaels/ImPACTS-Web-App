@@ -107,6 +107,71 @@ export async function getScopedMentorUsersForManager(managerId: string): Promise
   return scoped;
 }
 
+/** Cohort IDs this manager is assigned to manage (`cohort_managers`). */
+export async function getManagedCohortIdsForManager(managerId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('cohort_managers')
+    .select('cohort_id')
+    .eq('manager_id', managerId);
+  if (error) {
+    console.warn('[managerTeamScope] managed cohorts lookup failed', error);
+    return [];
+  }
+  return [...new Set((data || []).map((r: { cohort_id: string }) => String(r.cohort_id || '').trim()).filter(Boolean))];
+}
+
+/** Active cohorts this manager directly manages (report filter list). */
+export async function fetchManagedCohortsForManager(
+  managerId: string
+): Promise<{ id: string; name: string }[]> {
+  const cohortIds = await getManagedCohortIdsForManager(managerId);
+  if (!cohortIds.length) return [];
+
+  const out: { id: string; name: string }[] = [];
+  for (let i = 0; i < cohortIds.length; i += 80) {
+    const part = cohortIds.slice(i, i + 80);
+    const { data, error } = await supabase
+      .from('cohorts')
+      .select('id, name')
+      .in('id', part)
+      .eq('is_active', true)
+      .order('name');
+    if (error) {
+      console.warn('[managerTeamScope] managed cohort names failed', error);
+      continue;
+    }
+    (data || []).forEach((c: { id: string; name: string }) => {
+      if (c.id) out.push({ id: c.id, name: c.name || c.id });
+    });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+}
+
+/**
+ * People in cohorts this manager directly manages:
+ * active cohort members + all cohort_managers for those cohorts (mentors, managers, PECCs).
+ */
+export async function getManagedCohortPeopleIdsForManager(managerId: string): Promise<string[]> {
+  const cohortIds = await getManagedCohortIdsForManager(managerId);
+  if (!cohortIds.length) return [];
+
+  const ids = new Set<string>();
+  for (let i = 0; i < cohortIds.length; i += 80) {
+    const part = cohortIds.slice(i, i + 80);
+    const [{ data: members }, { data: managers }] = await Promise.all([
+      supabase.from('cohort_members').select('user_id').in('cohort_id', part).eq('status', 'active'),
+      supabase.from('cohort_managers').select('manager_id').in('cohort_id', part),
+    ]);
+    (members || []).forEach((r: { user_id: string }) => {
+      if (r.user_id) ids.add(r.user_id);
+    });
+    (managers || []).forEach((r: { manager_id: string }) => {
+      if (r.manager_id) ids.add(r.manager_id);
+    });
+  }
+  return [...ids];
+}
+
 /** Hospital id/facility keys for manager-scoped reports and maps. */
 export async function getManagedHospitalScopeKeysForManager(managerId: string): Promise<string[]> {
   const mentorIds = await getManagedMentorIdsForManager(managerId);
@@ -131,6 +196,21 @@ export async function getManagedHospitalScopeKeysForManager(managerId: string): 
         if (r.hospital_id) keys.add(r.hospital_id);
       });
     }
+  }
+
+  // Sites for PECCs who sit in managed cohorts (even when not yet under a mentor assignment).
+  const cohortPeople = await getManagedCohortPeopleIdsForManager(managerId);
+  for (let i = 0; i < cohortPeople.length; i += 80) {
+    const part = cohortPeople.slice(i, i + 80);
+    const { data } = await supabase
+      .from('users')
+      .select('hospital_facility_id')
+      .in('id', part)
+      .eq('role', 'pecc');
+    (data || []).forEach((r: { hospital_facility_id: string | null }) => {
+      const ref = String(r.hospital_facility_id || '').trim();
+      if (ref) keys.add(ref);
+    });
   }
 
   return [...keys];
@@ -161,6 +241,10 @@ export async function fetchManagerVisibleUserIdsSet(managerId: string): Promise<
 
   const mentorIds = await getManagedMentorIdsForManager(managerId);
   mentorIds.forEach((id) => ids.add(id));
+
+  // Mentors, managers, and PECCs in cohorts this manager directly manages.
+  const cohortPeople = await getManagedCohortPeopleIdsForManager(managerId);
+  cohortPeople.forEach((id) => ids.add(id));
 
   await addDirectlyManagedPeccIds(managerId, ids);
 

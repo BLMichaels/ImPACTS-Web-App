@@ -13,7 +13,11 @@ import {
   shouldMirrorLegacyUserData,
 } from './userData';
 import { isSupabaseMissingRelationError } from './supabaseErrors';
-import { getManagedMentorIdsForManager } from './managerTeamScope';
+import {
+  getManagedMentorIdsForManager,
+  getManagedCohortIdsForManager,
+  getManagedCohortPeopleIdsForManager,
+} from './managerTeamScope';
 
 const POSTGREST_PAGE = 1000;
 
@@ -578,7 +582,19 @@ async function loadMentorIdsForScope(ctx: LongitudinalLoadContext): Promise<stri
     return mentors.map((m) => m.id);
   }
   if (ctx.scope === 'manager') {
-    return getManagedMentorIdsForManager(ctx.actorUserId);
+    const [managed, cohortPeople] = await Promise.all([
+      getManagedMentorIdsForManager(ctx.actorUserId),
+      getManagedCohortPeopleIdsForManager(ctx.actorUserId),
+    ]);
+    const ids = new Set(managed);
+    if (cohortPeople.length) {
+      for (let i = 0; i < cohortPeople.length; i += 80) {
+        const part = cohortPeople.slice(i, i + 80);
+        const { data } = await supabase.from('users').select('id').in('id', part).eq('role', 'mentor');
+        (data || []).forEach((r: { id: string }) => ids.add(r.id));
+      }
+    }
+    return [...ids];
   }
   return [ctx.actorUserId];
 }
@@ -736,12 +752,16 @@ async function loadWages(ctx: LongitudinalLoadContext): Promise<LongitudinalRepo
       )
     : [];
   const userById = new Map(users.map((u) => [u.id, u]));
+  const managedWageUserIds =
+    ctx.scope === 'manager' ? new Set(await loadMentorIdsForScope(ctx)) : new Set<string>();
   return entries
     .filter((e) => {
       const u = userById.get(e.user_id);
       if (!u) return ctx.scope === 'admin';
       if (ctx.scope === 'admin') return true;
-      if (ctx.scope === 'manager') return u.manager_id === ctx.actorUserId;
+      if (ctx.scope === 'manager') {
+        return managedWageUserIds.has(e.user_id) || u.manager_id === ctx.actorUserId;
+      }
       return e.user_id === ctx.actorUserId;
     })
     .map((e) => {
@@ -819,10 +839,13 @@ async function loadCohortDiscussions(ctx: LongitudinalLoadContext): Promise<Long
   const authorName = new Map(
     authors.map((a) => [a.id, `${a.first_name || ''} ${a.last_name || ''}`.trim() || a.id])
   );
+  const managedCohortIds =
+    ctx.scope === 'manager' ? new Set(await getManagedCohortIdsForManager(ctx.actorUserId)) : null;
   const stripHtml = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   const rows: LongitudinalReportRow[] = [];
   const topicById = new Map(topics.map((t) => [t.id, t]));
   topics.forEach((t) => {
+    if (managedCohortIds && !managedCohortIds.has(t.cohort_id)) return;
     const coh = cohortMap.get(t.cohort_id);
     const progName = coh?.program_id ? programMap.get(coh.program_id) || '' : '';
     rows.push({
@@ -841,6 +864,8 @@ async function loadCohortDiscussions(ctx: LongitudinalLoadContext): Promise<Long
   });
   replies.forEach((r) => {
     const topic = topicById.get(r.topic_id);
+    if (managedCohortIds && topic && !managedCohortIds.has(topic.cohort_id)) return;
+    if (managedCohortIds && !topic) return;
     const coh = topic ? cohortMap.get(topic.cohort_id) : undefined;
     const progName = coh?.program_id ? programMap.get(coh.program_id) || '' : '';
     rows.push({
