@@ -746,7 +746,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
         });
       if (assignError) throw assignError;
 
-      setSnackbar({ open: true, message: 'Hospital added to CRM successfully', severity: 'success' });
+      setSnackbar({ open: true, message: 'Hospital added to your sites', severity: 'success' });
       setAddHospitalDialog(false);
       setAddHospitalMode('existing');
       setSelectedExistingHospital(null);
@@ -973,7 +973,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
       )}
       {!embedded && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          Sites are limited to hospitals on your mentoring team and PECCs in cohorts you manage. Organization-wide CRM stays in Admin.
+          Sites are limited to hospitals on your mentoring team and PECCs in cohorts you manage.
         </Alert>
       )}
       {embedded && (
@@ -1178,7 +1178,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
                 About this site
               </Typography>
               <Typography variant="body2">
-                Notes and activity here are from mentors, managers, and admins. Same content appears in Admin CRM and on the Hospitals page.
+                Notes and activity here are from mentors, managers, and admins on this site.
               </Typography>
             </Paper>
 
@@ -1192,7 +1192,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
               <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
                 <NotesIcon sx={{ fontSize: 40, color: 'grey.400', mb: 1 }} />
                 <Typography variant="body2" color="text.secondary">No notes yet</Typography>
-                <Typography variant="caption" color="text.secondary" display="block">Add notes from the Hospitals page or Admin CRM</Typography>
+                <Typography variant="caption" color="text.secondary" display="block">Add notes from My Hospitals when you mentor a site directly</Typography>
               </Paper>
             ) : (
               <Box sx={{ position: 'relative', pl: 2, borderLeft: 2, borderColor: 'divider', ml: 0.5 }}>
@@ -1392,7 +1392,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
                 </ListItem>
               </List>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                Opened from a report. Full CRM editing is available to administrators.
+                Opened from a report. Contact an administrator for broader site edits.
               </Typography>
             </Paper>
           ) : null}
@@ -1452,7 +1452,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
                 {contacts.length === 0 ? 'No contacts yet' : 'No contacts match your filters'}
               </Typography>
               <Typography variant="body2" color="text.disabled" sx={{ mb: 2 }}>
-                Add contacts for your CRM hospitals. Select a hospital and enter their details.
+                Add contacts for your team hospitals. Select a hospital and enter their details.
               </Typography>
               {hospitals.length > 0 && (
                 <Button variant="contained" startIcon={<AddIcon />} onClick={openAddContact}>
@@ -1667,10 +1667,10 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
 
       {/* Add Hospital Dialog: default = select from existing list; option = add unlisted site */}
       <Dialog open={addHospitalDialog} onClose={() => setAddHospitalDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Hospital to CRM</DialogTitle>
+        <DialogTitle>Add hospital</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Choose a site from the existing list, or add an unlisted site. Assign the site to a mentor so it appears in your CRM.
+            Choose a site from the existing list, or add an unlisted site. Assign it to a mentor so it appears on your Sites list.
           </Alert>
 
           <FormControl fullWidth sx={{ mb: 2 }}>
@@ -1839,7 +1839,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
               (addHospitalMode === 'existing' ? !selectedExistingHospital : !addHospitalForm.name?.trim() || !addHospitalForm.city?.trim() || !addHospitalForm.state?.trim())
             }
           >
-            {addHospitalMode === 'existing' ? 'Add to CRM' : 'Add unlisted site'}
+            {addHospitalMode === 'existing' ? 'Add to sites' : 'Add unlisted site'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1852,7 +1852,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
           setContactDeleteTyped('');
         }}
         title="Remove contact from your site list?"
-        description="This removes the row from hospital contacts for sites you manage. The person may still exist elsewhere in the platform or CRM."
+        description="This removes the contact from sites you manage. They may still appear elsewhere in the platform."
         typedValue={contactDeleteTyped}
         onTypedChange={setContactDeleteTyped}
         onConfirm={performDeleteContact}
@@ -1878,8 +1878,8 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
     <AdminPageShell>
       <AdminHero
         overline="Manager"
-        title="CRM"
-        description="Manage hospitals and contacts for sites on your team. Tab visibility and permissions live under Team Permissions. Organization-wide CRM tools remain in Admin."
+        title="Sites"
+        description="Manage hospitals and contacts for sites on your team. Permissions live under Team Permissions."
         actions={
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button

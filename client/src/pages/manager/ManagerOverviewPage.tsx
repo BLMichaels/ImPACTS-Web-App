@@ -291,7 +291,7 @@ const ManagerOverviewPage: React.FC = () => {
         <AdminSection
           overline="Site"
           title={`Notes: ${hospitalNotesOutOfScope ? 'Hospital' : (hospitalNotesName ?? 'Hospital')}`}
-          description="Notes from mentors, managers, and admins (also in CRM)."
+          description="Notes from mentors, managers, and admins on this site."
         >
           {hospitalNotesOutOfScope ? (
             <Alert severity="warning">
@@ -481,7 +481,7 @@ const ManagerOverviewPage: React.FC = () => {
         <AdminSection
           overline="Attention"
           title="Quiet mentors (30+ days)"
-          description="No logged activity in the last 30 days — follow up from Mentors or CRM."
+          description="No logged activity in the last 30 days — follow up from Team → Roster or Sites."
           actions={
             <Button size="small" variant="outlined" onClick={() => navigate('/manager/team?tab=roster')}>
               Open Mentors
@@ -517,10 +517,10 @@ const ManagerOverviewPage: React.FC = () => {
         {mentors.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 5, px: 2 }}>
             <Typography variant="body1" color="text.secondary">
-              No mentors found yet. Assign mentors in the CRM, or ask an admin to link you as a manager.
+              No mentors found yet. Assign mentors under Team → Sites, or ask an admin to link you as a manager.
             </Typography>
             <Button variant="contained" color="secondary" sx={{ mt: 2 }} onClick={() => navigate('/manager/team?tab=sites')}>
-              Go to CRM
+              Go to Sites
             </Button>
           </Box>
         ) : (

@@ -1106,7 +1106,7 @@ const ManagerMentorsPage: React.FC<ManagerMentorsPageProps> = ({ embedded = fals
                               startIcon={<ViewIcon />}
                               onClick={() => navigate(`/manager/team?tab=sites&hospital=${hospital.id}`)}
                             >
-                              View in CRM
+                              View site
                             </Button>
                           </Box>
 

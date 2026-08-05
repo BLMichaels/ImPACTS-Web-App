@@ -72,7 +72,7 @@ const CohortDetail: React.FC<CohortDetailProps> = ({
   const showAnnouncementsTab = useTabVisibility('announcements', cohort.id);
   const showDiscussionsTab = useTabVisibility('discussions', cohort.id);
   const showMembersTab = useTabVisibility('members', cohort.id);
-  const showSnapshotTab = canManage || userRole === UserRole.ADMIN;
+  const showSnapshotTab = userRole === UserRole.ADMIN;
   const [announcements, setAnnouncements] = useState<CohortAnnouncement[]>([]);
   const [topics, setTopics] = useState<CohortDiscussionTopic[]>([]);
   const [members, setMembers] = useState<CohortMember[]>([]);

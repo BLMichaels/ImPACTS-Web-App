@@ -444,7 +444,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
         {options.length === 0 && !loading && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
             {canAddDirectly
-              ? 'Everyone in the list is already in this cohort, or the list could not be loaded. Run GRANULAR_PERMISSIONS_USERS_LIST_RLS.sql in Supabase and ensure CRM has contacts with emails.'
+              ? 'Everyone in the list is already in this cohort, or the list could not be loaded. Ask an administrator if people are missing from the invite list.'
               : 'No PECCs available to invite. They may already be members of this cohort.'
             }
           </Typography>
