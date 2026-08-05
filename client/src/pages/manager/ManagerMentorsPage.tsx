@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -32,7 +32,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Autocomplete
+  Autocomplete,
+  FormControl,
+  InputLabel,
+  InputAdornment,
+  MenuItem,
+  Select,
+  ToggleButton,
+  ToggleButtonGroup
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -44,6 +51,8 @@ import {
   Assignment as ActivityIcon,
   CheckCircle as ChecklistIcon,
   Description as GapPlanIcon,
+  Search as SearchIcon,
+  Tune as TuneIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -105,6 +114,29 @@ interface PECCData {
   fullSiteAccessApproved?: boolean;
 }
 
+type RosterRoleFilter = 'all' | 'mentors' | 'peccs';
+type RosterActivityFilter = 'all' | 'last30' | 'inactive30' | 'never';
+type RosterSort = 'recent' | 'name' | 'activities' | 'checklist';
+
+type FlatPeccData = PECCData & {
+  mentorId: string;
+  mentorName: string;
+};
+
+const activityTimestamp = (value: string | null): number =>
+  value ? new Date(value).getTime() : 0;
+
+const matchesActivityFilter = (
+  lastActivity: string | null,
+  filter: RosterActivityFilter
+): boolean => {
+  if (filter === 'all') return true;
+  const timestamp = activityTimestamp(lastActivity);
+  if (filter === 'never') return timestamp === 0;
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  return filter === 'last30' ? timestamp >= cutoff : timestamp > 0 && timestamp < cutoff;
+};
+
 const getActivityCategories = (activity: { categories?: unknown; category?: unknown }): string[] => {
   if (Array.isArray(activity.categories)) {
     const normalized = activity.categories
@@ -165,6 +197,10 @@ const ManagerMentorsPage: React.FC<ManagerMentorsPageProps> = ({ embedded = fals
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [rosterRole, setRosterRole] = useState<RosterRoleFilter>('all');
+  const [activityFilter, setActivityFilter] = useState<RosterActivityFilter>('all');
+  const [rosterSort, setRosterSort] = useState<RosterSort>('recent');
+  const [rosterSearch, setRosterSearch] = useState('');
   const isMountedRef = useRef(true);
 
   const [formData, setFormData] = useState({
@@ -618,6 +654,184 @@ const ManagerMentorsPage: React.FC<ManagerMentorsPageProps> = ({ embedded = fals
     );
   };
 
+  const flatPeccs = useMemo<FlatPeccData[]>(
+    () =>
+      mentors.flatMap((mentor) =>
+        mentor.assignedHospitals.flatMap((hospital) =>
+          hospital.peccs.map((pecc) => ({
+            ...pecc,
+            mentorId: mentor.id,
+            mentorName: `${mentor.firstName} ${mentor.lastName}`.trim(),
+          }))
+        )
+      ),
+    [mentors]
+  );
+
+  const normalizedRosterSearch = rosterSearch.trim().toLowerCase();
+  const matchesSearch = (...values: Array<string | null | undefined>) =>
+    !normalizedRosterSearch ||
+    values.some((value) => String(value || '').toLowerCase().includes(normalizedRosterSearch));
+
+  const filteredPeccs = useMemo(() => {
+    const rows = flatPeccs.filter(
+      (pecc) =>
+        matchesActivityFilter(pecc.lastActivity, activityFilter) &&
+        matchesSearch(
+          pecc.firstName,
+          pecc.lastName,
+          pecc.email,
+          pecc.hospitalName,
+          pecc.mentorName
+        )
+    );
+    return [...rows].sort((a, b) => {
+      if (rosterSort === 'name') {
+        return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      }
+      if (rosterSort === 'activities') return b.activityCount - a.activityCount;
+      if (rosterSort === 'checklist') return b.checklistProgress - a.checklistProgress;
+      return activityTimestamp(b.lastActivity) - activityTimestamp(a.lastActivity);
+    });
+    // matchesSearch depends only on normalizedRosterSearch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatPeccs, activityFilter, rosterSort, normalizedRosterSearch]);
+
+  const filteredMentors = useMemo(() => {
+    const rows = mentors.filter((mentor) => {
+      const mentorMatches =
+        matchesActivityFilter(mentor.lastActivity, activityFilter) &&
+        matchesSearch(mentor.firstName, mentor.lastName, mentor.email);
+      if (rosterRole !== 'all') return mentorMatches;
+      const peccMatches = mentor.assignedHospitals.some((hospital) =>
+        hospital.peccs.some(
+          (pecc) =>
+            matchesActivityFilter(pecc.lastActivity, activityFilter) &&
+            matchesSearch(
+              pecc.firstName,
+              pecc.lastName,
+              pecc.email,
+              pecc.hospitalName,
+              mentor.firstName,
+              mentor.lastName
+            )
+        )
+      );
+      return mentorMatches || peccMatches;
+    });
+    return [...rows].sort((a, b) => {
+      if (rosterSort === 'name') {
+        return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      }
+      if (rosterSort === 'activities') return b.totalActivities - a.totalActivities;
+      if (rosterSort === 'checklist') {
+        const avg = (mentor: MentorData) => {
+          const peccs = mentor.assignedHospitals.flatMap((hospital) => hospital.peccs);
+          return peccs.length
+            ? peccs.reduce((sum, pecc) => sum + pecc.checklistProgress, 0) / peccs.length
+            : -1;
+        };
+        return avg(b) - avg(a);
+      }
+      const latestActivity = (mentor: MentorData) =>
+        Math.max(
+          activityTimestamp(mentor.lastActivity),
+          ...mentor.assignedHospitals.flatMap((hospital) =>
+            hospital.peccs.map((pecc) => activityTimestamp(pecc.lastActivity))
+          )
+        );
+      return latestActivity(b) - latestActivity(a);
+    });
+    // matchesSearch depends only on normalizedRosterSearch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentors, activityFilter, rosterSort, rosterRole, normalizedRosterSearch]);
+
+  const resultCount = rosterRole === 'peccs' ? filteredPeccs.length : filteredMentors.length;
+  const resultLabel =
+    rosterRole === 'peccs'
+      ? `${resultCount} PECC${resultCount === 1 ? '' : 's'}`
+      : `${resultCount} mentor${resultCount === 1 ? '' : 's'}`;
+
+  const rosterControls = (
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 1.5,
+        mb: 2,
+        bgcolor: 'background.default',
+        borderColor: 'divider',
+      }}
+    >
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} alignItems={{ lg: 'center' }}>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={rosterRole}
+          onChange={(_, value: RosterRoleFilter | null) => value && setRosterRole(value)}
+          aria-label="Filter roster by role"
+        >
+          <ToggleButton value="all">All</ToggleButton>
+          <ToggleButton value="mentors">Mentors</ToggleButton>
+          <ToggleButton value="peccs">PECCs</ToggleButton>
+        </ToggleButtonGroup>
+
+        <TextField
+          size="small"
+          value={rosterSearch}
+          onChange={(event) => setRosterSearch(event.target.value)}
+          placeholder="Search name, email, hospital…"
+          inputProps={{ 'aria-label': 'Search team roster' }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ minWidth: { xs: '100%', lg: 260 }, flex: 1 }}
+        />
+
+        <FormControl size="small" sx={{ minWidth: 190 }}>
+          <InputLabel id="manager-roster-activity-label">Activity</InputLabel>
+          <Select
+            labelId="manager-roster-activity-label"
+            value={activityFilter}
+            label="Activity"
+            onChange={(event) => setActivityFilter(event.target.value as RosterActivityFilter)}
+          >
+            <MenuItem value="all">Any activity</MenuItem>
+            <MenuItem value="last30">Active in last 30 days</MenuItem>
+            <MenuItem value="inactive30">No activity in 30+ days</MenuItem>
+            <MenuItem value="never">No recorded activity</MenuItem>
+          </Select>
+        </FormControl>
+
+        <FormControl size="small" sx={{ minWidth: 190 }}>
+          <InputLabel id="manager-roster-sort-label">Sort by</InputLabel>
+          <Select
+            labelId="manager-roster-sort-label"
+            value={rosterSort}
+            label="Sort by"
+            onChange={(event) => setRosterSort(event.target.value as RosterSort)}
+          >
+            <MenuItem value="recent">Most recent activity</MenuItem>
+            <MenuItem value="activities">Most activities</MenuItem>
+            <MenuItem value="checklist">Checklist progress</MenuItem>
+            <MenuItem value="name">Name A–Z</MenuItem>
+          </Select>
+        </FormControl>
+
+        <Chip
+          icon={<TuneIcon />}
+          label={resultLabel}
+          size="small"
+          color="primary"
+          variant="outlined"
+        />
+      </Stack>
+    </Paper>
+  );
+
   const overviewChips = (
     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: embedded ? 2 : 0 }}>
       <Chip label={`${mentors.length} mentors`} color="secondary" variant="outlined" size="small" />
@@ -689,18 +903,101 @@ const ManagerMentorsPage: React.FC<ManagerMentorsPageProps> = ({ embedded = fals
         title={embedded ? 'Mentors & PECCs' : 'Mentors'}
         description="Direct reports and mentors in cohorts you manage. Expand a card for sites, checklist %, activity counts, and gap plans."
       >
-          {mentors.length === 0 ? (
+        {rosterControls}
+          {resultCount === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
               <Typography variant="body1" color="textSecondary" gutterBottom>
-                No mentors found. Invite mentors to start building your team.
+                No team members match these filters.
               </Typography>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)} sx={{ mt: 2 }}>
-                Invite First Mentor
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setRosterRole('all');
+                  setActivityFilter('all');
+                  setRosterSearch('');
+                }}
+                sx={{ mt: 2 }}
+              >
+                Clear filters
               </Button>
             </Paper>
+          ) : rosterRole === 'peccs' ? (
+            <Stack spacing={1.25}>
+              {filteredPeccs.map((pecc) => (
+                <Card key={pecc.id} variant="outlined">
+                  <CardContent
+                    sx={{
+                      display: 'flex',
+                      alignItems: { xs: 'flex-start', md: 'center' },
+                      justifyContent: 'space-between',
+                      flexDirection: { xs: 'column', md: 'row' },
+                      gap: 2,
+                      '&:last-child': { pb: 2 },
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar sx={{ bgcolor: 'secondary.main', width: 40, height: 40 }}>
+                        {pecc.firstName.charAt(0)}{pecc.lastName.charAt(0)}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={650}>
+                          {pecc.firstName} {pecc.lastName}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {pecc.email}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {pecc.hospitalName} · Mentor: {pecc.mentorName}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      flexWrap="wrap"
+                      useFlexGap
+                      sx={{ width: { xs: '100%', md: 'auto' } }}
+                    >
+                      <Chip
+                        size="small"
+                        label={`${pecc.checklistProgress}% checklist`}
+                        color={
+                          pecc.checklistProgress >= 75
+                            ? 'success'
+                            : pecc.checklistProgress >= 50
+                              ? 'warning'
+                              : 'error'
+                        }
+                        variant="outlined"
+                      />
+                      <Chip size="small" label={`${pecc.activityCount} activities`} variant="outlined" />
+                      <Chip
+                        size="small"
+                        label={
+                          pecc.lastActivity
+                            ? `Active ${format(new Date(pecc.lastActivity), 'MMM d')}`
+                            : 'No activity'
+                        }
+                        variant="outlined"
+                      />
+                      <Button
+                        size="small"
+                        variant="text"
+                        startIcon={<ViewIcon />}
+                        onClick={() => handleViewPECCDetail(pecc)}
+                      >
+                        View
+                      </Button>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
           ) : (
             <Box>
-          {mentors.map((mentor) => (
+          {filteredMentors.map((mentor) => (
             <Card key={mentor.id} sx={{ mb: 2 }}>
               <CardContent>
                 {/* Mentor Header */}
