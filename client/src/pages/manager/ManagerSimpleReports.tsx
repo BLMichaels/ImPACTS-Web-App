@@ -159,7 +159,7 @@ async function loadTeamSummary(managerId: string): Promise<PreviewRow[]> {
       .select('id, role, first_name, last_name, email, last_login, hospital_facility_id')
       .in('id', part)
       .in('role', ['mentor', 'pecc'])
-      .eq('is_active', true);
+      .or('is_active.is.null,is_active.eq.true');
     users.push(...((data || []) as typeof users));
   }
 
@@ -323,7 +323,7 @@ async function loadPeccActivities(managerId: string): Promise<PreviewRow[]> {
       .select('id, first_name, last_name, email, hospital_facility_id')
       .in('id', part)
       .eq('role', 'pecc')
-      .eq('is_active', true);
+      .or('is_active.is.null,is_active.eq.true');
     peccs.push(...((data || []) as typeof peccs));
   }
   if (!peccs.length) return [];
@@ -367,9 +367,13 @@ async function loadPeccActivities(managerId: string): Promise<PreviewRow[]> {
           (p.hospital_facility_id && hospitals.get(p.hospital_facility_id)) ||
           (hid && hospitals.get(hid)) ||
           '',
-        category: String(entry?.category || entry?.type || ''),
+        category: Array.isArray(entry?.categories)
+          ? entry.categories.filter(Boolean).join('; ')
+          : String(entry?.category || entry?.type || ''),
         hours: entry?.hours != null ? String(entry.hours) : '',
-        description: String(entry?.description || entry?.notes || entry?.title || '').slice(0, 200),
+        description: String(
+          entry?.activity || entry?.activityName || entry?.description || entry?.notes || entry?.title || ''
+        ).slice(0, 200),
         _sort: String(t),
       });
     });
@@ -391,7 +395,12 @@ async function loadMentorHours(managerId: string): Promise<PreviewRow[]> {
   const mentorIds = new Set(managed);
   mentorIds.add(managerId);
   for (const part of chunk(cohortPeople, 80)) {
-    const { data } = await supabase.from('users').select('id').in('id', part).eq('role', 'mentor').eq('is_active', true);
+    const { data } = await supabase
+      .from('users')
+      .select('id')
+      .in('id', part)
+      .eq('role', 'mentor')
+      .or('is_active.is.null,is_active.eq.true');
     (data || []).forEach((r: { id: string }) => mentorIds.add(r.id));
   }
   const ids = [...mentorIds];
@@ -403,7 +412,7 @@ async function loadMentorHours(managerId: string): Promise<PreviewRow[]> {
       .from('users')
       .select('id, first_name, last_name, email')
       .in('id', part)
-      .eq('is_active', true);
+      .or('is_active.is.null,is_active.eq.true');
     mentors.push(...((data || []) as typeof mentors));
   }
   const acts = await batchGetMentorActivitiesForUsers(mentors.map((m) => m.id));

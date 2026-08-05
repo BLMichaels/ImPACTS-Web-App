@@ -83,11 +83,17 @@ export function buildReportCsvContent(options: ReportCsvBuildOptions): string {
 
 export function downloadReportCsv(filename: string, content: string): void {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = filename;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
+  a.remove();
+  // Revoke on the next tick so Safari/Firefox can start the download first.
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function downloadTableCsv(

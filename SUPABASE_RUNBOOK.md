@@ -31,6 +31,7 @@ Idle sessions sign out after 30 minutes.
 
 1. `MANAGER_TIER_HARDENING.sql` — team-scoped hospitals (primary + secondary managers), permissions/tab_visibility limited to supervised mentors + PECCs (`is_manager_permissions_target`), manager cohort create, manager-scoped invitation reads. Re-run this file in the SQL Editor whenever it changes.  
    Replaces optional `HOSPITALS_RLS_MANAGER_SCOPED.sql` (that file now only points here).
+2. `USER_DATA_MANAGER_TEAM_REPORT_READ.sql` — managers can SELECT team `user_data` keys used by reports/snapshot (`mentorActivities`, hierarchy ids, legacy activity/gap mirrors). Required for non-empty Mentor hours exports and secondary-manager scope. Apply after `MANAGER_TIER_HARDENING.sql`.
 
 ## Multi-factor authentication (MFA)
 
