@@ -59,6 +59,7 @@ const ManagerOverviewPage: React.FC = () => {
   const { data, loading, error, retry } = useManagerTeamDashboard(userProfile?.id);
   const {
     mentors,
+    peccs,
     totalPeccs,
     totalSites,
     avgPeccProgress,
@@ -67,6 +68,26 @@ const ManagerOverviewPage: React.FC = () => {
     teamActivitiesThisMonth,
     teamTotalHours,
   } = data;
+
+  const peccAggregates = useMemo(
+    () => ({
+      activeLast30: peccs.filter((p) => p.activitiesLast30 > 0).length,
+      activities: peccs.reduce((sum, p) => sum + p.activityCount, 0),
+      hours: peccs.reduce((sum, p) => sum + p.activityHours, 0),
+      gapPlans: peccs.reduce((sum, p) => sum + p.gapPlanCount, 0),
+    }),
+    [peccs]
+  );
+
+  const sortedPeccs = useMemo(
+    () =>
+      [...peccs].sort((a, b) => {
+        const at = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+        const bt = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+        return bt - at || `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      }),
+    [peccs]
+  );
 
   const selectedHospitalId = searchParams.get('hospital');
   useEffect(() => {
@@ -115,12 +136,7 @@ const ManagerOverviewPage: React.FC = () => {
   };
 
   const metrics = useMemo(() => {
-    const cutoff30 = subDays(new Date(), 30);
     const activeThisMonth = mentors.filter((m) => m.hoursThisMonth > 0 || m.activitiesThisMonth > 0);
-    const inactive30 = mentors.filter((m) => {
-      if (!m.lastActivity) return true;
-      return new Date(m.lastActivity) < cutoff30;
-    });
     const avgHours =
       mentors.length > 0 ? teamHoursThisMonth / mentors.length : 0;
     const avgSites =
@@ -129,7 +145,6 @@ const ManagerOverviewPage: React.FC = () => {
         : 0;
     return {
       activeThisMonth: activeThisMonth.length,
-      inactiveMentors: inactive30,
       avgHoursPerMentor: avgHours,
       avgSitesPerMentor: avgSites,
     };
@@ -277,15 +292,10 @@ const ManagerOverviewPage: React.FC = () => {
         }
       />
 
-      {userProfile?.has_hospital_assignments && (
-        <Alert severity="info" variant="outlined" sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}>
-          You also mentor sites directly. Use{' '}
-          <Button size="small" onClick={() => navigate('/manager/activities')}>
-            My Activities
-          </Button>{' '}
-          for your personal log.
-        </Alert>
-      )}
+      <Alert severity="info" variant="outlined" sx={{ bgcolor: (t) => alpha(t.palette.secondary.main, 0.04) }}>
+        Use <Button size="small" onClick={() => navigate('/manager/activities')}>Activities</Button> to log your
+        management work or direct mentoring with a PECC at any site in your scope.
+      </Alert>
 
       {selectedHospitalId && (
         <AdminSection
@@ -387,7 +397,7 @@ const ManagerOverviewPage: React.FC = () => {
         </Box>
       </Paper>
 
-      {managerOwn.hasAssignments && (
+      {(managerOwn.hasAssignments || managerOwn.totalActivities > 0) && (
         <AdminSection
           overline="Your mentoring"
           title="My hours"
@@ -410,9 +420,11 @@ const ManagerOverviewPage: React.FC = () => {
             <Chip size="small" label={`${managerOwn.hoursTotal.toFixed(1)}h lifetime`} variant="outlined" />
             <Chip size="small" label={`${managerOwn.totalActivities} activities`} variant="outlined" />
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
-            Sites: {managerOwn.hospitalNames.join(', ') || 'None'}
-          </Typography>
+          {managerOwn.hospitalNames.length > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+              Directly assigned sites: {managerOwn.hospitalNames.join(', ')}
+            </Typography>
+          )}
         </AdminSection>
       )}
 
@@ -477,36 +489,10 @@ const ManagerOverviewPage: React.FC = () => {
         </Box>
       </AdminSection>
 
-      {metrics.inactiveMentors.length > 0 && (
-        <AdminSection
-          overline="Attention"
-          title="Quiet mentors (30+ days)"
-          description="No logged activity in the last 30 days — follow up from Team → Roster or Sites."
-          actions={
-            <Button size="small" variant="outlined" onClick={() => navigate('/manager/team?tab=roster')}>
-              Open Mentors
-            </Button>
-          }
-        >
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {metrics.inactiveMentors.map((m) => (
-              <Chip
-                key={m.id}
-                size="small"
-                variant="outlined"
-                color="warning"
-                label={`${m.firstName} ${m.lastName}`.trim() || m.email}
-                onClick={() => navigate('/manager/team?tab=roster')}
-              />
-            ))}
-          </Stack>
-        </AdminSection>
-      )}
-
       <AdminSection
-        overline="Leaderboard"
-        title="Mentor metrics"
-        description="Sortable team performance. Use Mentors to invite, assign sites, or review PECC progress."
+        overline="Mentor work"
+        title="Mentor activity & attention"
+        description="One sortable view of workload and recent activity. Quiet mentors are flagged in the table."
         actions={
           <Button size="small" variant="contained" color="secondary" onClick={() => navigate('/manager/team?tab=roster')}>
             Mentors
@@ -626,6 +612,102 @@ const ManagerOverviewPage: React.FC = () => {
                     </TableRow>
                   );
                 })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </AdminSection>
+
+      <AdminSection
+        overline="PECC work"
+        title="PECC activity & progress"
+        description="Named PECCs in your hierarchy, including PECCs you mentor directly and PECCs in managed cohorts."
+        actions={
+          <Button size="small" variant="contained" color="secondary" onClick={() => navigate('/manager/team?tab=roster')}>
+            Open roster
+          </Button>
+        }
+        disableBodyPadding
+      >
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          {[
+            ['Active (30d)', `${peccAggregates.activeLast30}/${peccs.length}`],
+            ['Activities', String(peccAggregates.activities)],
+            ['Hours', `${peccAggregates.hours.toFixed(1)}h`],
+            ['Gap plans', String(peccAggregates.gapPlans)],
+          ].map(([label, value]) => (
+            <Box key={label} sx={{ px: 2, py: 1.5, textAlign: 'center' }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={650}>
+                {label}
+              </Typography>
+              <Typography variant="h6" color="secondary.dark" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                {value}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+        {sortedPeccs.length === 0 ? (
+          <Alert severity="info" sx={{ m: 2 }}>
+            No PECCs are currently linked to your direct hierarchy or managed cohorts.
+          </Alert>
+        ) : (
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table size="small" aria-label="PECC work">
+              <TableHead>
+                <TableRow>
+                  <TableCell>PECC</TableCell>
+                  <TableCell>Site</TableCell>
+                  <TableCell align="right">Checklist</TableCell>
+                  <TableCell align="right">Activities (30d / total)</TableCell>
+                  <TableCell align="right">Hours</TableCell>
+                  <TableCell align="right">Gap plans</TableCell>
+                  <TableCell align="right">Last activity</TableCell>
+                  <TableCell align="right">Last login</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {sortedPeccs.map((pecc) => (
+                  <TableRow key={pecc.id} hover>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={650}>
+                        {pecc.firstName} {pecc.lastName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {pecc.email}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{pecc.hospitalName}</TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                        <Box sx={{ width: 64 }}>
+                          <LinearProgress
+                            variant="determinate"
+                            value={pecc.checklistProgress}
+                            color={pecc.checklistProgress >= 75 ? 'success' : 'secondary'}
+                            sx={{ height: 6, borderRadius: 3 }}
+                          />
+                        </Box>
+                        <Typography variant="body2">{pecc.checklistProgress}%</Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">{pecc.activitiesLast30} / {pecc.activityCount}</TableCell>
+                    <TableCell align="right">{pecc.activityHours.toFixed(1)}h</TableCell>
+                    <TableCell align="right">{pecc.gapPlanCount}</TableCell>
+                    <TableCell align="right">
+                      {pecc.lastActivity ? format(new Date(pecc.lastActivity), 'MMM d, yyyy') : '—'}
+                    </TableCell>
+                    <TableCell align="right">
+                      {pecc.lastLogin ? format(new Date(pecc.lastLogin), 'MMM d, yyyy') : 'Never'}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>

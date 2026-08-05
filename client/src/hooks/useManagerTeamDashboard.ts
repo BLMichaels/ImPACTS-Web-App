@@ -3,9 +3,17 @@ import { endOfMonth, startOfMonth, subMonths } from 'date-fns';
 import { supabase } from '../supabase';
 import { getMentorActivitiesForUser, batchGetMentorActivitiesForUsers } from '../utils/mentorActivities';
 import { buildMentorHospitalContext, countPeccsByCanonicalHospital } from '../utils/mentorHospitalScope';
-import { buildPeccHospitalFacilityOrClause } from '../utils/mentorHospitalAssignments';
-import { getScopedMentorUsersForManager } from '../utils/managerTeamScope';
+import {
+  fetchManagerVisibleUserIdsSet,
+  getRosterMentorUsersForManager,
+} from '../utils/managerTeamScope';
 import { loadSiteChecklistStats } from '../utils/checklistTemplates';
+import {
+  batchGetHospitalDataForKey,
+  batchGetUserDataForKey,
+  mapSiteRefsToHospitalRowIds,
+  shouldMirrorLegacyUserData,
+} from '../utils/userData';
 
 export interface ManagerTeamMentorRow {
   id: string;
@@ -29,8 +37,25 @@ export interface ManagerOwnMentoring {
   lastMonthHours: number;
 }
 
+export interface ManagerTeamPeccRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  hospitalId: string | null;
+  hospitalName: string;
+  checklistProgress: number;
+  activityCount: number;
+  activityHours: number;
+  activitiesLast30: number;
+  gapPlanCount: number;
+  lastActivity: string | null;
+  lastLogin: string | null;
+}
+
 export interface ManagerTeamDashboardData {
   mentors: ManagerTeamMentorRow[];
+  peccs: ManagerTeamPeccRow[];
   totalPeccs: number;
   totalSites: number;
   avgPeccProgress: number;
@@ -94,6 +119,7 @@ async function loadManagerOwnMentoring(managerId: string): Promise<ManagerOwnMen
 
 export function useManagerTeamDashboard(managerId: string | undefined) {
   const [mentors, setMentors] = useState<ManagerTeamMentorRow[]>([]);
+  const [peccRows, setPeccRows] = useState<ManagerTeamPeccRow[]>([]);
   const [totalPeccs, setTotalPeccs] = useState(0);
   const [totalSites, setTotalSites] = useState(0);
   const [avgPeccProgress, setAvgPeccProgress] = useState(0);
@@ -109,22 +135,15 @@ export function useManagerTeamDashboard(managerId: string | undefined) {
       setLoading(true);
       setError(null);
 
-      const [scopedMentors, own] = await Promise.all([
-        getScopedMentorUsersForManager(managerId),
+      const [scopedMentors, visibleUserIds, own] = await Promise.all([
+        getRosterMentorUsersForManager(managerId),
+        fetchManagerVisibleUserIdsSet(managerId),
         loadManagerOwnMentoring(managerId),
       ]);
       setManagerOwn(own);
 
-      if (scopedMentors.length === 0) {
-        setMentors([]);
-        setTotalPeccs(0);
-        setTotalSites(0);
-        setAvgPeccProgress(0);
-        return;
-      }
-
       const scopedMentorIds = scopedMentors.map((m) => m.id);
-      // Snapshot team rollups exclude the manager's own mentoring (shown separately as managerOwn).
+      // The manager's personal log is shown separately; supervised mentors stay in the team rollup.
       const teamMentors = scopedMentors.filter((m) => m.id !== managerId);
       const hospitalCtx = await buildMentorHospitalContext(scopedMentorIds);
       const uniqueHospitalIds = hospitalCtx.allHospitalUuids;
@@ -134,38 +153,107 @@ export function useManagerTeamDashboard(managerId: string | undefined) {
         refToCanonicalHospitalId
       );
 
-      const { data: peccs, error: peccsError } = hospitalCtx.allHospitalRefs.length > 0
-        ? await supabase
-            .from('users')
-            .select('id, hospital_facility_id')
-            .eq('role', 'pecc')
-            .or(buildPeccHospitalFacilityOrClause(hospitalCtx.allHospitalRefs))
-        : { data: [], error: null };
-      if (peccsError) throw peccsError;
-
-      setTotalPeccs((peccs || []).length);
-      setTotalSites(uniqueHospitalIds.length);
-
-      let progressSum = 0;
-      let progressCount = 0;
-
-      if (uniqueHospitalIds.length > 0) {
-        const checklistStatsByHospital = await loadSiteChecklistStats(uniqueHospitalIds);
-
-        const checklistPctByHospital = new Map<string, number>();
-        checklistStatsByHospital.forEach((stats, hid) => {
-          checklistPctByHospital.set(hid, stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0);
-        });
-
-        for (const pecc of peccs || []) {
-          const canonicalHospitalId = refToCanonicalHospitalId.get(String(pecc.hospital_facility_id));
-          const pct = canonicalHospitalId ? checklistPctByHospital.get(canonicalHospitalId) || 0 : 0;
-          progressSum += pct;
-          progressCount += 1;
-        }
+      const visibleIds = [...visibleUserIds].filter((id) => id !== managerId);
+      const peccs: Array<{
+        id: string;
+        first_name: string;
+        last_name: string;
+        email: string;
+        hospital_facility_id: string | null;
+        last_login: string | null;
+      }> = [];
+      for (let i = 0; i < visibleIds.length; i += 80) {
+        const { data, error: peccsError } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, email, hospital_facility_id, last_login')
+          .in('id', visibleIds.slice(i, i + 80))
+          .eq('role', 'pecc')
+          .eq('is_active', true);
+        if (peccsError) throw peccsError;
+        peccs.push(...((data || []) as typeof peccs));
       }
 
-      setAvgPeccProgress(progressCount > 0 ? Math.round(progressSum / progressCount) : 0);
+      const peccSiteRefs = peccs.map((p) => p.hospital_facility_id).filter(Boolean) as string[];
+      const peccRefToHospital = await mapSiteRefsToHospitalRowIds(peccSiteRefs);
+      const allSiteIds = [
+        ...new Set([
+          ...uniqueHospitalIds,
+          ...peccSiteRefs.map((ref) => peccRefToHospital.get(ref)).filter((id): id is string => Boolean(id)),
+        ]),
+      ];
+      const [checklistStats, hospitalActivities, hospitalGaps, legacyActivities, legacyGaps] = await Promise.all([
+        loadSiteChecklistStats(allSiteIds),
+        batchGetHospitalDataForKey<unknown[]>(allSiteIds, 'activities'),
+        batchGetHospitalDataForKey<unknown[]>(allSiteIds, 'gapPlans'),
+        shouldMirrorLegacyUserData()
+          ? batchGetUserDataForKey<unknown[]>(peccs.map((p) => p.id), 'activities')
+          : Promise.resolve(new Map<string, unknown[]>()),
+        shouldMirrorLegacyUserData()
+          ? batchGetUserDataForKey<unknown[]>(peccs.map((p) => p.id), 'gapPlans')
+          : Promise.resolve(new Map<string, unknown[]>()),
+      ]);
+      const hospitalNames = new Map<string, string>();
+      for (let i = 0; i < allSiteIds.length; i += 80) {
+        const { data } = await supabase
+          .from('hospitals')
+          .select('id, name, facility_id')
+          .in('id', allSiteIds.slice(i, i + 80));
+        (data || []).forEach((h: { id: string; name: string; facility_id: string | null }) => {
+          hospitalNames.set(h.id, h.name);
+          if (h.facility_id) hospitalNames.set(String(h.facility_id), h.name);
+        });
+      }
+      const cutoff30 = new Date();
+      cutoff30.setDate(cutoff30.getDate() - 30);
+      const normalizedPeccRows: ManagerTeamPeccRow[] = peccs.map((pecc) => {
+        const hospitalId = pecc.hospital_facility_id
+          ? peccRefToHospital.get(pecc.hospital_facility_id) || refToCanonicalHospitalId.get(pecc.hospital_facility_id) || null
+          : null;
+        const activitiesRaw = (hospitalId ? hospitalActivities.get(hospitalId) : null) || legacyActivities.get(pecc.id) || [];
+        const gapsRaw = (hospitalId ? hospitalGaps.get(hospitalId) : null) || legacyGaps.get(pecc.id) || [];
+        const activities = Array.isArray(activitiesRaw) ? activitiesRaw : [];
+        const gaps = Array.isArray(gapsRaw) ? gapsRaw : [];
+        const dated = activities
+          .map((a: unknown) => {
+            const item = a as { date?: string; activity_date?: string; created_at?: string; hours?: number };
+            const raw = item.date || item.activity_date || item.created_at || '';
+            const time = raw ? new Date(raw).getTime() : NaN;
+            return { item, raw, time };
+          })
+          .filter((a) => Number.isFinite(a.time));
+        const stats = hospitalId ? checklistStats.get(hospitalId) : undefined;
+        return {
+          id: pecc.id,
+          firstName: pecc.first_name,
+          lastName: pecc.last_name,
+          email: pecc.email,
+          hospitalId,
+          hospitalName:
+            (pecc.hospital_facility_id && hospitalNames.get(pecc.hospital_facility_id)) ||
+            (hospitalId && hospitalNames.get(hospitalId)) ||
+            'Unassigned site',
+          checklistProgress: stats && stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
+          activityCount: activities.length,
+          activityHours: activities.reduce(
+            (sum, a: unknown) => sum + (Number((a as { hours?: unknown }).hours) || 0),
+            0
+          ),
+          activitiesLast30: dated.filter((a) => new Date(a.time) >= cutoff30).length,
+          gapPlanCount: gaps.length,
+          lastActivity: dated.length
+            ? dated.sort((a, b) => b.time - a.time)[0].raw
+            : null,
+          lastLogin: pecc.last_login,
+        };
+      });
+      setPeccRows(normalizedPeccRows);
+      setTotalPeccs(normalizedPeccRows.length);
+      setTotalSites(allSiteIds.length);
+      setAvgPeccProgress(
+        normalizedPeccRows.length
+          ? Math.round(normalizedPeccRows.reduce((sum, p) => sum + p.checklistProgress, 0) / normalizedPeccRows.length)
+          : 0
+      );
 
       const now = new Date();
       const monthStart = startOfMonth(now);
@@ -231,6 +319,7 @@ export function useManagerTeamDashboard(managerId: string | undefined) {
   const data: ManagerTeamDashboardData = useMemo(
     () => ({
       mentors,
+      peccs: peccRows,
       totalPeccs,
       totalSites,
       avgPeccProgress,
@@ -241,6 +330,7 @@ export function useManagerTeamDashboard(managerId: string | undefined) {
     }),
     [
       mentors,
+      peccRows,
       totalPeccs,
       totalSites,
       avgPeccProgress,

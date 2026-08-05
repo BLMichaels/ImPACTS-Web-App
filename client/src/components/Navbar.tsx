@@ -229,15 +229,15 @@ const Navbar: React.FC = () => {
       case UserRole.MANAGER: {
         const managerItems: NavItem[] = [
           { path: '/manager/snapshot', label: 'Snapshot', icon: <TimelineIcon /> },
+          { path: '/manager/activities', label: 'Activities', icon: <WorkIcon /> },
           { path: '/manager/team', label: 'Team', icon: <PeopleIcon /> },
           { path: '/manager/cohorts', label: 'Cohorts', icon: <CohortsIcon /> },
           { path: '/manager/permissions', label: 'Team Permissions', icon: <SettingsIcon /> }
         ];
         
-        // If manager has hospital assignments (working as mentor), add mentor-like tabs
+        // Direct mentor tools appear when the manager has personal hospital assignments.
         if (userProfile?.has_hospital_assignments) {
-          managerItems.splice(1, 0, 
-            { path: '/manager/activities', label: 'My Activities', icon: <WorkIcon /> },
+          managerItems.splice(2, 0,
             { path: '/manager/hospitals', label: 'My Hospitals', icon: <HospitalIcon /> },
             { path: '/manager/milestones', label: 'Site Milestones', icon: <AssignmentIcon /> }
           );

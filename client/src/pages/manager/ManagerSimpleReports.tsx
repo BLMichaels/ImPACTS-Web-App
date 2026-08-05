@@ -30,7 +30,7 @@ import {
   getManagedMentorIdsForManager,
   getManagedCohortPeopleIdsForManager,
 } from '../../utils/managerTeamScope';
-import { loadSiteChecklistStats } from '../../utils/checklistTemplates';
+import { loadSiteChecklistItems, loadSiteChecklistStats } from '../../utils/checklistTemplates';
 import { batchGetMentorActivitiesForUsers } from '../../utils/mentorActivities';
 import {
   batchGetHospitalDataForKey,
@@ -70,15 +70,16 @@ const REPORTS: ReportDef[] = [
   },
   {
     id: 'checklist',
-    title: 'Site checklist progress',
-    description: 'Each team site with checklist completion against the default or custom checklist in use.',
+    title: 'Checklist item status',
+    description: 'Every item on each site’s default or custom checklist, including incomplete items.',
     columns: [
       { id: 'hospital', label: 'Site' },
-      { id: 'state', label: 'State' },
+      { id: 'peccs', label: 'PECCs' },
       { id: 'checklist', label: 'Checklist' },
-      { id: 'completed', label: 'Completed' },
-      { id: 'total', label: 'Total items' },
-      { id: 'percent', label: '%' },
+      { id: 'stage', label: 'Stage' },
+      { id: 'item', label: 'Checklist item' },
+      { id: 'status', label: 'Status' },
+      { id: 'completedDate', label: 'Completed date' },
     ],
   },
   {
@@ -96,11 +97,12 @@ const REPORTS: ReportDef[] = [
   },
   {
     id: 'mentor_hours',
-    title: 'Mentor hours (90 days)',
-    description: 'Hours logged by mentors you supervise in the last 90 days.',
+    title: 'Mentor & manager hours (90 days)',
+    description: 'Hours logged by you and mentors you supervise in the last 90 days.',
     columns: [
       { id: 'date', label: 'Date' },
       { id: 'name', label: 'Mentor' },
+      { id: 'hospital', label: 'Site' },
       { id: 'hours', label: 'Hours' },
       { id: 'category', label: 'Category' },
       { id: 'description', label: 'Description' },
@@ -188,6 +190,23 @@ async function loadTeamSummary(managerId: string): Promise<PreviewRow[]> {
       });
     }
   }
+  const mentorHospitalNames = new Map<string, Set<string>>();
+  for (const part of chunk(mentors.map((m) => m.id), 80)) {
+    const { data, error } = await supabase
+      .from('mentor_hospital_assignments')
+      .select('mentor_id, hospital:hospital_id(name)')
+      .in('mentor_id', part)
+      .eq('is_active', true);
+    if (error) throw error;
+    (data || []).forEach((row: { mentor_id: string; hospital: unknown }) => {
+      const hospital = Array.isArray(row.hospital) ? row.hospital[0] : row.hospital;
+      const name = String((hospital as { name?: unknown } | null)?.name || '').trim();
+      if (!name) return;
+      const names = mentorHospitalNames.get(row.mentor_id) || new Set<string>();
+      names.add(name);
+      mentorHospitalNames.set(row.mentor_id, names);
+    });
+  }
 
   const rows: PreviewRow[] = [];
   mentors.forEach((m) => {
@@ -196,7 +215,7 @@ async function loadTeamSummary(managerId: string): Promise<PreviewRow[]> {
       role: 'Mentor',
       name: displayName(m.first_name, m.last_name, m.email),
       email: m.email || '',
-      hospital: '',
+      hospital: [...(mentorHospitalNames.get(m.id) || [])].join('; '),
       lastLogin: m.last_login ? format(new Date(m.last_login), 'yyyy-MM-dd') : '',
       activities: String(acts.length),
       checklist: '',
@@ -228,33 +247,62 @@ async function loadChecklistReport(managerId: string): Promise<PreviewRow[]> {
   const uuids = await resolveHospitalUuids(scopeKeys);
   if (!uuids.length) return [];
 
-  const [stats, hospitals] = await Promise.all([
-    loadSiteChecklistStats(uuids),
+  const [items, hospitals] = await Promise.all([
+    loadSiteChecklistItems(uuids),
     (async () => {
-      const out: { id: string; name: string; state: string | null }[] = [];
+      const out: { id: string; name: string; facility_id: string | null }[] = [];
       for (const part of chunk(uuids, 80)) {
-        const { data } = await supabase.from('hospitals').select('id, name, state').in('id', part);
+        const { data } = await supabase.from('hospitals').select('id, name, facility_id').in('id', part);
         out.push(...((data || []) as typeof out));
       }
       return out;
     })(),
   ]);
+  const hospitalById = new Map(hospitals.map((h) => [h.id, h]));
+  const refs = [...new Set(hospitals.flatMap((h) => [h.id, h.facility_id || '']).filter(Boolean))];
+  const peccNamesByHospital = new Map<string, Set<string>>();
+  for (const part of chunk(refs, 80)) {
+    const { data } = await supabase
+      .from('users')
+      .select('first_name, last_name, email, hospital_facility_id')
+      .eq('role', 'pecc')
+      .eq('is_active', true)
+      .in('hospital_facility_id', part);
+    (data || []).forEach((p: {
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+      hospital_facility_id: string | null;
+    }) => {
+      const ref = String(p.hospital_facility_id || '');
+      const hospital = hospitals.find((h) => h.id === ref || String(h.facility_id || '') === ref);
+      if (!hospital) return;
+      const names = peccNamesByHospital.get(hospital.id) || new Set<string>();
+      names.add(displayName(p.first_name, p.last_name, p.email));
+      peccNamesByHospital.set(hospital.id, names);
+    });
+  }
 
-  return hospitals
-    .map((h) => {
-      const s = stats.get(h.id);
-      const total = s?.total ?? 0;
-      const completed = s?.completed ?? 0;
+  return items
+    .map((item) => {
+      const hospital = hospitalById.get(item.hospitalId);
       return {
-        hospital: h.name || '',
-        state: (h.state || '').toUpperCase(),
-        checklist: s?.source === 'custom' ? (s.templateNames.join('; ') || 'Custom checklist') : 'Default checklist',
-        completed: String(completed),
-        total: String(total),
-        percent: total > 0 ? String(Math.round((completed / total) * 100)) : '',
+        hospital: hospital?.name || item.hospitalId,
+        peccs: [...(peccNamesByHospital.get(item.hospitalId) || [])].join('; '),
+        checklist: item.checklistName,
+        stage: item.stageLabel,
+        item: item.text,
+        status: item.completed ? 'Complete' : 'Not complete',
+        completedDate: item.completedAt ? format(new Date(item.completedAt), 'yyyy-MM-dd') : '',
       };
     })
-    .sort((a, b) => a.hospital.localeCompare(b.hospital));
+    .sort(
+      (a, b) =>
+        a.hospital.localeCompare(b.hospital) ||
+        a.checklist.localeCompare(b.checklist) ||
+        a.stage.localeCompare(b.stage) ||
+        a.item.localeCompare(b.item)
+    );
 }
 
 async function loadPeccActivities(managerId: string): Promise<PreviewRow[]> {
@@ -341,6 +389,7 @@ async function loadMentorHours(managerId: string): Promise<PreviewRow[]> {
     getManagedCohortPeopleIdsForManager(managerId),
   ]);
   const mentorIds = new Set(managed);
+  mentorIds.add(managerId);
   for (const part of chunk(cohortPeople, 80)) {
     const { data } = await supabase.from('users').select('id').in('id', part).eq('role', 'mentor').eq('is_active', true);
     (data || []).forEach((r: { id: string }) => mentorIds.add(r.id));
@@ -358,6 +407,26 @@ async function loadMentorHours(managerId: string): Promise<PreviewRow[]> {
     mentors.push(...((data || []) as typeof mentors));
   }
   const acts = await batchGetMentorActivitiesForUsers(mentors.map((m) => m.id));
+  const activityHospitalRefs = [
+    ...new Set(
+      [...acts.values()]
+        .flat()
+        .flatMap((entry: any) => (Array.isArray(entry?.hospitalIds) ? entry.hospitalIds : []))
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    ),
+  ];
+  const activityHospitalNames = new Map<string, string>();
+  for (const part of chunk(activityHospitalRefs, 40)) {
+    const orClause = buildHospitalsTableOrClause(part);
+    if (!orClause || orClause.includes('__no_match__')) continue;
+    const { data, error } = await supabase.from('hospitals').select('id, facility_id, name').or(orClause);
+    if (error) throw error;
+    (data || []).forEach((h: { id: string; facility_id: string | null; name: string }) => {
+      activityHospitalNames.set(h.id, h.name);
+      if (h.facility_id) activityHospitalNames.set(String(h.facility_id), h.name);
+    });
+  }
   const since = subDays(new Date(), 90).getTime();
   const rows: PreviewRow[] = [];
   mentors.forEach((m) => {
@@ -368,6 +437,9 @@ async function loadMentorHours(managerId: string): Promise<PreviewRow[]> {
       rows.push({
         date: format(new Date(t), 'yyyy-MM-dd'),
         name: displayName(m.first_name, m.last_name, m.email),
+        hospital: (Array.isArray(entry?.hospitalIds) ? entry.hospitalIds : [])
+          .map((id: unknown) => activityHospitalNames.get(String(id)) || String(id))
+          .join('; '),
         hours: entry?.hours != null ? String(entry.hours) : '',
         category: String(entry?.category || entry?.type || ''),
         description: String(entry?.description || entry?.notes || entry?.title || '').slice(0, 200),
@@ -440,6 +512,10 @@ const ManagerSimpleReports: React.FC<Props> = ({ actorUserId }) => {
         if (active !== id) {
           setActive(id);
           setRows(data);
+        }
+        if (!data.length) {
+          setError('No data is available for this report yet. Check Team → Roster to confirm people and sites are linked.');
+          return;
         }
         downloadTableCsv(
           `impacts-${id}-${format(new Date(), 'yyyy-MM-dd')}.csv`,

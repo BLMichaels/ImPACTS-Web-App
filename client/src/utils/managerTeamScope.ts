@@ -300,6 +300,24 @@ export async function getManagedHospitalScopeKeysForManager(managerId: string): 
     });
   }
 
+  // A manager may mentor a PECC directly without a separate mentor assignment.
+  // Keep that PECC's site available in Sites, Activities, Snapshot, and reports.
+  const directPeccIds = new Set<string>();
+  await addDirectlyManagedPeccIds(managerId, directPeccIds);
+  const directIds = [...directPeccIds];
+  for (let i = 0; i < directIds.length; i += 80) {
+    const { data } = await supabase
+      .from('users')
+      .select('hospital_facility_id')
+      .in('id', directIds.slice(i, i + 80))
+      .eq('role', 'pecc')
+      .eq('is_active', true);
+    (data || []).forEach((row: { hospital_facility_id: string | null }) => {
+      const ref = String(row.hospital_facility_id || '').trim();
+      if (ref) keys.add(ref);
+    });
+  }
+
   return [...keys];
 }
 

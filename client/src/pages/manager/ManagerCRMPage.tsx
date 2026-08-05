@@ -9,10 +9,9 @@ import {
   Tab,
   TextField,
   InputAdornment,
-  Card,
-  CardContent,
   Avatar,
   Chip,
+  Stack,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -37,6 +36,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Tooltip,
   Drawer
 } from '@mui/material';
@@ -189,6 +189,10 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
   const [hospitals, setHospitals] = useState<HospitalData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
+  const [hospitalSort, setHospitalSort] = useState<{
+    key: 'name' | 'location' | 'mentors' | 'peccs' | 'contacts';
+    direction: 'asc' | 'desc';
+  }>({ key: 'name', direction: 'asc' });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   
@@ -945,13 +949,34 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
 
   const filteredHospitals = useMemo(() => {
     const q = debouncedSearchQuery.toLowerCase().trim();
-    if (!q) return hospitals;
-    return hospitals.filter(h =>
+    const visible = !q ? hospitals : hospitals.filter(h =>
       (h.name ?? '').toLowerCase().includes(q) ||
       (h.city ?? '').toLowerCase().includes(q) ||
       (h.state ?? '').toLowerCase().includes(q)
     );
-  }, [hospitals, debouncedSearchQuery]);
+    const direction = hospitalSort.direction === 'asc' ? 1 : -1;
+    return [...visible].sort((a, b) => {
+      switch (hospitalSort.key) {
+        case 'location':
+          return direction * `${a.state} ${a.city}`.localeCompare(`${b.state} ${b.city}`);
+        case 'mentors':
+          return direction * (a.mentorCount - b.mentorCount);
+        case 'peccs':
+          return direction * (a.peccCount - b.peccCount);
+        case 'contacts':
+          return direction * (a.contactCount - b.contactCount);
+        default:
+          return direction * a.name.localeCompare(b.name);
+      }
+    });
+  }, [hospitals, debouncedSearchQuery, hospitalSort]);
+
+  const sortHospitalsBy = (key: typeof hospitalSort.key) => {
+    setHospitalSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
 
   if (loading) {
     return (
@@ -978,15 +1003,6 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
       )}
       {embedded && (
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2, alignItems: 'center' }}>
-          <Button
-            size="small"
-            variant="contained"
-            color="secondary"
-            startIcon={<AddIcon />}
-            onClick={handleOpenAddHospital}
-          >
-            Add Hospital
-          </Button>
           <Button
             size="small"
             variant="outlined"
@@ -1033,7 +1049,7 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
             sx={{ mb: 3, maxWidth: 500 }}
           />
 
-          {/* Hospitals Grid */}
+          {/* Sortable hospital list */}
           {filteredHospitals.length === 0 ? (
             <Paper sx={{ p: 6, textAlign: 'center' }}>
               <HospitalIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
@@ -1041,94 +1057,84 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
                 {searchQuery ? 'No hospitals match your search' : 'No hospitals yet'}
               </Typography>
               <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
-                {searchQuery ? 'Try adjusting your search' : 'Add hospitals to start managing your team\'s work'}
+                {searchQuery ? 'Try adjusting your search' : 'Sites appear here when they are assigned to your team.'}
               </Typography>
-              {!searchQuery && (
-                <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenAddHospital}>
-                  Add First Hospital
-                </Button>
-              )}
             </Paper>
           ) : (
-            <Grid container spacing={3}>
-              {filteredHospitals.map((hospital) => (
-                <Grid item xs={12} md={6} lg={4} key={hospital.id}>
-                  <Card
-                    variant="outlined"
-                    sx={{
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      transition: 'box-shadow 0.2s, border-color 0.2s',
-                      '&:hover': { boxShadow: 2, borderColor: 'primary.light' }
-                    }}
-                  >
-                    <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2.5 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                        <Avatar sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
-                          <HospitalIcon />
-                        </Avatar>
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography variant="subtitle1" fontWeight={600} noWrap>
-                            {hospital.name}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {hospital.city}, {hospital.state}
-                          </Typography>
-                        </Box>
-                      </Box>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 2 }}>
-                        <Chip size="small" label={hospital.traumaLevel} variant="outlined" />
-                      </Box>
-                      <Box
-                        sx={{
-                          display: 'grid',
-                          gridTemplateColumns: '1fr 1fr 1fr',
-                          gap: 1,
-                          py: 1.5,
-                          px: 1,
-                          bgcolor: 'grey.50',
-                          borderRadius: 1,
-                          mb: 2
-                        }}
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small" aria-label="Team hospitals">
+                <TableHead>
+                  <TableRow>
+                    {[
+                      ['name', 'Hospital'],
+                      ['location', 'Location'],
+                      ['mentors', 'Mentors'],
+                      ['peccs', 'PECCs'],
+                      ['contacts', 'Contacts'],
+                    ].map(([key, label]) => (
+                      <TableCell
+                        key={key}
+                        align={key === 'name' || key === 'location' ? 'left' : 'center'}
+                        sortDirection={hospitalSort.key === key ? hospitalSort.direction : false}
                       >
-                        <Box sx={{ textAlign: 'center' }}>
-                          <Typography variant="h6" color="primary" sx={{ lineHeight: 1.2 }}>{hospital.mentorCount}</Typography>
-                          <Typography variant="caption" color="text.secondary">Mentors</Typography>
-                        </Box>
-                        <Box sx={{ textAlign: 'center' }}>
-                          <Typography variant="h6" color="success.main" sx={{ lineHeight: 1.2 }}>{hospital.peccCount}</Typography>
-                          <Typography variant="caption" color="text.secondary">PECCs</Typography>
-                        </Box>
-                        <Box sx={{ textAlign: 'center' }}>
-                          <Typography variant="h6" color="info.main" sx={{ lineHeight: 1.2 }}>{hospital.contactCount}</Typography>
-                          <Typography variant="caption" color="text.secondary">Contacts</Typography>
-                        </Box>
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 'auto' }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<NotesIcon />}
-                          onClick={(e) => { e.stopPropagation(); openHospitalNotesDrawer(hospital); }}
-                          fullWidth
+                        <TableSortLabel
+                          active={hospitalSort.key === key}
+                          direction={hospitalSort.key === key ? hospitalSort.direction : 'asc'}
+                          onClick={() => sortHospitalsBy(key as typeof hospitalSort.key)}
                         >
-                          Notes
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={() => navigate(`/manager/snapshot?hospital=${hospital.id}`)}
-                          fullWidth
-                        >
-                          View
-                        </Button>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
+                          {label}
+                        </TableSortLabel>
+                      </TableCell>
+                    ))}
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredHospitals.map((hospital) => (
+                    <TableRow key={hospital.id} hover>
+                      <TableCell>
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                          <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}>
+                            <HospitalIcon fontSize="small" />
+                          </Avatar>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" fontWeight={650} noWrap>
+                              {hospital.name}
+                            </Typography>
+                            <Chip size="small" label={hospital.traumaLevel} variant="outlined" sx={{ mt: 0.5 }} />
+                          </Box>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{hospital.city || '—'}, {hospital.state || '—'}</Typography>
+                      </TableCell>
+                      <TableCell align="center">{hospital.mentorCount}</TableCell>
+                      <TableCell align="center">{hospital.peccCount}</TableCell>
+                      <TableCell align="center">{hospital.contactCount}</TableCell>
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<NotesIcon />}
+                            onClick={() => openHospitalNotesDrawer(hospital)}
+                          >
+                            Notes
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() => navigate(`/manager/snapshot?hospital=${hospital.id}`)}
+                          >
+                            View
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
         </Box>
       )}
@@ -1888,14 +1894,6 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
               onClick={() => navigate('/manager/permissions?tab=tabs')}
             >
               Team Permissions
-            </Button>
-            <Button
-              variant="contained"
-              color="secondary"
-              startIcon={<AddIcon />}
-              onClick={handleOpenAddHospital}
-            >
-              Add Hospital
             </Button>
           </Box>
         }

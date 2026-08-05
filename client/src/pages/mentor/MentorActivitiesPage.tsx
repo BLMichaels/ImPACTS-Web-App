@@ -54,11 +54,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { useMentorWorkRoutes } from '../../hooks/useMentorWorkRoutes';
 import { fetchMergedMentorHospitals, mergedRowsToHospitalOptions } from '../../utils/mentorHospitalScope';
+import { getManagedHospitalScopeKeysForManager } from '../../utils/managerTeamScope';
+import { buildHospitalsTableOrClause } from '../../utils/hospitalId';
 import { supabase } from '../../supabase';
 import { usePhiGuard, PHI_SCAN_HINT } from '../../components/PhiGuard';
 import { getUserData, setUserData, migrateFromLocalStorage } from '../../utils/userData';
 import { normalizeHospitalOrOrgName } from '../../utils/displayName';
-import { DEFAULT_ACTIVITY_CATEGORIES, SIMULATION_CASE_OPTIONS } from '../../types/database';
+import { DEFAULT_ACTIVITY_CATEGORIES, SIMULATION_CASE_OPTIONS, UserRole } from '../../types/database';
 
 // Consistent chip colors per category (PE, TR, SC, etc.)
 const CATEGORY_CHIP_COLOR: Record<string, 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'default'> = {
@@ -112,7 +114,7 @@ type SortOrder = 'asc' | 'desc';
 
 const MentorActivitiesPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { effectiveUserId } = useUserProfile();
+  const { effectiveUserId, userRole } = useUserProfile();
   const { runWithPhiGuard } = usePhiGuard();
   const navigate = useNavigate();
   const mentorRoutes = useMentorWorkRoutes();
@@ -168,12 +170,25 @@ const MentorActivitiesPage: React.FC = () => {
       const storedById = new Map(storedArr.map((h: { id: string }) => [h.id, h]));
       let list: Hospital[] = [];
       try {
-        const merged = await fetchMergedMentorHospitals(userId);
-        const opts = mergedRowsToHospitalOptions(merged);
-        list = opts.map((m) => {
-          const s = storedById.get(m.id) as { name?: string } | undefined;
-          return { id: m.id, name: s?.name ?? m.name };
-        });
+        if (userRole === UserRole.MANAGER) {
+          const scopeKeys = await getManagedHospitalScopeKeysForManager(userId);
+          const managed = new Map<string, Hospital>();
+          for (let i = 0; i < scopeKeys.length; i += 40) {
+            const orClause = buildHospitalsTableOrClause(scopeKeys.slice(i, i + 40));
+            if (!orClause || orClause.includes('__no_match__')) continue;
+            const { data, error } = await supabase.from('hospitals').select('id, name').or(orClause);
+            if (error) throw error;
+            (data || []).forEach((h: { id: string; name: string }) => managed.set(h.id, h));
+          }
+          list = [...managed.values()];
+        } else {
+          const merged = await fetchMergedMentorHospitals(userId);
+          const opts = mergedRowsToHospitalOptions(merged);
+          list = opts.map((m) => {
+            const s = storedById.get(m.id) as { name?: string } | undefined;
+            return { id: m.id, name: s?.name ?? m.name };
+          });
+        }
       } catch {
         list = storedArr.map((h: { id: string; name?: string }) => ({ id: h.id, name: h.name || 'Hospital' }));
       }
@@ -191,7 +206,7 @@ const MentorActivitiesPage: React.FC = () => {
       if (parsed != null && Array.isArray(parsed) && parsed.length > 0) setCategories(parsed as Array<{ value: string; label: string }>);
     })();
     return () => { mounted = false; };
-  }, [userId, effectiveUserId]);
+  }, [userId, effectiveUserId, userRole]);
 
   const saveActivities = async (newActivities: MentorActivity[]) => {
     setActivities(newActivities);
@@ -505,8 +520,12 @@ const MentorActivitiesPage: React.FC = () => {
 
         <AdminHero
           overline="Time tracking"
-          title="My Activities"
-          description="Log PRISM activities and simulations by hospital. Link activities to hospitals so they appear in Site Milestones and Snapshot."
+          title={userRole === UserRole.MANAGER ? 'Activities' : 'My Activities'}
+          description={
+            userRole === UserRole.MANAGER
+              ? 'Log your management and direct mentoring work by site. These entries feed Manager Snapshot and reports.'
+              : 'Log PRISM activities and simulations by hospital. Link activities to hospitals so they appear in Site Milestones and Snapshot.'
+          }
           actions={
             <>
               <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportCSV}>
@@ -525,15 +544,19 @@ const MentorActivitiesPage: React.FC = () => {
               No activities yet
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 520, mx: 'auto' }}>
-              Add hospitals from the Hospitals page, then log your first activity and associate it with a hospital so
-              it counts toward Site Milestones and reporting.
+              {userRole === UserRole.MANAGER
+                ? 'Log your first management or direct mentoring activity and associate it with a site in your scope.'
+                : 'Add hospitals from the Hospitals page, then log your first activity and associate it with a hospital so it counts toward Site Milestones and reporting.'}
             </Typography>
             <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" useFlexGap>
               <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={handleAddNew}>
                 Add your first activity
               </Button>
-              <Button variant="outlined" onClick={() => navigate(mentorRoutes.hospitals)}>
-                Go to Hospitals
+              <Button
+                variant="outlined"
+                onClick={() => navigate(userRole === UserRole.MANAGER ? '/manager/team?tab=sites' : mentorRoutes.hospitals)}
+              >
+                {userRole === UserRole.MANAGER ? 'View Sites' : 'Go to Hospitals'}
               </Button>
             </Stack>
           </Paper>
@@ -1094,7 +1117,9 @@ const MentorActivitiesPage: React.FC = () => {
                 </FormControl>
                 {hospitals.length === 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    Add hospitals on the <strong>Hospitals</strong> page first so you can link activities to sites for Site Milestones and reporting.
+                    {userRole === UserRole.MANAGER
+                      ? 'No managed sites are available yet. Ask an administrator to link your mentors, PECCs, or cohorts.'
+                      : <>Add hospitals on the <strong>Hospitals</strong> page first so you can link activities to sites for Site Milestones and reporting.</>}
                   </Typography>
                 )}
               </Grid>

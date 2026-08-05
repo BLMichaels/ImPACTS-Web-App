@@ -99,6 +99,37 @@ export function exportManagerTeamSnapshotPdf(
     });
   }
 
+  y = ensurePdfSpace(doc, layout, y, 30);
+  y = addPdfSectionHeader(doc, layout, 'PECC activity & progress', y);
+  if (data.peccs.length === 0) {
+    doc.setFontSize(10);
+    doc.text('No PECCs in this manager hierarchy yet.', layout.margin, y);
+  } else {
+    data.peccs.forEach((pecc) => {
+      y = ensurePdfSpace(doc, layout, y, 20);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...SNAPSHOT_PDF.primary);
+      doc.text(`${pecc.firstName} ${pecc.lastName}`.trim() || pecc.email, layout.margin, y);
+      y += 5;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...SNAPSHOT_PDF.ink);
+      doc.text(
+        `${pecc.hospitalName} • ${pecc.checklistProgress}% checklist • ${pecc.activityCount} activities • ${pecc.activityHours.toFixed(1)}h • ${pecc.gapPlanCount} gap plans`,
+        layout.margin,
+        y
+      );
+      y += 5;
+      if (pecc.lastActivity) {
+        doc.setTextColor(...SNAPSHOT_PDF.muted);
+        doc.text(`Last activity: ${format(new Date(pecc.lastActivity), 'MMM d, yyyy')}`, layout.margin, y);
+        y += 5;
+      }
+      y += 3;
+    });
+  }
+
   const stamp = format(new Date(), 'yyyy-MM-dd');
   doc.save(`manager-team-snapshot-${stamp}.pdf`);
 }
