@@ -17,7 +17,9 @@ import {
   getManagedMentorIdsForManager,
   getManagedCohortIdsForManager,
   getManagedCohortPeopleIdsForManager,
+  fetchManagerVisibleUserIdsSet,
 } from './managerTeamScope';
+import { loadSiteChecklistItems } from './checklistTemplates';
 
 const POSTGREST_PAGE = 1000;
 
@@ -30,7 +32,8 @@ export type LongitudinalReportDataset =
   | 'invitations'
   | 'wages'
   | 'cohort_discussions'
-  | 'site_milestones_detail';
+  | 'site_milestones_detail'
+  | 'site_checklist_detail';
 
 export interface LongitudinalReportRow {
   id: string;
@@ -112,7 +115,18 @@ async function resolveScopeHospitalSet(hospitalScope: string[] | null): Promise<
   return set;
 }
 
-async function loadPeccUsersInScope(hospitalScope: string[] | null) {
+/** PECC ids a manager supervises; null for other scopes (no user-level restriction). */
+async function managerVisiblePeccIds(ctx: LongitudinalLoadContext): Promise<Set<string> | null> {
+  if (ctx.scope !== 'manager') return null;
+  try {
+    return await fetchManagerVisibleUserIdsSet(ctx.actorUserId);
+  } catch (e) {
+    console.warn('[reports] manager visible users lookup failed:', e);
+    return null;
+  }
+}
+
+async function loadPeccUsersInScope(hospitalScope: string[] | null, visibleUserIds?: Set<string> | null) {
   const peccs = await fetchAllRows<{
     id: string;
     first_name: string | null;
@@ -129,9 +143,10 @@ async function loadPeccUsersInScope(hospitalScope: string[] | null) {
       .eq('is_active', true)
       .range(from, to)
   );
-  if (!hospitalScope || hospitalScope.length === 0) return hospitalScope === null ? peccs : [];
+  const allowed = visibleUserIds ? peccs.filter((p) => visibleUserIds.has(p.id)) : peccs;
+  if (!hospitalScope || hospitalScope.length === 0) return hospitalScope === null ? allowed : [];
   const scopeSet = await resolveScopeHospitalSet(hospitalScope);
-  return peccs.filter((p) => {
+  return allowed.filter((p) => {
     const ref = p.hospital_facility_id;
     if (!ref) return false;
     return hospitalInScope(ref, scopeSet) || (scopeSet?.has(ref) ?? false);
@@ -294,6 +309,20 @@ export function buildLongitudinalColumnList(dataset: LongitudinalReportDataset):
         { id: 'createdAt', label: 'Posted at', defaultOn: true, group: 'Discussion' },
         { id: 'replyCount', label: 'Replies', defaultOn: false, group: 'Discussion' },
       ];
+    case 'site_checklist_detail':
+      return [
+        { id: 'hospitalName', label: 'Site', defaultOn: true, group: 'Checklist' },
+        { id: 'facilityId', label: 'Facility ID', defaultOn: false, group: 'Checklist' },
+        { id: 'state', label: 'State', defaultOn: true, group: 'Checklist' },
+        { id: 'checklistName', label: 'Checklist', defaultOn: true, group: 'Checklist' },
+        { id: 'checklistSource', label: 'Default or custom', defaultOn: true, group: 'Checklist' },
+        { id: 'stageName', label: 'Stage', defaultOn: true, group: 'Checklist' },
+        { id: 'taskId', label: 'Item ID', defaultOn: false, group: 'Checklist' },
+        { id: 'taskText', label: 'Checklist item', defaultOn: true, group: 'Checklist' },
+        { id: 'completed', label: 'Completed', defaultOn: true, group: 'Checklist' },
+        { id: 'completedDate', label: 'Completed date', defaultOn: true, group: 'Checklist' },
+        { id: 'peccNames', label: 'PECCs at site', defaultOn: false, group: 'Checklist' },
+      ];
     case 'site_milestones_detail':
       return [
         { id: 'hospitalName', label: 'Site', defaultOn: true, group: 'Milestone' },
@@ -321,6 +350,7 @@ export function longitudinalDatasetTitle(dataset: LongitudinalReportDataset): st
     wages: 'Wages & payroll',
     cohort_discussions: 'Cohort discussions',
     site_milestones_detail: 'Site milestones (detail)',
+    site_checklist_detail: 'Site checklist items (detail)',
   };
   return titles[dataset];
 }
@@ -340,6 +370,7 @@ export function isLongitudinalReportDataset(value: string): value is Longitudina
     'wages',
     'cohort_discussions',
     'site_milestones_detail',
+    'site_checklist_detail',
   ].includes(value);
 }
 
@@ -380,13 +411,15 @@ export async function loadLongitudinalReportDataset(
       return loadCohortDiscussions(ctx);
     case 'site_milestones_detail':
       return loadSiteMilestonesDetail(ctx);
+    case 'site_checklist_detail':
+      return loadSiteChecklistDetail(ctx);
     default:
       return [];
   }
 }
 
 async function loadPrsLongitudinal(ctx: LongitudinalLoadContext): Promise<LongitudinalReportRow[]> {
-  const peccs = await loadPeccUsersInScope(ctx.hospitalScope);
+  const peccs = await loadPeccUsersInScope(ctx.hospitalScope, await managerVisiblePeccIds(ctx));
   if (!peccs.length) return [];
   const peccIds = peccs.map((p) => p.id);
   const refs = peccs.map((p) => p.hospital_facility_id).filter(Boolean) as string[];
@@ -448,7 +481,7 @@ async function loadPrsLongitudinal(ctx: LongitudinalLoadContext): Promise<Longit
 }
 
 async function loadActivitiesLongitudinal(ctx: LongitudinalLoadContext): Promise<LongitudinalReportRow[]> {
-  const peccs = await loadPeccUsersInScope(ctx.hospitalScope);
+  const peccs = await loadPeccUsersInScope(ctx.hospitalScope, await managerVisiblePeccIds(ctx));
   if (!peccs.length) return [];
   const peccIds = peccs.map((p) => p.id);
   const refs = peccs.map((p) => p.hospital_facility_id).filter(Boolean) as string[];
@@ -495,7 +528,7 @@ async function loadActivitiesLongitudinal(ctx: LongitudinalLoadContext): Promise
 }
 
 async function loadGapPlansLongitudinal(ctx: LongitudinalLoadContext): Promise<LongitudinalReportRow[]> {
-  const peccs = await loadPeccUsersInScope(ctx.hospitalScope);
+  const peccs = await loadPeccUsersInScope(ctx.hospitalScope, await managerVisiblePeccIds(ctx));
   if (!peccs.length) return [];
   const peccIds = peccs.map((p) => p.id);
   const refs = peccs.map((p) => p.hospital_facility_id).filter(Boolean) as string[];
@@ -882,6 +915,86 @@ async function loadCohortDiscussions(ctx: LongitudinalLoadContext): Promise<Long
     });
   });
   return rows;
+}
+
+/** One row per checklist item per in-scope site, for the default or the site's custom checklist. */
+async function loadSiteChecklistDetail(ctx: LongitudinalLoadContext): Promise<LongitudinalReportRow[]> {
+  let hospitalUuids: string[];
+  if (ctx.hospitalScope) {
+    const scopeSet = await resolveScopeHospitalSet(ctx.hospitalScope);
+    hospitalUuids = [...(scopeSet || [])].filter(isHospitalUuid);
+  } else {
+    hospitalUuids = await fetchAllRows<{ id: string }>((from, to) =>
+      supabase.from('hospitals').select('id').eq('is_active', true).range(from, to)
+    ).then((rows) => rows.map((r) => r.id));
+  }
+  if (!hospitalUuids.length) return [];
+
+  const [items, hospitals] = await Promise.all([
+    loadSiteChecklistItems(hospitalUuids),
+    loadHospitalNameMap(hospitalUuids),
+  ]);
+  if (!items.length) return [];
+
+  const facilityById = new Map<string, string>();
+  for (const part of chunk(hospitalUuids, 80)) {
+    const rows = await fetchAllRows<{ id: string; facility_id: string | null }>((from, to) =>
+      supabase.from('hospitals').select('id, facility_id').in('id', part).range(from, to)
+    );
+    rows.forEach((r) => facilityById.set(r.id, r.facility_id != null ? String(r.facility_id) : ''));
+  }
+
+  const peccRefs = [...new Set([...hospitalUuids, ...facilityById.values()].filter(Boolean))];
+  const peccNamesByRef = new Map<string, string[]>();
+  if (peccRefs.length) {
+    for (const part of chunk(peccRefs, 40)) {
+      const rows = await fetchAllRowsOrEmpty<{
+        first_name: string | null;
+        last_name: string | null;
+        hospital_facility_id: string | null;
+      }>((from, to) =>
+        supabase
+          .from('users')
+          .select('first_name, last_name, hospital_facility_id')
+          .eq('role', 'pecc')
+          .eq('is_active', true)
+          .in('hospital_facility_id', part)
+          .range(from, to)
+      );
+      rows.forEach((r) => {
+        const ref = String(r.hospital_facility_id || '').trim();
+        if (!ref) return;
+        const name = `${r.first_name || ''} ${r.last_name || ''}`.trim();
+        if (!name) return;
+        peccNamesByRef.set(ref, [...(peccNamesByRef.get(ref) || []), name]);
+      });
+    }
+  }
+
+  return items.map((item) => {
+    const h = hospitals.get(item.hospitalId);
+    const facilityId = facilityById.get(item.hospitalId) || '';
+    const peccNames = [
+      ...new Set([...(peccNamesByRef.get(item.hospitalId) || []), ...(peccNamesByRef.get(facilityId) || [])]),
+    ];
+    return {
+      id: `${item.hospitalId}:${item.taskId}`,
+      cells: {
+        hospitalName: h?.name || '',
+        facilityId,
+        state: h?.state || '',
+        checklistName: item.checklistName,
+        checklistSource: item.source === 'custom' ? 'Custom' : 'Default',
+        stageName: item.stageLabel,
+        taskId: item.taskId,
+        taskText: item.text,
+        completed: item.completed ? 'Yes' : 'No',
+        completedDate: item.completedAt ? format(new Date(item.completedAt), 'yyyy-MM-dd') : '',
+        peccNames: peccNames.join('; '),
+      },
+      linkHints: { hospitalId: item.hospitalId },
+    };
+  });
 }
 
 async function loadSiteMilestonesDetail(ctx: LongitudinalLoadContext): Promise<LongitudinalReportRow[]> {

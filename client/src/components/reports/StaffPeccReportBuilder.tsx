@@ -72,6 +72,7 @@ import {
   isHospitalUuid,
   isQueryableHospitalRef,
 } from '../../utils/hospitalId';
+import { loadSiteChecklistStats, type ChecklistTemplateSource } from '../../utils/checklistTemplates';
 import { buildReportCsvContent, downloadReportCsv } from '../../utils/reportCsvExport';
 import { adminSectionShellSx } from '../admin/AdminPageChrome';
 import {
@@ -193,6 +194,7 @@ const REPORT_DATASET_LONGITUDINAL_OPTIONS: { value: LongitudinalReportDataset; l
   { value: 'wages', label: 'Wages & payroll entries' },
   { value: 'cohort_discussions', label: 'Cohort discussions (topics & replies)' },
   { value: 'site_milestones_detail', label: 'Site milestones (detail)' },
+  { value: 'site_checklist_detail', label: 'Site checklist items (detail)' },
 ];
 
 /**
@@ -208,6 +210,7 @@ const MANAGER_ALLOWED_REPORT_DATASETS: ReportDataset[] = [
   'prs_longitudinal',
   'gap_plans_longitudinal',
   'site_milestones_detail',
+  'site_checklist_detail',
 ];
 
 const MANAGER_REPORT_PEOPLE_OPTIONS = REPORT_DATASET_PEOPLE_OPTIONS.filter((o) =>
@@ -554,14 +557,13 @@ function daysSinceDate(iso: string | null | undefined): string {
   return String(Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000)));
 }
 
-function stageKeyFromTaskId(taskId: string): string {
-  const raw = String(taskId || '').trim();
-  if (!raw) return 'unknown';
-  if (raw.startsWith('program:')) {
-    const stagePart = raw.split(':')[2] || '';
-    return (stagePart.split('.')[0] || 'program').trim() || 'program';
-  }
-  return (raw.split('.')[0] || 'unknown').trim() || 'unknown';
+/** "Default checklist" or the custom checklist names a site reports against. */
+function checklistTemplateLabel(
+  stats: { source: ChecklistTemplateSource; templateNames: string[] } | undefined
+): string {
+  if (!stats) return '';
+  if (stats.source === 'default') return 'Default checklist';
+  return stats.templateNames.join('; ') || 'Custom checklist';
 }
 
 function loadChecklistStageSummaryText(stats: { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> } | undefined): string {
@@ -704,6 +706,7 @@ function buildColumnList(
     { id: 'checklistItemsCompleted', label: 'Checklist items completed', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'checklistItemsTotal', label: 'Checklist items total', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'checklistByStage', label: 'Checklist by stage', defaultOn: false, group: 'Checklist & gaps' },
+    { id: 'checklistTemplate', label: 'Checklist in use (default or custom)', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessLatest', label: 'Latest PRS score', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessFirst', label: 'Baseline PRS score', defaultOn: false, group: 'Checklist & gaps' },
     { id: 'readinessDelta', label: 'PRS delta (first to latest)', defaultOn: false, group: 'Checklist & gaps' },
@@ -771,6 +774,10 @@ function buildColumnList(
     { id: 'peccCount', label: 'PECCs at site (all sources, deduped)', defaultOn: true, group: 'Metrics' },
     { id: 'mentorAssignments', label: 'Assigned mentors', defaultOn: false, group: 'Metrics' },
     { id: 'checklistProgress', label: 'Site checklist %', defaultOn: true, group: 'Metrics' },
+    { id: 'checklistItemsCompleted', label: 'Checklist items completed', defaultOn: false, group: 'Metrics' },
+    { id: 'checklistItemsTotal', label: 'Checklist items total', defaultOn: false, group: 'Metrics' },
+    { id: 'checklistByStage', label: 'Checklist by stage', defaultOn: false, group: 'Metrics' },
+    { id: 'checklistTemplate', label: 'Checklist in use (default or custom)', defaultOn: false, group: 'Metrics' },
     { id: 'readinessLatest', label: 'Latest PRS score', defaultOn: false, group: 'Metrics' },
     { id: 'readinessDelta', label: 'PRS improvement (delta)', defaultOn: false, group: 'Metrics' },
     { id: 'gapPlansTotal', label: 'Gap plans (total)', defaultOn: false, group: 'Metrics' },
@@ -1105,6 +1112,7 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
       else if (dataset === 'wages') setSortBy('payPeriodStart');
       else if (dataset === 'cohort_discussions') setSortBy('createdAt');
       else if (dataset === 'site_milestones_detail') setSortBy('hospitalName');
+      else if (dataset === 'site_checklist_detail') setSortBy('hospitalName');
       else setSortBy('hospitalName');
     } else if (dataset === 'organization' || dataset === 'crm_system' || dataset === 'crm_hiring_group') setSortBy('orgName');
     else if (dataset === 'contacts') setSortBy('contactName');
@@ -1164,7 +1172,16 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
           dataset === 'invitations' ||
           dataset === 'wages' ||
           dataset === 'cohort_discussions');
-      if (hospitalScope && hospitalScope.length === 0 && !adminGlobalDataset && !longitudinalNoHospitalRequired) {
+      // People-based datasets are scoped by supervised users, so they still return rows
+      // for a manager whose team has no site assignments yet.
+      const peopleScopedDataset = dataset === 'mentors' || dataset === 'managers';
+      if (
+        hospitalScope &&
+        hospitalScope.length === 0 &&
+        !adminGlobalDataset &&
+        !longitudinalNoHospitalRequired &&
+        !peopleScopedDataset
+      ) {
         if (isStale()) return;
         setRows([]);
         setPeccAudit(null);
@@ -1176,6 +1193,16 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         setLoading(false);
         return;
       }
+
+      let managerVisibleUserIds: Set<string> | null = null;
+      if (scope === 'manager') {
+        try {
+          managerVisibleUserIds = await fetchManagerVisibleUserIdsSet(actorUserId);
+        } catch (e) {
+          console.warn('Manager report: visible user lookup failed:', e);
+        }
+      }
+      if (isStale()) return;
 
       let progList: { id: string; name: string }[] = [];
       let coList: { id: string; name: string }[] = [];
@@ -1205,17 +1232,10 @@ const StaffPeccReportBuilder: React.FC<Props> = ({ scope, actorUserId }) => {
         return;
       }
 
-      if (scope === 'manager' && dataset === 'wages') {
-        if (isStale()) return;
-        setRows([]);
-        setError(null);
-        setLoading(false);
-        return;
-      }
-
       if (dataset === 'pecc') {
         await loadPeccDataset({
           hospitalScope,
+          visibleUserIds: managerVisibleUserIds,
           activityPreset,
           progMap,
           coMap,
@@ -3156,24 +3176,6 @@ function exportSlugForDataset(d: ReportDataset): string {
   }
 }
 
-async function loadChecklistForHospitals(hospitalIds: string[]): Promise<Map<string, { total: number; completed: number }>> {
-  const map = new Map<string, { total: number; completed: number }>();
-  const uuids = await resolveScopeRefsToHospitalUuids(hospitalIds.filter(isQueryableHospitalRef));
-  if (!uuids.length) return map;
-  for (const part of chunk(uuids, 80)) {
-    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string; completed: boolean }>((from, to) =>
-      supabase.from('site_checklist_progress').select('hospital_id, completed').in('hospital_id', part).range(from, to)
-    );
-    rows.forEach((row) => {
-      const prev = map.get(row.hospital_id) || { total: 0, completed: 0 };
-      prev.total += 1;
-      if (row.completed) prev.completed += 1;
-      map.set(row.hospital_id, prev);
-    });
-  }
-  return map;
-}
-
 async function loadSiteMilestonesForHospitals(
   hospitalIds: string[]
 ): Promise<Map<string, { total: number; completed: number }>> {
@@ -3220,27 +3222,21 @@ async function loadMentorCountByHospital(hospitalIds: string[]): Promise<Map<str
 
 async function loadChecklistDetailsForHospitals(
   hospitalIds: string[]
-): Promise<Map<string, { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> }>> {
-  const map = new Map<string, { total: number; completed: number; byStage: Map<string, { total: number; completed: number }> }>();
+): Promise<
+  Map<
+    string,
+    {
+      total: number;
+      completed: number;
+      source: ChecklistTemplateSource;
+      templateNames: string[];
+      byStage: Map<string, { total: number; completed: number }>;
+    }
+  >
+> {
   const uuids = await resolveScopeRefsToHospitalUuids(hospitalIds.filter(isQueryableHospitalRef));
-  if (!uuids.length) return map;
-  for (const part of chunk(uuids, 80)) {
-    const rows = await fetchAllRowsOrEmpty<{ hospital_id: string; task_id: string; completed: boolean }>((from, to) =>
-      supabase.from('site_checklist_progress').select('hospital_id, task_id, completed').in('hospital_id', part).range(from, to)
-    );
-    rows.forEach((row) => {
-      const prev = map.get(row.hospital_id) || { total: 0, completed: 0, byStage: new Map<string, { total: number; completed: number }>() };
-      prev.total += 1;
-      if (row.completed) prev.completed += 1;
-      const stageKey = stageKeyFromTaskId(row.task_id);
-      const stagePrev = prev.byStage.get(stageKey) || { total: 0, completed: 0 };
-      stagePrev.total += 1;
-      if (row.completed) stagePrev.completed += 1;
-      prev.byStage.set(stageKey, stagePrev);
-      map.set(row.hospital_id, prev);
-    });
-  }
-  return map;
+  if (!uuids.length) return new Map();
+  return loadSiteChecklistStats(uuids);
 }
 
 function peccDedupeKey(source: 'user' | 'hc' | 'crm', id: string, email: string | null | undefined): string {
@@ -3368,13 +3364,21 @@ async function loadHospitalContactsForPeccReport(hospitalScope: string[] | null)
   }[]
 > {
   if (hospitalScope && hospitalScope.length > 0) {
-    return fetchAllRowsOrEmpty((from, to) =>
-      supabase
-        .from('hospital_contacts')
-        .select('id, hospital_id, user_id, first_name, last_name, email, phone, role_at_hospital, contact_status')
-        .in('hospital_id', hospitalScope)
-        .range(from, to)
-    );
+    // hospital_contacts.hospital_id is a uuid FK; scope keys mix uuids and facility ids.
+    const uuids = await resolveScopeRefsToHospitalUuids(hospitalScope);
+    if (!uuids.length) return [];
+    const merged: Awaited<ReturnType<typeof loadHospitalContactsForPeccReport>> = [];
+    for (const part of chunk(uuids, 80)) {
+      const rows = await fetchAllRowsOrEmpty<(typeof merged)[number]>((from, to) =>
+        supabase
+          .from('hospital_contacts')
+          .select('id, hospital_id, user_id, first_name, last_name, email, phone, role_at_hospital, contact_status')
+          .in('hospital_id', part)
+          .range(from, to)
+      );
+      merged.push(...rows);
+    }
+    return merged;
   }
   if (!hospitalScope) {
     return fetchAllRowsOrEmpty((from, to) =>
@@ -3429,7 +3433,7 @@ async function loadPeccCountByHospital(hospitalIds: string[]): Promise<Map<strin
     });
   }
 
-  for (const part of chunk(hospitalIds, 80)) {
+  for (const part of chunk(hospitalIds.filter(isHospitalUuid), 80)) {
     const contacts = await fetchAllRowsOrEmpty<{
       id: string;
       hospital_id: string;
@@ -3474,6 +3478,7 @@ async function loadPeccCountByHospital(hospitalIds: string[]): Promise<Map<strin
 
 async function loadPeccDataset(params: {
   hospitalScope: string[] | null;
+  visibleUserIds: Set<string> | null;
   activityPreset: string;
   progMap: Map<string, string>;
   coMap: Map<string, string>;
@@ -3482,9 +3487,11 @@ async function loadPeccDataset(params: {
   setCohortIdsByRow: (m: Record<string, string[]>) => void;
   setPeccAudit: (a: PeccAuditSnapshot | null) => void;
 }): Promise<void> {
-  const { hospitalScope, activityPreset, progMap, coMap, setRows, setProgramIdsByRow, setCohortIdsByRow, setPeccAudit } = params;
+  const { hospitalScope, visibleUserIds, activityPreset, progMap, coMap, setRows, setProgramIdsByRow, setCohortIdsByRow, setPeccAudit } = params;
 
-  const peccs = await loadPeccUserAccounts(hospitalScope);
+  const allPeccs = await loadPeccUserAccounts(hospitalScope);
+  // Managers report on their own team only, never every PECC that happens to share a site.
+  const peccs = visibleUserIds ? allPeccs.filter((p) => visibleUserIds.has(p.id)) : allPeccs;
 
   const [hospitalContactRows, crmPeccPeople] = await Promise.all([
     loadHospitalContactsForPeccReport(hospitalScope),
@@ -3500,7 +3507,9 @@ async function loadPeccDataset(params: {
 
   const linkedUserIds = [...new Set(hospitalContactRows.map((c) => c.user_id).filter(Boolean))] as string[];
   const linkedUserRole = await loadLinkedUserRoles(linkedUserIds);
-  const peccHospitalContactRows = hospitalContactRows.filter((c) => isPeccHospitalContactRecord(c, linkedUserRole));
+  const peccHospitalContactRows = hospitalContactRows
+    .filter((c) => isPeccHospitalContactRecord(c, linkedUserRole))
+    .filter((c) => !visibleUserIds || !c.user_id || visibleUserIds.has(c.user_id));
 
   const crmPeccRows = crmPeccPeople.flatMap((row) => {
     const links = Array.isArray(row.linked_hospital_ids) ? (row.linked_hospital_ids as string[]) : [];
@@ -3635,11 +3644,10 @@ async function loadPeccDataset(params: {
     ...new Set([...hospitalIdsForUsers, ...[...hidSet].filter(isHospitalUuid)]),
   ];
 
-  const [pm, cm, checklistByHospital, checklistDetailsByHospital, udMap, hdMap, usageInWindow, discussionByUser, milestonesByHospital] =
+  const [pm, cm, checklistDetailsByHospital, udMap, hdMap, usageInWindow, discussionByUser, milestonesByHospital] =
     await Promise.all([
       fetchActiveProgramMembersForUsers(peccIds),
       fetchActiveCohortMembersForUsers(peccIds),
-      loadChecklistForHospitals(hidSet),
       loadChecklistDetailsForHospitals(hidSet),
       shouldMirrorLegacyUserData()
         ? fetchUserDataBatch(peccIds, ['gapPlans', 'activities', 'readinessScores', 'prsReadinessScores', USER_DATA_PECC_DIRECT_MANAGER_IDS, USER_DATA_PECC_MENTOR_IDS])
@@ -3727,8 +3735,8 @@ async function loadPeccDataset(params: {
       activeInWindow = usageInWindow.has(p.id) || loginOk;
     }
 
-    const chk = h?.id ? checklistByHospital.get(h.id) : undefined;
-    const checklistDetail = h?.id ? checklistDetailsByHospital.get(h.id) : undefined;
+    const chk = h?.id ? checklistDetailsByHospital.get(h.id) : undefined;
+    const checklistDetail = chk;
     const gapDetail = countGapPlansDetailed(continuity?.gapPlans ?? udMap.get(p.id)?.gapPlans);
     const activitySummary = summarizeActivityMetrics(continuity?.activities ?? udMap.get(p.id)?.activities);
     const readinessRaw = continuity?.readinessScores ?? continuity?.prsReadinessScores ?? udMap.get(p.id)?.readinessScores ?? udMap.get(p.id)?.prsReadinessScores;
@@ -3772,6 +3780,7 @@ async function loadPeccDataset(params: {
       checklistItemsCompleted: String(checklistDetail?.completed ?? 0),
       checklistItemsTotal: String(checklistDetail?.total ?? 0),
       checklistByStage: loadChecklistStageSummaryText(checklistDetail),
+      checklistTemplate: checklistTemplateLabel(checklistDetail),
       readinessLatest: readiness.latest,
       readinessFirst: readiness.first,
       readinessDelta: readiness.delta,
@@ -3820,8 +3829,8 @@ async function loadPeccDataset(params: {
 
   const contactRows: ReportDataRow[] = peccHospitalContactRows.map((c) => {
     const h = hospById.get(c.hospital_id);
-    const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
-    const checklistDetail = c.hospital_id ? checklistDetailsByHospital.get(c.hospital_id) : undefined;
+    const chk = c.hospital_id ? checklistDetailsByHospital.get(c.hospital_id) : undefined;
+    const checklistDetail = chk;
     const continuity = h?.id ? hdMap.get(h.id) : undefined;
     const readinessRaw = continuity?.readinessScores ?? continuity?.prsReadinessScores;
     const readiness = summarizeReadinessScores(readinessRaw);
@@ -3857,6 +3866,7 @@ async function loadPeccDataset(params: {
       checklistItemsCompleted: String(checklistDetail?.completed ?? 0),
       checklistItemsTotal: String(checklistDetail?.total ?? 0),
       checklistByStage: loadChecklistStageSummaryText(checklistDetail),
+      checklistTemplate: checklistTemplateLabel(checklistDetail),
       readinessLatest: readiness.latest,
       readinessFirst: readiness.first,
       readinessDelta: readiness.delta,
@@ -3904,8 +3914,8 @@ async function loadPeccDataset(params: {
 
   const crmRows: ReportDataRow[] = crmPeccRows.map((c) => {
     const h = c.hospital_id ? hospById.get(c.hospital_id) : null;
-    const chk = c.hospital_id ? checklistByHospital.get(c.hospital_id) : undefined;
-    const checklistDetail = c.hospital_id ? checklistDetailsByHospital.get(c.hospital_id) : undefined;
+    const chk = c.hospital_id ? checklistDetailsByHospital.get(c.hospital_id) : undefined;
+    const checklistDetail = chk;
     const continuity = h?.id ? hdMap.get(h.id) : undefined;
     const readinessRaw = continuity?.readinessScores ?? continuity?.prsReadinessScores;
     const readiness = summarizeReadinessScores(readinessRaw);
@@ -3941,6 +3951,7 @@ async function loadPeccDataset(params: {
       checklistItemsCompleted: String(checklistDetail?.completed ?? 0),
       checklistItemsTotal: String(checklistDetail?.total ?? 0),
       checklistByStage: loadChecklistStageSummaryText(checklistDetail),
+      checklistTemplate: checklistTemplateLabel(checklistDetail),
       readinessLatest: readiness.latest,
       readinessFirst: readiness.first,
       readinessDelta: readiness.delta,
@@ -4050,7 +4061,7 @@ async function loadHospitalDataset(params: {
   const ids = hospitals.map((h) => String(h.id));
   const [peccCounts, checklistByHospital, hdMap, milestonesByHospital, mentorCounts] = await Promise.all([
     ids.length ? loadPeccCountByHospital(ids) : Promise.resolve(new Map<string, number>()),
-    loadChecklistForHospitals(ids),
+    loadChecklistDetailsForHospitals(ids),
     fetchHospitalDataBatch(ids, ['gapPlans', 'readinessScores', 'prsReadinessScores', 'simulation_sessions']),
     loadSiteMilestonesForHospitals(ids),
     loadMentorCountByHospital(ids),
@@ -4084,6 +4095,10 @@ async function loadHospitalDataset(params: {
       peccCount: String(peccCounts.get(id) ?? 0),
       mentorAssignments: String(mentorCounts.get(id) ?? 0),
       checklistProgress: checklistPercent(stats) + (stats && stats.total > 0 ? '%' : ''),
+      checklistItemsCompleted: String(stats?.completed ?? 0),
+      checklistItemsTotal: String(stats?.total ?? 0),
+      checklistByStage: loadChecklistStageSummaryText(stats),
+      checklistTemplate: checklistTemplateLabel(stats),
       readinessLatest: readiness.latest,
       readinessDelta: readiness.delta,
       gapPlansTotal: String(gapDetail.total),

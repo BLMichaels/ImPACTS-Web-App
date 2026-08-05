@@ -32,7 +32,8 @@ export type ReportDatasetKey =
   | 'invitations'
   | 'wages'
   | 'cohort_discussions'
-  | 'site_milestones_detail';
+  | 'site_milestones_detail'
+  | 'site_checklist_detail';
 
 export type ColumnFilterOp = 'contains' | 'equals' | 'not_contains' | 'starts_with' | 'empty' | 'not_empty';
 

@@ -70,6 +70,7 @@ import {
 } from '../../utils/userData';
 import { buildMentorHospitalContext } from '../../utils/mentorHospitalScope';
 import { getRosterMentorUsersForManager } from '../../utils/managerTeamScope';
+import { loadSiteChecklistStats } from '../../utils/checklistTemplates';
 import { buildPeccHospitalFacilityOrClause } from '../../utils/mentorHospitalAssignments';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole } from '../../types/database';
@@ -355,21 +356,11 @@ const ManagerMentorsPage: React.FC<ManagerMentorsPageProps> = ({ embedded = fals
 
       if (peccsError) throw peccsError;
 
-      // Batch checklist progress by hospital to avoid per-PECC N+1 queries.
-      const { data: checklistRows, error: checklistError } = uniqueHospitalIds.length > 0
-        ? await supabase
-          .from('site_checklist_progress')
-          .select('hospital_id, completed')
-          .in('hospital_id', uniqueHospitalIds)
-        : { data: [], error: null };
-      if (checklistError) throw checklistError;
-      const checklistStatsByHospital = new Map<string, { total: number; completed: number }>();
-      (checklistRows || []).forEach((row: { hospital_id: string; completed: boolean }) => {
-        const prev = checklistStatsByHospital.get(row.hospital_id) || { total: 0, completed: 0 };
-        prev.total += 1;
-        if (row.completed) prev.completed += 1;
-        checklistStatsByHospital.set(row.hospital_id, prev);
-      });
+      // Batch checklist progress by hospital, measured against each site's default or custom template.
+      const checklistStatsByHospital =
+        uniqueHospitalIds.length > 0
+          ? await loadSiteChecklistStats(uniqueHospitalIds)
+          : new Map();
 
       const peccList = (peccs || []) as { id: string; first_name: string; last_name: string; email: string; hospital_facility_id: string }[];
       const peccIds = peccList.map((p) => p.id);

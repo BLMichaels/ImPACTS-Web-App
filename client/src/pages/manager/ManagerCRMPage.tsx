@@ -65,7 +65,11 @@ import {
   buildPeccHospitalFacilityOrClause,
   expandHospitalRefsForPeccQuery,
 } from '../../utils/mentorHospitalAssignments';
-import { hospitalKeysMatch } from '../../utils/hospitalId';
+import {
+  buildHospitalsTableOrClause,
+  hospitalKeysMatch,
+  isQueryableHospitalRef,
+} from '../../utils/hospitalId';
 import {
   fetchManagerVisibleUserIdsSet,
   getManagedHospitalScopeKeysForManager,
@@ -399,21 +403,19 @@ const ManagerCRMPage: React.FC<ManagerCRMPageProps> = ({ embedded = false }) => 
           (h) => h.id === k || (h.facilityId != null && String(h.facilityId) === k)
         );
       });
-      for (let i = 0; i < missingKeys.length; i += 80) {
-        const part = missingKeys.slice(i, i + 80);
-        const { data: byId } = await supabase
+      // Scope keys mix hospitals.id (uuid) and facility_id, so match on both without
+      // sending facility ids to the uuid column.
+      const queryableKeys = missingKeys.filter(isQueryableHospitalRef);
+      for (let i = 0; i < queryableKeys.length; i += 40) {
+        const part = queryableKeys.slice(i, i + 40);
+        const orClause = buildHospitalsTableOrClause(part);
+        if (!orClause || orClause.includes('__no_match__')) continue;
+        const { data, error } = await supabase
           .from('hospitals')
           .select('id, facility_id, name, city, state, trauma_level, custom_fields')
-          .in('id', part);
-        (byId || []).forEach(pushHospital);
-        const stillMissing = part.filter((k) => !uniqueHospitalIds.has(k) && !(byId || []).some((h: any) => h.id === k));
-        if (stillMissing.length) {
-          const { data: byFacility } = await supabase
-            .from('hospitals')
-            .select('id, facility_id, name, city, state, trauma_level, custom_fields')
-            .in('facility_id', stillMissing);
-          (byFacility || []).forEach(pushHospital);
-        }
+          .or(orClause);
+        if (error) throw error;
+        (data || []).forEach(pushHospital);
       }
 
       if (hospitalList.length === 0) {

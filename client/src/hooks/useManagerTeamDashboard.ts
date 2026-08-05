@@ -5,6 +5,7 @@ import { getMentorActivitiesForUser, batchGetMentorActivitiesForUsers } from '..
 import { buildMentorHospitalContext, countPeccsByCanonicalHospital } from '../utils/mentorHospitalScope';
 import { buildPeccHospitalFacilityOrClause } from '../utils/mentorHospitalAssignments';
 import { getScopedMentorUsersForManager } from '../utils/managerTeamScope';
+import { loadSiteChecklistStats } from '../utils/checklistTemplates';
 
 export interface ManagerTeamMentorRow {
   id: string;
@@ -149,19 +150,7 @@ export function useManagerTeamDashboard(managerId: string | undefined) {
       let progressCount = 0;
 
       if (uniqueHospitalIds.length > 0) {
-        const { data: checklistRows, error: checklistError } = await supabase
-          .from('site_checklist_progress')
-          .select('hospital_id, completed')
-          .in('hospital_id', uniqueHospitalIds);
-        if (checklistError) throw checklistError;
-
-        const checklistStatsByHospital = new Map<string, { total: number; completed: number }>();
-        (checklistRows || []).forEach((row: { hospital_id: string; completed: boolean }) => {
-          const prev = checklistStatsByHospital.get(row.hospital_id) || { total: 0, completed: 0 };
-          prev.total += 1;
-          if (row.completed) prev.completed += 1;
-          checklistStatsByHospital.set(row.hospital_id, prev);
-        });
+        const checklistStatsByHospital = await loadSiteChecklistStats(uniqueHospitalIds);
 
         const checklistPctByHospital = new Map<string, number>();
         checklistStatsByHospital.forEach((stats, hid) => {
