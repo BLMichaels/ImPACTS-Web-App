@@ -18,6 +18,7 @@ import { IDLE_TIMEOUT_MINUTES, ABSOLUTE_SESSION_HOURS } from '../utils/sessionPo
 import AuthMarketingShell, { AUTH_SLATE, AUTH_SLATE_DARK } from './AuthMarketingShell';
 import MfaEnrollmentForm, { MFA_ENROLLMENT_FORM_ID } from './MfaEnrollmentForm';
 import MfaChallengeForm from './MfaChallengeForm';
+import MfaSetupVideoHelp from './MfaSetupVideoHelp';
 
 interface MfaGateScreenProps {
   mode: 'mfa-challenge' | 'mfa-enroll';
@@ -102,6 +103,11 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
               ? 'One-time setup. Complete MFA before you can use the PECC Support Tool.'
               : 'Enter your authenticator code to continue. You cannot open the PECC Support Tool until verification is complete.'}
           </Typography>
+          {isEnroll ? (
+            <Box sx={{ mt: 1.5, maxWidth: 720 }}>
+              <MfaSetupVideoHelp variant="accordion" slate={AUTH_SLATE} />
+            </Box>
+          ) : null}
         </Box>
 
         <Box

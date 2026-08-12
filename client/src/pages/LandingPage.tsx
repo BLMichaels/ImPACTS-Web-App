@@ -22,11 +22,13 @@ import {
   NoPhotographyOutlined as NoPhiIcon,
   VerifiedUserOutlined as ScreeningIcon,
   MailOutline as InviteIcon,
+  LockOutlined as LockIcon,
 } from '@mui/icons-material';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { UserRole } from '../types/database';
+import MfaSetupVideoHelp from '../components/MfaSetupVideoHelp';
 
 const INK = '#141414';
 const SLATE = '#455a64';
@@ -109,6 +111,11 @@ const SECURITY_NOTES = [
     icon: <InviteIcon sx={{ fontSize: 22 }} />,
     title: 'Invitation-only access',
     text: 'Accounts are created through ImPACTS program administrators — not open public registration.',
+  },
+  {
+    icon: <LockIcon sx={{ fontSize: 22 }} />,
+    title: 'MFA on first sign-in',
+    text: 'After your first login, link a free authenticator app in about 45 seconds — see the short walkthrough below.',
   },
   {
     icon: <ShieldIcon sx={{ fontSize: 22 }} />,
@@ -696,6 +703,11 @@ const LandingPage: React.FC = () => {
               ))}
             </Grid>
           </Box>
+        </Container>
+
+        {/* First-time MFA how-to */}
+        <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3, lg: 5 }, pb: { xs: 2, md: 4 } }}>
+          <MfaSetupVideoHelp variant="landing" accent={TEAL} />
         </Container>
 
         {/* CTA */}

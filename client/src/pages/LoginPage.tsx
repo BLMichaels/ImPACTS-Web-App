@@ -22,6 +22,7 @@ import { useAuth } from '../context/AuthContext';
 import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
 import { IDLE_TIMEOUT_MINUTES, ABSOLUTE_SESSION_HOURS } from '../utils/sessionPolicy';
 import AuthMarketingShell, { AUTH_SLATE, AUTH_SLATE_DARK } from '../components/AuthMarketingShell';
+import MfaSetupVideoHelp from '../components/MfaSetupVideoHelp';
 
 const fieldSx = {
   '& .MuiOutlinedInput-root': {
@@ -279,6 +280,9 @@ const LoginPage = () => {
           )}
           <Alert severity="info" icon={<LockIcon fontSize="inherit" />} sx={{ py: 0.75 }}>
             After sign-in you will set up or verify MFA with a free authenticator app.
+            <Box sx={{ mt: 0.75 }}>
+              <MfaSetupVideoHelp variant="trigger" slate={AUTH_SLATE} />
+            </Box>
           </Alert>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField

@@ -32,3 +32,7 @@ coverage/
 *.backup
 .vercel
 .env*.local
+
+# Generated MFA video build artifacts (keep client/public/media/mfa-first-login-setup.mp4)
+client/public/media/.build-mfa-video/
+scripts/.venv-mfa-video/
