@@ -272,7 +272,7 @@ const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, isPasswordRecovery } = useAuth();
   const { userProfile, isLoading: profileLoading } = useUserProfile();
   const [activeTab, setActiveTab] = useState<CoreTabId>('snapshot');
 
@@ -287,6 +287,10 @@ const LandingPage: React.FC = () => {
     },
     []
   );
+
+  if (isPasswordRecovery) {
+    return <Navigate to="/reset-password" replace />;
+  }
 
   if (!authLoading && !profileLoading && currentUser) {
     return <Navigate to={getDefaultDashboard(userProfile?.role ?? UserRole.PECC)} replace />;

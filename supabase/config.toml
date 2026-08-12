@@ -11,7 +11,10 @@ site_url = "https://peccsupporttool.com/"
 additional_redirect_urls = [
   "https://peccsupporttool.com/**",
   "https://www.peccsupporttool.com/**",
+  "https://peccsupporttool.com/reset-password",
+  "https://www.peccsupporttool.com/reset-password",
   "https://impacts-tau.vercel.app/**",
+  "https://impacts-tau.vercel.app/reset-password",
 ]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true

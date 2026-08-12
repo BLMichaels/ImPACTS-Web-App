@@ -774,7 +774,7 @@ const AdminTeamTab: React.FC = () => {
           setAnchorEl(null);
           setSendingPasswordReset(true);
           try {
-            await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined);
+            await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined);
             setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
           } catch (err) {
             setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
@@ -998,7 +998,7 @@ const AdminTeamTab: React.FC = () => {
                         if (!selectedUser.email) return;
                         setSendingPasswordReset(true);
                         try {
-                          await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined);
+                          await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined);
                           setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
                         } catch (err) {
                           setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });

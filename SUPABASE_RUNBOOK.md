@@ -15,6 +15,18 @@ Apply scripts in the **Supabase SQL editor** for production. Track what you ran 
 1. `HIPAA_AUDIT_LOG_MIGRATION.sql` — audit triggers on users, hospitals, contacts, CRM
 2. `SECURITY_EVENTS_AND_AUDIT_HARDENING.sql` — `security_events` table (failed logins, password changes, idle timeouts) + makes `audit_log` append-only
 
+## Password reset (critical)
+
+1. App redirect target is **`/reset-password`** (`getPasswordResetRedirectUrl()`).
+2. Supabase Auth → URL Configuration must allow:
+   - Site URL: `https://peccsupporttool.com/`
+   - Redirect URLs including `https://peccsupporttool.com/reset-password` (and `/**` wildcards).
+3. Push auth settings when needed:  
+   `npx supabase config push --project-ref ftpifgzzfwpujlvbqqhu --yes`
+4. Client uses **implicit** auth flow so recovery links work when the email is opened on a different device than the one that requested the reset.
+5. Recovery intent is stored in `sessionStorage` before Supabase strips `#type=recovery` from the URL; MFA/terms/idle gates are skipped until the new password is saved.
+6. **Email branding (from peccsupporttool.com):** configure Custom SMTP + Auth email templates in the Supabase Dashboard (Authentication → Emails). Default Supabase sender is expected until SMTP is configured — this is dashboard-only, not a code deploy.
+
 Password policy is **12+ characters**, enforced at four layers:
 
 1. **Supabase Auth** — `minimum_password_length = 12` in `supabase/config.toml`; push with  
@@ -40,7 +52,7 @@ ImPACTS uses **Supabase TOTP MFA** (free; authenticator apps such as Google Auth
 - All users must enroll MFA on first use (full-screen gate via `SecurityGateShell` before any app content loads).
 - Returning users with MFA enrolled must enter a code at login and when resuming a session at AAL1.
 - Account Settings → Security includes MFA status and optional backup authenticator enrollment.
-- Password reset (`Forgot password?` on login) is unchanged and does not require MFA during the recovery link flow.
+- Password reset (`Forgot password?` → email → `/reset-password`) skips MFA until the new password is saved; MFA applies again on the next normal sign-in.
 - Terms version `2026-06-22` includes mandatory MFA disclosure; existing users must re-accept before the MFA gate runs.
 
 Supabase Auth MFA TOTP is enabled in `supabase/config.toml` (`[auth.mfa.totp]`). Apply `MFA_SECURITY_EVENTS.sql` for MFA audit event types.

@@ -22,8 +22,13 @@ const blockingShellSx = {
  * Children (navbar, dashboards, profile context) mount only when status is `ready`.
  */
 const SecurityGateShell: React.FC<SecurityGateShellProps> = ({ children }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, isPasswordRecovery } = useAuth();
   const { status, refresh } = useSecurityGate(currentUser?.id);
+
+  // Password-reset email flow: never block with MFA/terms until the new password is saved.
+  if (isPasswordRecovery) {
+    return <>{children}</>;
+  }
 
   if (!currentUser) {
     return <>{children}</>;

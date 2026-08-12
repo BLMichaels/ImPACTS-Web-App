@@ -17,11 +17,11 @@ import {
   VerifiedUserOutlined as ScreeningIcon,
   MailOutline as InviteIcon,
 } from '@mui/icons-material';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { validateNewPassword, PASSWORD_REQUIREMENT_TEXT } from '../utils/passwordPolicy';
 import { IDLE_TIMEOUT_MINUTES, ABSOLUTE_SESSION_HOURS } from '../utils/sessionPolicy';
 import AuthMarketingShell, { AUTH_SLATE, AUTH_SLATE_DARK } from '../components/AuthMarketingShell';
+import { getPasswordResetRedirectUrl, isPasswordRecoverySession } from '../utils/authFlow';
 
 const fieldSx = {
   '& .MuiOutlinedInput-root': {
@@ -70,22 +70,24 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState(false);
-  const [showSetPassword, setShowSetPassword] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [setPasswordSuccess, setSetPasswordSuccess] = useState(false);
-  const { login, resetPasswordForEmail, updatePassword } = useAuth();
+  const { login, resetPasswordForEmail, isPasswordRecovery } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const timedOut = searchParams.get('timeout') === '1';
 
   useEffect(() => {
-    const hash = typeof window !== 'undefined' ? window.location.hash : '';
-    if (hash.includes('type=recovery')) {
-      setShowSetPassword(true);
-      setShowForgotPassword(false);
+    // Legacy recovery links that still redirect to /login
+    if (isPasswordRecovery || isPasswordRecoverySession()) {
+      navigate('/reset-password', { replace: true });
+      return;
     }
-  }, []);
+    const state = location.state as { openForgotPassword?: boolean } | null;
+    if (state?.openForgotPassword) {
+      setShowForgotPassword(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [isPasswordRecovery, location.state, location.pathname, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,7 +113,7 @@ const LoginPage = () => {
     try {
       setError('');
       setLoading(true);
-      await resetPasswordForEmail(email, `${window.location.origin}/login`);
+      await resetPasswordForEmail(email, getPasswordResetRedirectUrl());
       setForgotSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send reset email. Try again or contact support.');
@@ -120,111 +122,21 @@ const LoginPage = () => {
     }
   };
 
-  const handleSetPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    const policyError = validateNewPassword(newPassword);
-    if (policyError) {
-      setError(policyError);
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-    try {
-      setLoading(true);
-      await updatePassword(newPassword);
-      setSetPasswordSuccess(true);
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', window.location.pathname);
-      }
-      setTimeout(() => {
-        setShowSetPassword(false);
-        setNewPassword('');
-        setConfirmPassword('');
-      }, 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update password.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   let formTitle = 'Sign in';
   let formSubtitle = 'Use your PECC Support Tool email and password.';
-  if (showSetPassword) {
-    formTitle = 'Set new password';
-    formSubtitle = 'Choose a strong password for your account.';
-  } else if (showForgotPassword) {
+  if (showForgotPassword) {
     formTitle = 'Reset password';
     formSubtitle = 'We will email you a link to set a new password.';
   }
 
   let formBody: React.ReactNode;
-  if (showSetPassword) {
-    formBody = setPasswordSuccess ? (
-      <Stack spacing={1.75}>
-        <Alert severity="success">Password updated. You can now sign in with your new password.</Alert>
-        <Button
-          fullWidth
-          variant="contained"
-          onClick={() => {
-            setShowSetPassword(false);
-            setSetPasswordSuccess(false);
-          }}
-          sx={{ py: 1.2, fontWeight: 600, bgcolor: AUTH_SLATE, '&:hover': { bgcolor: AUTH_SLATE_DARK } }}
-        >
-          Back to sign in
-        </Button>
-      </Stack>
-    ) : (
-      <Box component="form" onSubmit={handleSetPasswordSubmit}>
-        <Stack spacing={1.75}>
-          {error && <Alert severity="error">{error}</Alert>}
-          <TextField
-            required
-            fullWidth
-            name="newPassword"
-            label="New password"
-            type="password"
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            helperText={PASSWORD_REQUIREMENT_TEXT}
-            sx={fieldSx}
-          />
-          <TextField
-            required
-            fullWidth
-            name="confirmPassword"
-            label="Confirm new password"
-            type="password"
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            sx={fieldSx}
-          />
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            disabled={loading}
-            sx={{ py: 1.2, fontWeight: 600, bgcolor: AUTH_SLATE, '&:hover': { bgcolor: AUTH_SLATE_DARK } }}
-          >
-            {loading ? 'Updating…' : 'Update password'}
-          </Button>
-          <Button fullWidth variant="text" onClick={() => { setShowSetPassword(false); setError(''); }} sx={{ color: AUTH_SLATE }}>
-            Back to sign in
-          </Button>
-        </Stack>
-      </Box>
-    );
-  } else if (showForgotPassword) {
+  if (showForgotPassword) {
     formBody = forgotSuccess ? (
       <Stack spacing={1.75}>
         <Alert severity="success">
-          Check your email for a link to reset your password. The link may take a few minutes to arrive.
+          Check your email for a link to reset your password. Open that link — it opens a Set new password page (not
+          this screen). The message may come from Supabase until custom SMTP is configured. Links expire after one use
+          and may take a few minutes to arrive.
         </Alert>
         <Button
           fullWidth

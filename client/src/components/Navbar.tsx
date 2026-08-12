@@ -112,7 +112,7 @@ function findNavLabel(items: NavItem[], path: string): string | undefined {
 }
 
 const Navbar: React.FC = () => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, isPasswordRecovery } = useAuth();
   const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser, isLoading: profileLoading, mentorWorkMode, canToggleMentorWorkMode, setMentorWorkMode } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
@@ -465,6 +465,11 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
   );
 
   if (!currentUser) {
+    return null;
+  }
+
+  // Hide app chrome during email password-reset completion.
+  if (isPasswordRecovery || location.pathname === '/reset-password') {
     return null;
   }
 

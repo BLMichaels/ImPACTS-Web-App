@@ -19,6 +19,7 @@ import IdleTimeout from './components/IdleTimeout';
 import SecurityGateShell from './components/SecurityGateShell';
 import { PhiGuardProvider } from './components/PhiGuard';
 import LoginPage from './pages/LoginPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import AccessByInvitationPage from './pages/AccessByInvitationPage';
 import NotFoundPage from './pages/NotFoundPage';
 import AccountPage from './pages/AccountPage';
@@ -178,7 +179,7 @@ const ProtectedRoute = ({
   children: React.ReactNode; 
   allowedRoles?: UserRole[];
 }) => {
-  const { currentUser, loading } = useAuth();
+  const { currentUser, loading, isPasswordRecovery } = useAuth();
   const { userProfile, isLoading: profileLoading, userRole, actualRole, hasAdminAccess } = useUserProfile();
   
   // Show loading while contexts are initializing
@@ -189,6 +190,10 @@ const ProtectedRoute = ({
         <p>Loading...</p>
       </Container>
     );
+  }
+
+  if (isPasswordRecovery) {
+    return <Navigate to="/reset-password" replace />;
   }
   
   if (!currentUser) return <Navigate to="/login" />;
@@ -228,11 +233,14 @@ const ProtectedRoute = ({
 
 // Smart redirect: logged-out -> /login; logged-in -> role dashboard (e.g. /admin/dashboard, /mentor/dashboard)
 const RoleBasedRedirect = () => {
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, isPasswordRecovery } = useAuth();
   const { userProfile, isLoading: profileLoading } = useUserProfile();
 
   if (authLoading || profileLoading) {
     return <LoadingSpinner />;
+  }
+  if (isPasswordRecovery) {
+    return <Navigate to="/reset-password" replace />;
   }
   if (!currentUser) {
     return <Navigate to="/login" replace />;
@@ -246,7 +254,8 @@ function AppShell() {
   const isFullBleedPublic =
     location.pathname === '/' ||
     location.pathname === '/login' ||
-    location.pathname === '/register';
+    location.pathname === '/register' ||
+    location.pathname === '/reset-password';
 
   return (
     <SecurityGateShell>
@@ -292,6 +301,7 @@ function AppShell() {
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/app" element={<RoleBasedRedirect />} />
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/register" element={<AccessByInvitationPage />} />
                   <Route path="/invite/:code" element={<InvitationPage />} />
                   

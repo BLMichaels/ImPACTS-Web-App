@@ -30,12 +30,12 @@ const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
  * wiping overnight idle and keeping users logged in after a refresh.
  */
 const IdleTimeout = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, isPasswordRecovery } = useAuth();
   const lastWriteRef = useRef(0);
   const signingOutRef = useRef(false);
 
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!currentUser?.id || isPasswordRecovery) return;
 
     signingOutRef.current = false;
     lastWriteRef.current = getLastActivityAt() || Date.now();
@@ -102,7 +102,7 @@ const IdleTimeout = () => {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('storage', onStorage);
     };
-  }, [currentUser?.id, currentUser?.email]);
+  }, [currentUser?.id, currentUser?.email, isPasswordRecovery]);
 
   return null;
 };

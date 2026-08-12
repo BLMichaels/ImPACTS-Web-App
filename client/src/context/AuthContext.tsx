@@ -10,6 +10,13 @@ import {
 } from '../utils/passwordPolicy';
 import { setUserData } from '../utils/userData';
 import { clearSessionActivity, beginSessionClock, ensureSessionClock, getLastActivityAt, getSessionExpiryReason, markSessionActive } from '../utils/sessionActivity';
+import {
+  capturePasswordRecoveryFromUrl,
+  clearPasswordRecoverySession,
+  getPasswordResetRedirectUrl,
+  isPasswordRecoverySession,
+  markPasswordRecoveryPending,
+} from '../utils/authFlow';
 
 export type LoginResult = 'complete' | 'mfa_required';
 
@@ -29,6 +36,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   resetPasswordForEmail: (email: string, redirectTo?: string) => Promise<void>;
   updatePassword: (newPassword: string, currentPassword?: string) => Promise<void>;
+  /** True while completing an email password-reset link. */
+  isPasswordRecovery: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [authLifecycleNote, setAuthLifecycleNote] = useState<string | null>(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => isPasswordRecoverySession());
 
   const login = async (email: string, password: string): Promise<LoginResult> => {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -115,8 +125,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resetPasswordForEmail = async (email: string, redirectTo?: string) => {
+    const target = redirectTo || getPasswordResetRedirectUrl();
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: redirectTo || (typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined)
+      redirectTo: target,
     });
     if (error) throw error;
     void logSecurityEvent('password_reset_requested', { email });
@@ -145,7 +156,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    // Re-capture in case this provider mounts after the URL was already set.
+    if (capturePasswordRecoveryFromUrl()) {
+      setIsPasswordRecovery(true);
+    }
+
     const rejectExpiredSession = async (reason: 'idle' | 'absolute') => {
+      // Never idle-timeout someone mid password-reset.
+      if (isPasswordRecoverySession()) return;
+
       void logSecurityEvent('idle_timeout_logout', {
         metadata: { reason, source: 'session_restore' },
       });
@@ -172,7 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (session) {
         const reason = getSessionExpiryReason(Date.now(), { requireActivityStamp: true });
-        if (reason) {
+        if (reason && !isPasswordRecoverySession()) {
           await rejectExpiredSession(reason);
           return;
         }
@@ -184,42 +203,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    // Listen for auth changes (refresh, sign-out, etc.)
+    // Listen for auth changes (refresh, sign-out, recovery, etc.)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'TOKEN_REFRESHED') {
+      if (event === 'PASSWORD_RECOVERY') {
+        markPasswordRecoveryPending();
+        setIsPasswordRecovery(true);
+        beginSessionClock();
+        setAuthLifecycleNote(null);
+      } else if (event === 'TOKEN_REFRESHED') {
         setAuthLifecycleNote(null);
         // Token refresh is not human activity — do not extend idle clock.
       } else if (event === 'SIGNED_OUT') {
         setAuthLifecycleNote(null);
         clearSessionActivity();
+        // Keep recovery flag only if still on the reset page waiting for a fresh link error state.
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/reset-password')) {
+          clearPasswordRecoverySession();
+          setIsPasswordRecovery(false);
+        }
       } else if (event === 'SIGNED_IN') {
         // Fresh login often has no activity stamps yet (login() also calls
         // beginSessionClock). Only reject when stamps exist and are expired —
         // never treat "missing stamps" as idle here or login races sign-out.
-        const last = getLastActivityAt();
-        if (last > 0) {
-          const reason = getSessionExpiryReason(Date.now());
-          if (reason) {
-            void rejectExpiredSession(reason);
-            return;
-          }
-          ensureSessionClock();
-        } else {
+        if (isPasswordRecoverySession()) {
+          setIsPasswordRecovery(true);
           beginSessionClock();
+          setAuthLifecycleNote(null);
+        } else {
+          const last = getLastActivityAt();
+          if (last > 0) {
+            const reason = getSessionExpiryReason(Date.now());
+            if (reason) {
+              void rejectExpiredSession(reason);
+              return;
+            }
+            ensureSessionClock();
+          } else {
+            beginSessionClock();
+          }
+          setAuthLifecycleNote(null);
         }
-        setAuthLifecycleNote(null);
       } else if (event === 'USER_UPDATED') {
         setAuthLifecycleNote(null);
       } else if (event === 'INITIAL_SESSION') {
         if (session) {
-          const reason = getSessionExpiryReason(Date.now(), { requireActivityStamp: true });
-          if (reason) {
-            void rejectExpiredSession(reason);
-            return;
+          if (isPasswordRecoverySession()) {
+            setIsPasswordRecovery(true);
+            ensureSessionClock();
+          } else {
+            const reason = getSessionExpiryReason(Date.now(), { requireActivityStamp: true });
+            if (reason) {
+              void rejectExpiredSession(reason);
+              return;
+            }
+            ensureSessionClock();
           }
-          ensureSessionClock();
         }
       }
       setSession(session);
@@ -237,6 +277,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!s) {
           setSession(null);
           setCurrentUser(null);
+          return;
+        }
+        if (isPasswordRecoverySession()) {
+          setSession(s);
+          setCurrentUser(extendUser(s.user));
           return;
         }
         const reason = getSessionExpiryReason(Date.now(), { requireActivityStamp: true });
@@ -266,6 +311,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     resetPasswordForEmail,
     updatePassword,
+    isPasswordRecovery,
   };
 
   if (loading) {
