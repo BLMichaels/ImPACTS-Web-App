@@ -32,3 +32,7 @@ coverage/
 *.backup
 .vercel
 .env*.local
+
+# Local MFA video generator artifacts (if regenerated)
+client/public/media/.build-mfa-video/
+scripts/.venv-mfa-video/

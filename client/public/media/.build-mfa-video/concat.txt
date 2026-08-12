@@ -1,3 +1,0 @@
-file '/Volumes/4TB Ext HD/BenjaminMichaels-EXT/Documents/GitHub/ImPACTS-Web-App/client/public/media/.build-mfa-video/s1.mp4'
-file '/Volumes/4TB Ext HD/BenjaminMichaels-EXT/Documents/GitHub/ImPACTS-Web-App/client/public/media/.build-mfa-video/s2.mp4'
-file '/Volumes/4TB Ext HD/BenjaminMichaels-EXT/Documents/GitHub/ImPACTS-Web-App/client/public/media/.build-mfa-video/s3.mp4'
