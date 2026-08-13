@@ -25,7 +25,11 @@ Apply scripts in the **Supabase SQL editor** for production. Track what you ran 
    `npx supabase config push --project-ref ftpifgzzfwpujlvbqqhu --yes`
 4. Client uses **implicit** auth flow so recovery links work when the email is opened on a different device than the one that requested the reset.
 5. Recovery intent is stored in `sessionStorage` before Supabase strips `#type=recovery` from the URL; MFA/terms/idle gates are skipped until the new password is saved.
-6. **Email branding (from peccsupporttool.com):** configure Custom SMTP + Auth email templates in the Supabase Dashboard (Authentication → Emails). Default Supabase sender is expected until SMTP is configured — this is dashboard-only, not a code deploy.
+6. **Custom SMTP (production):** Zoho Mail for `no.reply@impactscollaborative.com`
+   - Host `smtp.zoho.com`, port `587`, sender name `PECC Support Tool`
+   - Use a Zoho **Application-Specific Password** (not the mailbox login password)
+   - `rate_limit_email_sent` raised to 30/hour while custom SMTP is enabled
+   - Auth email templates: Authentication → Email Templates (reset-password branded)
 
 Password policy is **12+ characters**, enforced at four layers:
 
