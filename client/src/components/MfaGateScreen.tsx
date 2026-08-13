@@ -18,6 +18,7 @@ import { IDLE_TIMEOUT_MINUTES, ABSOLUTE_SESSION_HOURS } from '../utils/sessionPo
 import AuthMarketingShell, { AUTH_SLATE, AUTH_SLATE_DARK } from './AuthMarketingShell';
 import MfaEnrollmentForm, { MFA_ENROLLMENT_FORM_ID } from './MfaEnrollmentForm';
 import MfaChallengeForm from './MfaChallengeForm';
+import MfaSetupGuiddeEmbed from './MfaSetupGuiddeEmbed';
 
 interface MfaGateScreenProps {
   mode: 'mfa-challenge' | 'mfa-enroll';
@@ -78,14 +79,14 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
         sx={{
           flex: 1,
           width: '100%',
-          maxWidth: isEnroll ? 1100 : 1000,
+          maxWidth: isEnroll ? 1280 : 1000,
           mx: 'auto',
           px: { xs: 2, sm: 3 },
           py: { xs: 1, md: 2 },
           pb: { xs: 4, md: 5 },
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: { md: 'center' },
+          justifyContent: { md: isEnroll ? 'flex-start' : 'center' },
           gap: { xs: 2.5, md: 3 },
         }}
       >
@@ -97,9 +98,9 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
           >
             {isEnroll ? 'Set up multi-factor authentication' : 'Verify your identity'}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 640, lineHeight: 1.6 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 720, lineHeight: 1.6 }}>
             {isEnroll
-              ? 'One-time setup. Complete MFA before you can use the PECC Support Tool.'
+              ? 'One-time setup. Watch the guide (or follow the steps), then scan the QR code with your authenticator app before you can use the PECC Support Tool.'
               : 'Enter your authenticator code to continue. You cannot open the PECC Support Tool until verification is complete.'}
           </Typography>
         </Box>
@@ -109,7 +110,9 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
             display: 'grid',
             gridTemplateColumns: {
               xs: '1fr',
-              md: isEnroll ? 'minmax(0, 1fr)' : 'minmax(220px, 280px) minmax(0, 1fr)',
+              md: isEnroll
+                ? 'minmax(280px, 700px) minmax(320px, 1fr)'
+                : 'minmax(220px, 280px) minmax(0, 1fr)',
             },
             ...(!isEnroll && {
               gridTemplateRows: { md: '1fr auto' },
@@ -118,6 +121,18 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
             alignItems: { xs: 'start', md: isEnroll ? 'start' : 'stretch' },
           }}
         >
+          {isEnroll ? (
+            <Box
+              sx={{
+                order: { xs: 2, md: 1 },
+                gridColumn: { md: 1 },
+                minWidth: 0,
+              }}
+            >
+              <MfaSetupGuiddeEmbed />
+            </Box>
+          ) : null}
+
           {!isEnroll ? (
             <Box
               sx={{
@@ -191,9 +206,10 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
           <Box
             sx={{
               order: { xs: 1, md: 2 },
+              gridColumn: { md: 2 },
+              minWidth: 0,
               ...(!isEnroll && {
                 gridRow: { md: 1 },
-                gridColumn: { md: 2 },
                 height: { md: '100%' },
                 display: 'flex',
                 flexDirection: 'column',
