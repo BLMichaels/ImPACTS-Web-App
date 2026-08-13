@@ -79,7 +79,7 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
         sx={{
           flex: 1,
           width: '100%',
-          maxWidth: isEnroll ? 1280 : 1000,
+          maxWidth: isEnroll ? 1100 : 1000,
           mx: 'auto',
           px: { xs: 2, sm: 3 },
           py: { xs: 1, md: 2 },
@@ -100,41 +100,116 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 720, lineHeight: 1.6 }}>
             {isEnroll
-              ? 'One-time setup. Watch the guide (or follow the steps), then scan the QR code with your authenticator app before you can use the PECC Support Tool.'
+              ? 'One-time setup. Complete the steps below to link your authenticator app, then use the video guide if you need more help.'
               : 'Enter your authenticator code to continue. You cannot open the PECC Support Tool until verification is complete.'}
           </Typography>
         </Box>
 
+        {isEnroll ? (
+          <Stack spacing={{ xs: 2.5, md: 3 }}>
+            <Box
+              sx={{
+                p: { xs: 2.25, sm: 3 },
+                borderRadius: 3,
+                bgcolor: 'rgba(255,255,255,0.82)',
+                backdropFilter: 'blur(16px)',
+                border: '1px solid',
+                borderColor: alpha('#fff', 0.9),
+                boxShadow: `0 20px 48px ${alpha(AUTH_SLATE, 0.12)}`,
+              }}
+            >
+              <MfaEnrollmentForm
+                key={enrollKey}
+                email={currentUser.email}
+                userId={currentUser.id}
+                onEnrolled={handleSuccess}
+                layout="split"
+                hideIntro
+                hideActions
+                onSubmitStateChange={({ loading, canSubmit }) => {
+                  setEnrollSubmitting(loading);
+                  setEnrollCanSubmit(canSubmit);
+                }}
+              />
+            </Box>
+
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 1.5,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Button
+                onClick={() => setEnrollKey((k) => k + 1)}
+                color="inherit"
+                disabled={enrollSubmitting}
+                sx={{ textTransform: 'none', fontWeight: 500 }}
+              >
+                Get new QR code
+              </Button>
+              <Box sx={{ display: 'flex', gap: 1.25, ml: 'auto' }}>
+                <Button
+                  onClick={handleLogout}
+                  color="inherit"
+                  disabled={enrollSubmitting}
+                  sx={{ textTransform: 'none' }}
+                >
+                  Log out
+                </Button>
+                <Button
+                  type="submit"
+                  form={MFA_ENROLLMENT_FORM_ID}
+                  variant="contained"
+                  disabled={!enrollCanSubmit || enrollSubmitting}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    minWidth: 180,
+                    bgcolor: AUTH_SLATE,
+                    '&:hover': { bgcolor: AUTH_SLATE_DARK },
+                  }}
+                >
+                  {enrollSubmitting ? 'Verifying…' : 'Enable authenticator'}
+                </Button>
+              </Box>
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.25 }}>
+                Video &amp; step-by-step guide
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, lineHeight: 1.55 }}>
+                Prefer a walkthrough? Watch the short video and follow along with the written steps.
+              </Typography>
+              <MfaSetupGuiddeEmbed />
+            </Box>
+
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', textAlign: 'center', lineHeight: 1.5 }}
+            >
+              Do not enter Protected Health Information (PHI). Free-text fields are screened for common HIPAA
+              identifiers.
+            </Typography>
+          </Stack>
+        ) : (
         <Box
           sx={{
             display: 'grid',
             gridTemplateColumns: {
               xs: '1fr',
-              md: isEnroll
-                ? 'minmax(280px, 700px) minmax(320px, 1fr)'
-                : 'minmax(220px, 280px) minmax(0, 1fr)',
+              md: 'minmax(220px, 280px) minmax(0, 1fr)',
             },
-            ...(!isEnroll && {
-              gridTemplateRows: { md: '1fr auto' },
-            }),
+            gridTemplateRows: { md: '1fr auto' },
             gap: { xs: 2.5, md: 3 },
-            alignItems: { xs: 'start', md: isEnroll ? 'start' : 'stretch' },
+            alignItems: { xs: 'start', md: 'stretch' },
           }}
         >
-          {isEnroll ? (
-            <Box
-              sx={{
-                order: { xs: 2, md: 1 },
-                gridColumn: { md: 1 },
-                minWidth: 0,
-              }}
-            >
-              <MfaSetupGuiddeEmbed />
-            </Box>
-          ) : null}
-
-          {!isEnroll ? (
-            <Box
+          <Box
               sx={{
                 p: 2,
                 borderRadius: 3,
@@ -201,20 +276,17 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
                 ))}
               </Stack>
             </Box>
-          ) : null}
 
           <Box
             sx={{
               order: { xs: 1, md: 2 },
               gridColumn: { md: 2 },
+              gridRow: { md: 1 },
               minWidth: 0,
-              ...(!isEnroll && {
-                gridRow: { md: 1 },
-                height: { md: '100%' },
-                display: 'flex',
-                flexDirection: 'column',
-                minHeight: 0,
-              }),
+              height: { md: '100%' },
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
             }}
           >
             <Box
@@ -226,118 +298,41 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
                 border: '1px solid',
                 borderColor: alpha('#fff', 0.9),
                 boxShadow: `0 20px 48px ${alpha(AUTH_SLATE, 0.12)}`,
-                ...(!isEnroll && {
-                  flex: { md: 1 },
-                  height: { md: '100%' },
-                  display: 'flex',
-                  flexDirection: 'column',
-                }),
+                flex: { md: 1 },
+                height: { md: '100%' },
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
-              {isEnroll ? (
-                <MfaEnrollmentForm
-                  key={enrollKey}
-                  email={currentUser.email}
-                  userId={currentUser.id}
-                  onEnrolled={handleSuccess}
-                  layout="split"
-                  hideIntro
-                  hideActions
-                  onSubmitStateChange={({ loading, canSubmit }) => {
-                    setEnrollSubmitting(loading);
-                    setEnrollCanSubmit(canSubmit);
-                  }}
-                />
-              ) : (
-                <MfaChallengeForm
-                  email={currentUser.email}
-                  userId={currentUser.id}
-                  onSuccess={handleSuccess}
-                  onCancel={handleLogout}
-                  cancelLabel="Log out"
-                  onNeedsEnrollment={() => setEffectiveMode('mfa-enroll')}
-                />
-              )}
+              <MfaChallengeForm
+                email={currentUser.email}
+                userId={currentUser.id}
+                onSuccess={handleSuccess}
+                onCancel={handleLogout}
+                cancelLabel="Log out"
+                onNeedsEnrollment={() => setEffectiveMode('mfa-enroll')}
+              />
             </Box>
-
-            {isEnroll ? (
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 1.5,
-                  mt: 2,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <Button
-                  onClick={() => setEnrollKey((k) => k + 1)}
-                  color="inherit"
-                  disabled={enrollSubmitting}
-                  sx={{ textTransform: 'none', fontWeight: 500 }}
-                >
-                  Get new QR code
-                </Button>
-                <Box sx={{ display: 'flex', gap: 1.25, ml: 'auto' }}>
-                  <Button
-                    onClick={handleLogout}
-                    color="inherit"
-                    disabled={enrollSubmitting}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    Log out
-                  </Button>
-                  <Button
-                    type="submit"
-                    form={MFA_ENROLLMENT_FORM_ID}
-                    variant="contained"
-                    disabled={!enrollCanSubmit || enrollSubmitting}
-                    sx={{
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      minWidth: 180,
-                      bgcolor: AUTH_SLATE,
-                      '&:hover': { bgcolor: AUTH_SLATE_DARK },
-                    }}
-                  >
-                    {enrollSubmitting ? 'Verifying…' : 'Enable authenticator'}
-                  </Button>
-                </Box>
-              </Box>
-            ) : null}
-
-            {isEnroll ? (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: 'block', textAlign: 'center', mt: 2, lineHeight: 1.5 }}
-              >
-                Do not enter Protected Health Information (PHI). Free-text fields are screened for common HIPAA
-                identifiers.
-              </Typography>
-            ) : null}
           </Box>
 
-          {!isEnroll ? (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{
-                display: 'block',
-                textAlign: 'center',
-                mt: { xs: -0.5, md: 0 },
-                lineHeight: 1.5,
-                order: { xs: 3, md: 3 },
-                gridRow: { md: 2 },
-                gridColumn: { md: 2 },
-              }}
-            >
-              Do not enter Protected Health Information (PHI). Free-text fields are screened for common HIPAA
-              identifiers.
-            </Typography>
-          ) : null}
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              display: 'block',
+              textAlign: 'center',
+              mt: { xs: -0.5, md: 0 },
+              lineHeight: 1.5,
+              order: { xs: 3, md: 3 },
+              gridRow: { md: 2 },
+              gridColumn: { md: 2 },
+            }}
+          >
+            Do not enter Protected Health Information (PHI). Free-text fields are screened for common HIPAA
+            identifiers.
+          </Typography>
         </Box>
+        )}
       </Box>
     </AuthMarketingShell>
   );
