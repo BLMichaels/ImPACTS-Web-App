@@ -38,7 +38,7 @@ interface SystemStats {
 
 const AdminDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, effectiveUserId } = useUserProfile();
   
   const [stats, setStats] = useState<SystemStats>({
     totalUsers: 0,
@@ -292,7 +292,7 @@ const AdminDashboardPage: React.FC = () => {
 
       </Grid>
 
-      <DashboardResources userId={currentUser?.uid} />
+      <DashboardResources key={effectiveUserId || currentUser?.uid || 'resources'} userId={effectiveUserId || currentUser?.uid} personalAccount />
     </Box>
   );
 };

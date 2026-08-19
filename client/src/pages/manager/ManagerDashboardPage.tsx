@@ -49,7 +49,7 @@ interface MentorSummary {
 
 const ManagerDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUserProfile();
+  const { userProfile, effectiveUserId } = useUserProfile();
   const navigate = useNavigate();
   
   const [stats, setStats] = useState<DashboardStats>({
@@ -326,7 +326,7 @@ const ManagerDashboardPage: React.FC = () => {
 
       </Grid>
 
-      <DashboardResources userId={currentUser?.uid} />
+      <DashboardResources key={effectiveUserId || currentUser?.uid || 'resources'} userId={effectiveUserId || currentUser?.uid} personalAccount />
     </Box>
   );
 };

@@ -943,7 +943,7 @@ const MentorDashboardPage: React.FC = () => {
         </AdminSection>
       )}
 
-      <DashboardResources userId={effectiveUserId ?? currentUser?.uid} />
+      <DashboardResources key={effectiveUserId || currentUser?.uid || 'resources'} userId={effectiveUserId ?? currentUser?.uid} personalAccount />
     </AdminPageShell>
   );
 };

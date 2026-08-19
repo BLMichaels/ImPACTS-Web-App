@@ -4717,6 +4717,11 @@ const AdminCRMPage: React.FC = () => {
                 Manage custom fields
               </Button>
             </Tooltip>
+            <Tooltip title="Named mailing lists for Staff, PECCs, and other CRM contacts">
+              <Button startIcon={<ListAltIcon />} onClick={() => setCrmTab(LISTS_TAB_INDEX)} size="small" variant={tabValue === LISTS_TAB_INDEX ? 'contained' : 'outlined'} color={tabValue === LISTS_TAB_INDEX ? 'secondary' : 'inherit'}>
+                Email lists
+              </Button>
+            </Tooltip>
             <Button
               variant="contained"
               color="secondary"
@@ -4864,7 +4869,7 @@ const AdminCRMPage: React.FC = () => {
             <Tab label="PECCs" />
             <Tab label="Staff" />
             <Tab label="Other" />
-            <Tab label="Lists" />
+            <Tab label="Email lists" />
             <Tab label="Team" />
           </Tabs>
         </Box>

@@ -73,9 +73,11 @@ const formatResourceUrl = (url: string): string => {
 interface DashboardResourcesProps {
   userId: string | undefined;
   isMobile?: boolean;
+  /** When true, copy explains this toolkit belongs to one login, not a hospital. */
+  personalAccount?: boolean;
 }
 
-const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobile = false }) => {
+const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobile = false, personalAccount = false }) => {
   const theme = useTheme();
   const [resources, setResources] = useState<DashboardResource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -461,7 +463,9 @@ const DashboardResources: React.FC<DashboardResourcesProps> = ({ userId, isMobil
             Resources & tools
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.55 }}>
-            Quick access to the web links you use most
+            {personalAccount
+              ? 'Personal to this login — not shared with other Staff or Admin accounts, and not part of a hospital handoff.'
+              : 'Quick access to the web links you use most'}
             {viewMode === 'list' ? ' · drag rows or use arrows to reorder' : ''}
           </Typography>
         </Box>
