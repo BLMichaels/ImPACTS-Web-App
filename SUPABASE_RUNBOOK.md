@@ -61,7 +61,7 @@ ImPACTS uses **Supabase TOTP MFA** (free; authenticator apps such as Google Auth
 
 Supabase Auth MFA TOTP is enabled in `supabase/config.toml` (`[auth.mfa.totp]`). Apply `MFA_SECURITY_EVENTS.sql` for MFA audit event types.
 
-## Feature-specific (apply if you use the feature)
+- CRM email lists: `CRM_EMAIL_LISTS.sql` — Admin CRM **Lists** tab (named audiences for Staff/PECC/etc. outreach).
 
 - Checklists / mentors: `COMPLETE_CHECKLIST_MIGRATION.sql`  
 - Edge rate table: `EDGE_FUNCTION_RATE_LIMITS.sql` (for durable limits on `complete-invitation-registration`)  

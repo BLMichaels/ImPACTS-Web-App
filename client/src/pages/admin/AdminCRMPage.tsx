@@ -17,6 +17,7 @@ import { useUserProfile } from '../../context/UserProfileContext';
 import { useUsageAnalytics } from '../../context/UsageAnalyticsContext';
 import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database';
 import AdminTeamTab from './AdminTeamTab';
+import AdminCrmEmailListsTab from './AdminCrmEmailListsTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { MIN_PASSWORD_LENGTH } from '../../utils/passwordPolicy';
@@ -47,6 +48,12 @@ import {
   adminSectionShellSx,
 } from '../../components/admin/AdminPageChrome';
 import { CRM_CONTACT_TYPE_LABELS as TYPE_LABELS, CRM_CONTACT_TYPE_COLORS as TYPE_COLORS } from '../../utils/crmLabels';
+import {
+  addContactsToCrmEmailList,
+  createCrmEmailList,
+  fetchCrmEmailLists,
+  type CrmEmailList,
+} from '../../utils/crmEmailLists';
 import {
   Alert,
   Box,
@@ -128,7 +135,8 @@ import {
   Upload as UploadIcon,
   Groups as GroupsIcon,
   Visibility as VisibilityIcon,
-  ExpandMore as ExpandMoreIcon
+  ExpandMore as ExpandMoreIcon,
+  ListAlt as ListAltIcon,
 } from '@mui/icons-material';
 
 export type ContactType = 'organization' | 'hospital' | 'system' | 'hiring_group' | 'manager' | 'mentor' | 'pecc' | 'staff' | 'other';
@@ -263,8 +271,9 @@ function getLinkedSystemIdForHospital(hospitalContact: Contact, allContacts: Con
 }
 
 /** Tab index for Team (user management) - when selected, show AdminTeamTab instead of contacts. */
-const TEAM_TAB_INDEX = 8;
-const CRM_TAB_QUERY_VALUES = ['all', 'organizations', 'hospitals', 'managers', 'mentors', 'peccs', 'staff', 'other', 'team'] as const;
+const LISTS_TAB_INDEX = 8;
+const TEAM_TAB_INDEX = 9;
+const CRM_TAB_QUERY_VALUES = ['all', 'organizations', 'hospitals', 'managers', 'mentors', 'peccs', 'staff', 'other', 'lists', 'team'] as const;
 
 const COLUMNS: { id: SortField | 'phone' | 'actions' | 'programs' | 'linkedTo' | 'assignedHospitals'; label: string; sortable?: boolean; defaultVisible?: boolean }[] = [
   { id: 'firstName', label: 'First Name', sortable: true, defaultVisible: true },
@@ -529,6 +538,12 @@ const AdminCRMPage: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>('lastName');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [emailLists, setEmailLists] = useState<CrmEmailList[]>([]);
+  const [addToListOpen, setAddToListOpen] = useState(false);
+  const [addToListId, setAddToListId] = useState<string>('');
+  const [addToListNewName, setAddToListNewName] = useState('');
+  const [addToListBusy, setAddToListBusy] = useState(false);
+  const [addToListMessage, setAddToListMessage] = useState<string | null>(null);
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
   const [detailContactUserId, setDetailContactUserId] = useState<string | null>(null); // Resolved user id for "Manage permissions"
   const [detailSupervisorInfo, setDetailSupervisorInfo] = useState<{
@@ -2371,9 +2386,8 @@ const AdminCRMPage: React.FC = () => {
       })();
       if (!matchesSearch) return false;
 
-      if (tabValue === TEAM_TAB_INDEX) {
-        // Team tab renders a different panel (AdminTeamTab), so we don't want contact-type filtering
-        // to interfere with that view.
+      if (tabValue === TEAM_TAB_INDEX || tabValue === LISTS_TAB_INDEX) {
+        // Team and Lists tabs render different panels, so skip contact-type filtering.
       } else if (crmQuickTypeFilter !== 'all') {
         // Summary cards filter by exact contact.type.
         if (crmQuickTypeFilter === 'organizationGroup') {
@@ -4115,6 +4129,49 @@ const AdminCRMPage: React.FC = () => {
     setBulkStatusAnchor(null);
   };
 
+  const openAddToListDialog = async () => {
+    setAddToListMessage(null);
+    setAddToListNewName('');
+    try {
+      const lists = await fetchCrmEmailLists();
+      setEmailLists(lists);
+      setAddToListId(lists[0]?.id || '');
+    } catch (err) {
+      setAddToListMessage(
+        err instanceof Error
+          ? err.message
+          : 'Could not load lists. Run CRM_EMAIL_LISTS.sql in the Supabase SQL Editor if this is the first time.'
+      );
+    }
+    prepareModalOpen();
+    setAddToListOpen(true);
+  };
+
+  const handleAddSelectedToList = async () => {
+    const selected = contacts.filter((c) => selectedIds.has(c.id));
+    if (selected.length === 0) return;
+    setAddToListBusy(true);
+    setAddToListMessage(null);
+    try {
+      let listId = addToListId;
+      if (!listId) {
+        const created = await createCrmEmailList(addToListNewName || 'Untitled list');
+        listId = created.id;
+        setEmailLists((prev) => [...prev, created]);
+      }
+      const result = await addContactsToCrmEmailList(listId, selected);
+      const bits = [`Added ${result.added}`];
+      if (result.skippedNoEmail) bits.push(`${result.skippedNoEmail} had no email`);
+      if (result.skippedDuplicate) bits.push(`${result.skippedDuplicate} already on the list`);
+      setAddToListMessage(bits.join(' · '));
+      if (result.added > 0) setSelectedIds(new Set());
+    } catch (err) {
+      setAddToListMessage(err instanceof Error ? err.message : 'Could not add contacts to the list.');
+    } finally {
+      setAddToListBusy(false);
+    }
+  };
+
   // String similarity function (Levenshtein distance normalized)
   const stringSimilarity = (str1: string, str2: string): number => {
     const s1 = (str1 || '').toLowerCase().trim();
@@ -4630,7 +4687,7 @@ const AdminCRMPage: React.FC = () => {
       <AdminHero
         overline="Admin"
         title="CRM"
-        description="Manage organizations, hospitals, and contacts across ImPACTS — import, export, and keep records up to date."
+        description="Manage organizations, hospitals, contacts, and email lists across ImPACTS — import, export, and keep records up to date."
         actions={
           <>
             {canSeeReminders && (
@@ -4681,7 +4738,7 @@ const AdminCRMPage: React.FC = () => {
           </Button>
         </Alert>
       )}
-      {usersLoadError && tabValue !== TEAM_TAB_INDEX && (
+      {usersLoadError && tabValue !== TEAM_TAB_INDEX && tabValue !== LISTS_TAB_INDEX && (
         <Alert severity="warning" onClose={() => setUsersLoadError(null)}>
           Team members (managers, mentors, PECCs) could not be loaded: {usersLoadError}. Check your connection and that you have access. You can manage users in the Team tab.
           <Button size="small" sx={{ ml: 1 }} onClick={() => { setUsersLoadError(null); void loadAllContactsFromSupabase(); }}>
@@ -4689,8 +4746,8 @@ const AdminCRMPage: React.FC = () => {
           </Button>
         </Alert>
       )}
-      {/* Summary cards – single row (hidden on Team tab) */}
-      {tabValue !== TEAM_TAB_INDEX && (
+      {/* Summary cards – single row (hidden on Team and Lists tabs) */}
+      {tabValue !== TEAM_TAB_INDEX && tabValue !== LISTS_TAB_INDEX && (
       <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1, overflowX: 'auto', pb: 0.5 }}>
         {[
           { key: 'all', label: 'All', count: summaryCounts.all },
@@ -4807,12 +4864,17 @@ const AdminCRMPage: React.FC = () => {
             <Tab label="PECCs" />
             <Tab label="Staff" />
             <Tab label="Other" />
+            <Tab label="Lists" />
             <Tab label="Team" />
           </Tabs>
         </Box>
         {tabValue === TEAM_TAB_INDEX ? (
           <Box sx={{ px: { xs: 1.5, md: 2 }, py: { xs: 1.5, md: 2 } }}>
             <AdminTeamTab />
+          </Box>
+        ) : tabValue === LISTS_TAB_INDEX ? (
+          <Box sx={{ px: { xs: 1.5, md: 2 }, py: { xs: 1.5, md: 2 } }}>
+            <AdminCrmEmailListsTab onAddFromDirectory={() => setCrmTab(0)} />
           </Box>
         ) : (
         <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, px: { xs: 1.5, md: 2 }, py: 1.5 }}>
@@ -4948,7 +5010,7 @@ const AdminCRMPage: React.FC = () => {
       </Paper>
 
       {/* Bulk actions bar (contacts only) */}
-      {tabValue !== TEAM_TAB_INDEX && selectedIds.size > 0 && (
+      {tabValue !== TEAM_TAB_INDEX && tabValue !== LISTS_TAB_INDEX && selectedIds.size > 0 && (
         <Paper
           elevation={0}
           sx={{
@@ -4964,6 +5026,9 @@ const AdminCRMPage: React.FC = () => {
           }}
         >
           <Chip label={`${selectedIds.size} selected`} color="secondary" size="small" onDelete={() => setSelectedIds(new Set())} />
+          <Button size="small" variant="outlined" startIcon={<ListAltIcon />} onClick={() => void openAddToListDialog()}>
+            Add to list
+          </Button>
           <Button size="small" variant="outlined" startIcon={<FilterIcon />} onClick={(e) => setBulkStatusAnchor(e.currentTarget)}>
             Change status
           </Button>
@@ -4998,7 +5063,7 @@ const AdminCRMPage: React.FC = () => {
       )}
 
       {/* Content (contacts only; Team tab shows AdminTeamTab above) */}
-      {tabValue !== TEAM_TAB_INDEX && (loading ? (
+      {tabValue !== TEAM_TAB_INDEX && tabValue !== LISTS_TAB_INDEX && (loading ? (
         <Paper elevation={0} sx={{ ...adminSectionShellSx, p: { xs: 2, md: 3 } }}>
           <Grid container spacing={1.5}>
             {[1, 2, 3, 4, 5].map(i => (
@@ -5215,6 +5280,61 @@ const AdminCRMPage: React.FC = () => {
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete
         </MenuItem>
       </Menu>
+
+      <Dialog disableRestoreFocus open={addToListOpen} onClose={() => setAddToListOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ fontWeight: 700 }}>Add {selectedIds.size} contact{selectedIds.size === 1 ? '' : 's'} to a list</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Contacts without an email are skipped. This does not send mail — it builds a reusable address list.
+          </Typography>
+          {addToListMessage && (
+            <Alert severity={/could not|failed|run CRM/i.test(addToListMessage) ? 'error' : 'info'} sx={{ mb: 2 }}>
+              {addToListMessage}
+            </Alert>
+          )}
+          {emailLists.length > 0 ? (
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Existing list</InputLabel>
+              <Select
+                label="Existing list"
+                value={addToListId}
+                onChange={(e) => {
+                  setAddToListId(String(e.target.value));
+                  setAddToListNewName('');
+                }}
+              >
+                {emailLists.map((list) => (
+                  <MenuItem key={list.id} value={list.id}>
+                    {list.name} ({list.member_count ?? 0})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : null}
+          <TextField
+            fullWidth
+            size="small"
+            label={emailLists.length ? 'Or create a new list' : 'New list name'}
+            value={addToListNewName}
+            onChange={(e) => {
+              setAddToListNewName(e.target.value);
+              if (e.target.value.trim()) setAddToListId('');
+            }}
+            placeholder="e.g. Staff newsletter"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddToListOpen(false)}>Close</Button>
+          <Button
+            variant="contained"
+            color="secondary"
+            disabled={addToListBusy || (!addToListId && !addToListNewName.trim())}
+            onClick={() => void handleAddSelectedToList()}
+          >
+            {addToListBusy ? 'Adding…' : 'Add to list'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete confirmation */}
       <Dialog disableRestoreFocus open={deleteConfirmOpen} onClose={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); setDeleteConfirmTyped(''); }}>
