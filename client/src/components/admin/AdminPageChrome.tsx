@@ -83,61 +83,64 @@ export function AdminHero({
 }) {
   return (
     <Paper elevation={0} sx={adminHeroPaperSx}>
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) auto' },
-          gap: 2,
-          alignItems: 'start',
-        }}
-      >
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="overline"
-            sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
-          >
-            {overline}
-          </Typography>
-          <Typography
-            variant="h4"
-            component="h1"
-            sx={{
-              fontWeight: 700,
-              letterSpacing: -0.02,
-              mb: description ? 0.75 : 0,
-              color: 'text.primary',
-              fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
-            }}
-          >
-            {title}
-          </Typography>
-          {description && (
+      <Stack spacing={1.5}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+            gap: 2,
+            width: '100%',
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
             <Typography
-              variant="body1"
-              color="text.secondary"
+              variant="overline"
+              sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
+            >
+              {overline}
+            </Typography>
+            <Typography
+              variant="h4"
+              component="h1"
               sx={{
-                lineHeight: 1.6,
-                fontSize: { xs: '0.925rem', sm: '0.975rem' },
-                maxWidth: 720,
+                fontWeight: 700,
+                letterSpacing: -0.02,
+                color: 'text.primary',
+                fontSize: { xs: '1.45rem', sm: '1.7rem', md: '1.85rem' },
               }}
             >
-              {description}
+              {title}
             </Typography>
+          </Box>
+          {actions && (
+            <Stack
+              direction="row"
+              spacing={1}
+              flexWrap="wrap"
+              useFlexGap
+              alignItems="center"
+              sx={{ justifyContent: { xs: 'flex-start', sm: 'flex-end' }, ml: { sm: 'auto' } }}
+            >
+              {actions}
+            </Stack>
           )}
         </Box>
-        {actions && (
-          <Stack
-            direction="row"
-            spacing={1}
-            flexWrap="wrap"
-            useFlexGap
-            alignItems="center"
-            sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' } }}
+        {description && (
+          <Typography
+            variant="body1"
+            color="text.secondary"
+            sx={{
+              width: '100%',
+              lineHeight: 1.6,
+              fontSize: { xs: '0.925rem', sm: '0.975rem' },
+            }}
           >
-            {actions}
-          </Stack>
+            {description}
+          </Typography>
         )}
-      </Box>
+      </Stack>
     </Paper>
   );
 }
