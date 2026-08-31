@@ -85,14 +85,13 @@ export function AdminHero({
     <Paper elevation={0} sx={adminHeroPaperSx}>
       <Box
         sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) auto' },
           gap: 2,
+          alignItems: 'start',
         }}
       >
-        <Box sx={{ maxWidth: { md: 720 }, flex: 1, minWidth: 0 }}>
+        <Box sx={{ minWidth: 0 }}>
           <Typography
             variant="overline"
             sx={{ color: 'secondary.dark', fontWeight: 700, letterSpacing: 0.1, display: 'block', mb: 0.5 }}
@@ -116,14 +115,25 @@ export function AdminHero({
             <Typography
               variant="body1"
               color="text.secondary"
-              sx={{ lineHeight: 1.6, fontSize: { xs: '0.925rem', sm: '0.975rem' } }}
+              sx={{
+                lineHeight: 1.6,
+                fontSize: { xs: '0.925rem', sm: '0.975rem' },
+                maxWidth: 720,
+              }}
             >
               {description}
             </Typography>
           )}
         </Box>
         {actions && (
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+          <Stack
+            direction="row"
+            spacing={1}
+            flexWrap="wrap"
+            useFlexGap
+            alignItems="center"
+            sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' } }}
+          >
             {actions}
           </Stack>
         )}
