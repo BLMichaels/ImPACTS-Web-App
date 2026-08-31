@@ -20,6 +20,7 @@ import {
 } from '@mui/icons-material';
 import {
   beginTotpEnrollment,
+  MfaAlreadyEnrolledError,
   totpQrDataUrl,
   verifyMfaCode,
 } from '../utils/mfa';
@@ -33,8 +34,12 @@ interface MfaEnrollmentFormProps {
   email?: string | null;
   userId?: string | null;
   onEnrolled: () => void;
+  /** When a verified authenticator already exists — parent should show the login code screen. */
+  onAlreadyEnrolled?: () => void;
   onCancel?: () => void;
   cancelLabel?: string;
+  /** Label shown in the authenticator app; defaults to PECC Support Tool. */
+  friendlyName?: string;
   /** Wider two-column layout for blocking dialogs. */
   layout?: 'stacked' | 'split';
   hideIntro?: boolean;
@@ -46,8 +51,10 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
   email,
   userId,
   onEnrolled,
+  onAlreadyEnrolled,
   onCancel,
   cancelLabel = 'Log out',
+  friendlyName,
   layout = 'stacked',
   hideIntro = false,
   hideActions = false,
@@ -70,7 +77,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
     try {
       setBootstrapping(true);
       setError('');
-      const data = await beginTotpEnrollment();
+      const data = await beginTotpEnrollment(friendlyName);
       if (isCancelled?.()) return;
       setFactorId(data.id);
       setQrCode(data.totp.qr_code);
@@ -80,12 +87,17 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
         setFactorId('');
         setQrCode('');
         setSecret('');
-        setError(err instanceof Error ? err.message : 'Could not start MFA setup.');
+        if (err instanceof MfaAlreadyEnrolledError) {
+          onAlreadyEnrolled?.();
+          setError(err.message);
+        } else {
+          setError(err instanceof Error ? err.message : 'Could not start MFA setup.');
+        }
       }
     } finally {
       if (!isCancelled?.()) setBootstrapping(false);
     }
-  }, []);
+  }, [onAlreadyEnrolled, friendlyName]);
 
   useEffect(() => {
     let cancelled = false;

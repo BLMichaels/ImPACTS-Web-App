@@ -13,7 +13,7 @@ import {
   ShieldOutlined as ShieldIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import { hasVerifiedTotpEnrollment } from '../utils/mfa';
+import { hasVerifiedTotpEnrollment, getAuthenticatorLevels, needsMfaChallenge } from '../utils/mfa';
 import { IDLE_TIMEOUT_MINUTES, ABSOLUTE_SESSION_HOURS } from '../utils/sessionPolicy';
 import AuthMarketingShell, { AUTH_SLATE, AUTH_SLATE_DARK } from './AuthMarketingShell';
 import MfaEnrollmentForm, { MFA_ENROLLMENT_FORM_ID } from './MfaEnrollmentForm';
@@ -51,6 +51,30 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
       cancelled = true;
     };
   }, [mode]);
+
+  /** If enroll was requested but MFA is already set up, show the code screen instead. */
+  useEffect(() => {
+    if (mode !== 'mfa-enroll') return;
+    let cancelled = false;
+    void (async () => {
+      const verified = await hasVerifiedTotpEnrollment();
+      if (cancelled || !verified) return;
+      const levels = await getAuthenticatorLevels();
+      if (cancelled) return;
+      if (needsMfaChallenge(levels)) {
+        setEffectiveMode('mfa-challenge');
+      } else {
+        onComplete();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, onComplete]);
+
+  const handleAlreadyEnrolled = useCallback(() => {
+    setEffectiveMode('mfa-challenge');
+  }, []);
 
   const handleSuccess = useCallback(() => {
     onComplete();
@@ -123,6 +147,7 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
                 email={currentUser.email}
                 userId={currentUser.id}
                 onEnrolled={handleSuccess}
+                onAlreadyEnrolled={handleAlreadyEnrolled}
                 layout="split"
                 hideIntro
                 hideActions
