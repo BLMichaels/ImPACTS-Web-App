@@ -15,9 +15,9 @@ import {
   LockReset as LockResetIcon,
   PhonelinkLock as MfaIcon,
 } from '@mui/icons-material';
-import { useAuth } from '../context/AuthContext';
-import { getPasswordResetRedirectUrl } from '../utils/authFlow';
-import { adminResetUserMfa } from '../utils/adminResetUserMfa';
+import { useAuth } from '../../context/AuthContext';
+import { getPasswordResetRedirectUrl } from '../../utils/authFlow';
+import { adminResetUserMfa } from '../../utils/adminResetUserMfa';
 
 interface CrmPortalSecurityActionsProps {
   email?: string | null;
