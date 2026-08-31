@@ -19,6 +19,7 @@ import { UserRole, normalizeUserRole, PECC_TAB_KEYS } from '../../types/database
 import AdminTeamTab from './AdminTeamTab';
 import AdminCrmEmailListsTab from './AdminCrmEmailListsTab';
 import { SendInvitationDialog } from '../../components/admin/SendInvitationDialog';
+import CrmPortalSecurityActions from '../../components/admin/CrmPortalSecurityActions';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { MIN_PASSWORD_LENGTH } from '../../utils/passwordPolicy';
 import { buildCrmExportCsv } from '../../utils/crmExport';
@@ -6293,6 +6294,13 @@ const AdminCRMPage: React.FC = () => {
                   </Box>
                 ) : null;
               })()}
+              {isPersonType(detailContact.type) && (
+                <CrmPortalSecurityActions
+                  email={detailContact.email}
+                  portalUserId={detailContactUserId ?? detailContact.user_id ?? null}
+                  canManage={canGrantPlatformAdminAccess}
+                />
+              )}
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Details</Typography>

@@ -29,4 +29,4 @@ fi
 echo "Deploying Edge Functions to project: $PROJECT_REF"
 "${SUPABASE_CLI[@]}" functions deploy --project-ref "$PROJECT_REF"
 
-echo "Done. Functions: provision-crm-portal-user, complete-invitation-registration, send-invitation-email (per supabase/functions/)."
+echo "Done. Functions: provision-crm-portal-user, complete-invitation-registration, send-invitation-email, admin-reset-user-mfa, sync-portal-login-email (per supabase/functions/)."
