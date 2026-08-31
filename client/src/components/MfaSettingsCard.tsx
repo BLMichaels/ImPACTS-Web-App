@@ -144,6 +144,7 @@ const MfaSettingsCard: React.FC = () => {
                   email={currentUser?.email}
                   userId={currentUser?.id}
                   friendlyName="PECC Support Tool (backup)"
+                  allowWhenVerified
                   onEnrolled={handleEnrolled}
                   onCancel={() => setShowAddBackup(false)}
                   cancelLabel="Cancel"

@@ -45,8 +45,9 @@ export function useSecurityGate(userId: string | undefined) {
     setStatus('checking');
     try {
       setStatus(await evaluate());
-    } catch {
-      setStatus('ready');
+    } catch (err) {
+      console.warn('[useSecurityGate] MFA evaluation failed; failing closed to challenge', err);
+      setStatus('mfa-challenge');
     }
   }, [evaluate, userId]);
 
@@ -67,8 +68,9 @@ export function useSecurityGate(userId: string | undefined) {
       .then((next) => {
         if (!cancelled) setStatus(next);
       })
-      .catch(() => {
-        if (!cancelled) setStatus('ready');
+      .catch((err) => {
+        console.warn('[useSecurityGate] MFA evaluation failed; failing closed to challenge', err);
+        if (!cancelled) setStatus('mfa-challenge');
       });
 
     return () => {

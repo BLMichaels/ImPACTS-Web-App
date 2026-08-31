@@ -40,6 +40,8 @@ interface MfaEnrollmentFormProps {
   cancelLabel?: string;
   /** Label shown in the authenticator app; defaults to PECC Support Tool. */
   friendlyName?: string;
+  /** Allow enrolling an additional factor when one is already verified (backup authenticator). */
+  allowWhenVerified?: boolean;
   /** Wider two-column layout for blocking dialogs. */
   layout?: 'stacked' | 'split';
   hideIntro?: boolean;
@@ -55,6 +57,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
   onCancel,
   cancelLabel = 'Log out',
   friendlyName,
+  allowWhenVerified = false,
   layout = 'stacked',
   hideIntro = false,
   hideActions = false,
@@ -77,7 +80,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
     try {
       setBootstrapping(true);
       setError('');
-      const data = await beginTotpEnrollment(friendlyName);
+      const data = await beginTotpEnrollment(friendlyName, { allowWhenVerified });
       if (isCancelled?.()) return;
       setFactorId(data.id);
       setQrCode(data.totp.qr_code);
@@ -97,7 +100,7 @@ const MfaEnrollmentForm: React.FC<MfaEnrollmentFormProps> = ({
     } finally {
       if (!isCancelled?.()) setBootstrapping(false);
     }
-  }, [onAlreadyEnrolled, friendlyName]);
+  }, [onAlreadyEnrolled, friendlyName, allowWhenVerified]);
 
   useEffect(() => {
     let cancelled = false;

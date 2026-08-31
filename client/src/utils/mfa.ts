@@ -99,13 +99,20 @@ async function cleanupBlockingTotpFactors(friendlyName: string): Promise<number>
   return removed;
 }
 
-export async function beginTotpEnrollment(friendlyName = DEFAULT_TOTP_FRIENDLY_NAME) {
+export async function beginTotpEnrollment(
+  friendlyName = DEFAULT_TOTP_FRIENDLY_NAME,
+  options?: { allowWhenVerified?: boolean }
+) {
   const factors = await listAllMfaFactors();
-  if (getVerifiedTotpFactors(factors).length > 0) {
+  if (!options?.allowWhenVerified && getVerifiedTotpFactors(factors).length > 0) {
     throw new MfaAlreadyEnrolledError();
   }
 
-  await cleanupUnverifiedMfaFactors();
+  if (options?.allowWhenVerified) {
+    await cleanupBlockingTotpFactors(friendlyName);
+  } else {
+    await cleanupUnverifiedMfaFactors();
+  }
 
   const enrollOnce = async () => {
     const { data, error } = await supabase.auth.mfa.enroll({
@@ -127,7 +134,7 @@ export async function beginTotpEnrollment(friendlyName = DEFAULT_TOTP_FRIENDLY_N
     await cleanupUnverifiedMfaFactors();
 
     const refreshed = await listAllMfaFactors();
-    if (getVerifiedTotpFactors(refreshed).length > 0) {
+    if (!options?.allowWhenVerified && getVerifiedTotpFactors(refreshed).length > 0) {
       throw new MfaAlreadyEnrolledError();
     }
 
