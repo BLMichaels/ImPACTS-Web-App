@@ -135,8 +135,9 @@ const LoginPage = () => {
       <Stack spacing={1.75}>
         <Alert severity="success">
           Check your email for a link to reset your password. Open that link — it opens a Set new password page (not
-          this screen). The message may come from Supabase until custom SMTP is configured. Links expire after one use
-          and may take a few minutes to arrive.
+          this screen).           Messages come from no.reply@impactscollaborative.com (check spam/junk).
+          Links expire after one use and may take a few minutes to arrive. If nothing arrives after 10 minutes, confirm
+          your account exists and ask an admin to resend from Admin → Team.
         </Alert>
         <Button
           fullWidth

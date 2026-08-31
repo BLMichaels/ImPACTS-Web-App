@@ -36,6 +36,7 @@ const ForcePasswordUpdateDialog: React.FC<ForcePasswordUpdateDialogProps> = ({
   const { currentUser, updatePassword, logout } = useAuth();
   const [open, setOpen] = useState(gateManaged);
   const [newPassword, setNewPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [showValidation, setShowValidation] = useState(false);
@@ -74,11 +75,16 @@ const ForcePasswordUpdateDialog: React.FC<ForcePasswordUpdateDialogProps> = ({
       setError('Passwords do not match.');
       return;
     }
+    if (!currentPassword.trim()) {
+      setError('Enter your current password (the one you just used to sign in).');
+      return;
+    }
     try {
       setSaving(true);
-      await updatePassword(newPassword);
+      await updatePassword(newPassword, currentPassword);
       setOpen(false);
       setNewPassword('');
+      setCurrentPassword('');
       setConfirmPassword('');
       setShowValidation(false);
       onComplete?.();
@@ -126,10 +132,23 @@ const ForcePasswordUpdateDialog: React.FC<ForcePasswordUpdateDialogProps> = ({
             margin="normal"
             required
             fullWidth
+            label="Current password"
+            type="password"
+            autoComplete="current-password"
+            autoFocus
+            value={currentPassword}
+            onChange={(e) => {
+              setCurrentPassword(e.target.value);
+              if (error) setError('');
+            }}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
             label="New password"
             type="password"
             autoComplete="new-password"
-            autoFocus
             value={newPassword}
             onChange={(e) => {
               setNewPassword(e.target.value);

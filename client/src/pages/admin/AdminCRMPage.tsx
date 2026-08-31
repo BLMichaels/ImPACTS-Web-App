@@ -2614,7 +2614,7 @@ const AdminCRMPage: React.FC = () => {
       setSaveError('First name or last name is required for person contacts.');
       return;
     }
-    const portalContactTypes: ContactType[] = ['pecc', 'manager', 'mentor'];
+    const portalContactTypes: ContactType[] = ['pecc', 'manager', 'mentor', 'staff'];
     if (
       startingPassword.trim() &&
       portalContactTypes.includes(formData.type as ContactType) &&
@@ -3155,8 +3155,10 @@ const AdminCRMPage: React.FC = () => {
       formData.email?.trim()
     ) {
       const r = CONTACT_TYPE_TO_USER_ROLE[formData.type];
-      if (r === 'pecc' || r === 'manager' || r === 'mentor') {
-        const emailTrim = formData.email.trim();
+      const provisionRole =
+        formData.type === 'staff' ? ('admin' as const) : (r as 'pecc' | 'manager' | 'mentor' | undefined);
+      if (provisionRole === 'pecc' || provisionRole === 'manager' || provisionRole === 'mentor' || provisionRole === 'admin') {
+        const emailTrim = formData.email.trim().toLowerCase();
         const startingPasswordTrim = startingPassword.trim();
         if (startingPasswordTrim && startingPasswordTrim.length < MIN_PASSWORD_LENGTH) {
           setSaveError(`Contact was saved, but portal provisioning was skipped because starting password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
@@ -3167,7 +3169,7 @@ const AdminCRMPage: React.FC = () => {
         if (shouldProvision) {
           const pr = await provisionCrmPortalUser({
             email: emailTrim,
-            role: r,
+            role: provisionRole,
             first_name: formData.firstName,
             last_name: formData.lastName,
             starting_password: startingPasswordTrim || undefined

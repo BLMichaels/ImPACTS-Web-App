@@ -54,6 +54,7 @@ import { supabase } from '../../supabase';
 import { getRoleMuiColor } from '../../utils/roleUtils';
 import { getUserDisplayName } from '../../utils/displayName';
 import { useAuth } from '../../context/AuthContext';
+import { getPasswordResetRedirectUrl } from '../../utils/authFlow';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole, normalizeUserRole } from '../../types/database';
@@ -774,8 +775,12 @@ const AdminTeamTab: React.FC = () => {
           setAnchorEl(null);
           setSendingPasswordReset(true);
           try {
-            await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined);
-            setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
+            await resetPasswordForEmail(selectedUser.email, getPasswordResetRedirectUrl());
+            setSnackbar({
+              open: true,
+              message: `If ${selectedUser.email} has a portal account, a reset email was sent from no.reply@impactscollaborative.com (check spam).`,
+              severity: 'success',
+            });
           } catch (err) {
             setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
           } finally {
@@ -998,8 +1003,12 @@ const AdminTeamTab: React.FC = () => {
                         if (!selectedUser.email) return;
                         setSendingPasswordReset(true);
                         try {
-                          await resetPasswordForEmail(selectedUser.email, typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined);
-                          setSnackbar({ open: true, message: `Password reset email sent to ${selectedUser.email}`, severity: 'success' });
+                          await resetPasswordForEmail(selectedUser.email, getPasswordResetRedirectUrl());
+                          setSnackbar({
+                            open: true,
+                            message: `If ${selectedUser.email} has a portal account, a reset email was sent from no.reply@impactscollaborative.com (check spam).`,
+                            severity: 'success',
+                          });
                         } catch (err) {
                           setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
                         } finally {

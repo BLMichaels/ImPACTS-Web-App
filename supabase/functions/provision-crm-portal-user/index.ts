@@ -31,7 +31,16 @@ function corsHeadersFor(req: Request): Record<string, string> {
   return { ...baseCorsHeaders, 'Access-Control-Allow-Origin': allowed, Vary: 'Origin' };
 }
 
-const ALLOWED_ROLES = new Set(['pecc', 'manager', 'mentor']);
+const ALLOWED_ROLES = new Set(['pecc', 'manager', 'mentor', 'admin']);
+
+async function clearPasswordUpdateFlag(admin: ReturnType<typeof createClient>, userId: string) {
+  const { error } = await admin.rpc('service_clear_password_update_required', {
+    p_user_id: userId,
+  });
+  if (error) {
+    console.warn('provision-crm-portal-user: could not clear password_update_required', error.message);
+  }
+}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const cors = corsHeadersFor(req);
@@ -100,7 +109,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const roleRaw = typeof body.role === 'string' ? body.role.trim().toLowerCase() : '';
   const startingPassword = typeof body.starting_password === 'string' ? body.starting_password.trim() : '';
   if (!emailRaw || !roleRaw || !ALLOWED_ROLES.has(roleRaw)) {
-    return json({ error: 'email and role (pecc | manager | mentor) are required' }, 400);
+    return json({ error: 'email and role (pecc | manager | mentor | admin) are required' }, 400);
   }
   if (startingPassword && startingPassword.length < 12) {
     return json({ error: 'starting_password must be at least 12 characters' }, 400);
@@ -123,6 +132,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (pwdErr) {
         return json({ error: pwdErr.message ?? 'Failed to set starting password' }, 400);
       }
+      await clearPasswordUpdateFlag(admin, existingRow.id);
     }
 
     await admin
@@ -170,6 +180,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           if (pwdErr) {
             return json({ error: pwdErr.message ?? 'Failed to set starting password' }, 400);
           }
+          await clearPasswordUpdateFlag(admin, again.id);
         }
 
         await admin
@@ -206,6 +217,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (updErr) {
     console.error('provision-crm-portal-user: profile update failed', updErr);
     return json({ error: updErr.message ?? 'Profile update failed' }, 500);
+  }
+
+  if (startingPassword) {
+    await clearPasswordUpdateFlag(admin, newId);
   }
 
   return json({ user_id: newId, created: true });

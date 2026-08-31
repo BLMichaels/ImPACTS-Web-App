@@ -53,7 +53,7 @@ ok('20. LoginPage no longer hosts set-password form', !login.includes('handleSet
 ok('21. Reset page updates password then signs out', reset.includes('updatePassword') && reset.includes('logout') && reset.includes('clearPasswordRecoverySession'));
 ok('22. Reset page handles expired/missing link errors', reset.includes('getPasswordRecoveryError') && reset.includes('Request a new reset link'));
 ok('23. Landing redirects recovery to reset page', landing.includes('isPasswordRecovery') && landing.includes('/reset-password'));
-ok('24. Admin team reset emails target /reset-password', (admin.match(/\/reset-password/g) || []).length >= 2);
+ok('24. Admin team reset emails use getPasswordResetRedirectUrl', admin.includes('getPasswordResetRedirectUrl()'));
 ok('25. Supabase config allows reset-password redirect + site_url', cfg.includes('peccsupporttool.com') && cfg.includes('reset-password') && cfg.includes('minimum_password_length = 12'));
 ok('26. Runbook documents password reset + SMTP branding', runbook.includes('Password reset') && runbook.includes('Custom SMTP'));
 ok('27. Password policy minimum is 12', policy.includes('MIN_PASSWORD_LENGTH = 12'));

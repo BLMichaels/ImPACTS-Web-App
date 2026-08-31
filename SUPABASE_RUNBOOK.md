@@ -38,8 +38,9 @@ Password policy is **12+ characters**, enforced at four layers:
    (keep production `site_url` / redirect URLs in that file; do not push local dev defaults).
 2. **Client** — `client/src/utils/passwordPolicy.ts` on register, invite, account, and admin provision flows.
 3. **Edge functions** — `complete-invitation-registration`, `provision-crm-portal-user`.
-4. **Legacy users** — flagged at login (`password_update_required` in `user_data`); `ForcePasswordUpdateDialog` blocks the app until updated.  
-   Apply `PASSWORD_UPDATE_REQUIRED_GUARD.sql` so users cannot clear the flag without `clear_password_update_required()` RPC (after a successful password change).
+4. **Legacy users** — flagged at login (`password_update_required` in `user_data`); `ForcePasswordUpdateDialog` blocks the app until updated (requires current + new password when `secure_password_change` is on).  
+   Apply `PASSWORD_UPDATE_REQUIRED_GUARD.sql` so users cannot clear the flag without `clear_password_update_required()` RPC (after a successful password change).  
+   Apply `SERVICE_CLEAR_PASSWORD_UPDATE_REQUIRED.sql` so admin provisioning can clear stale flags when setting a starting password.
 
 Idle sessions sign out after 30 minutes.
 

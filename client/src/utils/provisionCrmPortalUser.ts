@@ -1,6 +1,6 @@
 import { supabase } from '../supabase';
 
-export type ProvisionCrmPortalRole = 'pecc' | 'manager' | 'mentor';
+export type ProvisionCrmPortalRole = 'pecc' | 'manager' | 'mentor' | 'admin';
 
 export type ProvisionCrmPortalResult =
   | { user_id: string; created: boolean }
