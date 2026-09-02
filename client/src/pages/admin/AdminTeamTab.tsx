@@ -53,8 +53,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { getRoleMuiColor } from '../../utils/roleUtils';
 import { getUserDisplayName } from '../../utils/displayName';
-import { useAuth } from '../../context/AuthContext';
-import { getPasswordResetRedirectUrl } from '../../utils/authFlow';
+import { adminSendPasswordReset } from '../../utils/adminPortalAuth';
 import { useUserProfile } from '../../context/UserProfileContext';
 import { createAndSendInvitation } from '../../utils/invitations';
 import { UserRole, normalizeUserRole } from '../../types/database';
@@ -103,7 +102,6 @@ function uniqueIds(ids: string[]): string[] {
 /** Team (user) management content for Admin CRM Team tab. */
 const AdminTeamTab: React.FC = () => {
   const navigate = useNavigate();
-  const { resetPasswordForEmail } = useAuth();
   const { userProfile, enterViewAsUser } = useUserProfile();
   /** Only primary-role platform admins may grant `is_admin`. Staff with only `is_admin` (e.g. manager + admin flag) cannot promote others. */
   const canGrantPlatformAdminAccess = userProfile?.role === UserRole.ADMIN;
@@ -775,12 +773,23 @@ const AdminTeamTab: React.FC = () => {
           setAnchorEl(null);
           setSendingPasswordReset(true);
           try {
-            await resetPasswordForEmail(selectedUser.email, getPasswordResetRedirectUrl());
+            const result = await adminSendPasswordReset(selectedUser.email);
+            if ('error' in result) {
+              setSnackbar({ open: true, message: result.error, severity: 'error' });
+              return;
+            }
             setSnackbar({
               open: true,
-              message: `If ${selectedUser.email} has a portal account, a reset email was sent from no.reply@impactscollaborative.com (check spam).`,
-              severity: 'success',
+              message: result.message,
+              severity: result.email_sent ? 'success' : 'info',
             });
+            if (result.action_link) {
+              try {
+                await navigator.clipboard.writeText(result.action_link);
+              } catch {
+                /* admin can use CRM security panel for copy UI */
+              }
+            }
           } catch (err) {
             setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
           } finally {
@@ -1003,12 +1012,23 @@ const AdminTeamTab: React.FC = () => {
                         if (!selectedUser.email) return;
                         setSendingPasswordReset(true);
                         try {
-                          await resetPasswordForEmail(selectedUser.email, getPasswordResetRedirectUrl());
+                          const result = await adminSendPasswordReset(selectedUser.email);
+                          if ('error' in result) {
+                            setSnackbar({ open: true, message: result.error, severity: 'error' });
+                            return;
+                          }
                           setSnackbar({
                             open: true,
-                            message: `If ${selectedUser.email} has a portal account, a reset email was sent from no.reply@impactscollaborative.com (check spam).`,
-                            severity: 'success',
+                            message: result.message,
+                            severity: result.email_sent ? 'success' : 'info',
                           });
+                          if (result.action_link) {
+                            try {
+                              await navigator.clipboard.writeText(result.action_link);
+                            } catch {
+                              /* ignore */
+                            }
+                          }
                         } catch (err) {
                           setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Failed to send reset email', severity: 'error' });
                         } finally {

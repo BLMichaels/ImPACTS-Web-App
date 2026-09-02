@@ -6298,6 +6298,18 @@ const AdminCRMPage: React.FC = () => {
                 <CrmPortalSecurityActions
                   email={detailContact.email}
                   portalUserId={detailContactUserId ?? detailContact.user_id ?? null}
+                  portalRole={
+                    (CONTACT_TYPE_TO_USER_ROLE[detailContact.type] === 'admin'
+                      ? 'admin'
+                      : CONTACT_TYPE_TO_USER_ROLE[detailContact.type]) as
+                      | 'pecc'
+                      | 'manager'
+                      | 'mentor'
+                      | 'admin'
+                      | undefined
+                  }
+                  firstName={detailContact.firstName ?? ''}
+                  lastName={detailContact.lastName ?? ''}
                   canManage={canGrantPlatformAdminAccess}
                 />
               )}
@@ -7170,7 +7182,7 @@ const AdminCRMPage: React.FC = () => {
             <Grid item xs={6}>
               <TextField label="Phone" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} fullWidth size="small" />
             </Grid>
-            {isPersonType(formData.type) && ['pecc', 'manager', 'mentor'].includes(formData.type) && (
+            {isPersonType(formData.type) && ['pecc', 'manager', 'mentor', 'staff'].includes(formData.type) && (
               <Grid item xs={12}>
                 <TextField
                   label="Starting password (optional)"

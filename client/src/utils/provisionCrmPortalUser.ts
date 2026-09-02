@@ -3,7 +3,7 @@ import { supabase } from '../supabase';
 export type ProvisionCrmPortalRole = 'pecc' | 'manager' | 'mentor' | 'admin';
 
 export type ProvisionCrmPortalResult =
-  | { user_id: string; created: boolean }
+  | { user_id: string; created: boolean; verified?: boolean }
   | { error: string };
 
 /**
@@ -24,6 +24,7 @@ export async function provisionCrmPortalUser(params: {
       first_name: params.first_name?.trim() ?? '',
       last_name: params.last_name?.trim() ?? '',
       starting_password: params.starting_password?.trim() || undefined,
+      verify_login: Boolean(params.starting_password?.trim()),
     },
   });
 
@@ -39,5 +40,9 @@ export async function provisionCrmPortalUser(params: {
     return { error: 'Unexpected response from server' };
   }
 
-  return { user_id: payload.user_id, created: Boolean(payload.created) };
+  return {
+    user_id: payload.user_id,
+    created: Boolean(payload.created),
+    verified: Boolean((payload as { verified?: boolean }).verified),
+  };
 }

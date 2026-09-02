@@ -13,7 +13,6 @@ import { clearSessionActivity, beginSessionClock, ensureSessionClock, getLastAct
 import {
   capturePasswordRecoveryFromUrl,
   clearPasswordRecoverySession,
-  getPasswordResetRedirectUrl,
   isPasswordRecoverySession,
   markPasswordRecoveryPending,
 } from '../utils/authFlow';
@@ -124,13 +123,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSession(null);
   };
 
-  const resetPasswordForEmail = async (email: string, redirectTo?: string) => {
-    const target = redirectTo || getPasswordResetRedirectUrl();
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: target,
+  const resetPasswordForEmail = async (email: string, _redirectTo?: string) => {
+    const normalized = email.trim().toLowerCase();
+    const { data, error } = await supabase.functions.invoke('request-password-reset', {
+      body: { email: normalized },
     });
-    if (error) throw error;
-    void logSecurityEvent('password_reset_requested', { email });
+    if (error) {
+      throw new Error(error.message || 'Could not send password reset email');
+    }
+    const payload = data as { error?: string; message?: string } | null;
+    if (payload?.error) {
+      throw new Error(payload.error);
+    }
+    void logSecurityEvent('password_reset_requested', { email: normalized });
   };
 
   const updatePassword = async (newPassword: string, currentPassword?: string) => {

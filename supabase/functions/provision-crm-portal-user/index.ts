@@ -1,5 +1,5 @@
 /**
- * Admin-only: create auth user + public.users row for a CRM contact (PECC / Manager / Mentor)
+ * Admin-only: create auth user + public.users row for a CRM contact (PECC / Manager / Mentor / Staff)
  * so admins can "View as user" and pre-load data before the invite is sent.
  *
  * Deploy: supabase functions deploy provision-crm-portal-user
@@ -40,6 +40,77 @@ async function clearPasswordUpdateFlag(admin: ReturnType<typeof createClient>, u
   if (error) {
     console.warn('provision-crm-portal-user: could not clear password_update_required', error.message);
   }
+}
+
+async function findAuthUserIdByEmail(
+  admin: ReturnType<typeof createClient>,
+  emailNorm: string
+): Promise<string | null> {
+  const { data: row } = await admin.from('users').select('id').eq('email', emailNorm).maybeSingle();
+  if (row?.id) return row.id;
+
+  let page = 1;
+  const perPage = 200;
+  for (let i = 0; i < 10; i += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) break;
+    const users = data?.users ?? [];
+    const match = users.find((u) => (u.email ?? '').toLowerCase() === emailNorm);
+    if (match?.id) return match.id;
+    if (users.length < perPage) break;
+    page += 1;
+  }
+  return null;
+}
+
+async function upsertPublicUser(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+  emailNorm: string,
+  roleRaw: string,
+  firstName: string,
+  lastName: string
+) {
+  const row = {
+    id: userId,
+    email: emailNorm,
+    first_name: firstName,
+    last_name: lastName,
+    role: roleRaw,
+    is_active: true,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error: upsertErr } = await admin.from('users').upsert(row, { onConflict: 'id' });
+  if (upsertErr) {
+    const { error: updErr } = await admin
+      .from('users')
+      .update({
+        first_name: firstName,
+        last_name: lastName,
+        role: roleRaw,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+    if (updErr) {
+      throw new Error(updErr.message ?? 'Profile update failed');
+    }
+  }
+}
+
+async function verifyLogin(
+  supabaseUrl: string,
+  emailNorm: string,
+  password: string
+): Promise<string | null> {
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  if (!anonKey) return null;
+  const client = createClient(supabaseUrl, anonKey);
+  const { error } = await client.auth.signInWithPassword({ email: emailNorm, password });
+  if (error) return error.message;
+  await client.auth.signOut();
+  return null;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -98,6 +169,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     first_name?: string;
     last_name?: string;
     starting_password?: string;
+    verify_login?: boolean;
   };
   try {
     body = await req.json();
@@ -108,6 +180,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const emailRaw = typeof body.email === 'string' ? body.email.trim() : '';
   const roleRaw = typeof body.role === 'string' ? body.role.trim().toLowerCase() : '';
   const startingPassword = typeof body.starting_password === 'string' ? body.starting_password.trim() : '';
+  const verifyLoginFlag = body.verify_login === true;
+  const firstName = body.first_name?.trim() ?? '';
+  const lastName = body.last_name?.trim() ?? '';
+
   if (!emailRaw || !roleRaw || !ALLOWED_ROLES.has(roleRaw)) {
     return json({ error: 'email and role (pecc | manager | mentor | admin) are required' }, 400);
   }
@@ -117,111 +193,104 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const emailNorm = emailRaw.toLowerCase();
 
-  const { data: existingRow } = await admin
-    .from('users')
-    .select('id')
-    .eq('email', emailNorm)
-    .maybeSingle();
+  let userId = await findAuthUserIdByEmail(admin, emailNorm);
+  let created = false;
 
-  if (existingRow?.id) {
+  if (userId) {
     if (startingPassword) {
-      const { error: pwdErr } = await admin.auth.admin.updateUserById(existingRow.id, {
+      const { error: pwdErr } = await admin.auth.admin.updateUserById(userId, {
         password: startingPassword,
         email_confirm: true,
       });
       if (pwdErr) {
         return json({ error: pwdErr.message ?? 'Failed to set starting password' }, 400);
       }
-      await clearPasswordUpdateFlag(admin, existingRow.id);
+      await clearPasswordUpdateFlag(admin, userId);
     }
 
-    await admin
-      .from('users')
-      .update({
-        first_name: body.first_name?.trim() ?? '',
-        last_name: body.last_name?.trim() ?? '',
-        role: roleRaw,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', existingRow.id);
+    try {
+      await upsertPublicUser(admin, userId, emailNorm, roleRaw, firstName, lastName);
+    } catch (err) {
+      return json({ error: err instanceof Error ? err.message : 'Profile update failed' }, 500);
+    }
+  } else {
+    if (!startingPassword) {
+      return json(
+        {
+          error:
+            'starting_password is required to create a new portal login. Enter a password of at least 12 characters.',
+        },
+        400
+      );
+    }
 
-    return json({ user_id: existingRow.id, created: false });
-  }
+    const { data: createdUser, error: createErr } = await admin.auth.admin.createUser({
+      email: emailNorm,
+      password: startingPassword,
+      email_confirm: true,
+      user_metadata: { first_name: firstName, last_name: lastName },
+    });
 
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email: emailNorm,
-    ...(startingPassword ? { password: startingPassword } : {}),
-    email_confirm: true,
-    user_metadata: {
-      first_name: body.first_name?.trim() ?? '',
-      last_name: body.last_name?.trim() ?? '',
-    },
-  });
-
-  if (createErr) {
-    const msg = createErr.message?.toLowerCase() ?? '';
-    if (
-      msg.includes('already') ||
-      msg.includes('registered') ||
-      msg.includes('exists') ||
-      (createErr as { status?: number }).status === 422
-    ) {
-      const { data: again } = await admin
-        .from('users')
-        .select('id')
-        .eq('email', emailNorm)
-        .maybeSingle();
-      if (again?.id) {
-        if (startingPassword) {
-          const { error: pwdErr } = await admin.auth.admin.updateUserById(again.id, {
+    if (createErr) {
+      const msg = createErr.message?.toLowerCase() ?? '';
+      if (
+        msg.includes('already') ||
+        msg.includes('registered') ||
+        msg.includes('exists') ||
+        (createErr as { status?: number }).status === 422
+      ) {
+        userId = await findAuthUserIdByEmail(admin, emailNorm);
+        if (userId) {
+          const { error: pwdErr } = await admin.auth.admin.updateUserById(userId, {
             password: startingPassword,
             email_confirm: true,
           });
           if (pwdErr) {
             return json({ error: pwdErr.message ?? 'Failed to set starting password' }, 400);
           }
-          await clearPasswordUpdateFlag(admin, again.id);
+          await clearPasswordUpdateFlag(admin, userId);
+          try {
+            await upsertPublicUser(admin, userId, emailNorm, roleRaw, firstName, lastName);
+          } catch (err) {
+            return json({ error: err instanceof Error ? err.message : 'Profile update failed' }, 500);
+          }
+        } else {
+          return json({ error: createErr.message ?? 'Failed to create user' }, 400);
         }
-
-        await admin
-          .from('users')
-          .update({
-            first_name: body.first_name?.trim() ?? '',
-            last_name: body.last_name?.trim() ?? '',
-            role: roleRaw,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', again.id);
-        return json({ user_id: again.id, created: false });
+      } else {
+        return json({ error: createErr.message ?? 'Failed to create user' }, 400);
       }
+    } else {
+      userId = createdUser.user?.id ?? null;
+      if (!userId) {
+        return json({ error: 'Auth user created but no id returned' }, 500);
+      }
+      created = true;
+      try {
+        await upsertPublicUser(admin, userId, emailNorm, roleRaw, firstName, lastName);
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : 'Profile update failed' }, 500);
+      }
+      await clearPasswordUpdateFlag(admin, userId);
     }
-    return json({ error: createErr.message ?? 'Failed to create user' }, 400);
   }
 
-  const newId = created.user?.id;
-  if (!newId) {
-    return json({ error: 'Auth user created but no id returned' }, 500);
+  let verified = false;
+  if (startingPassword && (verifyLoginFlag || created)) {
+    const loginErr = await verifyLogin(supabaseUrl, emailNorm, startingPassword);
+    if (loginErr) {
+      return json(
+        {
+          error: `Password was saved but sign-in verification failed: ${loginErr}. Try resetting the password again.`,
+          user_id: userId,
+          created,
+          verified: false,
+        },
+        400
+      );
+    }
+    verified = true;
   }
 
-  const { error: updErr } = await admin
-    .from('users')
-    .update({
-      first_name: body.first_name?.trim() ?? '',
-      last_name: body.last_name?.trim() ?? '',
-      role: roleRaw,
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', newId);
-
-  if (updErr) {
-    console.error('provision-crm-portal-user: profile update failed', updErr);
-    return json({ error: updErr.message ?? 'Profile update failed' }, 500);
-  }
-
-  if (startingPassword) {
-    await clearPasswordUpdateFlag(admin, newId);
-  }
-
-  return json({ user_id: newId, created: true });
+  return json({ user_id: userId, created, verified });
 });

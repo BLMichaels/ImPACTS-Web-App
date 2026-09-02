@@ -76,8 +76,14 @@ export function clearPasswordRecoverySession(): void {
   store?.removeItem(PASSWORD_RECOVERY_ERROR_KEY);
 }
 
+const CANONICAL_APP_ORIGIN = 'https://peccsupporttool.com';
+
 /** Canonical redirect target for reset emails (must be allow-listed in Supabase Auth). */
 export function getPasswordResetRedirectUrl(): string {
-  if (typeof window === 'undefined') return 'https://peccsupporttool.com/reset-password';
-  return `${window.location.origin}/reset-password`;
+  if (typeof window === 'undefined') return `${CANONICAL_APP_ORIGIN}/reset-password`;
+  const host = window.location.hostname.toLowerCase();
+  const isLocal =
+    host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
+  if (isLocal) return `${window.location.origin}/reset-password`;
+  return `${CANONICAL_APP_ORIGIN}/reset-password`;
 }

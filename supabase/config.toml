@@ -53,5 +53,11 @@ verify_jwt = false
 [functions.admin-reset-user-mfa]
 verify_jwt = false
 
+[functions.admin-send-password-reset]
+verify_jwt = false
+
+[functions.request-password-reset]
+verify_jwt = false
+
 [functions.sync-portal-login-email]
 verify_jwt = false
