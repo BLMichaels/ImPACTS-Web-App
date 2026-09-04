@@ -35,9 +35,12 @@ ok('4. beginTotpEnrollment retries on friendly-name collision', mfa.includes('is
 ok('5. MfaAlreadyEnrolledError exported for UI routing', mfa.includes('export class MfaAlreadyEnrolledError'));
 ok('6. verifyMfaCode sets session or refreshes after verify', mfa.includes('setSession') && mfa.includes('refreshSession'));
 ok('7. verifyMfaCode waits for AAL2 before returning', mfa.includes('waitForMfaChallengeCleared'));
-ok('8. verifyMfaLogin uses verified TOTP factor', mfa.includes('getVerifiedTotpFactors(factors)[0]'));
+ok('8. verifyMfaLogin uses verified TOTP factor', mfa.includes('listVerifiedTotpFactors') && mfa.includes('verifyMfaCode(totp.id'));
 ok('9. Backup enrollment allowed when verified exists', mfa.includes('allowWhenVerified'));
 ok('10. Default TOTP friendly name is PECC Support Tool', mfa.includes("DEFAULT_TOTP_FRIENDLY_NAME = 'PECC Support Tool'"));
+ok('10b. listAllMfaFactors uses data.all (includes unverified)', mfa.includes('data?.all') && mfa.includes('Unverified (abandoned enrollments)'));
+ok('10c. Unique friendly-name fallback on collision', mfa.includes('uniqueEnrollmentFriendlyName'));
+ok('10d. listVerifiedTotpFactors prefers data.totp', mfa.includes('export async function listVerifiedTotpFactors'));
 
 // --- Security gate orchestration ---
 ok('11. useSecurityGate calls resolveMfaGateState', securityGate.includes('resolveMfaGateState'));

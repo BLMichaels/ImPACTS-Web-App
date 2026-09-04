@@ -32,10 +32,27 @@ export function getUnverifiedTotpFactors(factors: Factor[] | undefined): Factor[
   return (factors ?? []).filter((f) => f.factor_type === 'totp' && f.status === 'unverified');
 }
 
+/**
+ * Supabase puts only *verified* factors in `totp` / `phone`.
+ * Unverified (abandoned enrollments) appear only in `all` — we must use `all`
+ * or cleanup never sees them and re-enrollment fails with "friendly name exists".
+ */
 export async function listAllMfaFactors(): Promise<Factor[]> {
   const { data, error } = await supabase.auth.mfa.listFactors();
   if (error) throw error;
+  if (Array.isArray(data?.all)) {
+    return data.all;
+  }
   return [...(data?.totp ?? []), ...(data?.phone ?? [])];
+}
+
+/** Verified TOTP factors only (preferred for challenge / gate checks). */
+export async function listVerifiedTotpFactors(): Promise<Factor[]> {
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error) throw error;
+  const fromTotp = getVerifiedTotpFactors(data?.totp);
+  if (fromTotp.length > 0) return fromTotp;
+  return getVerifiedTotpFactors(data?.all);
 }
 
 export async function getAuthenticatorLevels(): Promise<AuthenticatorAssuranceLevelResponse | null> {
@@ -50,13 +67,12 @@ export function needsMfaChallenge(levels: AuthenticatorAssuranceLevelResponse | 
 }
 
 export async function hasVerifiedTotpEnrollment(): Promise<boolean> {
-  const factors = await listAllMfaFactors();
-  return getVerifiedTotpFactors(factors).length > 0;
+  const verified = await listVerifiedTotpFactors();
+  return verified.length > 0;
 }
 
 export async function resolveMfaGateState(): Promise<MfaGateState> {
-  const factors = await listAllMfaFactors();
-  const verifiedTotp = getVerifiedTotpFactors(factors);
+  const verifiedTotp = await listVerifiedTotpFactors();
   if (verifiedTotp.length === 0) {
     // Drop abandoned enrollments so the setup screen can issue a fresh QR code.
     await cleanupUnverifiedMfaFactors();
@@ -92,6 +108,7 @@ async function cleanupBlockingTotpFactors(friendlyName: string): Promise<number>
     if (factor.factor_type !== 'totp') continue;
     if (factor.status !== 'unverified') continue;
     const name = (factor.friendly_name || '').trim();
+    // Remove matching names and unnamed factors (common after partial enroll).
     if (name && name !== friendlyName) continue;
     const { error } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
     if (!error) removed += 1;
@@ -99,25 +116,30 @@ async function cleanupBlockingTotpFactors(friendlyName: string): Promise<number>
   return removed;
 }
 
+function uniqueEnrollmentFriendlyName(base: string): string {
+  const stamp = new Date().toISOString().slice(11, 19).replace(/:/g, '');
+  return `${base} ${stamp}`.slice(0, 64);
+}
+
 export async function beginTotpEnrollment(
   friendlyName = DEFAULT_TOTP_FRIENDLY_NAME,
   options?: { allowWhenVerified?: boolean }
 ) {
-  const factors = await listAllMfaFactors();
-  if (!options?.allowWhenVerified && getVerifiedTotpFactors(factors).length > 0) {
+  const verified = await listVerifiedTotpFactors();
+  if (!options?.allowWhenVerified && verified.length > 0) {
     throw new MfaAlreadyEnrolledError();
   }
 
+  // Always clear abandoned unverified enrollments (they live in listFactors().all).
+  await cleanupUnverifiedMfaFactors();
   if (options?.allowWhenVerified) {
     await cleanupBlockingTotpFactors(friendlyName);
-  } else {
-    await cleanupUnverifiedMfaFactors();
   }
 
-  const enrollOnce = async () => {
+  const enrollOnce = async (name: string) => {
     const { data, error } = await supabase.auth.mfa.enroll({
       factorType: 'totp',
-      friendlyName,
+      friendlyName: name,
     });
     if (error) throw error;
     if (!data?.id || !data.totp) throw new Error('Could not start authenticator enrollment.');
@@ -125,28 +147,35 @@ export async function beginTotpEnrollment(
   };
 
   try {
-    return await enrollOnce();
+    return await enrollOnce(friendlyName);
   } catch (err) {
     if (!isFriendlyNameExistsError(err)) throw err;
 
-    // Stale unverified enrollment with the same label — remove and retry once.
+    // Stale unverified enrollment with the same label — remove and retry.
     await cleanupBlockingTotpFactors(friendlyName);
     await cleanupUnverifiedMfaFactors();
 
-    const refreshed = await listAllMfaFactors();
-    if (!options?.allowWhenVerified && getVerifiedTotpFactors(refreshed).length > 0) {
+    const refreshedVerified = await listVerifiedTotpFactors();
+    if (!options?.allowWhenVerified && refreshedVerified.length > 0) {
       throw new MfaAlreadyEnrolledError();
     }
 
     try {
-      return await enrollOnce();
+      return await enrollOnce(friendlyName);
     } catch (retryErr) {
-      if (isFriendlyNameExistsError(retryErr)) {
-        throw new Error(
-          'A previous MFA setup is still on your account. Tap “Get new QR code” once more. If it keeps failing, log out and sign in again, or contact support.'
-        );
+      if (!isFriendlyNameExistsError(retryErr)) throw retryErr;
+
+      // Last resort: unique label so a stuck name cannot block setup.
+      try {
+        return await enrollOnce(uniqueEnrollmentFriendlyName(friendlyName));
+      } catch (uniqueErr) {
+        if (isFriendlyNameExistsError(uniqueErr)) {
+          throw new Error(
+            'A previous MFA setup is still on your account. Ask an admin to use Reset MFA for your account, then sign in again.'
+          );
+        }
+        throw uniqueErr;
       }
-      throw retryErr;
     }
   }
 }
@@ -189,8 +218,7 @@ export async function waitForMfaChallengeCleared(maxAttempts = 15): Promise<void
 }
 
 export async function verifyMfaLogin(code: string): Promise<void> {
-  const factors = await listAllMfaFactors();
-  const totp = getVerifiedTotpFactors(factors)[0];
+  const totp = (await listVerifiedTotpFactors())[0];
   if (!totp) throw new Error('No authenticator is enrolled for this account.');
   await verifyMfaCode(totp.id, code);
 }
