@@ -392,6 +392,8 @@ const SimulationPage: React.FC = () => {
 
   const [sessions, setSessions] = useState<SimulationSession[]>([]);
   const [gaps, setGaps] = useState<SimulationGap[]>([]);
+  /** Prevent empty-array writes from wiping hospital continuity before the first load finishes. */
+  const [continuityHydrated, setContinuityHydrated] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [open, setOpen] = useState(false);
   const [selectedCase, setSelectedCase] = useState<SimulationCase | null>(null);
@@ -471,6 +473,7 @@ const SimulationPage: React.FC = () => {
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
+    setContinuityHydrated(false);
     (async () => {
       const [sessionsVal, gapsVal, otherVal, activitiesVal] = await Promise.all([
         getContinuityData<SimulationSession[]>(effectiveHospitalId, userId, 'simulation_sessions'),
@@ -481,26 +484,31 @@ const SimulationPage: React.FC = () => {
       if (!mounted) return;
       if (sessionsVal != null && Array.isArray(sessionsVal)) setSessions(sessionsVal);
       else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'simulation_sessions', `simulation_sessions_${userId}`, (v) => setSessions(Array.isArray(v) ? v : []));
+      else setSessions([]);
       if (gapsVal != null && Array.isArray(gapsVal)) setGaps(gapsVal);
       else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setGaps(Array.isArray(v) ? v : []));
+      else setGaps([]);
       if (otherVal != null && Array.isArray(otherVal)) setOtherCases(otherVal);
       else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'other_cases', `other_cases_${userId}`, (v) => setOtherCases(Array.isArray(v) ? v : []));
+      else setOtherCases([]);
       if (activitiesVal != null && Array.isArray(activitiesVal)) setActivitiesSim(activitiesVal);
       else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivitiesSim(Array.isArray(v) ? v : []));
+      else setActivitiesSim([]);
+      if (mounted) setContinuityHydrated(true);
     })();
     return () => { mounted = false; };
   }, [userId, effectiveHospitalId]);
 
-  // Persist to Supabase when state changes
+  // Persist to Supabase when state changes — only after hydration so [] never overwrites real data
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !continuityHydrated) return;
     void writeContinuityData(effectiveHospitalId, userId, 'simulation_sessions', sessions);
-  }, [userId, sessions, effectiveHospitalId]);
+  }, [userId, sessions, effectiveHospitalId, continuityHydrated]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !continuityHydrated) return;
     void writeContinuityData(effectiveHospitalId, userId, 'simulation_gaps', gaps);
-  }, [userId, gaps, effectiveHospitalId]);
+  }, [userId, gaps, effectiveHospitalId, continuityHydrated]);
 
   useEffect(() => {
     const load = async () => {
@@ -607,11 +615,16 @@ const SimulationPage: React.FC = () => {
     });
   };
 
-  const handleOpenCaseGapDialog = () => {
-    setShowCaseGapDialog(true);
+  const scrollToGapsList = () => {
+    window.setTimeout(() => {
+      document.getElementById('all-identified-gaps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
+  const handleOpenCaseGapDialog = (prefill?: { caseName?: string; otherCaseName?: string }) => {
     setCaseGapForm({
-      caseName: '',
-      otherCaseName: '',
+      caseName: prefill?.caseName ?? '',
+      otherCaseName: prefill?.otherCaseName ?? '',
       category: 'equipment' as 'equipment' | 'knowledge' | 'policy' | 'communication' | 'training' | 'resources' | 'other',
       description: '',
       severity: 'medium' as 'low' | 'medium' | 'high' | 'critical',
@@ -620,6 +633,7 @@ const SimulationPage: React.FC = () => {
       targetDate: '',
       status: 'identified' as 'identified' | 'in_progress' | 'completed' | 'cancelled'
     });
+    setShowCaseGapDialog(true);
   };
 
   const handleCloseCaseGapDialog = () => {
@@ -686,8 +700,15 @@ const SimulationPage: React.FC = () => {
           linkedActivities: []
         };
 
-        setGaps([...gaps, newGap]);
+        // Prepend so the new gap shows at the top of the Gap tracking list (date desc).
+        setGaps((prev) => [newGap, ...prev]);
+        // Clear case filter so a filtered view cannot hide the new row.
+        setFilterCase('all');
+        if (filterStatus === 'completed' || filterStatus === 'cancelled') {
+          setFilterStatus('not_completed');
+        }
         handleCloseCaseGapDialog();
+        scrollToGapsList();
       },
     });
   };
@@ -725,51 +746,35 @@ const SimulationPage: React.FC = () => {
       texts: [newGap.description, newGap.actionPlan],
       onSave: () => {
         if (editingGap) {
-          setGaps(gaps.map(g => g.id === editingGap.id ? newGap : g));
-          
+          setGaps((prev) => prev.map((g) => (g.id === editingGap.id ? newGap : g)));
+
           if (currentSession) {
-            setSessions(sessions.map(s => 
-              s.id === currentSession.id 
-                ? { ...s, gaps: s.gaps.map(g => g.id === editingGap.id ? newGap : g) }
-                : s
-            ));
+            setSessions((prev) =>
+              prev.map((s) =>
+                s.id === currentSession.id
+                  ? { ...s, gaps: s.gaps.map((g) => (g.id === editingGap.id ? newGap : g)) }
+                  : s
+              )
+            );
           }
         } else {
-          setGaps([newGap, ...gaps]);
-          
-          if (currentSession) {
-            setSessions(sessions.map(s => 
-              s.id === currentSession.id 
-                ? { ...s, gaps: [...s.gaps, newGap] }
-                : s
-            ));
+          setGaps((prev) => [newGap, ...prev]);
+          setFilterCase('all');
+          if (filterStatus === 'completed' || filterStatus === 'cancelled') {
+            setFilterStatus('not_completed');
           }
-        }
 
-        try {
-          if (userId) {
-            const activities = [...activitiesSim];
-            let activitiesUpdated = false;
-            activities.forEach((activity: any) => {
-              if (activity.associatedSimulationGaps) {
-                const originalLength = activity.associatedSimulationGaps.length;
-                activity.associatedSimulationGaps = activity.associatedSimulationGaps.filter((gapId: string) => {
-                  const gap = gaps.find(g => g.id === gapId);
-                  return gap && gap.id !== newGap.id;
-                });
-                if (activity.associatedSimulationGaps.length !== originalLength) activitiesUpdated = true;
-              }
-            });
-            if (activitiesUpdated) {
-              setActivitiesSim(activities);
-              void writeContinuityData(effectiveHospitalId, userId, 'activities', activities);
-            }
+          if (currentSession) {
+            setSessions((prev) =>
+              prev.map((s) =>
+                s.id === currentSession.id ? { ...s, gaps: [newGap, ...s.gaps] } : s
+              )
+            );
           }
-        } catch (linkError) {
-          console.error('❌ Failed to update activity links:', linkError);
         }
 
         handleCloseGapDialog();
+        if (!editingGap) scrollToGapsList();
       },
     });
   };
@@ -1583,10 +1588,7 @@ const SimulationPage: React.FC = () => {
                       variant="contained"
                       color="secondary"
                       size="small"
-                      onClick={() => {
-                        setCaseGapForm(prev => ({ ...prev, caseName: sim.name ?? '', otherCaseName: '' }));
-                        handleOpenCaseGapDialog();
-                      }}
+                      onClick={() => handleOpenCaseGapDialog({ caseName: sim.name ?? '' })}
                     >
                       Identified Gaps & Action Plans
                     </Button>
@@ -1679,10 +1681,9 @@ const SimulationPage: React.FC = () => {
                         <Button
                           variant="outlined"
                           size="small"
-                          onClick={() => {
-                            setCaseGapForm(prev => ({ ...prev, caseName: 'other', otherCaseName: caseName }));
-                            handleOpenCaseGapDialog();
-                          }}
+                          onClick={() =>
+                            handleOpenCaseGapDialog({ caseName: 'other', otherCaseName: caseName })
+                          }
                         >
                           Identified Gaps & Action Plans
                         </Button>

@@ -280,7 +280,7 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
     const questionText = content?.question || `Question ${gapPlanQuestionId}`;
 
     const newGapPlan: GapPlan = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       questionId: gapPlanQuestionId,
       questionText,
       action: gapPlanFormData.action || '',
@@ -295,7 +295,12 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
       attachments: gapPlanFormData.attachments || []
     };
 
-    const updatedPlans = [...gapPlansList, newGapPlan];
+    // Always re-read from continuity before write — multiple EducationPage instances
+    // (one per domain accordion) can hold stale lists and overwrite each other.
+    const latest = await getContinuityData<GapPlan[]>(effectiveHospitalId, userId, 'gapPlans');
+    const base = Array.isArray(latest) ? latest : gapPlansList;
+    const updatedPlans = [newGapPlan, ...base.filter((p) => p && p.id !== newGapPlan.id)];
+
     const ok = await runWithPhiGuard({
       surface: 'gapPlans',
       texts: [newGapPlan.action, newGapPlan.notes],
@@ -303,11 +308,14 @@ const EducationPage: React.FC<EducationPageProps> = ({ onGapPlanSaved, domainFil
       onSave: async () => {
         await writeContinuityData(effectiveHospitalId, userId, 'gapPlans', updatedPlans);
         setGapPlansList(updatedPlans);
-        onGapPlanSaved?.();
-        window.dispatchEvent(new CustomEvent(GAP_PLANS_UPDATED_EVENT));
         setGapPlanDialogOpen(false);
         setGapPlanQuestionId(null);
-        navigate('/gap-plan');
+        window.dispatchEvent(new CustomEvent(GAP_PLANS_UPDATED_EVENT));
+        onGapPlanSaved?.();
+        // Keep user on Gap Closures; scroll is handled by parent when embedded.
+        if (!onGapPlanSaved) {
+          navigate('/gap-plan');
+        }
       },
     });
     if (!ok) return;

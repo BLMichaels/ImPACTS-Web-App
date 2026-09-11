@@ -230,6 +230,20 @@ const GapPlanPage: React.FC = () => {
     }
   };
 
+  /** Reload after create from a domain accordion and scroll the new row into view. */
+  const handleGapPlanSavedFromEducation = async () => {
+    await loadGapPlans();
+    // Clear filters that would hide a brand-new plan (blank status is fine with filterStatus '').
+    setFilterStatus('');
+    setFilterPriority('');
+    setFilterOwner('');
+    setSortBy('order');
+    setSortOrder('asc');
+    window.setTimeout(() => {
+      document.getElementById('assessment-gap-plans')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
   useEffect(() => {
     if (!userId) return;
     void getContinuityData<any[]>(effectiveHospitalId, userId, 'activities').then((v) => {
@@ -790,6 +804,7 @@ const GapPlanPage: React.FC = () => {
             </Paper>
 
             {/* Gap Plans Table */}
+            <Box id="assessment-gap-plans">
             {filteredPlans.length === 0 ? (
               <Paper elevation={0} sx={{ ...sectionShellSx, px: { xs: 2, md: 2.5 }, py: 5, textAlign: 'center' }}>
                 <Typography variant="h6" color="text.secondary" gutterBottom sx={{ fontWeight: 600 }}>
@@ -797,7 +812,7 @@ const GapPlanPage: React.FC = () => {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {gapPlans.length === 0
-                    ? 'Create gap plans from the Assessment page to get started.'
+                    ? 'Create gap plans from a domain section below to get started.'
                     : 'Try adjusting your filters.'}
                 </Typography>
               </Paper>
@@ -925,6 +940,7 @@ const GapPlanPage: React.FC = () => {
                 </TableContainer>
               </Paper>
             )}
+            </Box>
 
             {/* Gap Closure – accordion per domain */}
             <Box>
@@ -985,7 +1001,7 @@ const GapPlanPage: React.FC = () => {
                         </Box>
                       </AccordionSummary>
                       <AccordionDetails sx={{ px: { xs: 1.5, md: 2 }, pt: 0, pb: 2, bgcolor: 'background.paper' }}>
-                        <EducationPage domainFilter={bucket} onGapPlanSaved={loadGapPlans} />
+                        <EducationPage domainFilter={bucket} onGapPlanSaved={handleGapPlanSavedFromEducation} />
                       </AccordionDetails>
                     </Accordion>
                   );
