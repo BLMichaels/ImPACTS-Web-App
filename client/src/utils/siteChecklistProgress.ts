@@ -10,6 +10,13 @@ export interface SiteChecklistProgressRow {
 
 export type SiteChecklistProgressPatch = SiteChecklistProgressRow;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Canonical hospitals.id only — never upsert with facility_id or CRM refs. */
+export function isCanonicalHospitalUuid(value: string | null | undefined): boolean {
+  return UUID_RE.test(String(value || '').trim());
+}
+
 /** Resolve any site ref (facility id or hospitals.id) to canonical hospitals.id UUID. */
 export async function resolveSiteChecklistHospitalUuid(
   siteRef: string | null | undefined
@@ -45,6 +52,12 @@ export async function upsertSiteChecklistTaskProgress(
   taskId: string,
   completed: boolean
 ): Promise<{ error: Error | null }> {
+  if (!isCanonicalHospitalUuid(hospitalUuid)) {
+    return { error: new Error('Checklist hospital id is not a canonical UUID; cannot save progress.') };
+  }
+  if (!String(taskId || '').trim()) {
+    return { error: new Error('Checklist task id is required.') };
+  }
   const { error } = await supabase.from('site_checklist_progress').upsert(
     {
       hospital_id: hospitalUuid,
@@ -63,10 +76,14 @@ export async function upsertSiteChecklistTasksProgress(
   taskIds: string[],
   completed: boolean
 ): Promise<{ error: Error | null }> {
-  if (!taskIds.length) return { error: null };
+  if (!isCanonicalHospitalUuid(hospitalUuid)) {
+    return { error: new Error('Checklist hospital id is not a canonical UUID; cannot save progress.') };
+  }
+  const uniqueIds = [...new Set(taskIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!uniqueIds.length) return { error: null };
   const completedAt = completed ? new Date().toISOString() : null;
   const { error } = await supabase.from('site_checklist_progress').upsert(
-    taskIds.map((taskId) => ({
+    uniqueIds.map((taskId) => ({
       hospital_id: hospitalUuid,
       task_id: taskId,
       completed,

@@ -2495,22 +2495,29 @@ const AdminCRMPage: React.FC = () => {
   };
 
   const syncHospitalToSystemLinks = async (hospitalId: string, selectedSystemId: string | null) => {
+    const { syncHospitalSystemTextForIds } = await import('../../utils/hospitalSystemScope');
     const systemContacts = contacts.filter((c) => c.type === 'system');
-    const updates: { id: string; linkedHospitalIds: string[] }[] = [];
+    const updates: { id: string; linkedHospitalIds: string[]; name: string }[] = [];
+    let selectedSystemName: string | null = null;
+
     for (const sys of systemContacts) {
       const current = sys.linkedHospitalIds ?? [];
       const hasHospital = current.includes(hospitalId);
       const shouldHave = selectedSystemId === sys.id;
-      let next: string[];
+      if (shouldHave) selectedSystemName = (sys.name || '').trim() || null;
+
+      let next: string[] | null = null;
       if (shouldHave && !hasHospital) next = [...current, hospitalId];
       else if (!shouldHave && hasHospital) next = current.filter((id) => id !== hospitalId);
-      else continue;
+      if (next == null) continue;
+
       const { error } = await supabase
         .from('crm_organizations')
         .update({ linked_hospital_ids: next, updated_at: new Date().toISOString() })
         .eq('id', sys.id);
-      if (!error) updates.push({ id: sys.id, linkedHospitalIds: next });
+      if (!error) updates.push({ id: sys.id, linkedHospitalIds: next, name: sys.name || '' });
     }
+
     if (updates.length > 0) {
       setContacts((prev) =>
         prev.map((c) => {
@@ -2518,6 +2525,26 @@ const AdminCRMPage: React.FC = () => {
           return u ? { ...c, linkedHospitalIds: u.linkedHospitalIds } : c;
         })
       );
+    }
+
+    // Keep hospitals.hospital_system aligned so Hospital System Support Tool finds sites by text.
+    if (selectedSystemId) {
+      const sys = systemContacts.find((c) => c.id === selectedSystemId);
+      const name = (sys?.name || selectedSystemName || '').trim();
+      if (name) await syncHospitalSystemTextForIds([hospitalId], name);
+    } else if (!selectedSystemId) {
+      const { data: row } = await supabase.from('hospitals').select('hospital_system').eq('id', hospitalId).maybeSingle();
+      const currentLabel = (row?.hospital_system || '').trim();
+      const removedNames = updates
+        .filter((u) => !(u.linkedHospitalIds || []).includes(hospitalId))
+        .map((u) => (u.name || '').trim())
+        .filter(Boolean);
+      if (currentLabel && (removedNames.includes(currentLabel) || removedNames.length > 0)) {
+        // Prefer clearing only when label matches a system we just unlinked.
+        if (!currentLabel || removedNames.includes(currentLabel)) {
+          await syncHospitalSystemTextForIds([hospitalId], null);
+        }
+      }
     }
   };
 
@@ -2797,6 +2824,20 @@ const AdminCRMPage: React.FC = () => {
         setDetailContact(prev => (prev?.id === payload.id ? { ...prev, ...updatedContact } as Contact : prev));
         const hospitalIdForSystem = editingContact.hospitalId ?? editingContact.id;
         await syncHospitalToSystemLinks(hospitalIdForSystem, formData.linkedSystemId?.trim() || null);
+        // If "Part of system" selected, prefer that system's name for hospital_system text.
+        if (formData.linkedSystemId?.trim()) {
+          const sys = contacts.find((c) => c.id === formData.linkedSystemId && c.type === 'system');
+          const sysName = (sys?.name || '').trim();
+          if (sysName && formData.hospitalSystem?.trim() !== sysName) {
+            await supabase
+              .from('hospitals')
+              .update({ hospital_system: sysName, updated_at: new Date().toISOString() })
+              .eq('id', hospitalIdForSystem);
+            setContacts((prev) =>
+              prev.map((c) => (c.id === payload.id ? { ...c, hospitalSystem: sysName } : c))
+            );
+          }
+        }
         setDialogOpen(false);
         setFullScreenOpen(false);
         setFullScreenEditMode(false);
@@ -2944,6 +2985,14 @@ const AdminCRMPage: React.FC = () => {
           await supabase.from('hospital_system_assignments').update({ hospital_system_name: newName }).eq('hospital_system_name', oldName);
           await supabase.from('hiring_group_assignments').update({ hospital_system_name: newName }).eq('hospital_system_name', oldName);
           await supabase.from('hospitals').update({ hospital_system: newName }).eq('hospital_system', oldName);
+        }
+        if (formData.type === 'system') {
+          const { reconcileSystemHospitalLinks } = await import('../../utils/hospitalSystemScope');
+          await reconcileSystemHospitalLinks({
+            systemName: newName || oldName,
+            nextHospitalIds: linkedHospitalIdsDb,
+            previousHospitalIds: editingContact.linkedHospitalIds ?? [],
+          });
         }
         setContacts(prev => prev.map(c => (c.id === payload.id ? { ...c, ...payload } : c)));
         setSaveError(null);
@@ -3127,6 +3176,14 @@ const AdminCRMPage: React.FC = () => {
         if (inserted && typeof inserted.id === 'string') {
           const id = inserted.id;
           const createdAt = inserted.created_at ? String(inserted.created_at).split('T')[0] : payload.createdAt;
+          if (formData.type === 'system' && linkedHospitalIdsDb.length > 0) {
+            const { reconcileSystemHospitalLinks } = await import('../../utils/hospitalSystemScope');
+            await reconcileSystemHospitalLinks({
+              systemName: (formData.name || '').trim(),
+              nextHospitalIds: linkedHospitalIdsDb,
+              previousHospitalIds: [],
+            });
+          }
           setContacts((prev) => {
             const filtered = emailKey
               ? prev.filter((c) => !(c.type === formData.type && String(c.email || '').trim().toLowerCase() === emailKey))

@@ -40,7 +40,10 @@ CREATE POLICY "Users view own hospital system assignments" ON public.hospital_sy
   FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Admins manage hospital system assignments" ON public.hospital_system_assignments
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND u.role = 'admin')
+    EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND (u.role = 'admin' OR u.is_admin = true))
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND (u.role = 'admin' OR u.is_admin = true))
   );
 
 -- 3. Hiring Group assignments: which user can view snapshots for which hospital system(s)
@@ -59,7 +62,10 @@ CREATE POLICY "Users view own hiring group assignments" ON public.hiring_group_a
   FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Admins manage hiring group assignments" ON public.hiring_group_assignments
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND u.role = 'admin')
+    EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND (u.role = 'admin' OR u.is_admin = true))
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND (u.role = 'admin' OR u.is_admin = true))
   );
 
 -- 4. Hospital system checklist (7 steps) – one row per system per step

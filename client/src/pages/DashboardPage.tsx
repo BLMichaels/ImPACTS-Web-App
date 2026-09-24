@@ -34,6 +34,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { PhiBlockedError } from '../utils/phiScanner';
 import { supabase } from '../supabase';
@@ -69,6 +70,41 @@ interface DepartmentContact {
   phone: string;
   email: string;
   notes: string;
+}
+
+const DEFAULT_DEPARTMENT_CONTACTS: DepartmentContact[] = [
+  { id: '17', department: 'Pediatric Readiness Mentor', contactName: '', phone: '', email: '', notes: '' },
+  { id: '1', department: 'Chief Nursing Officer', contactName: '', phone: '', email: '', notes: '' },
+  { id: '2', department: 'Chief Medical Officer', contactName: '', phone: '', email: '', notes: '' },
+  { id: '3', department: 'Trauma Coordinator', contactName: '', phone: '', email: '', notes: '' },
+  { id: '4', department: 'Emergency Nursing Director', contactName: '', phone: '', email: '', notes: '' },
+  { id: '5', department: 'Emergency Medical Director', contactName: '', phone: '', email: '', notes: '' },
+  { id: '6', department: 'Emergency Manager(s)', contactName: '', phone: '', email: '', notes: '' },
+  { id: '7', department: 'Pharmacy Director', contactName: '', phone: '', email: '', notes: '' },
+  { id: '8', department: 'Respiratory Therapy Director or Educator', contactName: '', phone: '', email: '', notes: '' },
+  { id: '9', department: 'Pediatric Educator', contactName: '', phone: '', email: '', notes: '' },
+  { id: '10', department: 'Emergency Dept Educator', contactName: '', phone: '', email: '', notes: '' },
+  { id: '11', department: 'Peds Social Worker', contactName: '', phone: '', email: '', notes: '' },
+  { id: '12', department: 'PICU Manager', contactName: '', phone: '', email: '', notes: '' },
+  { id: '13', department: 'Pediatric Unit Manager', contactName: '', phone: '', email: '', notes: '' },
+  { id: '14', department: 'Information Systems Contact', contactName: '', phone: '', email: '', notes: '' },
+  { id: '15', department: 'Pediatric Hospitalist (Point Person)', contactName: '', phone: '', email: '', notes: '' },
+  { id: '16', department: 'Pediatric Intensivist (Point Person)', contactName: '', phone: '', email: '', notes: '' },
+  { id: '18', department: 'Pediatric and/or Emergency Clinical Nurse Specialist', contactName: '', phone: '', email: '', notes: '' },
+  { id: '19', department: 'OTHER CONTACT 1', contactName: '', phone: '', email: '', notes: '' },
+  { id: '20', department: 'OTHER CONTACT 2', contactName: '', phone: '', email: '', notes: '' },
+  { id: '21', department: 'OTHER CONTACT 3', contactName: '', phone: '', email: '', notes: '' },
+  { id: '22', department: 'OTHER CONTACT 4', contactName: '', phone: '', email: '', notes: '' },
+  { id: '23', department: 'OTHER CONTACT 5', contactName: '', phone: '', email: '', notes: '' },
+  { id: '24', department: 'OTHER CONTACT 6', contactName: '', phone: '', email: '', notes: '' },
+  { id: '25', department: 'OTHER CONTACT 7', contactName: '', phone: '', email: '', notes: '' },
+  { id: '26', department: 'OTHER CONTACT 8', contactName: '', phone: '', email: '', notes: '' },
+  { id: '27', department: 'OTHER CONTACT 9', contactName: '', phone: '', email: '', notes: '' },
+  { id: '28', department: 'OTHER CONTACT 10', contactName: '', phone: '', email: '', notes: '' },
+];
+
+function emptyDepartmentContacts(): DepartmentContact[] {
+  return DEFAULT_DEPARTMENT_CONTACTS.map((c) => ({ ...c }));
 }
 
 interface ReadinessScore {
@@ -137,7 +173,8 @@ const sectionShellSx = {
 
   const DashboardPage = () => {
     const navigate = useNavigate();
-    const { userProfile, navbarBrandProgramId, effectiveUserId, siteId } = useUserProfile();
+    const { currentUser } = useAuth();
+    const { userProfile, navbarBrandProgramId, effectiveUserId, siteId, isViewingAsUser } = useUserProfile();
     const [primaryProgramName, setPrimaryProgramName] = useState<string>('ImPACTS');
     /** Matches navbar branding: resolved primary or membership (see resolveNavbarProgramLogo). */
     const programIdForWelcome = navbarBrandProgramId
@@ -187,36 +224,7 @@ const sectionShellSx = {
 
   const [phiContactsBlocked, setPhiContactsBlocked] = useState(false);
 
-  const [departmentContacts, setDepartmentContacts] = useState<DepartmentContact[]>([
-    { id: '17', department: 'Pediatric Readiness Mentor', contactName: '', phone: '', email: '', notes: '' },
-    { id: '1', department: 'Chief Nursing Officer', contactName: '', phone: '', email: '', notes: '' },
-    { id: '2', department: 'Chief Medical Officer', contactName: '', phone: '', email: '', notes: '' },
-    { id: '3', department: 'Trauma Coordinator', contactName: '', phone: '', email: '', notes: '' },
-    { id: '4', department: 'Emergency Nursing Director', contactName: '', phone: '', email: '', notes: '' },
-    { id: '5', department: 'Emergency Medical Director', contactName: '', phone: '', email: '', notes: '' },
-    { id: '6', department: 'Emergency Manager(s)', contactName: '', phone: '', email: '', notes: '' },
-    { id: '7', department: 'Pharmacy Director', contactName: '', phone: '', email: '', notes: '' },
-    { id: '8', department: 'Respiratory Therapy Director or Educator', contactName: '', phone: '', email: '', notes: '' },
-    { id: '9', department: 'Pediatric Educator', contactName: '', phone: '', email: '', notes: '' },
-    { id: '10', department: 'Emergency Dept Educator', contactName: '', phone: '', email: '', notes: '' },
-    { id: '11', department: 'Peds Social Worker', contactName: '', phone: '', email: '', notes: '' },
-    { id: '12', department: 'PICU Manager', contactName: '', phone: '', email: '', notes: '' },
-    { id: '13', department: 'Pediatric Unit Manager', contactName: '', phone: '', email: '', notes: '' },
-    { id: '14', department: 'Information Systems Contact', contactName: '', phone: '', email: '', notes: '' },
-    { id: '15', department: 'Pediatric Hospitalist (Point Person)', contactName: '', phone: '', email: '', notes: '' },
-    { id: '16', department: 'Pediatric Intensivist (Point Person)', contactName: '', phone: '', email: '', notes: '' },
-    { id: '18', department: 'Pediatric and/or Emergency Clinical Nurse Specialist', contactName: '', phone: '', email: '', notes: '' },
-    { id: '19', department: 'OTHER CONTACT 1', contactName: '', phone: '', email: '', notes: '' },
-    { id: '20', department: 'OTHER CONTACT 2', contactName: '', phone: '', email: '', notes: '' },
-    { id: '21', department: 'OTHER CONTACT 3', contactName: '', phone: '', email: '', notes: '' },
-    { id: '22', department: 'OTHER CONTACT 4', contactName: '', phone: '', email: '', notes: '' },
-    { id: '23', department: 'OTHER CONTACT 5', contactName: '', phone: '', email: '', notes: '' },
-    { id: '24', department: 'OTHER CONTACT 6', contactName: '', phone: '', email: '', notes: '' },
-    { id: '25', department: 'OTHER CONTACT 7', contactName: '', phone: '', email: '', notes: '' },
-    { id: '26', department: 'OTHER CONTACT 8', contactName: '', phone: '', email: '', notes: '' },
-    { id: '27', department: 'OTHER CONTACT 9', contactName: '', phone: '', email: '', notes: '' },
-    { id: '28', department: 'OTHER CONTACT 10', contactName: '', phone: '', email: '', notes: '' }
-  ]);
+  const [departmentContacts, setDepartmentContacts] = useState<DepartmentContact[]>(emptyDepartmentContacts);
 
   const [sortConfig, setSortConfig] = useState<{
     key: keyof DepartmentContact;
@@ -267,28 +275,55 @@ const sectionShellSx = {
     await writeContinuityData(effectiveHospitalId, uid, 'readinessScores', scores);
   };
 
-  // Hospital department contacts are hospital-owned for turnover continuity.
+  const contactsOwnerId = currentUser?.id ?? (currentUser as { uid?: string } | null)?.uid ?? null;
+  const directoryHospitalRef = String(
+    (userProfile as { hospital_facility_id?: string | null } | null)?.hospital_facility_id || ''
+  ).trim() || null;
+  const [directoryHospitalId, setDirectoryHospitalId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!uid) return;
     let mounted = true;
     (async () => {
+      if (!directoryHospitalRef) {
+        if (mounted) setDirectoryHospitalId(null);
+        return;
+      }
+      const resolved = await resolveHospitalUuid(directoryHospitalRef);
+      if (mounted) setDirectoryHospitalId(resolved);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [directoryHospitalRef]);
+
+  // Shared with PECCs assigned to the same hospital only. Never user_data (cross-hospital leak).
+  useEffect(() => {
+    if (!directoryHospitalId) {
+      setDepartmentContacts(emptyDepartmentContacts());
+      setContactsHydrated(false);
+      return;
+    }
+    let mounted = true;
+    setContactsHydrated(false);
+    (async () => {
       const contactsVal = await getContinuityData<DepartmentContact[]>(
-        effectiveHospitalId,
-        uid,
+        directoryHospitalId,
+        null,
         'dashboard_department_contacts'
       );
       if (!mounted) return;
       if (Array.isArray(contactsVal) && contactsVal.length > 0) setDepartmentContacts(contactsVal);
+      else setDepartmentContacts(emptyDepartmentContacts());
       setContactsHydrated(true);
     })();
     return () => {
       mounted = false;
     };
-  }, [uid, effectiveHospitalId]);
+  }, [directoryHospitalId]);
 
   useEffect(() => {
-    if (!uid || !contactsHydrated) return;
-    void writeContinuityData(effectiveHospitalId, uid, 'dashboard_department_contacts', departmentContacts)
+    if (!directoryHospitalId || !contactsHydrated) return;
+    void writeContinuityData(directoryHospitalId, null, 'dashboard_department_contacts', departmentContacts)
       .then(() => setPhiContactsBlocked(false))
       .catch((err) => {
         if (err instanceof PhiBlockedError) {
@@ -297,7 +332,7 @@ const sectionShellSx = {
         }
         console.error('Failed to save department contacts', err);
       });
-  }, [uid, effectiveHospitalId, contactsHydrated, departmentContacts]);
+  }, [directoryHospitalId, contactsHydrated, departmentContacts]);
 
   // Handle add readiness score
   const handleAddReadinessScore = () => {
@@ -866,6 +901,9 @@ const sectionShellSx = {
                   <Typography variant="h5" component="h2" sx={{ fontWeight: 700, letterSpacing: -0.015, fontSize: { xs: '1.15rem', md: '1.25rem' } }}>
                     Department contacts
                   </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Shared only with PECCs at this hospital. Not visible on other hospitals or unrelated accounts.
+                  </Typography>
                 </Box>
                 <Stack
                   direction="row"
@@ -878,6 +916,7 @@ const sectionShellSx = {
                   <Button
                     size="small"
                     variant={isEditMode ? 'contained' : 'outlined'}
+                    disabled={!directoryHospitalId}
                     startIcon={<EditIcon />}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -889,6 +928,7 @@ const sectionShellSx = {
                   <Button
                     size="small"
                     variant="contained"
+                    disabled={!directoryHospitalId}
                     startIcon={<AddIcon />}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -901,6 +941,13 @@ const sectionShellSx = {
                 </Stack>
               </AccordionSummary>
               <AccordionDetails sx={{ px: { xs: 2, md: 3 }, pt: 0, pb: { xs: 2.5, md: 3 } }}>
+                {!directoryHospitalId ? (
+                  <Alert severity="info">
+                    Department contacts are stored for the PECC&apos;s assigned hospital. This account is not assigned
+                    to a hospital, so another site&apos;s directory cannot appear here.
+                  </Alert>
+                ) : (
+                  <>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.6 }}>
                   Drag rows or use arrows to reorder. Sort by column headers when needed. Edit fields inline. Staff
                   and role names belong here—do not put patient names or other patient PHI in Notes.
@@ -1110,11 +1157,13 @@ const sectionShellSx = {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                  </>
+                )}
               </AccordionDetails>
             </Accordion>
           </Box>
 
-          <DashboardResources userId={effectiveUserId} isMobile={isMobile} />
+          <DashboardResources userId={isViewingAsUser ? undefined : (contactsOwnerId ?? undefined)} isMobile={isMobile} />
         </Stack>
 
         {/* Readiness Score Dialog */}

@@ -107,7 +107,7 @@ const AdminTeamTab: React.FC = () => {
   const canGrantPlatformAdminAccess = userProfile?.role === UserRole.ADMIN;
   const canSendPasswordReset = userProfile?.role === UserRole.ADMIN;
   const [users, setUsers] = useState<User[]>([]);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' }>({ open: false, message: '' });
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' | 'info' }>({ open: false, message: '' });
   const [searchQuery, setSearchQuery] = useState('');
   // Default to showing only users who have admin access.
   // Note: users can have multiple roles; the "Admin" label should correspond to is_admin (not role === 'admin').
@@ -165,8 +165,8 @@ const AdminTeamTab: React.FC = () => {
 
   useEffect(() => {
     const loadHospitalSystems = async () => {
-      const { data } = await supabase.from('hospitals').select('hospital_system').not('hospital_system', 'is', null);
-      const names = [...new Set((data || []).map((r: { hospital_system: string | null }) => r.hospital_system).filter(Boolean) as string[])].sort();
+      const { listHospitalSystemNames } = await import('../../utils/hospitalSystemScope');
+      const names = await listHospitalSystemNames();
       setHospitalSystemOptions(names);
     };
     loadHospitalSystems();
@@ -459,15 +459,43 @@ const AdminTeamTab: React.FC = () => {
       return;
     }
     if (profileForm.role === 'hospital_system') {
-      await supabase.from('hospital_system_assignments').delete().eq('user_id', selectedUser.id);
+      const { error: delErr } = await supabase.from('hospital_system_assignments').delete().eq('user_id', selectedUser.id);
+      if (delErr) {
+        setProfileSaving(false);
+        setProfileError(delErr.message || 'Failed to clear hospital system assignments');
+        return;
+      }
       for (const name of profileForm.assignedHospitalSystems) {
-        await supabase.from('hospital_system_assignments').insert({ user_id: selectedUser.id, hospital_system_name: name });
+        const { error: insErr } = await supabase
+          .from('hospital_system_assignments')
+          .insert({ user_id: selectedUser.id, hospital_system_name: name });
+        if (insErr) {
+          setProfileSaving(false);
+          setProfileError(insErr.message || 'Failed to save hospital system assignment');
+          return;
+        }
       }
     } else if (profileForm.role === 'hiring_group') {
-      await supabase.from('hiring_group_assignments').delete().eq('user_id', selectedUser.id);
-      for (const name of profileForm.assignedHospitalSystems) {
-        await supabase.from('hiring_group_assignments').insert({ user_id: selectedUser.id, hospital_system_name: name });
+      const { error: delErr } = await supabase.from('hiring_group_assignments').delete().eq('user_id', selectedUser.id);
+      if (delErr) {
+        setProfileSaving(false);
+        setProfileError(delErr.message || 'Failed to clear hiring group assignments');
+        return;
       }
+      for (const name of profileForm.assignedHospitalSystems) {
+        const { error: insErr } = await supabase
+          .from('hiring_group_assignments')
+          .insert({ user_id: selectedUser.id, hospital_system_name: name });
+        if (insErr) {
+          setProfileSaving(false);
+          setProfileError(insErr.message || 'Failed to save hiring group assignment');
+          return;
+        }
+      }
+    } else {
+      // Role left Hospital System / Hiring Group — drop stale assignment rows.
+      await supabase.from('hospital_system_assignments').delete().eq('user_id', selectedUser.id);
+      await supabase.from('hiring_group_assignments').delete().eq('user_id', selectedUser.id);
     }
     const mentorManagerIdsToSave =
       profileForm.role === 'mentor'

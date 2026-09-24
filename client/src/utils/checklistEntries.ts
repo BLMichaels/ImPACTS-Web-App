@@ -4,6 +4,11 @@ export function isValidHexColor(value: string): boolean {
   return /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(String(value || '').trim());
 }
 
+/** True for rows that can be toggled and stored in site_checklist_progress. */
+export function isActionableChecklistTask(task: { entry_type?: ChecklistEntryType | string | null }): boolean {
+  return (task.entry_type ?? 'task') === 'task';
+}
+
 /** Parse admin-encoded checklist row text (banner, footnote, subnote, divider, task). */
 export function decodeChecklistEntry(text: string): {
   type: ChecklistEntryType;

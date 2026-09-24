@@ -69,12 +69,14 @@ import { DEFAULT_SITE_CHECKLIST_STAGES } from '../../data/defaultSiteChecklist';
 import { sanitizeHtml, stripHtmlToText } from '../../components/cohorts/RichTextEditor';
 import {
   decodeChecklistEntry,
+  isActionableChecklistTask,
   isValidHexColor,
   type ChecklistEntryType,
 } from '../../utils/checklistEntries';
 import {
   completedByTaskMap,
   fetchSiteChecklistProgress,
+  isCanonicalHospitalUuid,
   subscribeToSiteChecklistProgress,
   upsertSiteChecklistTaskProgress,
   upsertSiteChecklistTasksProgress,
@@ -101,8 +103,6 @@ interface MilestoneStage {
   program_checklist_name?: string | null;
   program_checklist_first_stage?: boolean;
 }
-
-const isActionableChecklistTask = (task: MilestoneTask) => (task.entry_type ?? 'task') === 'task';
 
 type MilestoneTableRow =
   | { type: 'checklist_header'; checklistName: string }
@@ -314,6 +314,7 @@ const MentorSiteMilestonesPage: React.FC = () => {
   const [selectedChecklistKey, setSelectedChecklistKey] = useState<string>('default');
   const [hospitalChecklistIds, setHospitalChecklistIds] = useState<Record<string, string>>({});
   const [progressVersion, setProgressVersion] = useState(0);
+  const preferredProgramChecklistAppliedRef = React.useRef(false);
   const [stagePalette, setStagePalette] = useState<Record<'stage1' | 'stage2' | 'stage3' | 'stage4', string>>({
     stage1: '#2196F3',
     stage2: '#4CAF50',
@@ -720,8 +721,15 @@ const MentorSiteMilestonesPage: React.FC = () => {
         const allCompletions = await getUserData<Record<string, Record<string, StageCompletion>>>(mentorDataUserId, 'mentorStageCompletions');
         const savedCompletions = allCompletions?.[hospital.id];
         if (savedCompletions) {
-          Object.keys(savedCompletions).forEach(sid => {
-            if (savedCompletions[sid].completionDate) stageCompletions[sid] = savedCompletions[sid];
+          Object.keys(savedCompletions).forEach((sid) => {
+            // Keep task-derived completion as source of truth (shared with PECC).
+            // Mentor dates are stipend metadata only — never override checkbox state.
+            const derived = stageCompletions[sid];
+            const savedDate = savedCompletions[sid]?.completionDate;
+            if (!derived) return;
+            if (derived.completed && savedDate) {
+              stageCompletions[sid] = { completed: true, completionDate: savedDate };
+            }
           });
         }
 
@@ -843,7 +851,20 @@ const MentorSiteMilestonesPage: React.FC = () => {
 
   useEffect(() => {
     if (!checklistOptions.some((option) => option.key === selectedChecklistKey)) {
-      setSelectedChecklistKey('default');
+      // Prefer a program checklist when available so Mentor edits the same tasks PECC sees
+      // (PECC drops the default checklist whenever program stages exist).
+      const firstProgram = checklistOptions.find((option) => option.key.startsWith('program:'));
+      setSelectedChecklistKey(firstProgram?.key ?? 'default');
+      if (firstProgram) preferredProgramChecklistAppliedRef.current = true;
+      return;
+    }
+    // One-shot: land Mentor on the first program checklist so PECC↔Mentor share the same task set.
+    if (!preferredProgramChecklistAppliedRef.current && selectedChecklistKey === 'default') {
+      const firstProgram = checklistOptions.find((option) => option.key.startsWith('program:'));
+      if (firstProgram) {
+        preferredProgramChecklistAppliedRef.current = true;
+        setSelectedChecklistKey(firstProgram.key);
+      }
     }
   }, [checklistOptions, selectedChecklistKey]);
 
@@ -889,9 +910,10 @@ const MentorSiteMilestonesPage: React.FC = () => {
     const sourceStages = selectedChecklistId ? hospital.checklistStages[selectedChecklistId]?.stages : hospital.defaultStages;
     if (!sourceStages) return;
 
-    const previousCompleted = Boolean(
-      sourceStages.find((s) => s.id === stageId)?.tasks.find((t) => t.id === taskId)?.completed
-    );
+    const existingTask = sourceStages.find((s) => s.id === stageId)?.tasks.find((t) => t.id === taskId);
+    if (!existingTask || !isActionableChecklistTask(existingTask)) return;
+
+    const previousCompleted = Boolean(existingTask.completed);
     const newCompleted = !previousCompleted;
     const updatedStages = sourceStages.map(stage =>
       stage.id === stageId
@@ -938,7 +960,11 @@ const MentorSiteMilestonesPage: React.FC = () => {
       };
     });
 
-    const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
+    const canonicalHospitalId = hospitalChecklistIds[hospitalId];
+    if (!isCanonicalHospitalUuid(canonicalHospitalId)) {
+      console.error('Checklist task save skipped: hospital UUID not resolved for', hospitalId);
+      return;
+    }
     const { error } = await upsertSiteChecklistTaskProgress(canonicalHospitalId, taskId, newCompleted);
     if (error) {
       console.error('Checklist task save error:', error);
@@ -1000,17 +1026,25 @@ const MentorSiteMilestonesPage: React.FC = () => {
       [stageId]: { completed: newCompleted, completionDate: completionDateStr }
     };
 
-    const taskIds = stage?.tasks.map(t => t.id) ?? [];
-    const completedAt = newCompleted ? new Date().toISOString() : null;
+    const taskIds = stage?.tasks.filter(isActionableChecklistTask).map((t) => t.id) ?? [];
 
-    const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
+    const canonicalHospitalId = hospitalChecklistIds[hospitalId];
+    if (!isCanonicalHospitalUuid(canonicalHospitalId)) {
+      console.error('Checklist stage save skipped: hospital UUID not resolved for', hospitalId);
+      return;
+    }
     void upsertSiteChecklistTasksProgress(canonicalHospitalId, taskIds, newCompleted).then(({ error }) => {
       if (error) console.error('Checklist stage save error:', error);
     });
 
-    const updatedStages = sourceStages.map(s =>
+    const updatedStages = sourceStages.map((s) =>
       s.id === stageId
-        ? { ...s, tasks: s.tasks.map(t => ({ ...t, completed: newCompleted })) }
+        ? {
+            ...s,
+            tasks: s.tasks.map((t) =>
+              isActionableChecklistTask(t) ? { ...t, completed: newCompleted } : t
+            ),
+          }
         : s
     );
 
@@ -1059,15 +1093,24 @@ const MentorSiteMilestonesPage: React.FC = () => {
       [stageId]: { completed: true, completionDate: completionDateStr }
     };
 
-    const canonicalHospitalId = hospitalChecklistIds[hospitalId] || hospitalId;
-    const stage = sourceStages.find(s => s.id === stageId);
-    const taskIds = stage?.tasks.map(t => t.id) ?? [];
+    const canonicalHospitalId = hospitalChecklistIds[hospitalId];
+    const stage = sourceStages.find((s) => s.id === stageId);
+    const taskIds = stage?.tasks.filter(isActionableChecklistTask).map((t) => t.id) ?? [];
+    if (!isCanonicalHospitalUuid(canonicalHospitalId)) {
+      console.error('Checklist date save skipped: hospital UUID not resolved for', hospitalId);
+      return;
+    }
     void upsertSiteChecklistTasksProgress(canonicalHospitalId, taskIds, true).then(({ error }) => {
       if (error) console.error('Checklist date save error:', error);
     });
 
-    const updatedStages = sourceStages.map(s =>
-      s.id === stageId ? { ...s, tasks: s.tasks.map(t => ({ ...t, completed: true })) } : s
+    const updatedStages = sourceStages.map((s) =>
+      s.id === stageId
+        ? {
+            ...s,
+            tasks: s.tasks.map((t) => (isActionableChecklistTask(t) ? { ...t, completed: true } : t)),
+          }
+        : s
     );
 
     setHospitalMilestones(prev => {
@@ -1103,8 +1146,68 @@ const MentorSiteMilestonesPage: React.FC = () => {
   useEffect(() => {
     const watchedHospitalIds = [...new Set(Object.values(hospitalChecklistIds).filter(Boolean))];
     if (!watchedHospitalIds.length) return;
-    return subscribeToSiteChecklistProgress(watchedHospitalIds, () => {
-      setProgressVersion((prev) => prev + 1);
+
+    const hospitalIdByCanonical = new Map<string, string>();
+    Object.entries(hospitalChecklistIds).forEach(([hospitalId, canonicalId]) => {
+      if (canonicalId) hospitalIdByCanonical.set(canonicalId, hospitalId);
+    });
+
+    return subscribeToSiteChecklistProgress(watchedHospitalIds, (canonicalHospitalId, patch) => {
+      const hospitalId = hospitalIdByCanonical.get(canonicalHospitalId);
+      if (!hospitalId) {
+        setProgressVersion((prev) => prev + 1);
+        return;
+      }
+      setHospitalMilestones((prev) => {
+        const hospital = prev[hospitalId];
+        if (!hospital) return prev;
+
+        const applyToStages = (stages: MilestoneStage[]) =>
+          stages.map((stage) => ({
+            ...stage,
+            tasks: stage.tasks.map((task) =>
+              task.id === patch.task_id ? { ...task, completed: patch.completed } : task
+            ),
+          }));
+
+        const defaultStages = applyToStages(hospital.defaultStages);
+        const checklistStages: typeof hospital.checklistStages = {};
+        Object.entries(hospital.checklistStages).forEach(([checklistId, checklist]) => {
+          checklistStages[checklistId] = {
+            ...checklist,
+            stages: applyToStages(checklist.stages),
+          };
+        });
+
+        const allStages = [
+          ...defaultStages,
+          ...Object.values(checklistStages).flatMap((entry) => entry.stages),
+        ];
+        const stageCompletions: Record<string, StageCompletion> = { ...hospital.stageCompletions };
+        allStages.forEach((stage) => {
+          const actionable = stage.tasks.filter(isActionableChecklistTask);
+          if (!actionable.some((t) => t.id === patch.task_id)) return;
+          const allComplete =
+            actionable.length > 0 && actionable.every((t) => t.completed);
+          const priorDate = hospital.stageCompletions[stage.id]?.completionDate ?? null;
+          stageCompletions[stage.id] = {
+            completed: allComplete,
+            completionDate: allComplete
+              ? priorDate || (patch.completed_at ? patch.completed_at.slice(0, 10) : format(new Date(), 'yyyy-MM-dd'))
+              : null,
+          };
+        });
+
+        return {
+          ...prev,
+          [hospitalId]: {
+            ...hospital,
+            defaultStages,
+            checklistStages,
+            stageCompletions,
+          },
+        };
+      });
     });
   }, [hospitalChecklistIds]);
 

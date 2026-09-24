@@ -23,6 +23,30 @@ import { logSecurityEvent } from './securityEvents';
 const LS_PREFIX = 'ud_';
 const LEGACY_MIRROR_OVERRIDE_KEY = 'impacts_disable_legacy_user_mirror';
 
+/**
+ * Personal workspace keys. These must NEVER be stored in hospital_data.
+ */
+export const USER_PRIVATE_DATA_KEYS = new Set<string>([
+  'dashboard_resources',
+]);
+
+/**
+ * Hospital-shared keys that must NEVER be mirrored into user_data.
+ * A missing hospital row must not fall back to another user's personal copy
+ * (that is how directory data leaked across hospitals).
+ */
+export const HOSPITAL_SCOPED_NO_USER_MIRROR_KEYS = new Set<string>([
+  'dashboard_department_contacts',
+]);
+
+export function isUserPrivateDataKey(dataKey: string): boolean {
+  return USER_PRIVATE_DATA_KEYS.has(dataKey);
+}
+
+export function isHospitalScopedNoMirrorKey(dataKey: string): boolean {
+  return HOSPITAL_SCOPED_NO_USER_MIRROR_KEYS.has(dataKey);
+}
+
 function localStorageKey(userId: string, dataKey: string): string {
   return `${LS_PREFIX}${userId}_${dataKey}`;
 }
@@ -207,6 +231,7 @@ export async function resolveHospitalUuid(siteRef: string): Promise<string | nul
 /** Hospital-scoped key/value storage for PECC continuity across user turnover. */
 export async function getHospitalData<T = unknown>(hospitalId: string, dataKey: string): Promise<T | null> {
   if (!hospitalId || !dataKey) return null;
+  if (isUserPrivateDataKey(dataKey)) return null;
   if (hospitalDataTableMissing) return null;
   const { data, error } = await supabase
     .from('hospital_data')
@@ -222,6 +247,10 @@ export async function getHospitalData<T = unknown>(hospitalId: string, dataKey: 
 /** Upsert hospital-scoped JSON value, preserving actor attribution server-side via auth.uid(). */
 export async function setHospitalData(hospitalId: string, dataKey: string, value: unknown): Promise<void> {
   if (!hospitalId || !dataKey) return;
+  if (isUserPrivateDataKey(dataKey)) {
+    console.error(`[userData] refused hospital_data write for private key "${dataKey}"`);
+    return;
+  }
   if (hospitalDataTableMissing) return;
   assertPhiSafeForDataKey(dataKey, value);
   const { error } = await supabase
@@ -248,6 +277,7 @@ export async function ensureHospitalDataPlaceholder(
   defaultValue: unknown = []
 ): Promise<void> {
   if (!hospitalId || !dataKey) return;
+  if (isUserPrivateDataKey(dataKey)) return;
   if (hospitalDataTableMissing) return;
   const { data, error } = await supabase
     .from('hospital_data')
@@ -289,6 +319,12 @@ export async function getContinuityData<T = unknown>(
   dataKey: string
 ): Promise<T | null> {
   if (!dataKey) return null;
+  if (isUserPrivateDataKey(dataKey)) {
+    return userId ? getUserData<T>(userId, dataKey) : null;
+  }
+  if (isHospitalScopedNoMirrorKey(dataKey)) {
+    return hospitalId ? getHospitalData<T>(hospitalId, dataKey) : null;
+  }
   if (hospitalId) {
     const fromHospital = await getHospitalData<T>(hospitalId, dataKey);
     if (fromHospital != null) return fromHospital;
@@ -307,6 +343,14 @@ export async function writeContinuityData(
   value: unknown
 ): Promise<void> {
   if (!dataKey) return;
+  if (isUserPrivateDataKey(dataKey)) {
+    if (userId) await setUserData(userId, dataKey, value);
+    return;
+  }
+  if (isHospitalScopedNoMirrorKey(dataKey)) {
+    if (hospitalId) await setHospitalData(hospitalId, dataKey, value);
+    return;
+  }
   if (hospitalId) {
     if (shouldMirrorLegacyUserData() && userId) {
       await Promise.all([

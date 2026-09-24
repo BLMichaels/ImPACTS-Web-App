@@ -29,6 +29,7 @@ import { supabase } from '../supabase';
 import { getUserData, setUserData, migrateFromLocalStorage, writeContinuityData } from '../utils/userData';
 import {
   fetchSiteChecklistProgress,
+  isCanonicalHospitalUuid,
   resolveSiteChecklistHospitalUuid,
   subscribeToSiteChecklistProgress,
   upsertSiteChecklistTaskProgress,
@@ -37,6 +38,7 @@ import ScormPackagesSection from '../components/ScormPackagesSection';
 import { sanitizeHtml, stripHtmlToText } from '../components/cohorts/RichTextEditor';
 import {
   decodeChecklistEntry,
+  isActionableChecklistTask,
   isValidHexColor,
   type ChecklistEntryType,
 } from '../utils/checklistEntries';
@@ -589,10 +591,17 @@ const MilestonesPage = () => {
 
   useEffect(() => {
     if (!hospitalId) return;
-    return subscribeToSiteChecklistProgress([hospitalId], () => {
-      void refreshChecklistProgress(hospitalId);
+    return subscribeToSiteChecklistProgress([hospitalId], (_hospitalUuid, patch) => {
+      setStages((prev) =>
+        prev.map((stage) => ({
+          ...stage,
+          tasks: stage.tasks.map((task) =>
+            task.id === patch.task_id ? { ...task, completed: patch.completed } : task
+          ),
+        }))
+      );
     });
-  }, [hospitalId, refreshChecklistProgress]);
+  }, [hospitalId]);
 
   const milestonesUserId = effectiveUserId;
   // Load milestone data from user_data when no site/hospital
@@ -642,12 +651,12 @@ const MilestonesPage = () => {
 
 
   const handleTaskToggle = async (stageId: string, taskId: string) => {
-    const previousCompleted = Boolean(
-      stages.find((s) => s.id === stageId)?.tasks.find((t) => t.id === taskId)?.completed
-    );
-    const newCompleted = !previousCompleted;
     const stage = stages.find((s) => s.id === stageId);
     const task = stage?.tasks.find((t) => t.id === taskId);
+    if (!task || !isActionableChecklistTask(task)) return;
+
+    const previousCompleted = Boolean(task.completed);
+    const newCompleted = !previousCompleted;
     trackChecklist(newCompleted ? 'task_complete' : 'task_uncomplete', {
       checklist_id: 'milestones',
       stage_id: stageId,
@@ -668,6 +677,22 @@ const MilestonesPage = () => {
     setStages(newStages);
 
     if (hospitalId) {
+      if (!isCanonicalHospitalUuid(hospitalId)) {
+        console.error('Checklist save skipped: hospital UUID not resolved');
+        setStages((prev) =>
+          prev.map((stageRow) =>
+            stageRow.id === stageId
+              ? {
+                  ...stageRow,
+                  tasks: stageRow.tasks.map((taskRow) =>
+                    taskRow.id === taskId ? { ...taskRow, completed: previousCompleted } : taskRow
+                  ),
+                }
+              : stageRow
+          )
+        );
+        return;
+      }
       const { error } = await upsertSiteChecklistTaskProgress(hospitalId, taskId, newCompleted);
       if (error) {
         console.error('Checklist save error:', error);
@@ -695,7 +720,7 @@ const MilestonesPage = () => {
   const theme = useTheme();
 
   const getStageProgress = (stage: MilestoneStage) => {
-    const taskRows = stage.tasks.filter((task) => (task.entry_type || 'task') === 'task');
+    const taskRows = stage.tasks.filter(isActionableChecklistTask);
     const completedTasks = taskRows.filter(task => task.completed).length;
     const totalTasks = taskRows.length;
     const percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;

@@ -21,8 +21,9 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
-import { useAuth } from '../../context/AuthContext';
+import { useUserProfile } from '../../context/UserProfileContext';
 import { supabase } from '../../supabase';
+import { listHospitalSystemNames } from '../../utils/hospitalSystemScope';
 import { batchGetHospitalDataForKey, mapSiteRefsToHospitalRowIds } from '../../utils/userData';
 import { parseActivityDate } from '../../utils/snapshotActivityDate';
 
@@ -44,8 +45,8 @@ interface HospitalMetric {
 }
 
 const HiringGroupSnapshotPage: React.FC = () => {
-  const { currentUser } = useAuth();
-  const hiringGroupUserId = currentUser?.id ?? (currentUser as { uid?: string })?.uid ?? null;
+  const { effectiveUserId, hasAdminAccess, viewAsUserId } = useUserProfile();
+  const hiringGroupUserId = effectiveUserId ?? null;
   const [systemNames, setSystemNames] = useState<string[]>([]);
   const [hospitalsBySystem, setHospitalsBySystem] = useState<Record<string, HospitalRow[]>>({});
   const [metricsByHospital, setMetricsByHospital] = useState<Record<string, HospitalMetric>>({});
@@ -56,22 +57,28 @@ const HiringGroupSnapshotPage: React.FC = () => {
 
   useEffect(() => {
     const load = async () => {
-      if (!hiringGroupUserId) return;
+      if (!hiringGroupUserId && !hasAdminAccess) return;
       setLoading(true);
       setError(null);
       try {
-        const { data: assignments, error: assignErr } = await supabase
-          .from('hiring_group_assignments')
-          .select('hospital_system_name')
-          .eq('user_id', hiringGroupUserId);
-        if (assignErr) throw assignErr;
-        const names = [
-          ...new Set(
-            (assignments || [])
-              .map((a: { hospital_system_name: string }) => a.hospital_system_name)
-              .filter(Boolean)
-          ),
-        ];
+        let names: string[] = [];
+        if (hiringGroupUserId) {
+          const { data: assignments, error: assignErr } = await supabase
+            .from('hiring_group_assignments')
+            .select('hospital_system_name')
+            .eq('user_id', hiringGroupUserId);
+          if (assignErr) throw assignErr;
+          names = [
+            ...new Set(
+              (assignments || [])
+                .map((a: { hospital_system_name: string }) => a.hospital_system_name)
+                .filter(Boolean)
+            ),
+          ];
+        }
+        if (names.length === 0 && hasAdminAccess && !viewAsUserId) {
+          names = await listHospitalSystemNames();
+        }
         setSystemNames(names);
         if (names.length > 0) setExpandedSystem((prev) => (prev == null ? names[0] : prev));
 
@@ -81,20 +88,17 @@ const HiringGroupSnapshotPage: React.FC = () => {
           return;
         }
 
-        const { data: hospData, error: hospErr } = await supabase
-          .from('hospitals')
-          .select('id, name, facility_id, city, state, hospital_system')
-          .in('hospital_system', names)
-          .order('name');
-        if (hospErr) throw hospErr;
-
-        const hospitals = (hospData || []) as HospitalRow[];
+        const { resolveHospitalsForSystem } = await import('../../utils/hospitalSystemScope');
         const bySystem: Record<string, HospitalRow[]> = {};
-        names.forEach((sys) => {
-          bySystem[sys] = hospitals.filter((h) => h.hospital_system === sys);
-        });
+        const allHospitals: HospitalRow[] = [];
+        for (const sys of names) {
+          const rows = await resolveHospitalsForSystem(sys);
+          bySystem[sys] = rows;
+          allHospitals.push(...rows);
+        }
         setHospitalsBySystem(bySystem);
 
+        const hospitals = allHospitals;
         const refs = hospitals.flatMap((h) => [h.id, h.facility_id]).filter(Boolean) as string[];
         const refToHospitalId = await mapSiteRefsToHospitalRowIds(refs);
         const canonicalHospitalIds = [...new Set([...refToHospitalId.values()])];
@@ -160,7 +164,7 @@ const HiringGroupSnapshotPage: React.FC = () => {
       }
     };
     load();
-  }, [hiringGroupUserId, retryCount]);
+  }, [hiringGroupUserId, hasAdminAccess, viewAsUserId, retryCount]);
 
   const totalHospitals = Object.values(hospitalsBySystem).reduce((sum, list) => sum + list.length, 0);
   const totalActivities = Object.values(metricsByHospital).reduce((sum, m) => sum + m.activityCount, 0);
