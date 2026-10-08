@@ -31,6 +31,79 @@ export async function resolvePeccPortalUserId(
   return picked?.id ? String(picked.id) : null;
 }
 
+/** Resolve portal mentor user id from CRM user_id or matching email. */
+export async function resolveMentorPortalUserId(
+  userId?: string | null,
+  email?: string | null
+): Promise<string | null> {
+  const uid = normalizeHospitalKey(userId);
+  if (uid) return uid;
+  const em = String(email || '').trim();
+  if (!em) return null;
+  const { data: rows } = await supabase
+    .from('users')
+    .select('id, email, last_login, created_at, is_active')
+    .eq('role', 'mentor')
+    .ilike('email', em);
+  const picked = pickCanonicalUserByEmail(rows ?? []);
+  return picked?.id ? String(picked.id) : null;
+}
+
+/**
+ * Push CRM mentor linked_hospital_ids into mentor_hospital_assignments (portal source of truth).
+ * Activates/creates rows for each linked hospital; deactivates assignment-only rows no longer in CRM
+ * when `deactivateMissing` is true.
+ */
+export async function syncMentorHospitalsFromCrmLinkedIds(
+  mentorUserId: string,
+  linkedHospitalIds: string[],
+  assignedBy: string,
+  options?: { deactivateMissing?: boolean }
+): Promise<{ synced: number; errors: string[] }> {
+  const mentorId = normalizeHospitalKey(mentorUserId);
+  const actor = normalizeHospitalKey(assignedBy) || mentorId;
+  if (!mentorId) return { synced: 0, errors: ['missing mentor id'] };
+
+  const uniqueRefs = [
+    ...new Set(linkedHospitalIds.map((id) => normalizeHospitalKey(id)).filter(Boolean)),
+  ];
+  const errors: string[] = [];
+  const activeUuids = new Set<string>();
+  let synced = 0;
+
+  for (const ref of uniqueRefs) {
+    const result = await ensureMentorHospitalAssignment(mentorId, ref, actor);
+    if (result.ok && result.hospitalUuid) {
+      activeUuids.add(result.hospitalUuid);
+      synced += 1;
+    } else if (result.error) {
+      errors.push(result.error);
+    }
+  }
+
+  if (options?.deactivateMissing) {
+    const { data: existing } = await supabase
+      .from('mentor_hospital_assignments')
+      .select('id, hospital_id, is_active')
+      .eq('mentor_id', mentorId)
+      .eq('is_active', true);
+    const toDeactivate = (existing || []).filter(
+      (row: { hospital_id?: string }) => !activeUuids.has(normalizeHospitalKey(row.hospital_id))
+    );
+    if (toDeactivate.length > 0) {
+      await supabase
+        .from('mentor_hospital_assignments')
+        .update({ is_active: false })
+        .in(
+          'id',
+          toDeactivate.map((row: { id: string }) => row.id)
+        );
+    }
+  }
+
+  return { synced, errors };
+}
+
 /** Apply CRM linked hospitals to users + mentor assignment rows. */
 export async function syncPeccHospitalAndMentorFromCrm(
   peccUserId: string,

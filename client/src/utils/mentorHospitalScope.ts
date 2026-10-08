@@ -2,8 +2,9 @@
  * Canonical merge for mentor site lists:
  * 1) Active rows from mentor_hospital_assignments (authoritative for ops/admin assignments)
  * 2) Hospitals from PECCs linked to this mentor (users.mentor_id + pecc_mentor_ids)
- * 3) mentorHospitals in user_data (Hospitals page / legacy; fills gaps before PECC accounts exist)
- * Order: assignment rows first, then PECC-linked, then stored-only sites not already represented.
+ * 3) CRM mentor contact linked_hospital_ids (defense if assignments lag behind CRM)
+ * 4) mentorHospitals in user_data (Hospitals page / legacy; fills gaps before PECC accounts exist)
+ * Order: assignment rows first, then PECC-linked, then CRM, then stored-only sites.
  */
 import { supabase } from '../supabase';
 import { batchGetUserDataForKey, getUserData } from './userData';
@@ -128,8 +129,39 @@ export interface MergedMentorHospitalRow {
     name?: string;
     facility_id?: string | null;
   };
-  source: 'assignment' | 'pecc_linked' | 'stored';
+  source: 'assignment' | 'pecc_linked' | 'crm_linked' | 'stored';
   storedHospital?: { city?: string; state?: string };
+}
+
+async function fetchCrmMentorLinkedHospitalRefs(mentorId: string): Promise<string[]> {
+  const mid = normalizeHospitalKey(mentorId);
+  if (!mid) return [];
+  const { data: byUser } = await supabase
+    .from('crm_organizations')
+    .select('linked_hospital_ids, email')
+    .eq('contact_type', 'mentor')
+    .eq('user_id', mid)
+    .maybeSingle();
+  let links = Array.isArray((byUser as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)
+    ? (byUser as { linked_hospital_ids: string[] }).linked_hospital_ids
+    : [];
+  if (links.length === 0) {
+    const { data: userRow } = await supabase.from('users').select('email').eq('id', mid).maybeSingle();
+    const email = String((userRow as { email?: string } | null)?.email || '').trim();
+    if (email) {
+      const { data: byEmail } = await supabase
+        .from('crm_organizations')
+        .select('linked_hospital_ids')
+        .eq('contact_type', 'mentor')
+        .ilike('email', email)
+        .limit(1)
+        .maybeSingle();
+      if (Array.isArray((byEmail as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)) {
+        links = (byEmail as { linked_hospital_ids: string[] }).linked_hospital_ids;
+      }
+    }
+  }
+  return [...new Set(links.map((id) => normalizeHospitalKey(id)).filter(Boolean))];
 }
 
 function rowSeenKey(row: MergedMentorHospitalRow): string {
@@ -139,7 +171,7 @@ function rowSeenKey(row: MergedMentorHospitalRow): string {
 }
 
 export async function fetchMergedMentorHospitals(mentorId: string): Promise<MergedMentorHospitalRow[]> {
-  const [assignmentRes, storedMentorHospitals, peccHospitalRefs] = await Promise.all([
+  const [assignmentRes, storedMentorHospitals, peccHospitalRefs, crmHospitalRefs] = await Promise.all([
     supabase
       .from('mentor_hospital_assignments')
       .select(`
@@ -150,6 +182,7 @@ export async function fetchMergedMentorHospitals(mentorId: string): Promise<Merg
       .eq('is_active', true),
     getUserData<MentorStoredHospitalLite[]>(mentorId, 'mentorHospitals'),
     fetchPeccHospitalRefsForMentor(mentorId),
+    fetchCrmMentorLinkedHospitalRefs(mentorId),
   ]);
 
   if (assignmentRes.error) throw assignmentRes.error;
@@ -199,6 +232,30 @@ export async function fetchMergedMentorHospitals(mentorId: string): Promise<Merg
         facility_id: fid,
       },
       source: 'pecc_linked',
+    });
+  }
+
+  const crmRowsByRef = await resolveHospitalRowsByRefs(crmHospitalRefs);
+  for (const ref of crmHospitalRefs) {
+    const resolved = crmRowsByRef.get(ref);
+    if (!resolved) continue;
+    const hid = normalizeHospitalKey(resolved.id);
+    const key = hid || ref;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const fid = resolved.facility_id != null ? normalizeHospitalKey(String(resolved.facility_id)) : null;
+    if (fid) seen.add(fid);
+    merged.push({
+      id: `crm-${hid}`,
+      hospital_id: hid,
+      mentor_id: mentorId,
+      is_active: true,
+      hospital: {
+        id: hid,
+        name: resolved.name || 'Assigned Hospital',
+        facility_id: fid,
+      },
+      source: 'crm_linked',
     });
   }
 

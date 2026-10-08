@@ -9,6 +9,8 @@ import { batchGetUserDataForKey, getUserData, setUserData } from '../../utils/us
 import {
   applyPeccHospitalFromLinkedIds,
   resolvePeccPortalUserId,
+  resolveMentorPortalUserId,
+  syncMentorHospitalsFromCrmLinkedIds,
   syncPeccHospitalAndMentorFromCrm,
   syncMentorHospitalAssignmentsForPecc,
   syncMentorHospitalAssignmentsFromMentorPeccLink,
@@ -3275,6 +3277,29 @@ const AdminCRMPage: React.FC = () => {
         const crmOrgId = editingContact?.id && isUuid(editingContact.id) ? editingContact.id : null;
         if (crmOrgId) {
           await supabase.from('crm_organizations').update({ user_id: peccUserId }).eq('id', crmOrgId);
+        }
+      }
+    }
+
+    // Mentors: CRM linked hospitals must become mentor_hospital_assignments (portal source of truth).
+    if (formData.type === 'mentor' && currentUser?.id) {
+      const mentorUserId =
+        assignmentTargetUserId ||
+        (await resolveMentorPortalUserId(editingContact?.user_id, formData.email?.trim()));
+      if (mentorUserId) {
+        const mentorHospitalIds = (formData.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)));
+        const syncResult = await syncMentorHospitalsFromCrmLinkedIds(
+          mentorUserId,
+          mentorHospitalIds,
+          currentUser.id,
+          { deactivateMissing: true }
+        );
+        if (syncResult.errors.length) {
+          console.warn('[AdminCRM] mentor hospital sync issues', syncResult.errors);
+        }
+        const crmOrgId = editingContact?.id && isUuid(editingContact.id) ? editingContact.id : null;
+        if (crmOrgId) {
+          await supabase.from('crm_organizations').update({ user_id: mentorUserId }).eq('id', crmOrgId);
         }
       }
     }

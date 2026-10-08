@@ -241,11 +241,13 @@ const AccountPage = () => {
     (userProfile as { hospital_facility_id?: string | null })?.hospital_facility_id ?? null;
   const canEditHospitalInfo = settingsRole === UserRole.ADMIN || settingsRole === UserRole.MANAGER;
   const isPeccSettings = settingsRole === UserRole.PECC;
+  const isMentorSettings = settingsRole === UserRole.MENTOR;
 
   const [hospitalInfo, setHospitalInfo] = useState<HospitalInfo>(EMPTY_HOSPITAL);
   const [hospitalLoadId, setHospitalLoadId] = useState<string | null>(null);
   const [hospitalAssigned, setHospitalAssigned] = useState(false);
   const [hospitalLoading, setHospitalLoading] = useState(false);
+  const [mentorHospitalNames, setMentorHospitalNames] = useState<string[]>([]);
   const [, setPrimaryHospitalContactId] = useState<string | null>(null);
 
   const [editingUser, setEditingUser] = useState(false);
@@ -303,6 +305,59 @@ const AccountPage = () => {
     const loadCrmData = async () => {
       setHospitalLoading(true);
       try {
+        // Mentors are multi-hospital: use assignments ∪ CRM linked hospitals (not users.hospital_facility_id).
+        if (isMentorSettings && accountUserId) {
+          const { fetchMergedMentorHospitals } = await import('../utils/mentorHospitalScope');
+          const { syncMentorHospitalsFromCrmLinkedIds } = await import('../utils/mentorHospitalAssignments');
+          // Heal CRM → assignments so dashboards and this page stay aligned.
+          const { data: crmMentor } = await supabase
+            .from('crm_organizations')
+            .select('linked_hospital_ids')
+            .eq('contact_type', 'mentor')
+            .eq('user_id', accountUserId)
+            .maybeSingle();
+          let crmLinks = Array.isArray((crmMentor as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)
+            ? (crmMentor as { linked_hospital_ids: string[] }).linked_hospital_ids
+            : [];
+          if (crmLinks.length === 0 && userProfile?.email) {
+            const { data: crmByEmail } = await supabase
+              .from('crm_organizations')
+              .select('linked_hospital_ids')
+              .eq('contact_type', 'mentor')
+              .ilike('email', String(userProfile.email).trim())
+              .limit(1)
+              .maybeSingle();
+            if (Array.isArray((crmByEmail as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)) {
+              crmLinks = (crmByEmail as { linked_hospital_ids: string[] }).linked_hospital_ids;
+            }
+          }
+          if (crmLinks.length > 0) {
+            await syncMentorHospitalsFromCrmLinkedIds(accountUserId, crmLinks, accountUserId);
+          }
+          const merged = await fetchMergedMentorHospitals(accountUserId);
+          if (cancelled) return;
+          const names = merged
+            .map((row) => normalizeHospitalOrOrgName(row.hospital?.name || ''))
+            .filter(Boolean);
+          if (names.length > 0) {
+            setMentorHospitalNames(names);
+            setHospitalAssigned(true);
+            const primary = merged[0];
+            setHospitalLoadId(primary.hospital?.id || null);
+            setHospitalInfo({
+              ...EMPTY_HOSPITAL,
+              name: primary.hospital?.name || names[0],
+            });
+          } else {
+            setMentorHospitalNames([]);
+            setHospitalAssigned(false);
+            setHospitalLoadId(null);
+            setHospitalInfo(EMPTY_HOSPITAL);
+          }
+          return;
+        }
+
+        setMentorHospitalNames([]);
         const { data: contacts } = await supabase
           .from('hospital_contacts')
           .select('id, hospital_id, first_name, last_name, email, phone')
@@ -419,7 +474,7 @@ const AccountPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [accountUserId, profileHospitalId, siteId, isPeccSettings, userProfile?.email, refreshProfile]);
+  }, [accountUserId, profileHospitalId, siteId, isPeccSettings, isMentorSettings, userProfile?.email, refreshProfile]);
 
   const handleUserSave = async () => {
     const firstName = getFirstName();
@@ -814,10 +869,28 @@ const AccountPage = () => {
               </Typography>
             ) : !hospitalAssigned ? (
               <Alert severity="info" variant="outlined">
-                No hospital is assigned to your account yet. An admin must link a hospital on your PECC contact in
-                the CRM (Linked hospitals), then save. Sign out and sign back in — or refresh this page — so the
-                portal picks it up.
+                {isMentorSettings
+                  ? 'No hospitals are assigned to your mentor account yet. An admin must link hospitals on your Mentor contact in the CRM (Linked hospitals), then save. Refresh this page or sign out and back in.'
+                  : 'No hospital is assigned to your account yet. An admin must link a hospital on your PECC contact in the CRM (Linked hospitals), then save. Sign out and sign back in — or refresh this page — so the portal picks it up.'}
               </Alert>
+            ) : isMentorSettings && mentorHospitalNames.length > 0 ? (
+              <Box>
+                <Alert
+                  severity="info"
+                  variant="outlined"
+                  icon={false}
+                  sx={{ mb: 2, bgcolor: alpha(theme.palette.secondary.main, 0.04) }}
+                >
+                  Hospitals linked to your mentor account from the CRM and assignments.
+                </Alert>
+                <Stack spacing={1}>
+                  {mentorHospitalNames.map((name) => (
+                    <Typography key={name} variant="body1" fontWeight={600}>
+                      {name}
+                    </Typography>
+                  ))}
+                </Stack>
+              </Box>
             ) : (
               <Grid container spacing={1.75}>
                 <Grid item xs={12}>
