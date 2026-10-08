@@ -46,7 +46,9 @@ ok('10d. listVerifiedTotpFactors prefers data.totp', mfa.includes('export async 
 ok('11. useSecurityGate calls resolveMfaGateState', securityGate.includes('resolveMfaGateState'));
 ok('12. Gate order: password before terms before MFA', /passwordPending[\s\S]*terms[\s\S]*resolveMfaGateState/.test(securityGate));
 ok('13. Password recovery skips MFA gate', securityGate.includes('isPasswordRecoverySession()'));
-ok('14. MFA gate errors fail closed to challenge', securityGate.includes("setStatus('mfa-challenge')") && securityGate.includes('failing closed to challenge'));
+ok('14. MFA gate errors use smart fail-closed (enroll if no verified factor)', securityGate.includes('failClosedMfaStatus') && securityGate.includes("return 'mfa-enroll'") && securityGate.includes("return 'mfa-challenge'"));
+ok('14b. Challenge→enroll recovery catches listFactors errors', gateScreen.includes('.catch(() => {') && gateScreen.includes("setEffectiveMode('mfa-enroll')"));
+ok('14c. Challenge form routes to enroll on listFactors failure', challengeForm.includes('onNeedsEnrollment?.()') && /hasVerifiedTotpEnrollment\(\)[\s\S]*\.catch\(/.test(challengeForm));
 ok('15. isSecurityGateBlocking includes mfa-enroll and mfa-challenge', securityGate.includes("'mfa-challenge'") && securityGate.includes("'mfa-enroll'"));
 ok('16. SecurityGateShell blocks app chrome during MFA', gateShell.includes('MfaGateScreen') && gateShell.includes('isSecurityGateBlocking'));
 ok('17. SecurityGateShell bypasses gates during password recovery', gateShell.includes('isPasswordRecovery'));

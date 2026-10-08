@@ -44,9 +44,14 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
   useEffect(() => {
     if (mode !== 'mfa-challenge') return;
     let cancelled = false;
-    void hasVerifiedTotpEnrollment().then((verified) => {
-      if (!cancelled && !verified) setEffectiveMode('mfa-enroll');
-    });
+    void hasVerifiedTotpEnrollment()
+      .then((verified) => {
+        // No verified authenticator (or API error) → show QR enrollment, not a blank code screen.
+        if (!cancelled && !verified) setEffectiveMode('mfa-enroll');
+      })
+      .catch(() => {
+        if (!cancelled) setEffectiveMode('mfa-enroll');
+      });
     return () => {
       cancelled = true;
     };
@@ -57,14 +62,18 @@ const MfaGateScreen: React.FC<MfaGateScreenProps> = ({ mode, onComplete }) => {
     if (mode !== 'mfa-enroll') return;
     let cancelled = false;
     void (async () => {
-      const verified = await hasVerifiedTotpEnrollment();
-      if (cancelled || !verified) return;
-      const levels = await getAuthenticatorLevels();
-      if (cancelled) return;
-      if (needsMfaChallenge(levels)) {
-        setEffectiveMode('mfa-challenge');
-      } else {
-        onComplete();
+      try {
+        const verified = await hasVerifiedTotpEnrollment();
+        if (cancelled || !verified) return;
+        const levels = await getAuthenticatorLevels();
+        if (cancelled) return;
+        if (needsMfaChallenge(levels)) {
+          setEffectiveMode('mfa-challenge');
+        } else {
+          onComplete();
+        }
+      } catch {
+        // Stay on enroll so first-time users still get a QR when factor listing fails.
       }
     })();
     return () => {

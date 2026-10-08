@@ -235,9 +235,10 @@ const CrmPortalSecurityActions: React.FC<CrmPortalSecurityActionsProps> = ({
         <DialogTitle>Reset MFA for this user?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
-            This removes all authenticator apps enrolled for <strong>{emailTrim}</strong>. They will be prompted
-            to set up MFA again on their next successful sign-in. Use this if they lost their phone or are stuck
-            on the MFA screen.
+            This removes all authenticator apps enrolled for <strong>{emailTrim}</strong>. On their next
+            successful sign-in they should see <strong>Set up multi-factor authentication</strong> with a QR
+            code (not only a 6-digit code box). Use this if they lost their phone, never got a QR on first
+            login, or are stuck on the MFA screen.
           </Typography>
         </DialogContent>
         <DialogActions>

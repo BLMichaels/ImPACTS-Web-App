@@ -46,9 +46,14 @@ const MfaChallengeForm: React.FC<MfaChallengeFormProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    void hasVerifiedTotpEnrollment().then((verified) => {
-      if (!cancelled && !verified) onNeedsEnrollment?.();
-    });
+    void hasVerifiedTotpEnrollment()
+      .then((verified) => {
+        if (!cancelled && !verified) onNeedsEnrollment?.();
+      })
+      .catch(() => {
+        // Factor listing failed — send first-time users to QR setup rather than a stuck code form.
+        if (!cancelled) onNeedsEnrollment?.();
+      });
     return () => {
       cancelled = true;
     };
