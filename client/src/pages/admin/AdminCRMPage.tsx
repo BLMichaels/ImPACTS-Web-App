@@ -3956,6 +3956,22 @@ const AdminCRMPage: React.FC = () => {
           errors.push(`Row ${i + 2}: ${error.message}`);
         } else {
           successCount++;
+          // Push CRM hospital links onto the portal PECC user when possible.
+          if (
+            currentUser?.id &&
+            String(payload.contact_type || '') === 'pecc' &&
+            Array.isArray(payload.linked_hospital_ids) &&
+            (payload.linked_hospital_ids as string[]).length > 0
+          ) {
+            const peccUserId = await resolvePeccPortalUserId(null, String(payload.email || ''));
+            if (peccUserId) {
+              await syncPeccHospitalAndMentorFromCrm(
+                peccUserId,
+                (payload.linked_hospital_ids as string[]).filter((id) => isUuid(String(id))),
+                currentUser.id
+              );
+            }
+          }
         }
       }
     }
@@ -4604,6 +4620,23 @@ const AdminCRMPage: React.FC = () => {
         });
         if ('error' in syncResult && syncResult.error) {
           throw new Error(syncResult.error);
+        }
+      }
+      // Keep portal hospital_facility_id aligned after merge when the surviving contact is a PECC.
+      if (
+        (keepContact.type === 'pecc' || deleteContact.type === 'pecc') &&
+        currentUser?.id &&
+        mergedLinkedHospitals.length > 0
+      ) {
+        const peccUserId =
+          mergedUserId ||
+          (await resolvePeccPortalUserId(mergedUserId, finalPrimaryEmail));
+        if (peccUserId) {
+          await syncPeccHospitalAndMentorFromCrm(
+            peccUserId,
+            mergedLinkedHospitals.filter((id) => isUuid(String(id))),
+            currentUser.id
+          );
         }
       }
       if (deleteContact.type === 'manager' && isUuid(deleteContact.user_id)) {

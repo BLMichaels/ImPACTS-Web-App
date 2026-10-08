@@ -43,6 +43,38 @@ export async function syncPeccHospitalAndMentorFromCrm(
   await syncMentorHospitalAssignmentsForPecc(peccUserId, assignedBy);
 }
 
+/** Upsert site_members so Account / nav can resolve the PECC hospital even before profile refresh. */
+export async function ensurePeccSiteMembership(
+  peccUserId: string,
+  siteRef: string
+): Promise<void> {
+  const uid = normalizeHospitalKey(peccUserId);
+  const siteId = normalizeHospitalKey(siteRef);
+  if (!uid || !siteId) return;
+  const { data: existing } = await supabase
+    .from('site_members')
+    .select('id')
+    .eq('user_id', uid)
+    .eq('site_id', siteId)
+    .maybeSingle();
+  if (existing?.id) return;
+  const { error } = await supabase.from('site_members').upsert(
+    { user_id: uid, site_id: siteId, role: 'pecc' },
+    { onConflict: 'site_id,user_id', ignoreDuplicates: true }
+  );
+  if (error) {
+    // Some schemas use a unique on user_id only — fall back to insert-or-ignore via plain insert.
+    const { error: insertErr } = await supabase.from('site_members').insert({
+      user_id: uid,
+      site_id: siteId,
+      role: 'pecc',
+    });
+    if (insertErr && !/duplicate|unique/i.test(insertErr.message)) {
+      console.warn('[ensurePeccSiteMembership]', insertErr.message);
+    }
+  }
+}
+
 export async function resolveHospitalUuidFromRef(
   hospitalRef: string | null | undefined
 ): Promise<string | null> {
@@ -103,19 +135,48 @@ export async function applyPeccHospitalFromLinkedIds(
   peccUserId: string,
   linkedHospitalIds: string[]
 ): Promise<string | null> {
+  const uid = normalizeHospitalKey(peccUserId);
   const first = linkedHospitalIds.map((id) => normalizeHospitalKey(id)).find(Boolean);
-  if (!first || !peccUserId) return null;
+  if (!first || !uid) return null;
   const facilityId = await resolvePeccFacilityId(supabase, first);
-  if (!facilityId) return null;
-  const { error } = await supabase
+  if (!facilityId) {
+    console.warn('[applyPeccHospitalFromLinkedIds] unresolved hospital ref', first);
+    return null;
+  }
+
+  // Prefer PECC role, but still apply if this portal user id was explicitly resolved
+  // (CRM can lag on role after invite/provision).
+  const { data: updatedRows, error } = await supabase
     .from('users')
     .update({ hospital_facility_id: facilityId, updated_at: new Date().toISOString() })
-    .eq('id', peccUserId)
-    .eq('role', 'pecc');
+    .eq('id', uid)
+    .eq('role', 'pecc')
+    .select('id');
   if (error) {
     console.warn('[applyPeccHospitalFromLinkedIds]', error.message);
     return null;
   }
+  if (!updatedRows?.length) {
+    const { data: anyRoleRows, error: anyRoleErr } = await supabase
+      .from('users')
+      .update({ hospital_facility_id: facilityId, updated_at: new Date().toISOString() })
+      .eq('id', uid)
+      .select('id, role');
+    if (anyRoleErr) {
+      console.warn('[applyPeccHospitalFromLinkedIds] fallback update failed', anyRoleErr.message);
+      return null;
+    }
+    if (!anyRoleRows?.length) {
+      console.warn('[applyPeccHospitalFromLinkedIds] no users row for', uid);
+      return null;
+    }
+    console.warn(
+      '[applyPeccHospitalFromLinkedIds] applied hospital to non-pecc role',
+      (anyRoleRows[0] as { role?: string }).role
+    );
+  }
+
+  await ensurePeccSiteMembership(uid, facilityId);
   return facilityId;
 }
 

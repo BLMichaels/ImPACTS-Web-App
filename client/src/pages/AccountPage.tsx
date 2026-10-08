@@ -318,9 +318,47 @@ const AccountPage = () => {
           contactHospitalId = hid || null;
         }
 
-        const hospitalRefCandidates = [profileHospitalId, siteId, contactHospitalId].filter(
+        let hospitalRefCandidates = [profileHospitalId, siteId, contactHospitalId].filter(
           (v): v is string => !!v && isQueryableHospitalRef(v)
         );
+
+        // If portal profile has no hospital yet, heal from CRM PECC linked hospitals (same as login sync).
+        if (hospitalRefCandidates.length === 0 && isPeccSettings) {
+          const { applyPeccHospitalFromLinkedIds } = await import('../utils/mentorHospitalAssignments');
+          let crmLinks: string[] = [];
+          const { data: crmByUser } = await supabase
+            .from('crm_organizations')
+            .select('linked_hospital_ids')
+            .eq('contact_type', 'pecc')
+            .eq('user_id', accountUserId)
+            .maybeSingle();
+          if (Array.isArray((crmByUser as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)) {
+            crmLinks = (crmByUser as { linked_hospital_ids: string[] }).linked_hospital_ids;
+          } else {
+            const email = String(userProfile?.email || '').trim();
+            if (email) {
+              const { data: crmByEmail } = await supabase
+                .from('crm_organizations')
+                .select('linked_hospital_ids')
+                .eq('contact_type', 'pecc')
+                .ilike('email', email)
+                .limit(1)
+                .maybeSingle();
+              if (Array.isArray((crmByEmail as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)) {
+                crmLinks = (crmByEmail as { linked_hospital_ids: string[] }).linked_hospital_ids;
+              }
+            }
+          }
+          if (crmLinks.length > 0) {
+            const facilityId = await applyPeccHospitalFromLinkedIds(accountUserId, crmLinks);
+            if (facilityId && isQueryableHospitalRef(facilityId)) {
+              hospitalRefCandidates = [facilityId];
+              // Refresh profile so Dashboard and other pages pick up hospital_facility_id.
+              void refreshProfile?.();
+            }
+          }
+        }
+
         const hospitalRef = hospitalRefCandidates[0] ?? null;
 
         if (!hospitalRef) {
@@ -381,7 +419,7 @@ const AccountPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [accountUserId, profileHospitalId, siteId]);
+  }, [accountUserId, profileHospitalId, siteId, isPeccSettings, userProfile?.email, refreshProfile]);
 
   const handleUserSave = async () => {
     const firstName = getFirstName();
@@ -776,8 +814,9 @@ const AccountPage = () => {
               </Typography>
             ) : !hospitalAssigned ? (
               <Alert severity="info" variant="outlined">
-                No hospital is assigned to your account yet. Ask your mentor or manager to confirm your hospital
-                assignment in the CRM, then refresh this page.
+                No hospital is assigned to your account yet. An admin must link a hospital on your PECC contact in
+                the CRM (Linked hospitals), then save. Sign out and sign back in — or refresh this page — so the
+                portal picks it up.
               </Alert>
             ) : (
               <Grid container spacing={1.75}>

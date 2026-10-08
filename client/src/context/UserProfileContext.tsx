@@ -275,20 +275,38 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         // Resolve PECC-style site and visible tabs. Granular Permissions (view_tabs by user_id) is source of truth.
         // Only PECC_TAB_KEYS are used for nav; other keys (e.g. snapshot_prs_section) do not affect visibleTabs. Empty array = all tabs hidden.
         let sid: string | null = null;
+        let appliedHospitalFromCrm = false;
         sid = prof.hospital_facility_id ?? null;
-        if (!sid && normalizedRole === UserRole.PECC && prof.email) {
-          const { data: crmRow } = await supabase
+        if (!sid && normalizedRole === UserRole.PECC) {
+          const email = String(prof.email || '').trim();
+          let crmLinks: string[] = [];
+          // Prefer CRM row linked by portal user_id, then case-insensitive email.
+          const { data: crmByUser } = await supabase
             .from('crm_organizations')
             .select('linked_hospital_ids')
             .eq('contact_type', 'pecc')
-            .eq('email', String(prof.email).trim())
+            .eq('user_id', currentUser.id)
             .maybeSingle();
-          const crmLinks = Array.isArray((crmRow as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)
-            ? ((crmRow as { linked_hospital_ids: string[] }).linked_hospital_ids)
-            : [];
+          if (Array.isArray((crmByUser as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)) {
+            crmLinks = (crmByUser as { linked_hospital_ids: string[] }).linked_hospital_ids;
+          } else if (email) {
+            const { data: crmByEmail } = await supabase
+              .from('crm_organizations')
+              .select('linked_hospital_ids')
+              .eq('contact_type', 'pecc')
+              .ilike('email', email)
+              .limit(1)
+              .maybeSingle();
+            if (Array.isArray((crmByEmail as { linked_hospital_ids?: string[] } | null)?.linked_hospital_ids)) {
+              crmLinks = (crmByEmail as { linked_hospital_ids: string[] }).linked_hospital_ids;
+            }
+          }
           if (crmLinks.length > 0) {
             const facilityId = await applyPeccHospitalFromLinkedIds(currentUser.id, crmLinks);
-            if (facilityId) sid = facilityId;
+            if (facilityId) {
+              sid = facilityId;
+              appliedHospitalFromCrm = true;
+            }
           }
         }
         if (!sid) {
@@ -348,8 +366,16 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           ...(normalizedRole === UserRole.MANAGER ? { has_hospital_assignments: hasHospitalAssignments } : {}),
         };
 
-        // Resolve hospital/site name from CRM (hospitals table) so tabs and UI show current name after CRM updates
-        const siteIdToResolve = prof.hospital_facility_id ?? (normalizedRole === UserRole.PECC ? sid : null);
+        // Resolve hospital/site name from CRM (hospitals table) so tabs and UI show current name after CRM updates.
+        // Keep hospital_facility_id in profile state when we just synced from CRM so Dashboard/Account see it immediately.
+        const siteIdToResolve =
+          (appliedHospitalFromCrm ? sid : null) ||
+          prof.hospital_facility_id ||
+          (normalizedRole === UserRole.PECC ? sid : null);
+        const profileHospitalPatch =
+          siteIdToResolve && (appliedHospitalFromCrm || !prof.hospital_facility_id)
+            ? { hospital_facility_id: siteIdToResolve }
+            : {};
         if (siteIdToResolve) {
           const { data: hospitalRow } = await supabase
             .from('hospitals')
@@ -358,9 +384,14 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
             .limit(1)
             .maybeSingle();
           const hospitalName = (hospitalRow as { name?: string } | null)?.name;
-          setUserProfile({ ...profWithUserData, hospital_name: hospitalName != null ? normalizeHospitalOrOrgName(hospitalName) : prof.hospital_name });
+          setUserProfile({
+            ...profWithUserData,
+            ...profileHospitalPatch,
+            hospital_name:
+              hospitalName != null ? normalizeHospitalOrOrgName(hospitalName) : prof.hospital_name,
+          });
         } else {
-          setUserProfile(profWithUserData);
+          setUserProfile({ ...profWithUserData, ...profileHospitalPatch });
         }
 
         // Update last login
