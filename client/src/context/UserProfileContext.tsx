@@ -5,9 +5,20 @@ import { UserRole, normalizeUserRole, DEFAULT_ROLE_PERMISSIONS, PECC_TAB_KEYS } 
 import { normalizeHospitalOrOrgName } from '../utils/displayName';
 import { getUserData } from '../utils/userData';
 import { applyPeccHospitalFromLinkedIds } from '../utils/mentorHospitalAssignments';
-import { hospitalIdOrFacilityOrClause } from '../utils/hospitalId';
+import { fetchMergedMentorHospitals } from '../utils/mentorHospitalScope';
+import { hospitalIdOrFacilityOrClause, normalizeHospitalKey } from '../utils/hospitalId';
 import { resolveNavbarProgramLogo } from '../utils/resolveNavbarProgramLogo';
 import { managerHasHospitalAssignments } from '../utils/managerTeamScope';
+
+const MENTOR_WORK_MODE_KEY = 'impacts_mentor_work_mode';
+const MENTOR_PECC_SITE_KEY = 'impacts_mentor_pecc_site_id';
+
+export type MentorPeccHospitalOption = {
+  id: string;
+  name: string;
+  /** Ref used as PECC siteId (facility_id preferred, else hospitals.id). */
+  siteRef: string;
+};
 
 // Re-export UserRole as UserTier for backward compatibility
 export { UserRole as UserTier } from '../types/database';
@@ -77,6 +88,9 @@ interface UserProfileContextType {
   mentorWorkMode: 'mentor' | 'pecc';
   canToggleMentorWorkMode: boolean;
   setMentorWorkMode: (mode: 'mentor' | 'pecc') => void;
+  /** Hospitals a mentor can work as PECC for (from assignments ∪ CRM). */
+  mentorPeccHospitalOptions: MentorPeccHospitalOption[];
+  setMentorPeccSiteId: (siteRef: string) => void;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -112,14 +126,16 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
   const [viewAsPermissionOverrides, setViewAsPermissionOverrides] = useState<Record<string, boolean>>({});
   const [mentorWorkMode, setMentorWorkModeState] = useState<'mentor' | 'pecc'>(() => {
     try {
-      const saved = localStorage.getItem('impacts_mentor_work_mode');
+      const saved = localStorage.getItem(MENTOR_WORK_MODE_KEY);
       return saved === 'pecc' ? 'pecc' : 'mentor';
     } catch {
       return 'mentor';
     }
   });
-  const [mentorPeccSiteId, setMentorPeccSiteId] = useState<string | null>(null);
+  const [mentorPeccSiteId, setMentorPeccSiteIdState] = useState<string | null>(null);
+  const [mentorPeccHospitalOptions, setMentorPeccHospitalOptions] = useState<MentorPeccHospitalOption[]>([]);
   const [mentorPeccVisibleTabs, setMentorPeccVisibleTabs] = useState<string[]>([...PECC_TAB_KEYS]);
+  const [mentorHasAssignedHospitals, setMentorHasAssignedHospitals] = useState(false);
   // Guard against out-of-order async updates when rapidly switching "view as" users.
   const latestViewAsUserIdRef = useRef<string | null>(null);
   const logoFetchSeqRef = useRef(0);
@@ -151,17 +167,45 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     setPermissionOverrides({});
     setSiteId(null);
     setVisibleTabs([...PECC_TAB_KEYS]);
-    setMentorPeccSiteId(null);
+    setMentorPeccSiteIdState(null);
+    setMentorPeccHospitalOptions([]);
+    setMentorHasAssignedHospitals(false);
     setMentorPeccVisibleTabs([...PECC_TAB_KEYS]);
   }, [currentUser]);
 
   const setMentorWorkMode = useCallback((mode: 'mentor' | 'pecc') => {
     setMentorWorkModeState(mode);
     try {
-      localStorage.setItem('impacts_mentor_work_mode', mode);
+      localStorage.setItem(MENTOR_WORK_MODE_KEY, mode);
     } catch {
       // Ignore localStorage failures
     }
+  }, []);
+
+  const setMentorPeccSiteId = useCallback((siteRef: string) => {
+    const ref = normalizeHospitalKey(siteRef);
+    if (!ref) return;
+    setMentorPeccSiteIdState(ref);
+    try {
+      localStorage.setItem(MENTOR_PECC_SITE_KEY, ref);
+    } catch {
+      // Ignore localStorage failures
+    }
+    void (async () => {
+      const { data: tabRows } = await supabase
+        .from('site_tab_visibility')
+        .select('tab_key, visible')
+        .eq('site_id', ref);
+      if (tabRows && tabRows.length > 0) {
+        setMentorPeccVisibleTabs(
+          (tabRows as { tab_key: string; visible: boolean }[])
+            .filter((r) => r.visible)
+            .map((r) => r.tab_key)
+        );
+      } else {
+        setMentorPeccVisibleTabs([...PECC_TAB_KEYS]);
+      }
+    })();
   }, []);
 
   // Fetch user profile from Supabase
@@ -175,7 +219,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       setVisibleTabs([]);
       setPrimaryProgramLogoUrl(null);
       setNavbarBrandProgramId(null);
-      setMentorPeccSiteId(null);
+      setMentorPeccSiteIdState(null);
+      setMentorPeccHospitalOptions([]);
+      setMentorHasAssignedHospitals(false);
       setMentorPeccVisibleTabs([...PECC_TAB_KEYS]);
       setIsLoading(false);
       return;
@@ -350,8 +396,77 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           setSiteId(null);
           setVisibleTabs([]);
         }
-        setMentorPeccSiteId(sid);
-        setMentorPeccVisibleTabs(resolvedTabs);
+
+        // Mentors: PECC work mode needs a hospital from assignments ∪ CRM (not users.hospital_facility_id).
+        let mentorSiteRef: string | null = sid;
+        let mentorTabs = resolvedTabs;
+        let mentorAssignedCount = 0;
+        if (normalizedRole === UserRole.MENTOR) {
+          try {
+            const merged = await fetchMergedMentorHospitals(currentUser.id);
+            const options: MentorPeccHospitalOption[] = merged
+              .map((row) => {
+                const id = normalizeHospitalKey(row.hospital?.id);
+                const fid = normalizeHospitalKey(row.hospital?.facility_id);
+                const siteRef = fid || id;
+                if (!siteRef) return null;
+                return {
+                  id: id || siteRef,
+                  name: normalizeHospitalOrOrgName(row.hospital?.name || 'Hospital'),
+                  siteRef,
+                };
+              })
+              .filter((o): o is MentorPeccHospitalOption => Boolean(o));
+            mentorAssignedCount = options.length;
+            setMentorPeccHospitalOptions(options);
+            setMentorHasAssignedHospitals(options.length > 0);
+
+            let preferred: string | null = null;
+            try {
+              preferred = normalizeHospitalKey(localStorage.getItem(MENTOR_PECC_SITE_KEY));
+            } catch {
+              preferred = null;
+            }
+            const preferredOption = preferred
+              ? options.find((o) => o.siteRef === preferred || o.id === preferred)
+              : undefined;
+            mentorSiteRef = preferredOption?.siteRef || options[0]?.siteRef || null;
+
+            if (mentorSiteRef) {
+              const { data: tabRows } = await supabase
+                .from('site_tab_visibility')
+                .select('tab_key, visible')
+                .eq('site_id', mentorSiteRef);
+              if (tabRows && tabRows.length > 0) {
+                mentorTabs = (tabRows as { tab_key: string; visible: boolean }[])
+                  .filter((r) => r.visible)
+                  .map((r) => r.tab_key);
+              } else {
+                mentorTabs = [...PECC_TAB_KEYS];
+              }
+            } else {
+              mentorTabs = [...PECC_TAB_KEYS];
+            }
+          } catch (mentorSiteErr) {
+            console.warn('[UserProfile] mentor PECC site resolve failed', mentorSiteErr);
+            setMentorPeccHospitalOptions([]);
+            setMentorHasAssignedHospitals(false);
+            mentorAssignedCount = 0;
+          }
+        } else {
+          setMentorPeccHospitalOptions([]);
+          setMentorHasAssignedHospitals(false);
+        }
+
+        setMentorPeccSiteIdState(mentorSiteRef);
+        setMentorPeccVisibleTabs(mentorTabs);
+        if (mentorSiteRef) {
+          try {
+            localStorage.setItem(MENTOR_PECC_SITE_KEY, mentorSiteRef);
+          } catch {
+            // Ignore localStorage failures
+          }
+        }
 
         // Load from user_data: gap plan reminders (Account page), wages_enabled (mentors, admin-controlled)
         const [gapPlanReminders, wagesEnabled, hasHospitalAssignments] = await Promise.all([
@@ -364,6 +479,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           ...(gapPlanReminders != null ? { gapPlanReminders } : {}),
           ...(wagesEnabled !== undefined && wagesEnabled !== null ? { wages_enabled: !!wagesEnabled } : {}),
           ...(normalizedRole === UserRole.MANAGER ? { has_hospital_assignments: hasHospitalAssignments } : {}),
+          ...(normalizedRole === UserRole.MENTOR
+            ? { has_hospital_assignments: mentorAssignedCount > 0 || Boolean(mentorSiteRef) }
+            : {}),
         };
 
         // Resolve hospital/site name from CRM (hospitals table) so tabs and UI show current name after CRM updates.
@@ -714,7 +832,10 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     !viewAsUserId &&
     !viewAsRole &&
     userProfile?.role === UserRole.MENTOR &&
-    (mentorPeccSiteId || (userProfile as UserProfile & { has_hospital_assignments?: boolean })?.has_hospital_assignments)
+    (mentorHasAssignedHospitals ||
+      mentorPeccSiteId ||
+      mentorPeccHospitalOptions.length > 0 ||
+      (userProfile as UserProfile & { has_hospital_assignments?: boolean })?.has_hospital_assignments)
   );
   const canViewAsUser = hasAdminAccess || userProfile?.role === UserRole.MANAGER || userProfile?.role === UserRole.MENTOR;
   // When viewing as another user: if Admin View-As is active, use that role; otherwise show Admin if they have is_admin, else their normalized role.
@@ -761,7 +882,9 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     navbarBrandProgramId,
     mentorWorkMode,
     canToggleMentorWorkMode,
-    setMentorWorkMode
+    setMentorWorkMode,
+    mentorPeccHospitalOptions,
+    setMentorPeccSiteId,
   };
 
   return (

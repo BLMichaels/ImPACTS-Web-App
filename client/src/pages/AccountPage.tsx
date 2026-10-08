@@ -25,6 +25,8 @@ import {
   Stack,
   alpha,
   useTheme,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -42,7 +44,9 @@ import {
   Notifications as NotificationsIcon,
   Share as ShareIcon,
   Gavel as GavelIcon,
+  SwapHoriz as SwapHorizIcon,
 } from '@mui/icons-material';
+import { getRoleColorHex } from '../utils/roleUtils';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { normalizeHospitalOrOrgName, getUserDisplayName } from '../utils/displayName';
@@ -193,6 +197,8 @@ const AccountPage = () => {
     mentorWorkMode,
     canToggleMentorWorkMode,
     setMentorWorkMode,
+    mentorPeccHospitalOptions,
+    setMentorPeccSiteId,
     effectiveUserId,
     siteId,
   } = useUserProfile();
@@ -731,6 +737,100 @@ const AccountPage = () => {
             <Alert severity={alert.type} onClose={() => setAlert(null)}>
               {alert.message}
             </Alert>
+          )}
+
+          {canToggleMentorWorkMode && (
+            <AccountSection
+              overline="View"
+              title="Mentor ↔ PECC work mode"
+              description="Use PECC mode to update hospital activities, checklist, and other Support Tool tabs as that hospital’s PECC would. Your mentor account and assignments stay unchanged."
+              icon={<SwapHorizIcon sx={{ color: 'secondary.dark', fontSize: 22 }} />}
+            >
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: alpha(getRoleColorHex(mentorWorkMode === 'pecc' ? 'pecc' : 'mentor'), 0.45),
+                  bgcolor: alpha(getRoleColorHex(mentorWorkMode === 'pecc' ? 'pecc' : 'mentor'), 0.08),
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ mb: 1.25, fontWeight: 700 }}>
+                  Active view
+                </Typography>
+                <ToggleButtonGroup
+                  exclusive
+                  fullWidth
+                  color="primary"
+                  value={mentorWorkMode}
+                  onChange={(_e, next: 'mentor' | 'pecc' | null) => {
+                    if (!next || next === mentorWorkMode) return;
+                    if (next === 'pecc' && mentorPeccHospitalOptions.length === 1) {
+                      setMentorPeccSiteId(mentorPeccHospitalOptions[0].siteRef);
+                    }
+                    setMentorWorkMode(next);
+                    const nextPath = next === 'pecc' ? '/dashboard' : '/mentor/dashboard';
+                    setAlert({
+                      type: 'success',
+                      message:
+                        next === 'pecc'
+                          ? 'Switched to PECC view. Opening hospital Support Tool…'
+                          : 'Switched to Mentor view.',
+                    });
+                    setTimeout(() => setAlert(null), 3500);
+                    navigate(nextPath);
+                  }}
+                  sx={{
+                    mb: mentorPeccHospitalOptions.length > 0 ? 2 : 0,
+                    bgcolor: 'background.paper',
+                    '& .MuiToggleButton-root': {
+                      py: 1.25,
+                      fontWeight: 700,
+                      textTransform: 'none',
+                    },
+                  }}
+                >
+                  <ToggleButton value="mentor">Mentor view</ToggleButton>
+                  <ToggleButton value="pecc">PECC view</ToggleButton>
+                </ToggleButtonGroup>
+                {mentorPeccHospitalOptions.length > 0 && (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Hospital for PECC view</InputLabel>
+                    <Select
+                      label="Hospital for PECC view"
+                      value={
+                        siteId && mentorPeccHospitalOptions.some((o) => o.siteRef === siteId)
+                          ? siteId
+                          : mentorPeccHospitalOptions[0]?.siteRef || ''
+                      }
+                      onChange={(e) => {
+                        const ref = String(e.target.value || '');
+                        if (!ref) return;
+                        setMentorPeccSiteId(ref);
+                        if (mentorWorkMode !== 'pecc') {
+                          setMentorWorkMode('pecc');
+                          navigate('/dashboard');
+                        }
+                        setAlert({
+                          type: 'success',
+                          message: 'PECC hospital updated.',
+                        });
+                        setTimeout(() => setAlert(null), 3000);
+                      }}
+                    >
+                      {mentorPeccHospitalOptions.map((opt) => (
+                        <MenuItem key={opt.siteRef} value={opt.siteRef}>
+                          {opt.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                  You can also toggle from the role chip in the top navigation bar.
+                </Typography>
+              </Box>
+            </AccountSection>
           )}
 
           {/* 1. Personal Information */}
@@ -1494,40 +1594,13 @@ const AccountPage = () => {
                     Access to Manager Support Tool (PST), Mentors management, and CRM.
                   </Typography>
                 )}
+                {canToggleMentorWorkMode && (
+                  <Typography variant="body2" sx={{ mt: 0.75 }} color="text.secondary">
+                    Use the Mentor ↔ PECC work mode control at the top of this page (or the nav role chip) to work in
+                    PECC view for an assigned hospital.
+                  </Typography>
+                )}
               </Alert>
-              {canToggleMentorWorkMode && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Work mode
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                    Switch between Mentor and PECC modes. PECC mode uses the same hospital continuity data model, so
-                    your updates stay with the hospital for handoff continuity.
-                  </Typography>
-                  <FormControl fullWidth size="small" sx={{ maxWidth: 320 }}>
-                    <InputLabel>Active mode</InputLabel>
-                    <Select
-                      value={mentorWorkMode}
-                      label="Active mode"
-                      onChange={(e) => {
-                        const next = e.target.value as 'mentor' | 'pecc';
-                        setMentorWorkMode(next);
-                        setAlert({
-                          type: 'success',
-                          message:
-                            next === 'pecc'
-                              ? 'Switched to PECC mode. Navigate to Support Tool to continue hospital-level work.'
-                              : 'Switched to Mentor mode.',
-                        });
-                        setTimeout(() => setAlert(null), 3500);
-                      }}
-                    >
-                      <MenuItem value="mentor">Mentor</MenuItem>
-                      <MenuItem value="pecc">PECC</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-              )}
             </AccountSection>
           )}
         </Stack>

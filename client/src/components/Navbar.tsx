@@ -36,7 +36,8 @@ import {
   Settings as SettingsIcon,
   Groups as CohortsIcon,
   ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
+  ExpandLess as ExpandLessIcon,
+  SwapHoriz as SwapHorizIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -113,11 +114,29 @@ function findNavLabel(items: NavItem[], path: string): string | undefined {
 
 const Navbar: React.FC = () => {
   const { currentUser, logout, isPasswordRecovery } = useAuth();
-  const { userProfile, userRole, isViewingAs, viewAsRole, setViewAsRole, visibleTabs, primaryProgramLogoUrl, isViewingAsUser, viewAsUserProfile, clearViewAsUser, isLoading: profileLoading, mentorWorkMode, canToggleMentorWorkMode, setMentorWorkMode } = useUserProfile();
+  const {
+    userProfile,
+    userRole,
+    isViewingAs,
+    viewAsRole,
+    setViewAsRole,
+    visibleTabs,
+    primaryProgramLogoUrl,
+    isViewingAsUser,
+    viewAsUserProfile,
+    clearViewAsUser,
+    isLoading: profileLoading,
+    mentorWorkMode,
+    canToggleMentorWorkMode,
+    setMentorWorkMode,
+    mentorPeccHospitalOptions,
+    setMentorPeccSiteId,
+  } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const { trackLinkClick } = useUsageAnalytics();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [workModeMenuAnchor, setWorkModeMenuAnchor] = useState<null | HTMLElement>(null);
   const cohortNotifications = useCohortNotifications();
   
   const theme = useTheme();
@@ -203,14 +222,34 @@ const Navbar: React.FC = () => {
     setExpandedMobilePaths((prev) => ({ ...prev, [path]: !prev[path] }));
   };
 
-  const handleToggleMentorWorkMode = () => {
+  const applyMentorWorkMode = (nextMode: 'mentor' | 'pecc', siteRef?: string) => {
     if (!canToggleMentorWorkMode) return;
-    const nextMode = mentorWorkMode === 'mentor' ? 'pecc' : 'mentor';
+    if (nextMode === 'pecc' && siteRef) setMentorPeccSiteId(siteRef);
     setMentorWorkMode(nextMode);
     const nextPath = nextMode === 'pecc' ? '/dashboard' : '/mentor/dashboard';
     trackLinkClick(nextPath, `Switch to ${nextMode.toUpperCase()} mode`, 'navbar-role-chip');
     navigate(nextPath);
+    setWorkModeMenuAnchor(null);
   };
+
+  const handleToggleMentorWorkMode = (event: React.MouseEvent<HTMLElement>) => {
+    if (!canToggleMentorWorkMode) return;
+    // Leaving PECC → Mentor is always a direct flip.
+    if (mentorWorkMode === 'pecc') {
+      applyMentorWorkMode('mentor');
+      return;
+    }
+    // Entering PECC: if multiple hospitals, pick one; otherwise go straight to PECC mode.
+    if (mentorPeccHospitalOptions.length > 1) {
+      setWorkModeMenuAnchor(event.currentTarget);
+      return;
+    }
+    const onlySite = mentorPeccHospitalOptions[0]?.siteRef;
+    applyMentorWorkMode('pecc', onlySite);
+  };
+
+  const mentorWorkModeChipLabel =
+    mentorWorkMode === 'pecc' ? 'PECC · switch' : 'Mentor · switch';
 
   // Navigation items based on user role
   const getNavigationItems = (): NavItem[] => {
@@ -343,12 +382,20 @@ const Navbar: React.FC = () => {
           <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
             ImPACTS
           </Typography>
-          <Chip 
-label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleLabel(userRole)}
+          <Chip
+            icon={canToggleMentorWorkMode ? <SwapHorizIcon sx={{ color: 'white !important', fontSize: 16 }} /> : undefined}
+            label={canToggleMentorWorkMode ? mentorWorkModeChipLabel : getRoleLabel(userRole)}
             size="small"
             onClick={canToggleMentorWorkMode ? handleToggleMentorWorkMode : undefined}
             clickable={canToggleMentorWorkMode}
-            sx={{ bgcolor: getRoleColorHex(userRole), color: 'white' }}
+            title={
+              canToggleMentorWorkMode
+                ? mentorWorkMode === 'pecc'
+                  ? 'Switch back to Mentor view'
+                  : 'Switch to PECC view for hospital activities'
+                : undefined
+            }
+            sx={{ bgcolor: getRoleColorHex(userRole), color: 'white', fontWeight: 700 }}
           />
         </Box>
         
@@ -709,17 +756,25 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
             flexShrink: 0
           }}>
             {/* Role Badge */}
-            <Chip 
-              label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleLabel(userRole)} 
+            <Chip
+              icon={canToggleMentorWorkMode ? <SwapHorizIcon sx={{ color: 'white !important', fontSize: 16 }} /> : undefined}
+              label={canToggleMentorWorkMode ? mentorWorkModeChipLabel : getRoleLabel(userRole)}
               size="small"
               onClick={canToggleMentorWorkMode ? handleToggleMentorWorkMode : undefined}
               clickable={canToggleMentorWorkMode}
-              sx={{ 
-                bgcolor: getRoleColorHex(userRole), 
+              title={
+                canToggleMentorWorkMode
+                  ? mentorWorkMode === 'pecc'
+                    ? 'Switch back to Mentor view'
+                    : 'Switch to PECC view for hospital activities'
+                  : undefined
+              }
+              sx={{
+                bgcolor: getRoleColorHex(userRole),
                 color: 'white',
                 fontWeight: 'bold',
                 fontSize: '0.7rem',
-                ...(canToggleMentorWorkMode ? { cursor: 'pointer' } : {})
+                ...(canToggleMentorWorkMode ? { cursor: 'pointer' } : {}),
               }}
             />
 
@@ -785,6 +840,26 @@ label={canToggleMentorWorkMode ? `${getRoleLabel(userRole)} (switch)` : getRoleL
             <LogoutIcon sx={{ mr: 1 }} />
             Logout
           </MenuItem>
+        </Menu>
+
+        <Menu
+          anchorEl={workModeMenuAnchor}
+          open={Boolean(workModeMenuAnchor)}
+          onClose={() => setWorkModeMenuAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          <MenuItem disabled sx={{ opacity: 1, fontWeight: 700, typography: 'caption' }}>
+            Open PECC view for…
+          </MenuItem>
+          {mentorPeccHospitalOptions.map((opt) => (
+            <MenuItem
+              key={opt.siteRef}
+              onClick={() => applyMentorWorkMode('pecc', opt.siteRef)}
+            >
+              {opt.name}
+            </MenuItem>
+          ))}
         </Menu>
       </Toolbar>
       
