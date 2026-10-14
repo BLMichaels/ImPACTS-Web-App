@@ -1,6 +1,6 @@
 /**
- * Admin-only: generate a password-reset link and deliver it via Resend (reliable delivery).
- * Falls back to returning the link for manual copy when email fails.
+ * Admin-only: generate a password-reset link and deliver it.
+ * Prefer Resend; fall back to Supabase Auth mailer (Zoho SMTP); last resort = copyable link.
  *
  * Deploy: supabase functions deploy admin-send-password-reset
  */
@@ -175,46 +175,67 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const actionLink = linkData.properties.action_link;
 
-  if (!RESEND_API_KEY || !FROM_EMAIL.includes('@')) {
-    return json({
-      ok: true,
-      email_sent: false,
-      action_link: actionLink,
-      message:
-        'Reset link generated. Email service is not configured — copy the link below and send it to the user manually.',
+  // 1) Prefer Resend when the sending domain is verified.
+  if (RESEND_API_KEY && FROM_EMAIL.includes('@')) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+      },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to: [emailNorm],
+        subject: 'Reset your PECC Support Tool password',
+        html: resetEmailHtml(actionLink),
+      }),
     });
+    const resendBody = await res.json().catch(() => ({}));
+    if (res.ok) {
+      return json({
+        ok: true,
+        email_sent: true,
+        delivery: 'resend',
+        action_link: actionLink,
+        message: `Password reset email sent to ${emailNorm} from ${FROM_EMAIL}. If they do not see it within 5 minutes, check spam or copy the link below.`,
+        resend_id: (resendBody as { id?: string }).id ?? null,
+      });
+    }
+    console.warn('admin-send-password-reset: Resend failed, falling back to Auth SMTP', res.status, resendBody);
   }
 
-  const res = await fetch('https://api.resend.com/emails', {
+  // 2) Fall back to Supabase Auth mailer (Zoho SMTP already configured on this project).
+  const recoverRes = await fetch(`${supabaseUrl}/auth/v1/recover`, {
     method: 'POST',
     headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${RESEND_API_KEY}`,
     },
     body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: [emailNorm],
-      subject: 'Reset your PECC Support Tool password',
-      html: resetEmailHtml(actionLink),
+      email: emailNorm,
+      redirect_to: RESET_REDIRECT,
+      gotrue_meta_security: {},
     }),
   });
-
-  const resendBody = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    console.error('Resend password reset error:', res.status, resendBody);
+  if (recoverRes.ok) {
     return json({
       ok: true,
-      email_sent: false,
+      email_sent: true,
+      delivery: 'supabase_auth_smtp',
       action_link: actionLink,
-      message: `Email could not be sent (${(resendBody as { message?: string }).message ?? 'delivery error'}). Copy the link below and send it manually.`,
+      message: `Password reset email sent to ${emailNorm} via Supabase Auth (Zoho SMTP / no.reply@impactscollaborative.com). A copyable link is also below if needed.`,
     });
   }
 
+  const recoverText = await recoverRes.text().catch(() => '');
+  console.error('admin-send-password-reset: Auth SMTP fallback failed', recoverRes.status, recoverText);
   return json({
     ok: true,
-    email_sent: true,
+    email_sent: false,
+    delivery: 'link_only',
     action_link: actionLink,
-    message: `Password reset email sent to ${emailNorm} from ${FROM_EMAIL}. If they do not see it within 5 minutes, check spam or copy the link below.`,
-    resend_id: (resendBody as { id?: string }).id ?? null,
+    message:
+      'Could not send email automatically. Copy the link below and send it to the user manually.',
   });
 });

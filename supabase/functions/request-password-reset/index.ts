@@ -1,5 +1,8 @@
 /**
- * Public password reset via Resend (reliable delivery). Does not return the reset link.
+ * Public password reset.
+ * Prefer Resend; fall back to Supabase Auth mailer (Zoho SMTP) so delivery still works
+ * while the Resend domain is pending DNS verification.
+ *
  * Deploy: supabase functions deploy request-password-reset
  */
 
@@ -85,6 +88,59 @@ async function findAuthUserIdByEmail(
   return null;
 }
 
+/** Send recovery email through Supabase Auth → configured Zoho SMTP. */
+async function sendViaAuthSmtp(
+  supabaseUrl: string,
+  serviceKey: string,
+  emailNorm: string
+): Promise<{ ok: boolean; detail?: string }> {
+  const res = await fetch(`${supabaseUrl}/auth/v1/recover`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email: emailNorm,
+      redirect_to: RESET_REDIRECT,
+      gotrue_meta_security: {},
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    return { ok: false, detail: `${res.status} ${text.slice(0, 200)}` };
+  }
+  return { ok: true };
+}
+
+async function sendViaResend(actionLink: string, emailNorm: string): Promise<{ ok: boolean; detail?: string }> {
+  if (!RESEND_API_KEY || !FROM_EMAIL.includes('@')) {
+    return { ok: false, detail: 'Resend not configured' };
+  }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+    },
+    body: JSON.stringify({
+      from: FROM_EMAIL,
+      to: [emailNorm],
+      subject: 'Reset your PECC Support Tool password',
+      html: resetEmailHtml(actionLink),
+    }),
+  });
+  if (!res.ok) {
+    const resendBody = await res.json().catch(() => ({}));
+    return {
+      ok: false,
+      detail: (resendBody as { message?: string }).message ?? `HTTP ${res.status}`,
+    };
+  }
+  return { ok: true };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const cors = corsHeadersFor(req);
   const json = (body: Record<string, unknown>, status = 200) =>
@@ -124,40 +180,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json(GENERIC_OK);
   }
 
+  // Prefer Resend (custom HTML) when domain is verified.
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: 'recovery',
     email: emailNorm,
     options: { redirectTo: RESET_REDIRECT },
   });
-  if (linkErr || !linkData?.properties?.action_link) {
-    console.error('request-password-reset: generateLink failed', linkErr);
-    return json(GENERIC_OK);
+
+  if (!linkErr && linkData?.properties?.action_link) {
+    const resend = await sendViaResend(linkData.properties.action_link, emailNorm);
+    if (resend.ok) return json(GENERIC_OK);
+    console.warn('request-password-reset: Resend failed, falling back to Auth SMTP', resend.detail);
+  } else {
+    console.warn('request-password-reset: generateLink failed; using Auth SMTP only', linkErr);
   }
 
-  const actionLink = linkData.properties.action_link;
-
-  if (!RESEND_API_KEY || !FROM_EMAIL.includes('@')) {
-    console.error('request-password-reset: Resend not configured');
-    return json({ error: 'Email service is temporarily unavailable. Please contact support.' }, 503);
-  }
-
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: [emailNorm],
-      subject: 'Reset your PECC Support Tool password',
-      html: resetEmailHtml(actionLink),
-    }),
-  });
-
-  if (!res.ok) {
-    const resendBody = await res.json().catch(() => ({}));
-    console.error('request-password-reset: Resend error', res.status, resendBody);
+  const authSmtp = await sendViaAuthSmtp(supabaseUrl, serviceKey, emailNorm);
+  if (!authSmtp.ok) {
+    console.error('request-password-reset: Auth SMTP fallback failed', authSmtp.detail);
     return json({ error: 'Could not send reset email. Please try again or contact support.' }, 502);
   }
 
