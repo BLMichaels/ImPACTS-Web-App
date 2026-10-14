@@ -31,6 +31,8 @@ interface AuthContextType {
   /** Last auth lifecycle note (e.g. token refresh) for debugging; not shown in UI by default. */
   authLifecycleNote: string | null;
   login: (email: string, password: string) => Promise<LoginResult>;
+  /** Start hospital SAML SSO via email domain (or explicit domain). Redirects to the IdP. */
+  loginWithSso: (emailOrDomain: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPasswordForEmail: (email: string, redirectTo?: string) => Promise<void>;
@@ -100,6 +102,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // MFA challenge/enrollment is handled by SecurityGateShell before the app loads.
     return 'complete';
+  };
+
+  const loginWithSso = async (emailOrDomain: string) => {
+    const raw = emailOrDomain.trim().toLowerCase();
+    if (!raw) throw new Error('Enter your work email so we can route you to your hospital sign-in.');
+    const domain = raw.includes('@') ? raw.split('@').pop() || '' : raw;
+    if (!domain || !domain.includes('.')) {
+      throw new Error('Use a work email like you@hospital.org for hospital SSO.');
+    }
+    const redirectTo = `${window.location.origin}/app`;
+    const { data, error } = await supabase.auth.signInWithSSO({
+      domain,
+      options: { redirectTo },
+    });
+    if (error) {
+      void logSecurityEvent('login_failed', {
+        email: raw.includes('@') ? raw : undefined,
+        metadata: { reason: error.message, method: 'sso/saml', domain },
+      });
+      throw error;
+    }
+    if (data?.url) {
+      window.location.assign(data.url);
+      return;
+    }
+    throw new Error('Hospital SSO is not configured for that email domain yet.');
   };
 
   const signup = async (email: string, password: string) => {
@@ -312,6 +340,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     authLifecycleNote,
     login,
+    loginWithSso,
     signup,
     logout,
     resetPasswordForEmail,

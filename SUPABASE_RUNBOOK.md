@@ -2,6 +2,55 @@
 
 Apply scripts in the **Supabase SQL editor** for production. Track what you ran and when (internal change log).
 
+**Project:** `ImPACTS_Tracker` · ref `ftpifgzzfwpujlvbqqhu` · org plan **Team**
+
+## Platform (Management API / dashboard)
+
+| Item | Status / how |
+| --- | --- |
+| Compute | **Micro** (`ci_micro`) — upgraded from Nano (same price on Team; ~1–2 min downtime) |
+| Leaked password protection (HIBP) | **Enabled** via Auth config `password_hibp_enabled` |
+| SAML 2.0 SSO engine | **Enabled** (`saml_enabled`); add each hospital IdP with CLI below |
+| Cursor MCP | Root `.mcp.json` → `https://mcp.supabase.com/mcp?project_ref=ftpifgzzfwpujlvbqqhu` (authenticate once in Cursor) |
+| HIPAA / BAA | Deferred until a hospital requires it (Team Plan add-on) |
+
+SP metadata for hospital IT (share when onboarding an IdP):
+
+- EntityID / Metadata: `https://ftpifgzzfwpujlvbqqhu.supabase.co/auth/v1/sso/saml/metadata`
+- ACS: `https://ftpifgzzfwpujlvbqqhu.supabase.co/auth/v1/sso/saml/acs`
+- CLI: `npx supabase sso info --project-ref ftpifgzzfwpujlvbqqhu`
+
+Add a hospital IdP (after they provide metadata URL or XML):
+
+```bash
+npx supabase sso add --project-ref ftpifgzzfwpujlvbqqhu \
+  --type saml \
+  --metadata-url 'https://idp.example.com/metadata.xml' \
+  --domains hospital.org
+```
+
+Then insert a row in `hospital_sso_providers` (`email_domain`, `sso_provider_id` from `supabase sso list`, `display_name`). Login uses `signInWithSSO({ domain })`.
+
+Management API (PAT from Dashboard → Account → Access Tokens, or CLI keychain):
+
+```bash
+# Example: list compute addons
+curl -s "https://api.supabase.com/v1/projects/ftpifgzzfwpujlvbqqhu/billing/addons" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
+```
+
+## Security Advisor hardening
+
+Applied migration `security_advisor_hardening_and_hospital_sso` (see also `SECURITY_ADVISOR_HARDENING_AND_HOSPITAL_SSO.sql`):
+
+- All public tables already had RLS (no `rls_disabled_in_public` findings)
+- Pinned `search_path` on SECURITY DEFINER / helper functions
+- Revoked `anon` EXECUTE on SECURITY DEFINER RPCs; locked trigger/service helpers to `service_role`
+- Moved `fuzzystrmatch` to `extensions` schema
+- Created `hospital_sso_providers` for per-hospital SAML domain routing
+
+Re-check: Dashboard → Advisors → Security, or MCP `get_advisors`.
+
 ## Core schema & RLS (baseline)
 
 1. `supabase-schema.sql` or incremental migrations your project already uses  

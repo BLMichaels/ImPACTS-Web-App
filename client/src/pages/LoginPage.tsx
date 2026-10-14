@@ -70,11 +70,12 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState(false);
-  const { login, resetPasswordForEmail, isPasswordRecovery } = useAuth();
+  const { login, loginWithSso, resetPasswordForEmail, isPasswordRecovery } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const timedOut = searchParams.get('timeout') === '1';
+  const [ssoLoading, setSsoLoading] = useState(false);
 
   useEffect(() => {
     // Legacy recovery links that still redirect to /login
@@ -119,6 +120,21 @@ const LoginPage = () => {
       setError(err instanceof Error ? err.message : 'Failed to send reset email. Try again or contact support.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleHospitalSso = async () => {
+    try {
+      setError('');
+      setSsoLoading(true);
+      await loginWithSso(email);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Hospital SSO is not available for that email yet. Use password sign-in or ask an admin.'
+      );
+      setSsoLoading(false);
     }
   };
 
@@ -233,7 +249,7 @@ const LoginPage = () => {
             type="submit"
             fullWidth
             variant="contained"
-            disabled={loading}
+            disabled={loading || ssoLoading}
             sx={{
               py: 1.25,
               fontWeight: 600,
@@ -244,6 +260,25 @@ const LoginPage = () => {
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </Button>
+          <Button
+            type="button"
+            fullWidth
+            variant="outlined"
+            disabled={loading || ssoLoading}
+            onClick={handleHospitalSso}
+            sx={{
+              py: 1.15,
+              fontWeight: 600,
+              borderColor: alpha(AUTH_SLATE, 0.35),
+              color: AUTH_SLATE,
+              '&:hover': { borderColor: AUTH_SLATE, bgcolor: alpha(AUTH_SLATE, 0.04) },
+            }}
+          >
+            {ssoLoading ? 'Redirecting to hospital sign-in…' : 'Sign in with hospital SSO'}
+          </Button>
+          <Typography variant="caption" color="text.secondary" align="center">
+            Enter your work email above first. SSO is available after your hospital’s IT connects their IdP.
+          </Typography>
           <Typography variant="body2" color="text.secondary" align="center">
             Need an account?{' '}
             <Link
