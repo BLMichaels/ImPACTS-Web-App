@@ -61,3 +61,6 @@ verify_jwt = false
 
 [functions.sync-portal-login-email]
 verify_jwt = false
+
+[functions.ingest-simbox-activity]
+verify_jwt = false

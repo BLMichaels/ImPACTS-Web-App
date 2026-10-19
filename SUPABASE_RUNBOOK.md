@@ -125,6 +125,12 @@ Supabase Auth MFA TOTP is enabled in `supabase/config.toml` (`[auth.mfa.totp]`).
   7. `USER_DATA_PECC_KEYS_DEPRECATION.sql`  
 - Other root `*.sql` files: match name to feature; avoid applying duplicates.
 
+## SimBox → PECC Activities
+
+- Schema: `SIMBOX_SITE_HOSPITALS.sql` (`simbox_site_hospitals` + `append_simbox_hospital_activity`)
+- Edge Function: `ingest-simbox-activity` (shared secret `SIMBOX_INGEST_SECRET`)
+- Ops notes / curl: `SIMBOX_ACTIVITY_INGEST.md`
+
 ## Edge functions
 
 Deploy from repo root (adjust names as needed):
@@ -133,6 +139,7 @@ Deploy from repo root (adjust names as needed):
 supabase functions deploy send-invitation-email --no-verify-jwt
 supabase functions deploy complete-invitation-registration --no-verify-jwt
 supabase functions deploy provision-crm-portal-user
+supabase functions deploy ingest-simbox-activity --no-verify-jwt
 ```
 
 `complete-invitation-registration` bootstraps `hospital_data` placeholders for new PECCs **only when a key has no row yet** (it does not overwrite existing site continuity). Redeploy after changes to that function.

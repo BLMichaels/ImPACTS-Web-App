@@ -36,3 +36,4 @@ coverage/
 # Local MFA video generator artifacts (if regenerated)
 client/public/media/.build-mfa-video/
 scripts/.venv-mfa-video/
+.secrets/
