@@ -1552,7 +1552,7 @@ const AdminCRMPage: React.FC = () => {
                 .map((id) => String(id || '').trim())
                 .filter(Boolean)
             )];
-      const mentorIds = [...new Set(
+      let mentorIds = [...new Set(
         [
           userRow.mentor_id,
           ...(userRole === 'pecc' && Array.isArray(peccMentorIdsRaw) ? peccMentorIdsRaw : []),
@@ -1560,6 +1560,23 @@ const AdminCRMPage: React.FC = () => {
           .map((id) => String(id || '').trim())
           .filter(Boolean)
       )];
+      if (userRole === 'manager') {
+        const { data: mentorRows } = await supabase
+          .from('users')
+          .select('id, manager_id')
+          .eq('role', 'mentor')
+          .eq('is_active', true);
+        const rows = (mentorRows || []) as Array<{ id: string; manager_id?: string | null }>;
+        const lists = rows.length
+          ? await batchGetUserDataForKey<string[]>(rows.map((r) => r.id), USER_DATA_MENTOR_MANAGER_IDS)
+          : new Map<string, string[]>();
+        mentorIds = rows
+          .filter((row) => {
+            if (String(row.manager_id || '').trim() === resolvedUserId) return true;
+            return normalizeStringList(lists.get(row.id)).includes(resolvedUserId);
+          })
+          .map((row) => row.id);
+      }
       const lookupIds = [...new Set([...mentorIds, ...managerIds].map((id) => String(id || '').trim()).filter(Boolean))];
       const [lookupUsersRes, assignedPeccLinks] = await Promise.all([
         lookupIds.length > 0
@@ -1587,7 +1604,7 @@ const AdminCRMPage: React.FC = () => {
 
   const openAssignmentDialog = useCallback(async () => {
     const c = detailContact;
-    if (!c || (c.type !== 'mentor' && c.type !== 'pecc')) return;
+    if (!c || (c.type !== 'mentor' && c.type !== 'pecc' && c.type !== 'manager')) return;
     const resolvedUserId =
       detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
         ? detailContactUserId
@@ -1640,12 +1657,29 @@ const AdminCRMPage: React.FC = () => {
       c.type === 'mentor'
         ? (await getAssignedPeccLinksForSupervisor(resolvedUserId, 'mentor')).map((link) => link.id)
         : [];
+    const supervisedMentorIds =
+      c.type === 'manager'
+        ? (await (async () => {
+            const { data: mentorRows } = await supabase
+              .from('users')
+              .select('id, manager_id')
+              .eq('role', 'mentor')
+              .eq('is_active', true);
+            const rows = (mentorRows || []) as Array<{ id: string; manager_id?: string | null }>;
+            const lists = rows.length
+              ? await batchGetUserDataForKey<string[]>(rows.map((r) => r.id), USER_DATA_MENTOR_MANAGER_IDS)
+              : new Map<string, string[]>();
+            return rows
+              .filter((row) => String(row.manager_id || '').trim() === resolvedUserId || normalizeStringList(lists.get(row.id)).includes(resolvedUserId))
+              .map((row) => row.id);
+          })())
+        : mentorIds;
     setAssignmentRole(c.type);
     setAssignmentManagerOptions(managerOptions);
     setAssignmentMentorOptions(mentorOptions);
     setAssignmentPeccOptions(peccOptions);
     setAssignmentManagerIds(managerIds);
-    setAssignmentMentorIds(mentorIds);
+    setAssignmentMentorIds(c.type === 'manager' ? supervisedMentorIds : mentorIds);
     setAssignmentPeccIds(peccIds);
     prepareModalOpen();
     setAssignmentDialogOpen(true);
@@ -1653,7 +1687,7 @@ const AdminCRMPage: React.FC = () => {
 
   const saveAssignments = useCallback(async () => {
     const c = detailContact;
-    if (!c || (c.type !== 'mentor' && c.type !== 'pecc')) return;
+    if (!c || (c.type !== 'mentor' && c.type !== 'pecc' && c.type !== 'manager')) return;
     let resolvedUserId =
       detailContactUserId && !detailContactUserId.startsWith('pending:') && isUuid(detailContactUserId)
         ? detailContactUserId
@@ -1662,17 +1696,33 @@ const AdminCRMPage: React.FC = () => {
       resolvedUserId = await resolvePeccPortalUserId(c.user_id, c.email);
     }
     if (!resolvedUserId && c.email?.trim()) {
+      const expectedRole = c.type === 'pecc' ? 'pecc' : c.type === 'manager' ? 'manager' : 'mentor';
       const { data: roleUser } = await supabase
         .from('users')
         .select('id')
-        .eq('email', c.email.trim())
-        .eq('role', c.type === 'pecc' ? 'pecc' : 'mentor')
+        .ilike('email', c.email.trim())
+        .eq('role', expectedRole)
+        .limit(1)
         .maybeSingle();
       if (roleUser?.id) resolvedUserId = String(roleUser.id);
     }
     if (!resolvedUserId) return;
     const userId = resolvedUserId;
     setAssignmentSaving(true);
+    if (c.type === 'manager') {
+      const mentorsSaved = await applySupervisedMentorsForManager(userId, assignmentMentorIds);
+      if (mentorsSaved === false) {
+        setAssignmentSaving(false);
+        return;
+      }
+      setDetailSupervisorInfo((prev) => ({
+        ...prev,
+        mentorLinks: assignmentMentorIds.map((id) => ({ id, label: assignmentMentorOptions.find((opt) => opt.id === id)?.label || id })),
+      }));
+      setAssignmentSaving(false);
+      setAssignmentDialogOpen(false);
+      return;
+    }
     const managerIds = [...new Set(assignmentManagerIds.map((id) => String(id || '').trim()).filter(Boolean))];
     const mentorIds = [...new Set(assignmentMentorIds.map((id) => String(id || '').trim()).filter(Boolean))];
     const peccIds = [...new Set(assignmentPeccIds.map((id) => String(id || '').trim()).filter(Boolean))];
@@ -1944,7 +1994,7 @@ const AdminCRMPage: React.FC = () => {
     if (['pecc', 'manager', 'mentor'].includes(c.type) && !c.email?.trim()) {
       return 'Add an email to this contact to create a portal you can view as.';
     }
-    return 'No platform account linked yet. For PECC, Manager, or Mentor, add an email—then click to create the portal and open it.';
+    return 'No platform account linked yet. Save this contact with a starting password, then use View as user.';
   }, [detailContact, personViewAsDisabled]);
 
   const handlePersonViewAsUser = useCallback(async () => {
@@ -1965,41 +2015,7 @@ const AdminCRMPage: React.FC = () => {
     const role = CONTACT_TYPE_TO_USER_ROLE[c.type];
     if (!c.email?.trim() || (role !== 'pecc' && role !== 'manager' && role !== 'mentor')) return;
 
-    setViewAsPortalBusy(true);
-    try {
-      const pr = await provisionCrmPortalUser({
-        email: c.email.trim(),
-        role: role as 'pecc' | 'manager' | 'mentor',
-        first_name: c.firstName,
-        last_name: c.lastName
-      });
-      if ('error' in pr) {
-        console.warn('View as user: provision failed', pr.error);
-        return;
-      }
-      const newId = pr.user_id;
-      setDetailContactUserId(newId);
-      setDetailContact((prev) => (prev ? { ...prev, user_id: newId } : prev));
-      const emailKey = c.email.trim().toLowerCase();
-      setContacts((prev) =>
-        prev.map((row) =>
-          row.email?.trim().toLowerCase() === emailKey && row.type === c.type ? { ...row, user_id: newId } : row
-        )
-      );
-      if (currentUser?.id) {
-        if (c.id && isUuid(c.id)) {
-          await supabase.from('crm_organizations').update({ user_id: newId }).eq('id', c.id);
-        }
-        if (c.type === 'pecc') {
-          const linkedHospitalIds = (c.linkedHospitalIds ?? []).filter((id) => isUuid(String(id)));
-          await syncPeccHospitalAndMentorFromCrm(newId, linkedHospitalIds, currentUser.id);
-        }
-      }
-      const result = await enterViewAsUser(newId);
-      if (result.ok && result.dashboardPath) navigate(result.dashboardPath);
-    } finally {
-      setViewAsPortalBusy(false);
-    }
+    setSaveError('This contact does not have a portal login yet. Save the contact with a starting password (at least 12 characters), then use View as user.');
   }, [
     detailContact,
     detailContactUserId,
@@ -2007,7 +2023,6 @@ const AdminCRMPage: React.FC = () => {
     personViewAsDisabled,
     enterViewAsUser,
     navigate,
-    currentUser?.id,
   ]);
 
   const persistNotesAndActivity = useCallback(async (c: Contact) => {
@@ -2611,19 +2626,23 @@ const AdminCRMPage: React.FC = () => {
     resolvedUserId: string | null,
     selectedManagerIds: string[]
   ) => {
-    if (!resolvedUserId || !isUuid(resolvedUserId)) return;
+    if (!resolvedUserId || !isUuid(resolvedUserId)) return false;
     const managerIds = [...new Set(selectedManagerIds.map((id) => String(id || '').trim()).filter(Boolean))];
     if (contactType === 'mentor') {
-      await supabase
+      const { error: managerErr } = await supabase
         .from('users')
         .update({ manager_id: managerIds[0] || null, updated_at: new Date().toISOString() })
         .eq('id', resolvedUserId);
+      if (managerErr) {
+        setSaveError(`Could not save assigned managers: ${managerErr.message}`);
+        return false;
+      }
       await setUserData(resolvedUserId, USER_DATA_MENTOR_MANAGER_IDS, managerIds);
       if (currentUser?.id) {
         await syncCohortManagersForMentorSupervisors(resolvedUserId, managerIds, currentUser.id);
         await syncProgramManagersForMentorSupervisors(resolvedUserId, managerIds, currentUser.id);
       }
-      return;
+      return true;
     }
     if (contactType === 'pecc') {
       await supabase
@@ -2634,7 +2653,56 @@ const AdminCRMPage: React.FC = () => {
     }
   }, [currentUser?.id]);
 
+  /** From a manager contact, set which mentors this manager supervises. */
+  const applySupervisedMentorsForManager = useCallback(async (
+    managerUserId: string,
+    selectedMentorIds: string[]
+  ) => {
+    if (!managerUserId || !isUuid(managerUserId)) return;
+    const selected = new Set(selectedMentorIds.map((id) => String(id || '').trim()).filter(Boolean));
+    const { data: mentorRows, error } = await supabase
+      .from('users')
+      .select('id, manager_id')
+      .eq('role', 'mentor')
+      .eq('is_active', true);
+    if (error) {
+      setSaveError(`Could not load mentors: ${error.message}`);
+      return false;
+    }
+    const rows = (mentorRows || []) as Array<{ id: string; manager_id?: string | null }>;
+    const lists = rows.length
+      ? await batchGetUserDataForKey<string[]>(rows.map((r) => r.id), USER_DATA_MENTOR_MANAGER_IDS)
+      : new Map<string, string[]>();
+    let failed = false;
+    await Promise.all(rows.map(async (mentor) => {
+      const current = [...new Set(
+        [String(mentor.manager_id || '').trim(), ...normalizeStringList(lists.get(mentor.id))].filter(Boolean)
+      )];
+      const has = current.includes(managerUserId);
+      const should = selected.has(mentor.id);
+      if (has === should) return;
+      const next = should
+        ? [...new Set([managerUserId, ...current])]
+        : current.filter((id) => id !== managerUserId);
+      const { error: updateErr } = await supabase
+        .from('users')
+        .update({ manager_id: next[0] || null, updated_at: new Date().toISOString() })
+        .eq('id', mentor.id);
+      if (updateErr) {
+        setSaveError(`Could not assign mentors: ${updateErr.message}`);
+        failed = true;
+      }
+      await setUserData(mentor.id, USER_DATA_MENTOR_MANAGER_IDS, next);
+      if (currentUser?.id) {
+        await syncCohortManagersForMentorSupervisors(mentor.id, next, currentUser.id);
+        await syncProgramManagersForMentorSupervisors(mentor.id, next, currentUser.id);
+      }
+    }));
+    return !failed;
+  }, [currentUser?.id]);
+
   const handleSaveContact = async (fromFullScreen = false) => {
+    let keepEditorOpen = false;
     trackClick?.(editingContact ? 'CRM - Save contact (edit)' : 'CRM - Save contact (add)');
     if (['hospital', 'system', 'hiring_group'].includes(formData.type) && !(formData.name?.trim())) {
       setSaveError('Name is required for Hospital, System, and Hiring Group contacts.');
@@ -2706,7 +2774,7 @@ const AdminCRMPage: React.FC = () => {
     const selectedPeccIdsForSave = [...new Set((formData.assignedPeccIds ?? []).map((id) => String(id || '').trim()).filter(Boolean))];
     const shouldApplyAssignmentChanges =
       ((formData.type === 'pecc' || formData.type === 'mentor') && assignmentFieldsTouched.managers) ||
-      (formData.type === 'pecc' && assignmentFieldsTouched.mentors) ||
+      ((formData.type === 'pecc' || formData.type === 'manager') && assignmentFieldsTouched.mentors) ||
       (formData.type === 'mentor' && assignmentFieldsTouched.peccs);
     let assignmentTargetUserId: string | null =
       editingContact?.user_id && isUuid(editingContact.user_id) ? String(editingContact.user_id) : null;
@@ -2954,7 +3022,9 @@ const AdminCRMPage: React.FC = () => {
         // Update existing CRM contact
         const uid = (editingContact.user_id && isUuid(editingContact.user_id))
           ? editingContact.user_id
-          : (formData.email?.trim() ? (await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle()).data?.id : null);
+          : (formData.email?.trim()
+            ? (await supabase.from('users').select('id').ilike('email', formData.email.trim()).limit(1).maybeSingle()).data?.id
+            : null);
         const { error } = await supabase
           .from('crm_organizations')
           .update({ ...payloadDb, ...(uid ? { user_id: uid } : {}), updated_at: new Date().toISOString() })
@@ -2978,7 +3048,13 @@ const AdminCRMPage: React.FC = () => {
             userUpdates.first_name = formData.firstName?.trim() || null;
             userUpdates.last_name = formData.lastName?.trim() || null;
           }
-          if (Object.keys(userUpdates).length > 1) await supabase.from('users').update(userUpdates).eq('id', uid);
+          if (Object.keys(userUpdates).length > 1) {
+            const { error: roleErr } = await supabase.from('users').update(userUpdates).eq('id', uid);
+            if (roleErr) {
+              setSaveError(`Contact saved, but the Mentor/Manager tier could not be updated: ${roleErr.message}`);
+              return;
+            }
+          }
         }
         // When system or hiring_group contact name changes, keep hospital_system_assignments, hiring_group_assignments, and hospitals.hospital_system in sync so links remain
         const oldName = (editingContact.name ?? '').trim();
@@ -3012,7 +3088,12 @@ const AdminCRMPage: React.FC = () => {
             userUpdates.role = userRole;
             userUpdates.is_admin = formData.type === 'staff' ? effectiveStaffIsAdmin : false;
           }
-          await supabase.from('users').update(userUpdates).eq('id', editingContact.user_id);
+          const { error: roleErr } = await supabase.from('users').update(userUpdates).eq('id', editingContact.user_id);
+          if (roleErr) {
+            setSaveError(`Could not update this person's tier: ${roleErr.message}`);
+            setSaveInProgress(false);
+            return;
+          }
         }
         // For user-sourced contacts, we need to create a CRM record to store any CRM-specific data
         // that can't be stored in the users table (which only has: email, first_name, last_name, phone, role)
@@ -3224,8 +3305,11 @@ const AdminCRMPage: React.FC = () => {
           setSaveError(`Contact was saved, but portal provisioning was skipped because starting password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
           return;
         }
-        const { data: existingRow } = await supabase.from('users').select('id').eq('email', emailTrim).maybeSingle();
-        const shouldProvision = !existingRow?.id || Boolean(startingPasswordTrim);
+        const { data: existingRow } = await supabase.from('users').select('id').ilike('email', emailTrim).limit(1).maybeSingle();
+        if (existingRow?.id) assignmentTargetUserId = String(existingRow.id);
+        // Provision only when an admin typed a starting password. Calling it with no
+        // password returns 400 and used to abort the save before assignments were written.
+        const shouldProvision = Boolean(startingPasswordTrim);
         if (shouldProvision) {
           const pr = await provisionCrmPortalUser({
             email: emailTrim,
@@ -3236,7 +3320,6 @@ const AdminCRMPage: React.FC = () => {
           });
           if ('error' in pr) {
             setSaveError(`Contact was saved, but portal provisioning failed: ${pr.error}`);
-            return;
           } else {
             const uid = pr.user_id;
             assignmentTargetUserId = uid;
@@ -3258,12 +3341,31 @@ const AdminCRMPage: React.FC = () => {
       }
     }
 
-    if (shouldApplyAssignmentChanges && (formData.type === 'pecc' || formData.type === 'mentor')) {
+    if (shouldApplyAssignmentChanges && formData.type === 'manager') {
       if (!assignmentTargetUserId && formData.email?.trim()) {
-        const { data: lookupUser } = await supabase.from('users').select('id').eq('email', formData.email.trim()).maybeSingle();
+        const { data: lookupUser } = await supabase.from('users').select('id').ilike('email', formData.email.trim()).limit(1).maybeSingle();
         assignmentTargetUserId = lookupUser?.id ? String(lookupUser.id) : null;
       }
-      await applyManagerAssignments(formData.type, assignmentTargetUserId, selectedManagerIdsForSave);
+      if (assignmentTargetUserId) {
+        const mentorsSaved = await applySupervisedMentorsForManager(assignmentTargetUserId, selectedMentorIdsForSave);
+        if (mentorsSaved === false) keepEditorOpen = true;
+      } else {
+        keepEditorOpen = true;
+        setSaveError('This manager is not linked to a platform user yet, so mentors could not be assigned. Add their login email and save again.');
+      }
+    }
+
+    if (shouldApplyAssignmentChanges && (formData.type === 'pecc' || formData.type === 'mentor')) {
+      if (!assignmentTargetUserId && formData.email?.trim()) {
+        const { data: lookupUser } = await supabase.from('users').select('id').ilike('email', formData.email.trim()).limit(1).maybeSingle();
+        assignmentTargetUserId = lookupUser?.id ? String(lookupUser.id) : null;
+      }
+      if (!assignmentTargetUserId) {
+        keepEditorOpen = true;
+        setSaveError('This contact is not linked to a platform user yet, so assignments could not be saved. Add their login email and save again.');
+      }
+      const managersSaved = await applyManagerAssignments(formData.type, assignmentTargetUserId, selectedManagerIdsForSave);
+      if (managersSaved === false) keepEditorOpen = true;
       await applyMentorPeccAssignments(formData.type, assignmentTargetUserId, selectedMentorIdsForSave, selectedPeccIdsForSave);
     }
 
@@ -3502,6 +3604,8 @@ const AdminCRMPage: React.FC = () => {
         }
       }
     }
+
+    if (keepEditorOpen) return;
 
     if (fromFullScreen) {
       setFullScreenEditMode(false);
@@ -5375,7 +5479,7 @@ const AdminCRMPage: React.FC = () => {
         <MenuItem onClick={() => {
           if (detailContact) {
             setEditingContact(detailContact);
-            setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false, assignedManagerIds: (detailContact.type === 'pecc' || detailContact.type === 'mentor') ? detailSupervisorInfo.managerLinks.map((x) => x.id) : [], assignedMentorIds: detailContact.type === 'pecc' ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: detailContact.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
+            setFormData({ type: detailContact.type, name: detailContact.name, firstName: detailContact.firstName ?? '', lastName: detailContact.lastName ?? '', organization: detailContact.organization, email: detailContact.email, phone: detailContact.phone, status: detailContact.status, region: detailContact.region, state: detailContact.state ?? '', notes: detailContact.notes, hospitalSystem: detailContact.hospitalSystem ?? '', programs: detailContact.programs ?? [], cohorts: detailContact.cohorts ?? [], linkedOrganizationIds: detailContact.linkedOrganizationIds ?? [], linkedHospitalIds: detailContact.linkedHospitalIds ?? [], linkedSystemIds: detailContact.linkedSystemIds ?? [], linkedSystemId: detailContact.type === 'hospital' ? getLinkedSystemIdForHospital(detailContact, contacts) : '', customFields: detailContact.customFields ?? {}, address: detailContact.address ?? '', address2: detailContact.address2 ?? '', city: detailContact.city ?? '', county: detailContact.county ?? '', zip: detailContact.zip ?? '', facilityId: detailContact.facilityId ?? '', is_admin: detailContact.is_admin || false, assignedManagerIds: (detailContact.type === 'pecc' || detailContact.type === 'mentor') ? detailSupervisorInfo.managerLinks.map((x) => x.id) : [], assignedMentorIds: (detailContact.type === 'pecc' || detailContact.type === 'manager') ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: detailContact.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
             setAnchorEl(null);
             prepareModalOpen();
             queueUiTransition(() => {
@@ -5786,7 +5890,7 @@ const AdminCRMPage: React.FC = () => {
                 const hasMentor = detailSupervisorInfo.mentorLinks.length > 0;
                 const hasManagers = detailSupervisorInfo.managerLinks.length > 0;
                 const hasPeccs = (detailContact.type === 'mentor' || detailContact.type === 'manager') && detailSupervisorInfo.peccLinks.length > 0;
-                const canEditAssignments = detailContact.type === 'mentor' || detailContact.type === 'pecc';
+                const canEditAssignments = detailContact.type === 'mentor' || detailContact.type === 'pecc' || detailContact.type === 'manager';
                 if (!hasMentor && !hasManagers && !hasPeccs && !canEditAssignments) return null;
                 return (
                   <>
@@ -5950,7 +6054,7 @@ const AdminCRMPage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button size="small" variant="outlined" startIcon={<EditIcon />} fullWidth onClick={() => {
                   const c = detailContact;
-                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false, assignedManagerIds: (c.type === 'pecc' || c.type === 'mentor') ? detailSupervisorInfo.managerLinks.map((x) => x.id) : [], assignedMentorIds: c.type === 'pecc' ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: c.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
+                  setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false, assignedManagerIds: (c.type === 'pecc' || c.type === 'mentor') ? detailSupervisorInfo.managerLinks.map((x) => x.id) : [], assignedMentorIds: (c.type === 'pecc' || c.type === 'manager') ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: c.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
                   setEditingContact(c);
                   setPanelOpen(false);
                   prepareModalOpen();
@@ -6153,7 +6257,7 @@ const AdminCRMPage: React.FC = () => {
                         />
                       </Grid>
                     )}
-                    {formData.type === 'pecc' && (
+                    {(formData.type === 'pecc' || formData.type === 'manager') && (
                       <Grid item xs={12}>
                         <Autocomplete
                           multiple
@@ -6522,7 +6626,7 @@ const AdminCRMPage: React.FC = () => {
                         />
                       </ListItem>
                     )}
-                    {(detailContact.type === 'mentor' || detailContact.type === 'pecc') && (
+                    {(detailContact.type === 'mentor' || detailContact.type === 'pecc' || detailContact.type === 'manager') && (
                       <ListItem disablePadding sx={{ pt: 0.5 }}>
                         <Button size="small" variant="outlined" onClick={() => { void openAssignmentDialog(); }}>
                           Edit Assignments
@@ -6782,7 +6886,7 @@ const AdminCRMPage: React.FC = () => {
                 <Box sx={{ mt: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                   <Button variant="outlined" startIcon={<EditIcon />} onClick={() => {
                     const c = detailContact;
-                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false, assignedManagerIds: (c.type === 'pecc' || c.type === 'mentor') ? detailSupervisorInfo.managerLinks.map((x) => x.id) : [], assignedMentorIds: c.type === 'pecc' ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: c.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
+                    setFormData({ type: c.type, name: c.name, firstName: c.firstName ?? '', lastName: c.lastName ?? '', organization: c.organization, email: c.email, phone: c.phone, status: c.status, region: c.region, state: c.state ?? '', notes: c.notes, hospitalSystem: c.hospitalSystem ?? '', programs: c.programs ?? [], cohorts: c.cohorts ?? [], linkedOrganizationIds: c.linkedOrganizationIds ?? [], linkedHospitalIds: c.linkedHospitalIds ?? [], linkedSystemIds: c.linkedSystemIds ?? [], linkedSystemId: c.type === 'hospital' ? getLinkedSystemIdForHospital(c, contacts) : '', customFields: c.customFields ?? {}, address: c.address ?? '', address2: c.address2 ?? '', city: c.city ?? '', county: c.county ?? '', zip: c.zip ?? '', facilityId: c.facilityId ?? '', is_admin: c.is_admin || false, assignedManagerIds: (c.type === 'pecc' || c.type === 'mentor') ? detailSupervisorInfo.managerLinks.map((x) => x.id) : [], assignedMentorIds: (c.type === 'pecc' || c.type === 'manager') ? detailSupervisorInfo.mentorLinks.map((x) => x.id) : [], assignedPeccIds: c.type === 'mentor' ? detailSupervisorInfo.peccLinks.map((x) => x.id) : [] });
                     setEditingContact(c);
                     setFullScreenEditMode(true);
                   }}>
@@ -7007,6 +7111,7 @@ const AdminCRMPage: React.FC = () => {
             </Button>
           </Box>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            {assignmentRole !== 'manager' && (
             <Grid item xs={12}>
               <Autocomplete
                 multiple
@@ -7020,7 +7125,8 @@ const AdminCRMPage: React.FC = () => {
                 renderInput={(params) => <TextField {...params} label="Assigned Manager(s)" placeholder="Search manager..." />}
               />
             </Grid>
-            {assignmentRole === 'pecc' && (
+            )}
+            {(assignmentRole === 'pecc' || assignmentRole === 'manager') && (
               <Grid item xs={12}>
                 <Autocomplete
                   multiple
@@ -7208,7 +7314,7 @@ const AdminCRMPage: React.FC = () => {
                     />
                   </Grid>
                 )}
-                {formData.type === 'pecc' && (
+                {(formData.type === 'pecc' || formData.type === 'manager') && (
                   <Grid item xs={12}>
                     <Autocomplete
                       multiple
