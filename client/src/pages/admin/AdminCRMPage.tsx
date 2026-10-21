@@ -1561,6 +1561,7 @@ const AdminCRMPage: React.FC = () => {
           .filter(Boolean)
       )];
       if (userRole === 'manager') {
+        const supervisorUserId = String(resolvedUserId);
         const { data: mentorRows } = await supabase
           .from('users')
           .select('id, manager_id')
@@ -1572,8 +1573,8 @@ const AdminCRMPage: React.FC = () => {
           : new Map<string, string[]>();
         mentorIds = rows
           .filter((row) => {
-            if (String(row.manager_id || '').trim() === resolvedUserId) return true;
-            return normalizeStringList(lists.get(row.id)).includes(resolvedUserId);
+            if (String(row.manager_id || '').trim() === supervisorUserId) return true;
+            return normalizeStringList(lists.get(row.id)).includes(supervisorUserId);
           })
           .map((row) => row.id);
       }
