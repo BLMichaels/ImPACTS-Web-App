@@ -556,7 +556,7 @@ const AdminCRMPage: React.FC = () => {
   }>({ mentorLinks: [], managerLinks: [], peccLinks: [] });
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
-  const [assignmentRole, setAssignmentRole] = useState<'mentor' | 'pecc' | null>(null);
+  const [assignmentRole, setAssignmentRole] = useState<'mentor' | 'pecc' | 'manager' | null>(null);
   const [assignmentManagerIds, setAssignmentManagerIds] = useState<string[]>([]);
   const [assignmentMentorIds, setAssignmentMentorIds] = useState<string[]>([]);
   const [assignmentPeccIds, setAssignmentPeccIds] = useState<string[]>([]);
