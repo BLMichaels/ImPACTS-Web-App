@@ -36,6 +36,8 @@ interface AuthContextType {
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPasswordForEmail: (email: string, redirectTo?: string) => Promise<void>;
+  /** CRM-only first sign-in: email a create-password link if the address is in the CRM. */
+  requestCrmFirstLoginSetup: (email: string) => Promise<void>;
   updatePassword: (newPassword: string, currentPassword?: string) => Promise<void>;
   /** True while completing an email password-reset link. */
   isPasswordRecovery: boolean;
@@ -164,6 +166,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error(payload.error);
     }
     void logSecurityEvent('password_reset_requested', { email: normalized });
+  };
+
+  const requestCrmFirstLoginSetup = async (email: string) => {
+    const normalized = email.trim().toLowerCase();
+    const { data, error } = await supabase.functions.invoke('crm-first-login-setup', {
+      body: { email: normalized },
+    });
+    if (error) {
+      throw new Error(error.message || 'Could not send account setup email');
+    }
+    const payload = data as { error?: string; message?: string } | null;
+    if (payload?.error) {
+      throw new Error(payload.error);
+    }
+    void logSecurityEvent('password_reset_requested', {
+      email: normalized,
+      metadata: { flow: 'crm_first_login_setup' },
+    });
   };
 
   const updatePassword = async (newPassword: string, currentPassword?: string) => {
@@ -344,6 +364,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signup,
     logout,
     resetPasswordForEmail,
+    requestCrmFirstLoginSetup,
     updatePassword,
     isPasswordRecovery,
   };

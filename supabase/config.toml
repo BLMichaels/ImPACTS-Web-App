@@ -59,6 +59,9 @@ verify_jwt = false
 [functions.request-password-reset]
 verify_jwt = false
 
+[functions.crm-first-login-setup]
+verify_jwt = false
+
 [functions.sync-portal-login-email]
 verify_jwt = false
 

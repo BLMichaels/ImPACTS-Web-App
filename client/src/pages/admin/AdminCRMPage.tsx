@@ -159,6 +159,55 @@ export interface ActivityLogEntry {
 
 const PEOPLE_TYPES: ContactType[] = ['manager', 'mentor', 'pecc', 'staff', 'other'];
 const isPersonType = (t: ContactType) => PEOPLE_TYPES.includes(t);
+
+/** Primary hospital linked to a person contact (by hospitals.id / hospitalId). */
+function getPrimaryLinkedHospital(contact: Contact, all: Contact[]): Contact | null {
+  if (!isPersonType(contact.type)) return null;
+  for (const hid of contact.linkedHospitalIds ?? []) {
+    const hospital = all.find(
+      (c) => c.type === 'hospital' && (c.hospitalId === hid || c.id === hid)
+    );
+    if (hospital) return hospital;
+  }
+  return null;
+}
+
+/**
+ * Organization + facility ID for person rows, derived from linked hospitals when missing.
+ * - Organization: contact text → hospital company_name → "None" when a hospital is linked with no company → "—"
+ * - Facility ID: contact.facilityId → primary linked hospital facility_id
+ */
+function getPersonHospitalDerivedFields(
+  contact: Contact,
+  all: Contact[]
+): { organization: string; facilityId: string } {
+  const hospital = getPrimaryLinkedHospital(contact, all);
+  const explicitOrg = String(contact.organization || '').trim();
+  const hospitalOrg = String(hospital?.organization || '').trim();
+  let organization = '—';
+  if (explicitOrg) organization = explicitOrg;
+  else if (hospitalOrg) organization = hospitalOrg;
+  else if (hospital) organization = 'None';
+
+  const facilityId =
+    String(contact.facilityId || '').trim() ||
+    String(hospital?.facilityId || '').trim() ||
+    '';
+  return { organization, facilityId };
+}
+
+function enrichPersonContactFromHospitals(contact: Contact, all: Contact[]): Contact {
+  if (!isPersonType(contact.type)) return contact;
+  const derived = getPersonHospitalDerivedFields(contact, all);
+  const next: Contact = { ...contact };
+  if (!String(contact.organization || '').trim() && derived.organization !== '—') {
+    next.organization = derived.organization === 'None' ? '' : derived.organization;
+  }
+  if (!String(contact.facilityId || '').trim() && derived.facilityId) {
+    next.facilityId = derived.facilityId;
+  }
+  return next;
+}
 const USER_DATA_MENTOR_MANAGER_IDS = 'mentor_manager_ids';
 const USER_DATA_PECC_DIRECT_MANAGER_IDS = 'pecc_direct_manager_ids';
 const USER_DATA_PECC_MENTOR_IDS = 'pecc_mentor_ids';
@@ -1088,6 +1137,13 @@ const AdminCRMPage: React.FC = () => {
                   linkedHospitalIds: [...new Set([...(c.linkedHospitalIds ?? []), ...(hospitalMeta?.linkedHospitalIds ?? [])])],
                 };
               }
+            }
+          }
+
+          // Derive organization + facility ID from linked hospitals for all person contacts.
+          for (let i = 0; i < list.length; i++) {
+            if (isPersonType(list[i].type)) {
+              list[i] = enrichPersonContactFromHospitals(list[i], list);
             }
           }
 
@@ -2326,8 +2382,19 @@ const AdminCRMPage: React.FC = () => {
         </Box>
       );
       case 'type': return <Chip label={TYPE_LABELS[contact.type]} size="small" sx={{ bgcolor: TYPE_COLORS[contact.type], color: 'white' }} />;
-      case 'facilityId': return contact.facilityId ?? '—';
-      case 'organization': return contact.organization || '—';
+      case 'facilityId': {
+        if (isPersonType(contact.type)) {
+          const derived = getPersonHospitalDerivedFields(contact, contacts);
+          return derived.facilityId || '—';
+        }
+        return contact.facilityId ?? '—';
+      }
+      case 'organization': {
+        if (isPersonType(contact.type)) {
+          return getPersonHospitalDerivedFields(contact, contacts).organization;
+        }
+        return contact.organization || '—';
+      }
       case 'assignedHospitals': {
         if (!isPersonType(contact.type)) return '—';
         const names = [...new Set(
@@ -2476,21 +2543,22 @@ const AdminCRMPage: React.FC = () => {
 
   const detailDisplay = useMemo(() => {
     if (!detailContact) {
-      return { organization: '—', region: '—', state: '—', backupEmail: '—' };
+      return { organization: '—', facilityId: '—', region: '—', state: '—', backupEmail: '—' };
     }
-    const linkedHospital =
-      (detailContact.linkedHospitalIds || [])
-        .map((id) => contacts.find((c) => c.type === 'hospital' && (c.hospitalId === id || c.id === id)))
-        .find(Boolean) || null;
-    const organization =
-      detailContact.organization ||
-      linkedHospital?.organization ||
-      linkedHospital?.name ||
-      '—';
+    const linkedHospital = getPrimaryLinkedHospital(detailContact, contacts);
+    const personDerived = isPersonType(detailContact.type)
+      ? getPersonHospitalDerivedFields(detailContact, contacts)
+      : null;
+    const organization = personDerived
+      ? personDerived.organization
+      : (detailContact.organization || linkedHospital?.organization || linkedHospital?.name || '—');
+    const facilityId = personDerived
+      ? (personDerived.facilityId || '—')
+      : (detailContact.facilityId || linkedHospital?.facilityId || '—');
     const region = detailContact.region || linkedHospital?.region || '—';
     const state = detailContact.state || linkedHospital?.state || '—';
     const backupEmail = getBackupEmail(detailContact) || '—';
-    return { organization, region, state, backupEmail };
+    return { organization, facilityId, region, state, backupEmail };
   }, [detailContact, contacts]);
 
   const handleSort = (field: SortField) => {
@@ -3738,6 +3806,10 @@ const AdminCRMPage: React.FC = () => {
       }
       if (id === 'linkedHospitals') {
         return (c.linkedHospitalIds ?? []).map(hospId => contacts.find(x => x.hospitalId === hospId || x.id === hospId)?.name ?? '').filter(Boolean).join('; ');
+      }
+      if (isPersonType(c.type) && (id === 'organization' || id === 'facilityId')) {
+        const derived = getPersonHospitalDerivedFields(c, contacts);
+        return id === 'organization' ? derived.organization : (derived.facilityId || '');
       }
       const v = (c as unknown as Record<string, unknown>)[id];
       return v != null ? String(v) : '';
@@ -5823,6 +5895,11 @@ const AdminCRMPage: React.FC = () => {
                 </>
               )}
               <ListItem disablePadding><ListItemText primary="Organization" secondary={detailDisplay.organization} /></ListItem>
+              {isPersonType(detailContact.type) && (
+                <ListItem disablePadding>
+                  <ListItemText primary="Facility ID" secondary={detailDisplay.facilityId} />
+                </ListItem>
+              )}
               <ListItem disablePadding>
                 <ListItemText
                   primary="Email"
@@ -6556,6 +6633,12 @@ const AdminCRMPage: React.FC = () => {
                       </>
                     )}
                     <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon><ListItemText primary="Organization" secondary={detailDisplay.organization} /></ListItem>
+                    {isPersonType(detailContact.type) && (
+                      <ListItem disablePadding>
+                        <ListItemIcon sx={{ minWidth: 36 }}><BusinessIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Facility ID" secondary={detailDisplay.facilityId} />
+                      </ListItem>
+                    )}
                     {isPersonType(detailContact.type) && detailContact.is_admin && (
                       <ListItem disablePadding><ListItemIcon sx={{ minWidth: 36 }}><PersonIcon fontSize="small" /></ListItemIcon><ListItemText primary="Admin Status" secondary={<Chip label="Admin" size="small" color="primary" />} /></ListItem>
                     )}

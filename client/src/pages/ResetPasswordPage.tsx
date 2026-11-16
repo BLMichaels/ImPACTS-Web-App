@@ -121,7 +121,7 @@ const ResetPasswordPage: React.FC = () => {
     body = (
       <Stack spacing={1.75}>
         <Alert severity="success">
-          Password updated. Sign in with your email and new password. You may be asked for your authenticator code next.
+          Password saved. Sign in with your email and new password. Next you will enroll or verify MFA with an authenticator app.
         </Alert>
         <Button
           fullWidth
@@ -164,7 +164,8 @@ const ResetPasswordPage: React.FC = () => {
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={1.75}>
           <Alert severity="info">
-            Choose a new password for {currentUser?.email || 'your account'}. After saving, you will sign in normally.
+            Choose a password for {currentUser?.email || 'your account'} (at least 12 characters). After saving, sign in —
+            you will set up MFA with a free authenticator app before using the tool.
           </Alert>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField

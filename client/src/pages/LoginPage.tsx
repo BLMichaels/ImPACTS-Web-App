@@ -70,7 +70,9 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState(false);
-  const { login, loginWithSso, resetPasswordForEmail, isPasswordRecovery } = useAuth();
+  const [showFirstLoginSetup, setShowFirstLoginSetup] = useState(false);
+  const [firstLoginSuccess, setFirstLoginSuccess] = useState(false);
+  const { login, loginWithSso, resetPasswordForEmail, requestCrmFirstLoginSetup, isPasswordRecovery } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -123,6 +125,24 @@ const LoginPage = () => {
     }
   };
 
+  const handleFirstLoginSetupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+    try {
+      setError('');
+      setLoading(true);
+      await requestCrmFirstLoginSetup(email);
+      setFirstLoginSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send setup email. Try again or contact support.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleHospitalSso = async () => {
     try {
       setError('');
@@ -143,10 +163,77 @@ const LoginPage = () => {
   if (showForgotPassword) {
     formTitle = 'Reset password';
     formSubtitle = 'We will email you a link to set a new password.';
+  } else if (showFirstLoginSetup) {
+    formTitle = 'Create your password';
+    formSubtitle =
+      'If your contact is already in the CRM and no starting password was assigned, we will email you a link to create your password. After you sign in, you will set up MFA.';
   }
 
   let formBody: React.ReactNode;
-  if (showForgotPassword) {
+  if (showFirstLoginSetup) {
+    formBody = firstLoginSuccess ? (
+      <Stack spacing={1.75}>
+        <Alert severity="success">
+          If this email is in our CRM, check your inbox for a Create password link from
+          no.reply@impactscollaborative.com (check spam/junk). Open that link, choose a password (at least 12
+          characters), then sign in here. You will enroll MFA with a free authenticator app before using the tool.
+        </Alert>
+        <Button
+          fullWidth
+          variant="contained"
+          onClick={() => {
+            setShowFirstLoginSetup(false);
+            setFirstLoginSuccess(false);
+          }}
+          sx={{ py: 1.2, fontWeight: 600, bgcolor: AUTH_SLATE, '&:hover': { bgcolor: AUTH_SLATE_DARK } }}
+        >
+          Back to sign in
+        </Button>
+      </Stack>
+    ) : (
+      <Box component="form" onSubmit={handleFirstLoginSetupSubmit}>
+        <Stack spacing={1.75}>
+          {error && <Alert severity="error">{error}</Alert>}
+          <Alert severity="info" sx={{ py: 0.75 }}>
+            This is only for people already added in the CRM. Open registration is not available.
+          </Alert>
+          <TextField
+            required
+            fullWidth
+            id="first-login-email"
+            label="Email address"
+            name="email"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            sx={fieldSx}
+          />
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            disabled={loading}
+            sx={{ py: 1.2, fontWeight: 600, bgcolor: AUTH_SLATE, '&:hover': { bgcolor: AUTH_SLATE_DARK } }}
+          >
+            {loading ? 'Sending…' : 'Email me a create-password link'}
+          </Button>
+          <Button
+            fullWidth
+            variant="text"
+            onClick={() => {
+              setShowFirstLoginSetup(false);
+              setError('');
+            }}
+            sx={{ color: AUTH_SLATE }}
+          >
+            Back to sign in
+          </Button>
+        </Stack>
+      </Box>
+    );
+  } else if (showForgotPassword) {
     formBody = forgotSuccess ? (
       <Stack spacing={1.75}>
         <Alert severity="success">
@@ -280,14 +367,28 @@ const LoginPage = () => {
             Enter your work email above first. SSO is available after your hospital’s IT connects their IdP.
           </Typography>
           <Typography variant="body2" color="text.secondary" align="center">
-            Need an account?{' '}
+            First time and already in the CRM?{' '}
+            <Link
+              component="button"
+              type="button"
+              onClick={() => {
+                setShowFirstLoginSetup(true);
+                setError('');
+              }}
+              sx={{ fontWeight: 600, color: AUTH_SLATE, verticalAlign: 'baseline' }}
+            >
+              Create your password
+            </Link>
+          </Typography>
+          <Typography variant="body2" color="text.secondary" align="center">
+            Need an invitation?{' '}
             <Link
               component="button"
               type="button"
               onClick={() => navigate('/register')}
               sx={{ fontWeight: 600, color: AUTH_SLATE, verticalAlign: 'baseline' }}
             >
-              Request an invitation
+              Request access
             </Link>
           </Typography>
         </Stack>
