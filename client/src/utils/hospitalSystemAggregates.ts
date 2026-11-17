@@ -129,8 +129,19 @@ export interface GapInventoryRow {
 
 export interface DomainStatusRow {
   domain: string;
+  /** Questions in this domain from the education/assessment catalog. */
+  questionCount: number;
+  /** Distinct assessment questions that have ≥1 gap plan somewhere in the system. */
+  questionsWithPlans: number;
+  /** questionCount × totalSites — max plans if every site had every question. */
+  possiblePlanSlots: number;
   statusCounts: Record<string, number>;
+  /** Gap plan instances in this domain across all sites. */
   total: number;
+  /** questionsWithPlans / questionCount × 100 */
+  pctQuestionsWithPlans: number | null;
+  /** total / possiblePlanSlots × 100 */
+  pctPlanCoverage: number | null;
 }
 
 export interface AssessmentGapsAggregate {
@@ -165,7 +176,17 @@ export function aggregateAssessmentGaps(
   statusPlanCounts.Other = 0;
   statusSiteSets.Other = new Set();
 
+  const questionsPerDomain = new Map<string, number>();
+  educationQuestions.forEach((q) => {
+    const domain = String(q.domain || '').trim() || 'Uncategorized';
+    questionsPerDomain.set(domain, (questionsPerDomain.get(domain) || 0) + 1);
+  });
+  EDUCATION_BUCKETS.forEach((d) => {
+    if (!questionsPerDomain.has(d)) questionsPerDomain.set(d, 0);
+  });
+
   const domainMap = new Map<string, Record<string, number>>();
+  const domainQuestionIdsWithPlans = new Map<string, Set<string>>();
   EDUCATION_BUCKETS.forEach((d) => {
     const counts: Record<string, number> = {};
     GAP_STATUS_LABELS.forEach((s) => {
@@ -173,11 +194,13 @@ export function aggregateAssessmentGaps(
     });
     counts.Other = 0;
     domainMap.set(d, counts);
+    domainQuestionIdsWithPlans.set(d, new Set());
   });
   domainMap.set('Uncategorized', {
     ...Object.fromEntries(GAP_STATUS_LABELS.map((s) => [s, 0])),
     Other: 0,
   });
+  domainQuestionIdsWithPlans.set('Uncategorized', new Set());
 
   type GapAccum = {
     questionId: string;
@@ -211,9 +234,12 @@ export function aggregateAssessmentGaps(
           ...Object.fromEntries(GAP_STATUS_LABELS.map((s) => [s, 0])),
           Other: 0,
         });
+        domainQuestionIdsWithPlans.set(domain, new Set());
       }
       const domainCounts = domainMap.get(domain)!;
       domainCounts[statusKey] = (domainCounts[statusKey] || 0) + 1;
+      const qKey = String(plan.questionId || plan.questionText || plan.id || '').trim();
+      if (qKey) domainQuestionIdsWithPlans.get(domain)?.add(qKey);
 
       const gapKey = String(plan.questionId || plan.questionText || plan.id || '').trim() || 'unknown';
       let accum = gapByKey.get(gapKey);
@@ -294,13 +320,27 @@ export function aggregateAssessmentGaps(
 
   gapInventory.sort((a, b) => b.sitesWithGap - a.sitesWithGap || a.questionText.localeCompare(b.questionText));
 
+  const pct = (num: number, den: number): number | null =>
+    den > 0 ? Math.round((num / den) * 1000) / 10 : null;
+
   const domainRows: DomainStatusRow[] = [...domainMap.entries()]
-    .map(([domain, statusCounts]) => ({
-      domain,
-      statusCounts,
-      total: Object.values(statusCounts).reduce((sum, n) => sum + n, 0),
-    }))
-    .filter((row) => row.total > 0 || EDUCATION_BUCKETS.includes(row.domain as (typeof EDUCATION_BUCKETS)[number]))
+    .map(([domain, statusCounts]) => {
+      const questionCount = questionsPerDomain.get(domain) || 0;
+      const questionsWithPlans = domainQuestionIdsWithPlans.get(domain)?.size || 0;
+      const total = Object.values(statusCounts).reduce((sum, n) => sum + n, 0);
+      const possiblePlanSlots = questionCount * Math.max(totalSites, 0);
+      return {
+        domain,
+        questionCount,
+        questionsWithPlans,
+        possiblePlanSlots,
+        statusCounts,
+        total,
+        pctQuestionsWithPlans: pct(questionsWithPlans, questionCount),
+        pctPlanCoverage: pct(total, possiblePlanSlots),
+      };
+    })
+    .filter((row) => row.total > 0 || row.questionCount > 0 || EDUCATION_BUCKETS.includes(row.domain as (typeof EDUCATION_BUCKETS)[number]))
     .sort((a, b) => {
       const ai = EDUCATION_BUCKETS.indexOf(a.domain as (typeof EDUCATION_BUCKETS)[number]);
       const bi = EDUCATION_BUCKETS.indexOf(b.domain as (typeof EDUCATION_BUCKETS)[number]);

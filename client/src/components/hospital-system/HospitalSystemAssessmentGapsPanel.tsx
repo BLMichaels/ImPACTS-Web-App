@@ -124,50 +124,92 @@ const HospitalSystemAssessmentGapsPanel: React.FC<Props> = ({ aggregate, loading
 
       <AdminSection
         title="Status by pediatric readiness domain"
-        description="How gap plans in each NPRP domain break down by status."
+        description={`Each domain has a different number of assessment questions. Totals are shown against that domain’s question count and against possible site×question slots (${aggregate.totalSites} site${aggregate.totalSites === 1 ? '' : 's'}).`}
       >
-        <TableContainer>
+        <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small" aria-label="Domain status breakdown">
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 700 }}>Domain</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  Questions in domain
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  Questions with a plan
+                </TableCell>
                 {GAP_STATUS_LABELS.map((s) => (
                   <TableCell key={s} align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {s}
                   </TableCell>
                 ))}
-                <TableCell align="right" sx={{ fontWeight: 700 }}>
-                  Total
+                <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  Plan instances
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  Coverage
                 </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {aggregate.domainRows.map((row) => (
-                <TableRow key={row.domain} hover>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={600} title={row.domain}>
-                      {shortDomain(row.domain)}
-                    </Typography>
-                  </TableCell>
-                  {GAP_STATUS_LABELS.map((s) => (
-                    <TableCell key={s} align="right">
-                      {row.statusCounts[s] || 0}
+              {aggregate.domainRows.map((row) => {
+                const statusPct = (count: number) =>
+                  row.total > 0 ? `${count} (${Math.round((count / row.total) * 1000) / 10}%)` : '0';
+                return (
+                  <TableRow key={row.domain} hover>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={600} title={row.domain}>
+                        {shortDomain(row.domain)}
+                      </Typography>
                     </TableCell>
-                  ))}
-                  <TableCell align="right">
-                    <Chip size="small" label={row.total} />
-                  </TableCell>
-                </TableRow>
-              ))}
+                    <TableCell align="right">{row.questionCount || '—'}</TableCell>
+                    <TableCell align="right">
+                      {row.questionCount > 0
+                        ? `${row.questionsWithPlans} / ${row.questionCount}${
+                            row.pctQuestionsWithPlans != null ? ` (${row.pctQuestionsWithPlans}%)` : ''
+                          }`
+                        : `${row.questionsWithPlans}`}
+                    </TableCell>
+                    {GAP_STATUS_LABELS.map((s) => (
+                      <TableCell key={s} align="right">
+                        {statusPct(row.statusCounts[s] || 0)}
+                      </TableCell>
+                    ))}
+                    <TableCell align="right">
+                      {row.possiblePlanSlots > 0 ? (
+                        <Chip
+                          size="small"
+                          label={`${row.total} / ${row.possiblePlanSlots}${
+                            row.pctPlanCoverage != null ? ` (${row.pctPlanCoverage}%)` : ''
+                          }`}
+                        />
+                      ) : (
+                        <Chip size="small" label={String(row.total)} />
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {row.pctPlanCoverage != null ? `${row.pctPlanCoverage}%` : '—'}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          Questions with a plan = distinct assessment items that have at least one gap plan. Plan instances =
+          total gap plans across sites (max {aggregate.totalSites} × questions in domain if every site had every
+          question). Status % is share of that domain’s plan instances.
+        </Typography>
         <Box sx={{ mt: 2 }}>
           <SnapshotHorizontalBarChart
             data={aggregate.domainRows
-              .filter((r) => r.total > 0)
-              .map((r) => ({ label: shortDomain(r.domain), value: r.total, sublabel: r.domain }))}
-            valueLabel="Plans"
+              .filter((r) => r.pctQuestionsWithPlans != null && r.questionCount > 0)
+              .map((r) => ({
+                label: shortDomain(r.domain),
+                value: r.pctQuestionsWithPlans ?? 0,
+                sublabel: `${r.questionsWithPlans} / ${r.questionCount} questions · ${r.domain}`,
+              }))}
+            valueLabel="% of domain questions with a plan"
             minHeight={220}
           />
         </Box>
