@@ -105,6 +105,24 @@ function assertPhiSafeForDataKey(dataKey: string, value: unknown, userId?: strin
   }
 }
 
+export class ContinuityWriteError extends Error {
+  readonly code?: string;
+  constructor(message: string, options?: { cause?: unknown; code?: string }) {
+    super(message);
+    this.name = 'ContinuityWriteError';
+    this.code = options?.code;
+    if (options?.cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
+function supabaseErrorMessage(error: unknown, fallback: string): string {
+  const e = error as { message?: string; code?: string; details?: string } | null;
+  const msg = String(e?.message || '').trim();
+  return msg || fallback;
+}
+
 export async function setUserData(userId: string, dataKey: string, value: unknown): Promise<void> {
   if (!userId || !dataKey) return;
   assertPhiSafeForDataKey(dataKey, value, userId);
@@ -124,10 +142,15 @@ export async function setUserData(userId: string, dataKey: string, value: unknow
     if (shouldFallbackUserDataToLocalStorage(error)) {
       try {
         localStorage.setItem(localStorageKey(userId, dataKey), JSON.stringify(value));
+        return;
       } catch {
-        // ignore
+        // fall through to throw
       }
     }
+    throw new ContinuityWriteError(
+      supabaseErrorMessage(error, `Failed to save ${dataKey}`),
+      { cause: error, code: (error as { code?: string }).code }
+    );
   }
 }
 
@@ -249,9 +272,13 @@ export async function setHospitalData(hospitalId: string, dataKey: string, value
   if (!hospitalId || !dataKey) return;
   if (isUserPrivateDataKey(dataKey)) {
     console.error(`[userData] refused hospital_data write for private key "${dataKey}"`);
-    return;
+    throw new ContinuityWriteError(`Cannot save "${dataKey}" as hospital data (private key).`);
   }
-  if (hospitalDataTableMissing) return;
+  if (hospitalDataTableMissing) {
+    throw new ContinuityWriteError(
+      'Hospital data storage is unavailable. Ask an admin to verify the hospital_data table is deployed.'
+    );
+  }
   assertPhiSafeForDataKey(dataKey, value);
   const { error } = await supabase
     .from('hospital_data')
@@ -264,7 +291,19 @@ export async function setHospitalData(hospitalId: string, dataKey: string, value
       },
       { onConflict: 'hospital_id,data_key' }
     );
-  if (error) handleHospitalDataError(`setHospitalData(${dataKey})`, error);
+  if (error) {
+    handleHospitalDataError(`setHospitalData(${dataKey})`, error);
+    const msg = supabaseErrorMessage(error, `Failed to save ${dataKey}`);
+    const lower = msg.toLowerCase();
+    const friendly =
+      lower.includes('row-level security') || lower.includes('rls') || (error as { code?: string }).code === '42501'
+        ? 'You do not have permission to save activities for this hospital. Confirm your hospital assignment in Account Settings or ask an admin.'
+        : msg;
+    throw new ContinuityWriteError(friendly, {
+      cause: error,
+      code: (error as { code?: string }).code,
+    });
+  }
 }
 
 /**

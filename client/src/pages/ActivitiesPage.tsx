@@ -43,16 +43,16 @@ import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUsageAnalytics } from '../context/UsageAnalyticsContext';
-import { usePhiGuard, PHI_SCAN_HINT } from '../components/PhiGuard';
+import { usePhiGuard, PHI_SCAN_HINT, handlePhiPersistenceError } from '../components/PhiGuard';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { supabase } from '../supabase';
 import {
-  setUserData,
   migrateFromLocalStorage,
   resolveHospitalUuid,
   writeContinuityData,
   getContinuityData,
+  ContinuityWriteError,
 } from '../utils/userData';
 import { computeWorkHours } from '../utils/snapshotMetrics';
 import { GAP_PLANS_UPDATED_EVENT } from './EducationPage';
@@ -155,7 +155,7 @@ const PARTICIPANT_OPTIONS = Array.from({ length: 26 }, (_, i) => i);
 
 const ActivitiesPage = () => {
   const { currentUser, loading } = useAuth();
-  const { runWithPhiGuard } = usePhiGuard();
+  const { runWithPhiGuard, showBlocked } = usePhiGuard();
   const { effectiveUserId, siteId } = useUserProfile();
   const { trackClick, trackActivity } = useUsageAnalytics();
   useEffect(() => {
@@ -169,6 +169,9 @@ const ActivitiesPage = () => {
   const [open, setOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [continuityHydrated, setContinuityHydrated] = useState(false);
+  const [hospitalResolveDone, setHospitalResolveDone] = useState(!siteId);
   const [formData, setFormData] = useState({
     date: '',
     activity: '',
@@ -200,13 +203,25 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     let mounted = true;
+    setHospitalResolveDone(false);
     (async () => {
       if (!siteId) {
-        if (mounted) setEffectiveHospitalId(null);
+        if (mounted) {
+          setEffectiveHospitalId(null);
+          setHospitalResolveDone(true);
+        }
         return;
       }
       const resolved = await resolveHospitalUuid(siteId);
-      if (mounted) setEffectiveHospitalId(resolved);
+      if (mounted) {
+        setEffectiveHospitalId(resolved);
+        setHospitalResolveDone(true);
+        if (!resolved) {
+          setError(
+            'Your hospital could not be linked for saving. Confirm your hospital assignment in Account Settings or ask an admin to reconnect your PECC hospital.'
+          );
+        }
+      }
     })();
     return () => {
       mounted = false;
@@ -216,8 +231,9 @@ const ActivitiesPage = () => {
   // Load activities, gap plans, simulation gaps from Supabase (syncs across devices)
   const userId = effectiveUserId;
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !hospitalResolveDone) return;
     let mounted = true;
+    setContinuityHydrated(false);
     (async () => {
       const [activitiesVal, gapPlansVal, simGapsVal, categoriesRes] = await Promise.all([
         getContinuityData<Activity[]>(effectiveHospitalId, userId, 'activities'),
@@ -228,17 +244,21 @@ const ActivitiesPage = () => {
       if (!mounted) return;
       if (activitiesVal != null && Array.isArray(activitiesVal)) setActivities(activitiesVal);
       else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'activities', `activities_${userId}`, (v) => setActivities(Array.isArray(v) ? v : []));
+      else setActivities([]);
 
       if (gapPlansVal != null && Array.isArray(gapPlansVal)) setGapPlans(gapPlansVal);
       else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'gapPlans', `gapPlans_${userId}`, (v) => setGapPlans(Array.isArray(v) ? v : []));
+      else setGapPlans([]);
 
       if (simGapsVal != null && Array.isArray(simGapsVal)) setSimulationGaps(simGapsVal);
       else if (!effectiveHospitalId) migrateFromLocalStorage(userId, 'simulation_gaps', `simulation_gaps_${userId}`, (v) => setSimulationGaps(Array.isArray(v) ? v : []));
+      else setSimulationGaps([]);
       const parsed = (categoriesRes.data as { value?: unknown } | null)?.value;
       if (parsed != null && Array.isArray(parsed) && parsed.length > 0) setActivityCategories(parsed as string[]);
+      if (mounted) setContinuityHydrated(true);
     })();
     return () => { mounted = false; };
-  }, [userId, effectiveHospitalId]);
+  }, [userId, effectiveHospitalId, hospitalResolveDone]);
 
   useEffect(() => {
     let mounted = true;
@@ -313,129 +333,183 @@ const ActivitiesPage = () => {
     };
   }, [activities]);
 
-  const saveActivities = async (newActivities: Activity[]) => {
-    try {
-      setActivities(newActivities);
-      if (userId) {
-        const uid = userId;
-        const timestampedActivities = newActivities.map(activity => ({
-          ...activity,
-          created_at: activity.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          submitted_by: activity.submitted_by ?? uid
-        }));
-        if (effectiveHospitalId) {
-          await writeContinuityData(effectiveHospitalId, userId, 'activities', timestampedActivities);
-        } else {
-          await setUserData(userId, 'activities', timestampedActivities);
-        }
+  const saveActivities = async (newActivities: Activity[]): Promise<boolean> => {
+    if (!userId) {
+      setError('You must be signed in to save activities.');
+      return false;
+    }
+    if (!hospitalResolveDone || !continuityHydrated) {
+      setError('Hospital data is still loading. Wait a moment and try again.');
+      return false;
+    }
+    if (siteId && !effectiveHospitalId) {
+      setError(
+        'Your hospital could not be linked for saving. Confirm your hospital assignment in Account Settings or ask an admin to reconnect your PECC hospital.'
+      );
+      return false;
+    }
 
-        const simulationGaps = (await getContinuityData<unknown[]>(effectiveHospitalId, userId, 'simulation_gaps')) ?? [];
-        let gapsUpdated = false;
-        timestampedActivities.forEach(activity => {
-          if (activity.associatedSimulationGaps?.length) {
-            activity.associatedSimulationGaps.forEach(gapId => {
-              const gapIndex = simulationGaps.findIndex((g: any) => g.id === gapId);
-              if (gapIndex !== -1) {
-                const gap = simulationGaps[gapIndex] as any;
-                if (!gap.linkedActivities) gap.linkedActivities = [];
-                if (!gap.linkedActivities.includes(activity.id)) {
-                  gap.linkedActivities.push(activity.id);
-                  gapsUpdated = true;
-                }
+    const previousActivities = activities;
+    const uid = userId;
+    const timestampedActivities = newActivities.map((activity) => ({
+      ...activity,
+      created_at: activity.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      submitted_by: activity.submitted_by ?? uid,
+    }));
+
+    setActivities(timestampedActivities);
+    try {
+      await writeContinuityData(effectiveHospitalId, userId, 'activities', timestampedActivities);
+
+      const nextSimulationGaps =
+        (await getContinuityData<unknown[]>(effectiveHospitalId, userId, 'simulation_gaps')) ?? [];
+      let gapsUpdated = false;
+      timestampedActivities.forEach((activity) => {
+        if (activity.associatedSimulationGaps?.length) {
+          activity.associatedSimulationGaps.forEach((gapId) => {
+            const gapIndex = nextSimulationGaps.findIndex((g: any) => g.id === gapId);
+            if (gapIndex !== -1) {
+              const gap = nextSimulationGaps[gapIndex] as any;
+              if (!gap.linkedActivities) gap.linkedActivities = [];
+              if (!gap.linkedActivities.includes(activity.id)) {
+                gap.linkedActivities.push(activity.id);
+                gapsUpdated = true;
               }
-            });
-          }
-        });
-        (simulationGaps as any[]).forEach((gap: any) => {
-          if (gap.linkedActivities) {
-            const orig = gap.linkedActivities.length;
-            gap.linkedActivities = gap.linkedActivities.filter((activityId: string) => {
-              const activity = timestampedActivities.find(a => a.id === activityId);
-              return activity?.associatedSimulationGaps?.includes(gap.id);
-            });
-            if (gap.linkedActivities.length !== orig) gapsUpdated = true;
-          }
-        });
-        if (gapsUpdated) {
-          if (effectiveHospitalId) {
-            await writeContinuityData(effectiveHospitalId, userId, 'simulation_gaps', simulationGaps);
-          } else {
-            await setUserData(userId, 'simulation_gaps', simulationGaps);
-          }
+            }
+          });
         }
+      });
+      (nextSimulationGaps as any[]).forEach((gap: any) => {
+        if (gap.linkedActivities) {
+          const orig = gap.linkedActivities.length;
+          gap.linkedActivities = gap.linkedActivities.filter((activityId: string) => {
+            const activity = timestampedActivities.find((a) => a.id === activityId);
+            return activity?.associatedSimulationGaps?.includes(gap.id);
+          });
+          if (gap.linkedActivities.length !== orig) gapsUpdated = true;
+        }
+      });
+      if (gapsUpdated) {
+        await writeContinuityData(effectiveHospitalId, userId, 'simulation_gaps', nextSimulationGaps);
+        setSimulationGaps(nextSimulationGaps as any[]);
       }
+      return true;
     } catch (err) {
+      setActivities(previousActivities);
       console.error('Error saving activities:', err);
+      if (handlePhiPersistenceError(err, showBlocked)) {
+        setError('Save blocked: possible PHI detected. Remove patient identifiers and try again.');
+        return false;
+      }
+      if (err instanceof ContinuityWriteError) {
+        setError(err.message || 'Error saving activities');
+        return false;
+      }
       setError('Error saving activities');
+      return false;
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    const hasCategories = formData.categories && formData.categories.length > 0;
+    if (!formData.date || !formData.activity || !hasCategories || formData.hours === undefined || formData.hours === null) {
+      setError('Please fill in all required fields (including at least one category)');
+      return;
+    }
+    if (!userId) {
+      setError('You must be signed in to save activities.');
+      return;
+    }
+    if (!hospitalResolveDone || !continuityHydrated) {
+      setError('Hospital data is still loading. Wait a moment and try again.');
+      return;
+    }
+    if (siteId && !effectiveHospitalId) {
+      setError(
+        'Your hospital could not be linked for saving. Confirm your hospital assignment in Account Settings or ask an admin to reconnect your PECC hospital.'
+      );
+      return;
+    }
+
+    const isSimulation = formData.categories.includes('Simulation Facilitation');
+    let nextActivities: Activity[];
+
+    if (editingActivity) {
+      trackActivity('edit', { activity_id: editingActivity.id, name: formData.activity?.slice(0, 80) });
+      const updatedActivity: Activity = {
+        ...editingActivity,
+        date: formData.date,
+        activity: formData.activity,
+        categories: formData.categories,
+        category: formData.categories[0],
+        hours: formData.hours,
+        simulation: isSimulation ? formData.simulation : undefined,
+        simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
+        participants: isSimulation ? formData.participants : undefined,
+        feedbackForms: isSimulation ? formData.feedbackForms : undefined,
+        associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
+        associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
+        notes: formData.notes || undefined,
+      };
+      nextActivities = activities.map((activity) =>
+        activity.id === editingActivity.id ? updatedActivity : activity
+      );
+    } else {
+      trackActivity('create', { name: formData.activity?.slice(0, 80) });
+      const newActivity: Activity = {
+        id: Date.now().toString(),
+        date: formData.date,
+        activity: formData.activity,
+        categories: formData.categories,
+        category: formData.categories[0],
+        hours: formData.hours,
+        simulation: isSimulation ? formData.simulation : undefined,
+        simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
+        participants: isSimulation ? formData.participants : undefined,
+        feedbackForms: isSimulation ? formData.feedbackForms : undefined,
+        associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
+        associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
+        notes: formData.notes || undefined,
+        submitted_by: userId,
+      };
+      nextActivities = [...activities, newActivity];
+    }
+
+    setSaving(true);
+    setError(null);
     try {
-      const hasCategories = formData.categories && formData.categories.length > 0;
-      if (!formData.date || !formData.activity || !hasCategories || formData.hours === undefined || formData.hours === null) {
-        setError('Please fill in all required fields (including at least one category)');
-        return;
-      }
-
-      const isSimulation = formData.categories.includes('Simulation Facilitation');
-
-      void runWithPhiGuard({
+      const ok = await runWithPhiGuard({
         surface: 'activities',
         fieldHint: 'activity/notes',
         texts: [formData.activity, formData.notes, formData.simulationOther],
-        onSave: () => {
-          if (editingActivity) {
-            trackActivity('edit', { activity_id: editingActivity.id, name: formData.activity?.slice(0, 80) });
-            const updatedActivity: Activity = {
-              ...editingActivity,
-              date: formData.date,
-              activity: formData.activity,
-              categories: formData.categories,
-              category: formData.categories[0],
-              hours: formData.hours,
-              simulation: isSimulation ? formData.simulation : undefined,
-              simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
-              participants: isSimulation ? formData.participants : undefined,
-              feedbackForms: isSimulation ? formData.feedbackForms : undefined,
-              associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
-              associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
-              notes: formData.notes || undefined
-            };
-            const updatedActivities = activities.map(activity =>
-              activity.id === editingActivity.id ? updatedActivity : activity
-            );
-            saveActivities(updatedActivities);
-          } else {
-            trackActivity('create', { name: formData.activity?.slice(0, 80) });
-            const uid = userId;
-            const newActivity: Activity = {
-              id: Date.now().toString(),
-              date: formData.date,
-              activity: formData.activity,
-              categories: formData.categories,
-              category: formData.categories[0],
-              hours: formData.hours,
-              simulation: isSimulation ? formData.simulation : undefined,
-              simulationOther: isSimulation && formData.simulation === 'Other' ? formData.simulationOther : undefined,
-              participants: isSimulation ? formData.participants : undefined,
-              feedbackForms: isSimulation ? formData.feedbackForms : undefined,
-              associatedGaps: formData.associatedGaps.length > 0 ? formData.associatedGaps : undefined,
-              associatedSimulationGaps: formData.associatedSimulationGaps.length > 0 ? formData.associatedSimulationGaps : undefined,
-              notes: formData.notes || undefined,
-              submitted_by: uid ?? undefined
-            };
-            saveActivities([...activities, newActivity]);
+        payload: nextActivities,
+        onSave: async () => {
+          const saved = await saveActivities(nextActivities);
+          if (!saved) {
+            throw new ContinuityWriteError('Activity save failed');
           }
-
-          handleClose();
-          setError(null);
         },
       });
+      if (!ok) {
+        setError('Save blocked: possible PHI detected. Remove patient identifiers and try again.');
+        return;
+      }
+      handleClose();
+      setError(null);
     } catch (err) {
       console.error('Error submitting activity:', err);
+      if (handlePhiPersistenceError(err, showBlocked)) {
+        setError('Save blocked: possible PHI detected. Remove patient identifiers and try again.');
+        return;
+      }
+      if (err instanceof ContinuityWriteError) {
+        // saveActivities already set a specific error / rolled back
+        return;
+      }
       setError('Error submitting activity');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -462,14 +536,19 @@ const ActivitiesPage = () => {
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    trackActivity('delete', { activity_id: id });
+    setSaving(true);
+    setError(null);
     try {
-      trackActivity('delete', { activity_id: id });
-      const updatedActivities = activities.filter(activity => activity.id !== id);
-      saveActivities(updatedActivities);
+      const updatedActivities = activities.filter((activity) => activity.id !== id);
+      const saved = await saveActivities(updatedActivities);
+      if (saved) handleClose();
     } catch (err) {
       console.error('Error deleting activity:', err);
       setError('Error deleting activity');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1838,13 +1917,19 @@ const ActivitiesPage = () => {
                       color="error" 
                       variant="outlined"
                       sx={{ mr: 'auto' }}
+                      disabled={saving}
                     >
                       Delete
                     </Button>
                   )}
-                  <Button onClick={handleClose}>Cancel</Button>
-                  <Button onClick={handleSubmit} variant="contained">
-                    {editingActivity ? 'Update' : 'Add'}
+                  <Button onClick={handleClose} disabled={saving}>Cancel</Button>
+                  <Button
+                    onClick={() => void handleSubmit()}
+                    variant="contained"
+                    disabled={saving || !continuityHydrated || (Boolean(siteId) && !effectiveHospitalId)}
+                    startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+                  >
+                    {saving ? 'Saving…' : editingActivity ? 'Update' : 'Add'}
                   </Button>
                 </DialogActions>
               </Dialog>

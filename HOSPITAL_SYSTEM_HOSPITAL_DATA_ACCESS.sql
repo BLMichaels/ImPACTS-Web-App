@@ -12,7 +12,8 @@ DECLARE
   v_uid UUID := auth.uid();
   v_role TEXT;
   v_is_admin BOOLEAN := false;
-  v_site_id_from_hospital TEXT;
+  v_facility_id TEXT;
+  v_hospital_id_text TEXT;
   v_allowed BOOLEAN := false;
 BEGIN
   IF v_uid IS NULL OR p_hospital_id IS NULL THEN
@@ -90,24 +91,30 @@ BEGIN
     RETURN true;
   END IF;
 
+  -- Match site_members by facility_id and/or hospitals.id (both appear as site_id in the wild).
   IF to_regclass('public.site_members') IS NOT NULL THEN
-    SELECT COALESCE(to_jsonb(h)->>'facility_id', h.id::TEXT)
-      INTO v_site_id_from_hospital
+    SELECT
+      NULLIF(BTRIM(COALESCE(to_jsonb(h)->>'facility_id', '')), ''),
+      h.id::TEXT
+      INTO v_facility_id, v_hospital_id_text
     FROM public.hospitals h
     WHERE h.id = p_hospital_id
     LIMIT 1;
 
-    IF v_site_id_from_hospital IS NOT NULL THEN
+    IF v_facility_id IS NOT NULL OR v_hospital_id_text IS NOT NULL THEN
       EXECUTE $q$
         SELECT EXISTS (
           SELECT 1
           FROM public.site_members sm
-          WHERE sm.site_id = $1
-            AND sm.user_id = $2
+          WHERE sm.user_id = $1
+            AND (
+              ($2::TEXT IS NOT NULL AND sm.site_id = $2)
+              OR ($3::TEXT IS NOT NULL AND sm.site_id = $3)
+            )
         )
       $q$
       INTO v_allowed
-      USING v_site_id_from_hospital, v_uid;
+      USING v_uid, v_facility_id, v_hospital_id_text;
 
       IF v_allowed THEN
         RETURN true;

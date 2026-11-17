@@ -20,6 +20,7 @@ import {
   PhiFinding,
   PhiNeedsAcknowledgmentError,
   acknowledgePhiContent,
+  collectNarrativeStrings,
   enforcePhiScan,
   hashPhiContent,
   phiFindingsToMetadata,
@@ -122,9 +123,12 @@ export const PhiGuardProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
       }
 
+      // Must match enforcePhiForDataKey (collectNarrativeStrings) so ack survives persistence.
       const contentForHash =
-        (texts || []).filter(Boolean).join('\n') ||
-        (typeof payload === 'string' ? payload : JSON.stringify(payload ?? ''));
+        payload !== undefined
+          ? collectNarrativeStrings(payload).join('\n') ||
+            (typeof payload === 'string' ? payload : JSON.stringify(payload ?? ''))
+          : (texts || []).filter(Boolean).join('\n');
 
       try {
         enforcePhiScan(result, { surface, contentForHash });
